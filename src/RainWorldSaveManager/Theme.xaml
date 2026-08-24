@@ -22,6 +22,12 @@
     <SolidColorBrush x:Key="Brush.OkSoft" Color="#FFEDF6F0" />
     <SolidColorBrush x:Key="Brush.Warn" Color="#FF8A6D1F" />
     <SolidColorBrush x:Key="Brush.WarnSoft" Color="#FFFBF4E2" />
+    <!-- Rain Meadow. A colour of its own so the online block reads as a different category at a
+         glance rather than as more of the local saves above it. Kept in the same muted family as
+         the rest, and away from Ok, Warn and Danger, which all mean a state here. -->
+    <SolidColorBrush x:Key="Brush.Meadow" Color="#FF5A6E4B" />
+    <SolidColorBrush x:Key="Brush.MeadowSoft" Color="#FFF2F5EE" />
+
     <SolidColorBrush x:Key="Brush.Selection" Color="#FFE1EAEE" />
     <SolidColorBrush x:Key="Brush.Overlay" Color="#66202225" />
 

@@ -981,8 +981,6 @@
                         Command="{Binding DeleteCommand}" />
                 <Button DockPanel.Dock="Right" Content="Open Folder" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0" Command="{Binding OpenFolderCommand}" />
-                <Button DockPanel.Dock="Right" Content="Verify" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0" Command="{Binding VerifyCommand}" />
                 <Button DockPanel.Dock="Right" Content="Restore" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
                 <Button DockPanel.Dock="Right" Content="New Backup" Style="{StaticResource Button.Accent}"
@@ -1188,68 +1186,79 @@
                                        Margin="0,16,0,0"
                                        Visibility="{Binding Detail.HasNoSlots, Converter={StaticResource BoolToVis}}" />
 
-                            <!-- Rain Meadow. Both blocks below are left out entirely when the
-                                 folder holds nothing of the mod's, so a player who does not use it
-                                 sees the panel exactly as it was. They are independent: a profile
-                                 can exist with no online save, and an online save with no profile. -->
-                            <!-- IsExpanded is bound rather than set, because this Expander is one
-                                 instance outside any DataTemplate. Set as a literal it stays open
-                                 for every snapshot selected after the first time it is opened,
-                                 including ones whose online saves the user has never seen. The
-                                 bound property is rebuilt with the detail, so a new selection
-                                 starts collapsed. -->
-                            <Expander Margin="0,14,0,0"
-                                      IsExpanded="{Binding Detail.IsOnlineFoldoutExpanded, Mode=TwoWay}"
-                                      Foreground="{StaticResource Brush.TextMuted}"
-                                      Visibility="{Binding Detail.HasOnlineSlots, Converter={StaticResource BoolToVis}}">
-                                <Expander.Header>
-                                    <StackPanel Orientation="Horizontal">
-                                        <TextBlock Text="RAIN MEADOW ONLINE SAVES"
-                                                   Style="{StaticResource Text.SectionLabel}"
-                                                   VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding Detail.OnlineCountText}"
-                                                   Style="{StaticResource Text.Muted}"
-                                                   Margin="10,0,0,0" VerticalAlignment="Center" />
+                            <!-- Rain Meadow, in its own banded panel so the eye can see where the
+                                 local saves above stop. The whole thing is left out when the mod is
+                                 not on this machine, so a player who does not use it sees the panel
+                                 exactly as it was. There is no foldout: if the mod is here, its
+                                 saves are part of what this app manages. -->
+                            <Border Margin="0,22,0,0" CornerRadius="4"
+                                    Background="{StaticResource Brush.MeadowSoft}"
+                                    BorderBrush="{StaticResource Brush.Meadow}"
+                                    BorderThickness="1"
+                                    Visibility="{Binding Detail.ShowMeadowSection, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <!-- The band across the top is the divider. It carries the
+                                         section colour so the break reads before any text does. -->
+                                    <Border Background="{StaticResource Brush.Meadow}"
+                                            CornerRadius="3,3,0,0" Padding="12,7">
+                                        <DockPanel>
+                                            <TextBlock DockPanel.Dock="Right"
+                                                       Text="{Binding Detail.MeadowVersionText}"
+                                                       Foreground="White" FontSize="11" Opacity="0.85"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="RAIN MEADOW" Foreground="White"
+                                                       FontWeight="SemiBold" FontSize="11"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding Detail.OnlineCountText}"
+                                                       Foreground="White" Opacity="0.85" FontSize="11"
+                                                       Margin="10,0,0,0" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Border>
+
+                                    <StackPanel Margin="12,10,12,12">
+                                        <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
+                                                   Margin="0,0,0,9"
+                                                   Text="Rain Meadow keeps a second save for each slot and the game picks between them by whether you are in a lobby, so slot 2 is sav2 on your own and online_sav2 in a lobby. Copying replaces the whole target file byte for byte." />
+
+                                        <ItemsControl ItemsSource="{Binding Detail.SlotPairs}"
+                                                      ItemTemplate="{StaticResource SlotPairTemplate}" />
+
+                                        <TextBlock Text="No online saves in this folder yet. Copy a local slot across to start one."
+                                                   Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
+                                                   Visibility="{Binding Detail.HasNoOnlineSlots, Converter={StaticResource BoolToVis}}" />
+
+                                        <StackPanel Margin="0,14,0,0"
+                                                    Visibility="{Binding Detail.HasMeadow, Converter={StaticResource BoolToVis}}">
+                                            <DockPanel Margin="0,0,0,8">
+                                                <TextBlock DockPanel.Dock="Left" Text="PROFILE" Margin="0,0,8,0"
+                                                           Style="{StaticResource Text.SectionLabel}" />
+                                                <Border Height="1" Background="{StaticResource Brush.Border}"
+                                                        VerticalAlignment="Center" />
+                                            </DockPanel>
+
+                                            <TextBlock Text="{Binding Detail.Meadow.ErrorText}"
+                                                       Style="{StaticResource Text.Muted}"
+                                                       TextWrapping="Wrap"
+                                                       Visibility="{Binding Detail.Meadow.HasError, Converter={StaticResource BoolToVis}}" />
+
+                                            <StackPanel Visibility="{Binding Detail.Meadow.HasProfile, Converter={StaticResource BoolToVis}}">
+                                                <ItemsControl ItemsSource="{Binding Detail.Meadow.Stats}"
+                                                              ItemTemplate="{StaticResource StatTileTemplate}"
+                                                              ItemsPanel="{StaticResource WrapPanelTemplate}" />
+
+                                                <ItemsControl ItemsSource="{Binding Detail.Meadow.Characters}"
+                                                              ItemTemplate="{StaticResource MeadowCharacterTemplate}"
+                                                              Margin="0,6,0,0" />
+
+                                                <TextBlock Text="meadow.json records no character progress yet."
+                                                           Style="{StaticResource Text.Muted}"
+                                                           TextWrapping="Wrap"
+                                                           Visibility="{Binding Detail.Meadow.HasNoCharacters, Converter={StaticResource BoolToVis}}" />
+                                            </StackPanel>
+                                        </StackPanel>
                                     </StackPanel>
-                                </Expander.Header>
-                                <StackPanel Margin="0,9,0,0">
-                                    <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
-                                               Margin="0,0,0,9"
-                                               Text="Rain Meadow keeps a second save for each slot and the game picks between them by whether you are in a lobby, so slot 2 is sav2 on your own and online_sav2 in a lobby. Copying replaces the whole target file byte for byte." />
-                                    <ItemsControl ItemsSource="{Binding Detail.SlotPairs}"
-                                                  ItemTemplate="{StaticResource SlotPairTemplate}" />
                                 </StackPanel>
-                            </Expander>
-
-                            <StackPanel Margin="0,10,0,0"
-                                        Visibility="{Binding Detail.HasMeadow, Converter={StaticResource BoolToVis}}">
-                                <DockPanel Margin="0,4,0,8">
-                                    <TextBlock DockPanel.Dock="Left" Text="RAIN MEADOW PROFILE" Margin="0,0,8,0"
-                                               Style="{StaticResource Text.SectionLabel}" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}"
-                                            VerticalAlignment="Center" />
-                                </DockPanel>
-
-                                <TextBlock Text="{Binding Detail.Meadow.ErrorText}"
-                                           Style="{StaticResource Text.Muted}"
-                                           TextWrapping="Wrap"
-                                           Visibility="{Binding Detail.Meadow.HasError, Converter={StaticResource BoolToVis}}" />
-
-                                <StackPanel Visibility="{Binding Detail.Meadow.HasProfile, Converter={StaticResource BoolToVis}}">
-                                    <ItemsControl ItemsSource="{Binding Detail.Meadow.Stats}"
-                                                  ItemTemplate="{StaticResource StatTileTemplate}"
-                                                  ItemsPanel="{StaticResource WrapPanelTemplate}" />
-
-                                    <ItemsControl ItemsSource="{Binding Detail.Meadow.Characters}"
-                                                  ItemTemplate="{StaticResource MeadowCharacterTemplate}"
-                                                  Margin="0,6,0,0" />
-
-                                    <TextBlock Text="meadow.json records no character progress yet."
-                                               Style="{StaticResource Text.Muted}"
-                                               TextWrapping="Wrap"
-                                               Visibility="{Binding Detail.Meadow.HasNoCharacters, Converter={StaticResource BoolToVis}}" />
-                                </StackPanel>
-                            </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
 

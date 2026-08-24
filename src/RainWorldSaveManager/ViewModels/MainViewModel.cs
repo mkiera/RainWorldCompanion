@@ -61,6 +61,13 @@ public sealed partial class MainViewModel : ObservableObject
     private IReadOnlyDictionary<string, MeadowProfile> _backupMeadow =
         new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
 
+    // Whether Rain Meadow is on this machine. The whole online block hangs on it, so a player
+    // without the mod never sees a section about it. Re-checked whenever the paths change.
+    private RainMeadowPresence _meadow = RainMeadowPresence.Absent;
+
+    // Cancels the background verify sweep when the list is rebuilt or the window closes.
+    private CancellationTokenSource? _verifySweep;
+
     public MainViewModel(
         SettingsStore settingsStore,
         IGameProcessDetector gameDetector,
@@ -101,7 +108,6 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(NewBackupCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
-    [NotifyCanExecuteChangedFor(nameof(VerifyCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenSettingsCommand))]
@@ -115,7 +121,6 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
-    [NotifyCanExecuteChangedFor(nameof(VerifyCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     private BackupItemViewModel? selectedBackup;
@@ -282,8 +287,12 @@ public sealed partial class MainViewModel : ObservableObject
 
         // Stopping the timer cannot cancel a poll that is already inside the process
         // enumeration. This is what tells that poll to drop its result instead of writing it to a
-        // window that has gone.
+        // window that has gone. The verify sweep is linked to the same token.
         _shutdown.Cancel();
+
+        _verifySweep?.Cancel();
+        _verifySweep?.Dispose();
+        _verifySweep = null;
     }
 
     // The copy buttons in the detail panel are their own commands, so the attributes on IsBusy and
@@ -350,9 +359,24 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void RebuildDetail()
     {
+        // Stamped before the assignment, not after. ShowMeadowSection raises no change
+        // notification, so a binding that reads it when Detail changes would see the default and
+        // never look again, which left the whole Rain Meadow block hidden.
+        SnapshotDetailViewModel? built = BuildDetail();
+        if (built is not null)
+        {
+            built.ShowMeadowSection = _meadow.Present;
+            built.MeadowVersionText = MeadowVersionText;
+        }
+
+        Detail = built;
+    }
+
+    private SnapshotDetailViewModel? BuildDetail()
+    {
         if (IsLiveSelected)
         {
-            Detail = SnapshotDetailViewModel.ForLive(
+            return SnapshotDetailViewModel.ForLive(
                 _liveSlotData,
                 SavePathText,
                 _liveSizeBytes,
@@ -360,13 +384,19 @@ public sealed partial class MainViewModel : ObservableObject
                 _liveMeadow,
                 BuildCopyGate(),
                 _icons);
-            return;
         }
 
-        Detail = SelectedBackup is { } item
+        return SelectedBackup is { } item
             ? SnapshotDetailViewModel.ForBackup(item, FindMeadow(item.Id), _icons)
             : null;
     }
+
+    /// <summary>
+    /// "Rain Meadow 0.1.15.1" when the version was read, otherwise just the name. Shown on the
+    /// section band so it is obvious which mod the block belongs to.
+    /// </summary>
+    private string MeadowVersionText =>
+        string.IsNullOrWhiteSpace(_meadow.Version) ? "" : "v" + _meadow.Version;
 
     /// <summary>
     /// What the copy buttons in the detail panel talk to, or null when there is no service to copy
@@ -444,11 +474,16 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var dialog = new CopySlotDialog(plan);
+        var dialog = new CopySlotDialog(plan, copies.PlanCopy);
         if (ShowDialog(dialog) != true)
         {
             return;
         }
+
+        // The pickers let the user change either side, so the pair that runs is the one the dialog
+        // closed on rather than the one it opened with.
+        from = dialog.ChosenSource;
+        to = dialog.ChosenTarget;
 
         var progress = new Progress<string>(message => BusyMessage = message);
         SlotCopyResult? result = null;
@@ -646,50 +681,56 @@ public sealed partial class MainViewModel : ObservableObject
     private bool CanRestore() =>
         !IsBusy && !IsGameRunning && _backupService is not null && SelectedBackup is { CanRestore: true };
 
-    [RelayCommand(CanExecute = nameof(CanUseSelection))]
-    private async Task VerifyAsync()
+    /// <summary>
+    /// Re-hashes every listed snapshot against its own manifest, in the background, so the state
+    /// column is answered without the user having to ask. It runs one at a time off the UI thread
+    /// and updates each row as it finishes, so a long list fills in rather than blocking.
+    ///
+    /// A restore still verifies for itself immediately beforehand. This is about telling the user
+    /// which of their backups is sound before they need one, not about gating the restore.
+    /// </summary>
+    private async Task VerifyAllAsync(CancellationToken token)
     {
         var service = _backupService;
-        var item = SelectedBackup;
-        if (service is null || item is null)
+        if (service is null)
         {
             return;
         }
 
-        VerifyResult? result = null;
-        Exception? failure = null;
+        // Copied first: the collection is rebuilt on the UI thread by a refresh, and iterating the
+        // live one across an await would throw when that happens.
+        var pending = Backups.Where(item => item.CanRestore && item.VerifiedOk is null).ToList();
 
-        BeginBusy("Verifying backup", "Re-hashing the snapshot files");
-        try
+        foreach (BackupItemViewModel item in pending)
         {
-            result = await Task.Run(() => service.Verify(item.Snapshot));
-        }
-        catch (Exception ex)
-        {
-            failure = ex;
-        }
-        finally
-        {
-            EndBusy();
-        }
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
 
-        if (failure is not null)
-        {
-            Report("The snapshot could not be verified.", failure);
-            return;
+            bool ok;
+            try
+            {
+                ok = await Task.Run(() => service.Verify(item.Snapshot).Ok, token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // A snapshot that cannot be read is already reported as incomplete by the listing.
+                // Failing to verify it is not worth a dialog the user did not ask for.
+                continue;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            item.VerifiedOk = ok;
         }
-
-        item.VerifiedOk = result!.Ok;
-
-        if (result.Ok)
-        {
-            ShowMessage("Verified. Every file matches the manifest.\n\n" + item.DisplayName,
-                "Verify", MessageBoxImage.Information);
-            return;
-        }
-
-        ShowMessage("Problems were found in this snapshot.\n\n" + item.DisplayName + "\n\n" + FormatList(result.Problems),
-            "Verify", MessageBoxImage.Warning);
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelection))]
@@ -946,9 +987,14 @@ public sealed partial class MainViewModel : ObservableObject
                     }
                 }
 
-                return (Slots: slots, Snapshots: snapshots, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow);
+                // Reads the game's enabled mod list and probes the save folder, so it belongs on
+                // the worker with the rest of the disk work rather than on the dispatcher.
+                var meadow = RainMeadowDetector.Detect(service.SaveRoot, _settings.GameInstallPath);
+
+                return (Slots: slots, Snapshots: snapshots, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow);
             });
 
+            _meadow = data.Meadow;
             _liveSlotData = data.Slots;
             _liveSizeBytes = data.Size;
             _liveFileCount = data.Count;
@@ -995,7 +1041,26 @@ public sealed partial class MainViewModel : ObservableObject
         if (failure is not null)
         {
             Report("The save folder or the backup folder could not be read.", failure);
+            return;
         }
+
+        StartVerifySweep();
+    }
+
+    /// <summary>
+    /// Starts re-hashing the listed snapshots in the background. Any sweep still running from an
+    /// earlier refresh is cancelled first, because its rows have already been replaced.
+    /// </summary>
+    private void StartVerifySweep()
+    {
+        _verifySweep?.Cancel();
+        _verifySweep?.Dispose();
+
+        var sweep = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        _verifySweep = sweep;
+
+        // Deliberately not awaited. The list is usable while this fills the state column in.
+        _ = VerifyAllAsync(sweep.Token);
     }
 
     private BackupItemViewModel? FindById(string? id) =>
@@ -1229,7 +1294,6 @@ public sealed partial class MainViewModel : ObservableObject
         RefreshCommand.NotifyCanExecuteChanged();
         NewBackupCommand.NotifyCanExecuteChanged();
         RestoreCommand.NotifyCanExecuteChanged();
-        VerifyCommand.NotifyCanExecuteChanged();
         OpenFolderCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         OpenSettingsCommand.NotifyCanExecuteChanged();

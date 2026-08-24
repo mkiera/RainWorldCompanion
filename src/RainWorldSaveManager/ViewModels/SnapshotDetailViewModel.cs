@@ -97,22 +97,28 @@ public sealed class SnapshotDetailViewModel
     public bool HasNoSlots => Slots.Count == 0;
 
     /// <summary>
-    /// One row per slot number, local and online together. Empty when there is no online save
-    /// anywhere in this snapshot, which is what hides the whole foldout.
+    /// One row per slot number, local and online together. A slot with no online file still gets a
+    /// row, because copying a local save into an empty online slot is what that row is for.
     /// </summary>
     public IReadOnlyList<SlotPairViewModel> SlotPairs { get; }
 
-    public bool HasOnlineSlots => SlotPairs.Count > 0;
+    public bool HasOnlineSlots => SlotPairs.Any(pair => pair.Online.Exists);
+
+    public bool HasNoOnlineSlots => SlotPairs.Count > 0 && !HasOnlineSlots;
 
     /// <summary>
-    /// Whether the Rain Meadow foldout is open. It lives here rather than on the window so that
-    /// each newly built detail starts collapsed however the last one was left, which is what
-    /// "collapsed by default" has to mean for a panel the user selects into repeatedly. The view
-    /// writes it back, and nothing else reads it, so it needs no change notification.
+    /// Whether the whole Rain Meadow block is drawn. It follows the mod being on the machine, not
+    /// the folder happening to hold an online save, so a player who has the mod but has not played
+    /// online still gets the rows to copy a save across. A player without the mod sees nothing.
     /// </summary>
-    public bool IsOnlineFoldoutExpanded { get; set; }
+    /// Set by the window after the detail is built, because only the window knows what is on the
+    /// machine. The whole detail is replaced on every rebuild, so this needs no change notification.
+    public bool ShowMeadowSection { get; set; }
 
-    /// <summary>"2 online saves", for the foldout header.</summary>
+    /// <summary>"v0.1.15.1", or empty when the version was not read.</summary>
+    public string MeadowVersionText { get; set; } = "";
+
+    /// <summary>"2 online saves", for the section band.</summary>
     public string OnlineCountText { get; }
 
     /// <summary>meadow.json, or null when the folder holds no such file.</summary>
@@ -204,34 +210,21 @@ public sealed class SnapshotDetailViewModel
     }
 
     /// <summary>
-    /// One row per slot number that has a file on either side, or nothing at all when the folder
-    /// holds no online save. A row whose online side is missing is still worth drawing when some
-    /// other slot has one, because copying a local save into an empty online slot is the case that
-    /// row exists for.
+    /// One row per slot number, all three of them, whenever the Rain Meadow block is drawn at all.
+    /// A row with nothing on either side still earns its place: it is the only way to copy a local
+    /// save into an online slot that does not exist yet, which is exactly what a player who has
+    /// just installed the mod wants to do.
     /// </summary>
     private static IReadOnlyList<SlotPairViewModel> BuildPairs(
         IReadOnlyList<SlotViewModel> local,
         IReadOnlyList<SlotViewModel> online,
         SlotCopyGate? copyGate)
     {
-        if (online.Count == 0)
+        var pairs = new List<SlotPairViewModel>(SaveSlotRef.MaxSlot);
+
+        for (int slot = SaveSlotRef.MinSlot; slot <= SaveSlotRef.MaxSlot; slot++)
         {
-            return Array.Empty<SlotPairViewModel>();
-        }
-
-        var pairs = new List<SlotPairViewModel>();
-
-        for (var slot = 1; slot <= 3; slot++)
-        {
-            var localSlot = FindSlot(local, slot);
-            var onlineSlot = FindSlot(online, slot);
-
-            if (localSlot is null && onlineSlot is null)
-            {
-                continue;
-            }
-
-            pairs.Add(new SlotPairViewModel(slot, localSlot, onlineSlot, copyGate));
+            pairs.Add(new SlotPairViewModel(slot, FindSlot(local, slot), FindSlot(online, slot), copyGate));
         }
 
         return pairs;

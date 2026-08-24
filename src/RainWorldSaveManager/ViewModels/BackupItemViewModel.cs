@@ -35,6 +35,9 @@ public sealed partial class BackupItemViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsProblem))]
     [NotifyPropertyChangedFor(nameof(IsVerified))]
     [NotifyPropertyChangedFor(nameof(TooltipText))]
+    // AccessibleName ends in StateText, so without this a screen reader keeps announcing
+    // "Not verified yet" after the row has been verified.
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private bool? verifiedOk;
 
     public string Id => Snapshot.Id;

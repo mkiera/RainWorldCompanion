@@ -118,18 +118,24 @@ slot 2 is `sav2` on your own and `online_sav2` in a lobby. The two files sit sid
 save folder and are the same format byte for byte, which is why one reader handles both. Expedition
 is not hooked, so online play is story mode.
 
-The detail panel pairs them: local and online in one row per slot number, inside a foldout that
-starts closed and is absent when the folder holds no online save at all. A slot with no online file
-yet still gets a row, because copying a local save into an empty online slot is what that row is
-for.
+The detail panel pairs them in its own banded section: local and online in one row per slot number,
+all three rows always, because copying a local save into an online slot that does not exist yet is
+one of the things the section is for. The section appears when Rain Meadow is on the machine and is
+left out entirely otherwise, so a player who does not use the mod never sees it. Presence is read
+from the game's own enabled mod list when the game folder is known, and otherwise from the save
+folder, which is enough on its own: `meadow.json`, the mod's Remix config and the online saves are
+written by nothing else.
 
-The two copy buttons sit between the halves. A copy replaces the whole target file byte for byte
-and takes a safety snapshot of the save folder first, the same kind a restore takes, so the file it
-overwrote can be put back by restoring that snapshot. The operation is a file copy and nothing more,
-so the byte order mark, the padding and the MD5 inside the payload all arrive unchanged and the game
-reads the result as the file it came from. The confirmation names both files, their sizes and what
-is in each, and the copy is refused if the safety snapshot does not hold the file that is about to
-be replaced.
+The two copy buttons sit between the halves and start a copy of that pair, but the confirmation
+lets you change either side, so any slot can be copied onto any other. Local slot 1 onto online
+slot 3 is as available as the matching pair the buttons opened with.
+
+A copy replaces the whole target file byte for byte and takes a safety snapshot of the save folder
+first, the same kind a restore takes, so the file it overwrote can be put back by restoring that
+snapshot. The operation is a file copy and nothing more, so the byte order mark, the padding and the
+MD5 inside the payload all arrive unchanged and the game reads the result as the file it came from.
+The confirmation names both files, their sizes and what is in each, and the copy is refused if the
+safety snapshot does not hold the file that is about to be replaced.
 
 Moving one campaign between slots is not in this version. That means rewriting the payload and
 recomputing the MD5 the game checks it against, and getting that wrong is what destroys a save. It
@@ -262,8 +268,14 @@ itself whatever happened to it. A save truncated by a cloud sync during the copy
 recorded at its truncated length, with the hash of its truncated bytes, and every later check
 would compare those bytes against themselves and pass.
 
-Verify re-hashes a backup against its manifest whenever you ask, and a restore always does it
-before touching anything.
+Every backup is re-hashed against its own manifest without being asked. The check runs in the
+background after the list is read, one snapshot at a time off the main thread, and each row's state
+fills in as its turn finishes, so the list is usable while it works. A refresh cancels a check still
+running, because its rows have already been replaced.
+
+That is about knowing which backup is sound before you need one. A restore verifies the snapshot for
+itself immediately beforehand either way, so it never depends on the background check having reached
+that row.
 
 ## Steam Cloud
 
