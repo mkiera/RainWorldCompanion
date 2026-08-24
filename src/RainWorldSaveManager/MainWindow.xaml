@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:RainWorldSaveManager"
+        xmlns:vm="clr-namespace:RainWorldSaveManager.ViewModels"
         mc:Ignorable="d"
         Title="Rain World Save Manager"
         Height="720" Width="1150" MinHeight="560" MinWidth="900"
@@ -143,58 +144,121 @@
             </Border>
         </DataTemplate>
 
-        <!-- One Devourment relationship. Item prey and creature prey are tagged and set apart,
-             because an item is worth no food and a creature is. -->
-        <DataTemplate x:Key="DevourmentRowTemplate">
-            <Grid Margin="0,0,0,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="1.2*" />
-                    <ColumnDefinition Width="1.6*" />
-                    <ColumnDefinition Width="96" />
-                    <ColumnDefinition Width="58" />
-                </Grid.ColumnDefinitions>
+        <!-- The chevron on a node that is carrying something. Bare so it reads as an outline
+             marker rather than a button in the middle of a table. -->
+        <Style x:Key="TreeToggle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Width" Value="14" />
+            <Setter Property="Height" Value="14" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="Transparent">
+                            <Path x:Name="Arrow" Data="M 0 0 L 4 4 L 0 8 Z"
+                                  Fill="{StaticResource Brush.TextMuted}"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  RenderTransformOrigin="0.4,0.5" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Arrow" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <RotateTransform Angle="90" />
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Arrow" Property="Fill" Value="{StaticResource Brush.Text}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                <TextBlock Grid.Column="0" Text="{Binding Predator}" FontSize="12"
-                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <!-- One entity in a stomach chain, then whatever it is carrying, drawn by this same
+             template one level in. The ItemsControl below names no ItemTemplate, so WPF matches
+             this implicit one on DataType and the nesting recurses on its own.
+             A root is the outermost thing, which is the player in most saves but the predator
+             when the player is the one that has been eaten. It carries no status or food of its
+             own, because nothing in the save is holding it. -->
+        <DataTemplate DataType="{x:Type vm:DevourmentNodeViewModel}">
+            <StackPanel>
+                <Grid Margin="0,0,0,3" ToolTip="{Binding ToolTipText}" Background="Transparent">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="96" />
+                        <ColumnDefinition Width="58" />
+                    </Grid.ColumnDefinitions>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <TextBlock Text="{Binding Prey}" FontSize="12"
-                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                <Setter Property="FontSize" Value="12" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding PreyIsItem}" Value="True">
-                                        <Setter Property="FontStyle" Value="Italic" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
-                    <Border CornerRadius="2" Padding="4,0" Margin="6,0,0,0" BorderThickness="1"
-                            VerticalAlignment="Center">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding PreyIsItem}" Value="True">
-                                        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
-                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <TextBlock Text="{Binding PreyKind}" Style="{StaticResource Text.Tiny}" FontSize="10" />
-                    </Border>
-                </StackPanel>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="{Binding Indent}">
+                        <ToggleButton Style="{StaticResource TreeToggle}"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                      Visibility="{Binding HasContents, Converter={StaticResource BoolToVis}}" />
+                        <!-- Keeps a leaf's name aligned with the names of its siblings that have
+                             a chevron. -->
+                        <Border Width="14"
+                                Visibility="{Binding HasContents, Converter={StaticResource NotBoolToVis}}" />
 
-                <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12"
-                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="3" Text="{Binding FoodText}" FontSize="12"
-                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.TextMuted}" />
-            </Grid>
+                        <TextBlock Text="{Binding Type}" FontSize="12" Margin="4,0,0,0"
+                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                    <Setter Property="FontSize" Value="12" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsItem}" Value="True">
+                                            <Setter Property="FontStyle" Value="Italic" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <Border CornerRadius="2" Padding="4,0" Margin="6,0,0,0" BorderThickness="1"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasKind, Converter={StaticResource BoolToVis}}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsItem}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
+                                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding Kind}" Style="{StaticResource Text.Tiny}" FontSize="10" />
+                        </Border>
+
+                        <TextBlock Text="{Binding ContentsSummary}" Style="{StaticResource Text.Tiny}"
+                                   FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"
+                                   Visibility="{Binding HasContents, Converter={StaticResource BoolToVis}}" />
+
+                        <TextBlock Text="loops back" Style="{StaticResource Text.Tiny}"
+                                   FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.Warn}"
+                                   Visibility="{Binding RepeatsAncestor, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" FontSize="12"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Text="{Binding FoodText}" FontSize="12"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.TextMuted}" />
+                </Grid>
+
+                <ItemsControl ItemsSource="{Binding Contents}"
+                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
         </DataTemplate>
 
         <!-- The header strip of a campaign card. Clicking it opens and closes the card. -->
@@ -403,19 +467,18 @@
                                 <StackPanel Visibility="{Binding HasDevourmentRows, Converter={StaticResource BoolToVis}}">
                                     <Grid Margin="0,0,0,4">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="1.2*" />
-                                            <ColumnDefinition Width="1.6*" />
+                                            <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="96" />
                                             <ColumnDefinition Width="58" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="PREDATOR" Style="{StaticResource Text.SectionLabel}" />
-                                        <TextBlock Grid.Column="1" Text="PREY" Style="{StaticResource Text.SectionLabel}" />
-                                        <TextBlock Grid.Column="2" Text="STATUS" Style="{StaticResource Text.SectionLabel}" />
-                                        <TextBlock Grid.Column="3" Text="FOOD" Style="{StaticResource Text.SectionLabel}"
+                                        <TextBlock Grid.Column="0" Text="CONTENTS" Style="{StaticResource Text.SectionLabel}" />
+                                        <TextBlock Grid.Column="1" Text="STATUS" Style="{StaticResource Text.SectionLabel}" />
+                                        <TextBlock Grid.Column="2" Text="FOOD" Style="{StaticResource Text.SectionLabel}"
                                                    HorizontalAlignment="Right" />
                                     </Grid>
-                                    <ItemsControl ItemsSource="{Binding DevourmentRows}"
-                                                  ItemTemplate="{StaticResource DevourmentRowTemplate}" />
+                                    <!-- No ItemTemplate: the implicit template for the node type
+                                         picks itself up again for each level of nesting. -->
+                                    <ItemsControl ItemsSource="{Binding DevourmentRoots}" />
                                 </StackPanel>
 
                                 <!-- Outside the table panel above on purpose. This line is for the

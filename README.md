@@ -48,8 +48,8 @@ A slot section lists its campaigns. Opening one shows:
 - deaths, survives and quits
 - echoes met and whether each was spoken to or only sensed, gates unlocked, endgame passages, and
   the creatures the campaign has killed
-- Devourment relationships with predator, prey, belly status and food value, plus swallowed items
-  and anything held in hand
+- Devourment contents as a tree, with belly status and food value, plus swallowed items and
+  anything held in hand
 
 Karma is shown the way the game shows it. The save holds a 0-based index that Rain World clamps to
 the cap the moment it loads the file, so the panel clamps it the same way and then counts from 1.
@@ -69,9 +69,18 @@ slate is one already spent. The save records the spent flag and the progress sep
 neither on its own says whether the passage is available, so the chip reads both. A passage added
 by a mod has no requirement this app knows, so its chip carries the stored text on its own.
 
-Devourment works the same way. When the mod writes a relationship in a shape this app does not
-read, the count on the campaign header still includes it and a line under the table says how many
-were not read.
+Devourment contents nest. The mod records one predator and prey pair per line, so a lizard that
+was swallowed while itself holding a spear is written twice, once as prey and once as predator,
+under the same entity id. The panel follows those ids and draws the chain, so the spear sits
+inside the lizard inside whatever ate it. Rows with something inside them can be folded shut.
+
+The outermost entry is whatever nothing else in the save is holding. That is usually the player,
+but when the player has been eaten it is the predator, and the player and everything it was
+carrying hang underneath. The flat list this replaced gave no way to tell those two apart.
+
+Backups taken before this version recorded no entity ids, so their contents cannot be linked and
+are drawn flat. A relationship written in a shape this app does not read still counts towards the
+number on the campaign header, and a line under the tree says how many were not read.
 
 A backup's panel is filled from the manifest that was written with it, so selecting a backup
 costs no disk read.

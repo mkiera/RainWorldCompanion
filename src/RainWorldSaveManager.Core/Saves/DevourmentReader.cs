@@ -28,8 +28,17 @@ public static class DevourmentReader
     /// <summary>A prey blob starting with this is an item, not a creature.</summary>
     public const string ItemPrefix = "ID.";
 
+    /// <summary>Separates a creature's id from the rest of its id block.</summary>
+    public const string CreatureIdSeparator = "<cB>";
+
+    /// <summary>Separates an item's id from the rest of its blob.</summary>
+    public const string ItemIdSeparator = "<oB>";
+
     /// <summary>Index of the type name inside a serialized item.</summary>
     private const int ItemTypeIndex = 1;
+
+    /// <summary>Index of the id inside a serialized creature, after splitting on &lt;cA&gt;.</summary>
+    private const int CreatureIdIndex = 1;
 
     /// <summary>
     /// Turns one DEVOURMENTSTATE value into a relationship. Returns false for anything that does
@@ -77,8 +86,66 @@ public static class DevourmentReader
             foodValue = parsedFood;
         }
 
-        relationship = new DevourmentRelationship(predator, prey, status, foodValue, preyIsItem);
+        relationship = new DevourmentRelationship(
+            predator,
+            prey,
+            status,
+            foodValue,
+            preyIsItem,
+            CreatureIdOf(parts[0]) ?? "",
+            (preyIsItem ? ItemIdOf(preyRaw) : CreatureIdOf(preyRaw)) ?? "");
         return true;
+    }
+
+    /// <summary>
+    /// The entity id of a serialized creature: the element at index 1 after splitting on
+    /// &lt;cA&gt;, up to the following &lt;cB&gt;. For "Slugcat&lt;cA&gt;ID.-1.0&lt;cB&gt;0..."
+    /// that is "ID.-1.0". Null when the blob has no id there.
+    /// </summary>
+    public static string? CreatureIdOf(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        string[] parts = value.Split(CreatureSeparator, StringSplitOptions.None);
+        if (parts.Length <= CreatureIdIndex)
+        {
+            return null;
+        }
+
+        string id = parts[CreatureIdIndex];
+        int end = id.IndexOf(CreatureIdSeparator, StringComparison.Ordinal);
+        if (end >= 0)
+        {
+            id = id.Substring(0, end);
+        }
+
+        id = id.Trim();
+        return id.Length == 0 ? null : id;
+    }
+
+    /// <summary>
+    /// The entity id of a serialized item: everything before the first &lt;oB&gt;, or before the
+    /// first &lt;oA&gt; when there is no &lt;oB&gt;. For "ID.-2588.11856&lt;oB&gt;0&lt;oA&gt;Rock..."
+    /// that is "ID.-2588.11856". Null when the blob has no id there.
+    /// </summary>
+    public static string? ItemIdOf(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        int end = value.IndexOf(ItemIdSeparator, StringComparison.Ordinal);
+        if (end < 0)
+        {
+            end = value.IndexOf(ItemSeparator, StringComparison.Ordinal);
+        }
+
+        string id = (end < 0 ? value : value.Substring(0, end)).Trim();
+        return id.Length == 0 ? null : id;
     }
 
     /// <summary>

@@ -19,9 +19,18 @@ namespace RainWorldSaveManager.Core.Saves.Models;
 /// Null only when the stored text is not an integer.
 /// </param>
 /// <param name="PreyIsItem">True when the prey is an item rather than a creature.</param>
+/// <param name="PredatorId">
+/// Entity id of the predator, for example "ID.-1.0" for the player. This is what links one
+/// relationship to another: a predator carrying a creature that is itself carrying something
+/// appears twice, once as the prey of the outer pair and once as the predator of the inner one,
+/// under the same id both times. Empty when the blob carried no id, which leaves the row flat.
+/// </param>
+/// <param name="PreyId">Entity id of the prey, in the same form as <paramref name="PredatorId"/>.</param>
 public sealed record DevourmentRelationship(
     string PredatorType,
     string PreyType,
     string Status,
     int? FoodValue,
-    bool PreyIsItem);
+    bool PreyIsItem,
+    string PredatorId = "",
+    string PreyId = "");

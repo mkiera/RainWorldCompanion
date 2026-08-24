@@ -52,15 +52,6 @@ public sealed record PassageTile(
 /// <summary>One creature and how many of it this campaign has killed.</summary>
 public sealed record KillTile(string Name, string CountText, string CreatureId);
 
-/// <summary>One Devourment relationship, formatted for the table in the detail panel.</summary>
-public sealed record DevourmentRow(
-    string Predator,
-    string Prey,
-    string PreyKind,
-    string Status,
-    string FoodText,
-    bool PreyIsItem);
-
 /// <summary>
 /// A slugcat's face and colours. Built once per campaign or per list row, so the icon lookup and
 /// the brush parsing happen in one place instead of in a converter on every redraw.
@@ -200,7 +191,10 @@ public sealed partial class CampaignViewModel : ObservableObject
             .ToList();
         KillSummaryText = BuildKillSummary(campaign);
 
-        DevourmentRows = campaign.DevourmentStates.Select(BuildDevourmentRow).ToList();
+        DevourmentRoots = DevourmentTree
+            .Build(campaign.DevourmentStates)
+            .Select(node => new DevourmentNodeViewModel(node, 0))
+            .ToList();
         SwallowedItems = campaign.SwallowedItems.Select(item => new ChipTile(item, "")).ToList();
         HeldItems = campaign.HeldItems.Select(item => new ChipTile(item, "")).ToList();
         UnreadDevourmentText = BuildUnreadDevourmentText(campaign);
@@ -275,9 +269,13 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     public string KillSummaryText { get; }
 
-    public IReadOnlyList<DevourmentRow> DevourmentRows { get; }
+    /// <summary>
+    /// The stomach chains, outermost first. A root is something nothing else in this save is
+    /// holding, which is usually the player but is the predator when the player has been eaten.
+    /// </summary>
+    public IReadOnlyList<DevourmentNodeViewModel> DevourmentRoots { get; }
 
-    public bool HasDevourmentRows => DevourmentRows.Count > 0;
+    public bool HasDevourmentRows => DevourmentRoots.Count > 0;
 
     public IReadOnlyList<ChipTile> SwallowedItems { get; }
 
@@ -301,7 +299,7 @@ public sealed partial class CampaignViewModel : ObservableObject
     /// </summary>
     public bool HasNothingDevourment =>
         Summary.DevourmentStateCount == 0
-        && DevourmentRows.Count == 0
+        && DevourmentRoots.Count == 0
         && SwallowedItems.Count == 0
         && HeldItems.Count == 0;
 
@@ -469,23 +467,6 @@ public sealed partial class CampaignViewModel : ObservableObject
         return types > TopKillCount
             ? summary + ", top " + Number(TopKillCount) + " shown"
             : summary;
-    }
-
-    private static DevourmentRow BuildDevourmentRow(DevourmentRelationship state)
-    {
-        // Items store -1 to mean they are worth no food. Printing that as a number reads like a
-        // negative meal, so items say so in words instead.
-        var food = state.PreyIsItem
-            ? "none"
-            : state.FoodValue.HasValue ? Number(state.FoodValue.Value) : Missing;
-
-        return new DevourmentRow(
-            Blank(state.PredatorType),
-            Blank(state.PreyType),
-            state.PreyIsItem ? "item" : "creature",
-            Blank(state.Status),
-            food,
-            state.PreyIsItem);
     }
 
     /// <summary>
