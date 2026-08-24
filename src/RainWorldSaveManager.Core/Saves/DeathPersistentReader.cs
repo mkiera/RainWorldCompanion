@@ -10,13 +10,21 @@ namespace RainWorldSaveManager.Core.Saves;
 /// What one DEATHPERSISTENTSAVEDATA blob says. Everything is optional: a value the blob does not
 /// carry stays null, and a collection it does not carry stays empty.
 /// </summary>
+/// <param name="RedsDeathStored">
+/// True when the blob carries a bare REDSDEATH token. DeathPersistentSaveData.SaveToString writes
+/// that token whenever the save is written as a death or a quit, whatever the flag holds, and
+/// SaveState.LoadGame then clears the flag while the campaign is inside Hunter's cycle limit. See
+/// <see cref="RedsIllness.EffectiveRedsDeath"/>.
+/// </param>
+/// <param name="RedExtraCycles">True when the blob carries a bare REDEXTRACYCLES token.</param>
 public sealed record DeathPersistentData(
     int? Karma,
     int? KarmaCap,
     int? ReinforcedKarma,
     bool HasTheMark,
     bool Ascended,
-    bool RedsDeath,
+    bool RedsDeathStored,
+    bool RedExtraCycles,
     int? Deaths,
     int? Survives,
     int? Quits,
@@ -27,7 +35,7 @@ public sealed record DeathPersistentData(
     /// <summary>An empty blob, and the result of reading one that could not be understood.</summary>
     public static DeathPersistentData Empty { get; } = new(
         null, null, null,
-        false, false, false,
+        false, false, false, false,
         null, null, null,
         Array.Empty<EchoRecord>(),
         Array.Empty<string>(),
@@ -66,6 +74,7 @@ public static class DeathPersistentReader
     private const string HasTheMarkField = "HASTHEMARK";
     private const string AscendedField = "ASCENDED";
     private const string RedsDeathField = "REDSDEATH";
+    private const string RedExtraCyclesField = "REDEXTRACYCLES";
     private const string DeathsField = "DEATHS";
     private const string SurvivesField = "SURVIVES";
     private const string QuitsField = "QUITS";
@@ -87,6 +96,7 @@ public static class DeathPersistentReader
         bool hasTheMark = false;
         bool ascended = false;
         bool redsDeath = false;
+        bool redExtraCycles = false;
         int? deaths = null;
         int? survives = null;
         int? quits = null;
@@ -131,6 +141,10 @@ public static class DeathPersistentReader
                     redsDeath = true;
                     break;
 
+                case RedExtraCyclesField:
+                    redExtraCycles = true;
+                    break;
+
                 case DeathsField:
                     deaths = ParseInt(fieldValue) ?? deaths;
                     break;
@@ -164,6 +178,7 @@ public static class DeathPersistentReader
             hasTheMark,
             ascended,
             redsDeath,
+            redExtraCycles,
             deaths,
             survives,
             quits,
@@ -173,8 +188,9 @@ public static class DeathPersistentReader
     }
 
     /// <summary>
-    /// Reads GHOSTS, a comma separated list of "region:count" such as "SH:1,UW:2". An entry with
-    /// no colon or an unparseable count is dropped.
+    /// Reads GHOSTS, a comma separated list of "region:state" such as "SH:1,UW:2", where 1 is a
+    /// hunch and 2 is an echo the player has spoken to. An entry with no colon or an unparseable
+    /// state is dropped.
     /// </summary>
     public static IReadOnlyList<EchoRecord> ParseGhosts(string? value)
     {
@@ -199,13 +215,13 @@ public static class DeathPersistentReader
                 continue;
             }
 
-            int? count = ParseInt(entry.Substring(colon + 1));
-            if (count is null)
+            int? state = ParseInt(entry.Substring(colon + 1));
+            if (state is null)
             {
                 continue;
             }
 
-            echoes.Add(new EchoRecord(region, count.Value));
+            echoes.Add(new EchoRecord(region, state.Value));
         }
 
         return echoes.Count == 0 ? Array.Empty<EchoRecord>() : echoes;
@@ -235,13 +251,12 @@ public static class DeathPersistentReader
 
     /// <summary>
     /// Reads WINSTATE: entries separated by &lt;wsA&gt;, each split on &lt;egA&gt; into a passage
-    /// name, an earned flag of 1 or 0, and a tracker.
+    /// name, the consumed flag as 1 or 0, and a tracker.
     ///
     /// The tracker takes several shapes in one real save: a plain int ("17"), a float ("30.29",
-    /// "0.01875") and a dotted flag string ("25.18.20", "1.1.1.1."). Only the int form yields a
-    /// count. The rest keep a count of 0 and their raw text is kept on
-    /// <see cref="PassageRecord.Progress"/>, so a passage with real progress is never reported
-    /// the same way as one with none.
+    /// "0.01875") and a dotted string ("25.18.20", "1.1.1.1."). Which shape a passage uses depends
+    /// on the passage, so the raw text goes on <see cref="PassageRecord.Progress"/> untouched and
+    /// <see cref="PassageGoals"/> reads it against the name.
     /// </summary>
     public static IReadOnlyList<PassageRecord> ParseWinState(string? value)
     {
@@ -271,11 +286,10 @@ public static class DeathPersistentReader
                 continue;
             }
 
-            bool earned = string.Equals(parts[1].Trim(), "1", StringComparison.Ordinal);
+            bool consumed = string.Equals(parts[1].Trim(), "1", StringComparison.Ordinal);
             string progress = parts.Length > 2 ? parts[2].Trim() : "";
-            int count = ParseInt(progress) ?? 0;
 
-            passages.Add(new PassageRecord(name, earned, count) { Progress = progress });
+            passages.Add(new PassageRecord(name, consumed) { Progress = progress });
         }
 
         return passages.Count == 0 ? Array.Empty<PassageRecord>() : passages;

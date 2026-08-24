@@ -40,11 +40,31 @@ public class CampaignDetailTests
     }
 
     [Fact]
+    public void Sav2_reads_its_stored_karma_of_six_as_seven_of_ten()
+    {
+        var campaign = OnlyCampaign(FixtureFiles.Sav2, 2);
+
+        // Stored karma is a 0-based sprite index and it is inside 0..cap here, so the game loads
+        // it unchanged and the meter reads one higher than both numbers.
+        Assert.Equal(6, campaign.EffectiveKarma);
+        Assert.Equal(7, campaign.DisplayKarma);
+        Assert.Equal(10, campaign.DisplayKarmaCap);
+        Assert.False(campaign.KarmaStoredOutOfRange);
+        Assert.Equal("7 / 10", campaign.KarmaText);
+    }
+
+    [Fact]
     public void Sav2_carries_the_bare_redsdeath_flag_and_none_of_the_others()
     {
         var campaign = OnlyCampaign(FixtureFiles.Sav2, 2);
 
-        Assert.True(campaign.RedsDeath);
+        Assert.True(campaign.RedsDeathStored);
+
+        // The token is on disk but the game does not keep it. SaveState.LoadGame clears redsDeath
+        // while the cycle number is under the limit, and this campaign is on cycle 17 of 19.
+        Assert.False(campaign.EffectiveRedsDeath);
+        Assert.False(campaign.RedExtraCycles);
+
         Assert.False(campaign.HasTheMark);
         Assert.False(campaign.Ascended);
         Assert.False(campaign.HasRobo);
@@ -77,13 +97,17 @@ public class CampaignDetailTests
     {
         var campaign = OnlyCampaign(FixtureFiles.Sav2, 2);
 
-        // WINSTATE stores every passage the run knows about with an earned flag of 0 or 1.
-        // This save has earned none of them, and the counts are the progress towards each.
-        Assert.All(campaign.Passages, passage => Assert.False(passage.Earned));
-        Assert.Equal(1, PassageCount(campaign, "Survivor"));
-        Assert.Equal(-14, PassageCount(campaign, "Hunter"));
-        Assert.Equal(-14, PassageCount(campaign, "Saint"));
-        Assert.Equal(-14, PassageCount(campaign, "Monk"));
+        // WINSTATE stores every passage the run knows about with a consumed flag of 0 or 1. This
+        // save has spent none of them, and the third part is the progress towards each. The
+        // negatives are WinState.DeathModifyTracker subtracting on death.
+        Assert.All(campaign.Passages, passage => Assert.False(passage.Consumed));
+        Assert.Equal(1, PassageProgress(campaign, "Survivor"));
+        Assert.Equal(-14, PassageProgress(campaign, "Hunter"));
+        Assert.Equal(-14, PassageProgress(campaign, "Saint"));
+        Assert.Equal(-14, PassageProgress(campaign, "Monk"));
+
+        // None of them has reached its requirement, so the card offers none of them.
+        Assert.All(campaign.Passages, passage => Assert.NotEqual(true, passage.Goal.Fulfilled));
     }
 
     [Fact]
@@ -117,6 +141,21 @@ public class CampaignDetailTests
         Assert.Equal(4, campaign.Deaths);
         Assert.Equal(15, campaign.Survives);
         Assert.Equal(50, campaign.Quits);
+    }
+
+    [Fact]
+    public void Sav3_reads_its_stored_karma_of_three_as_four_of_five()
+    {
+        var campaign = OnlyCampaign(FixtureFiles.Sav3, 3);
+
+        // KARMA 3 with KARMACAP 4, the cap a run starts on, which the game shows as 5.
+        Assert.Equal(3, campaign.Karma);
+        Assert.Equal(4, campaign.KarmaCap);
+        Assert.Equal(3, campaign.EffectiveKarma);
+        Assert.Equal(4, campaign.DisplayKarma);
+        Assert.Equal(5, campaign.DisplayKarmaCap);
+        Assert.False(campaign.KarmaStoredOutOfRange);
+        Assert.Equal("4 / 5", campaign.KarmaText);
     }
 
     [Fact]
@@ -189,6 +228,48 @@ public class CampaignDetailTests
         Assert.True(campaign.JustBeatGame);
         Assert.True(campaign.HasTheMark);
         Assert.True(campaign.Ascended);
+    }
+
+    [Fact]
+    public void A_karma_value_above_the_stored_cap_survives_the_read_and_is_interpreted_on_the_way_out()
+    {
+        // Two live campaigns store a karma exactly one above their cap. The raw number has to
+        // reach the model intact, because that is what a save editor writes back, and the
+        // interpretation has to report what the game loads instead.
+        var campaign = CampaignFixture.Campaign(
+            CampaignFixture.Field("SAV STATE NUMBER", "Yellow"),
+            CampaignFixture.DeathData(
+                CampaignFixture.DeathEntry("KARMA", "10"),
+                CampaignFixture.DeathEntry("KARMACAP", "9"),
+                CampaignFixture.DeathEntry("REINFORCEDKARMA", "1")));
+
+        Assert.Equal(10, campaign.Karma);
+        Assert.Equal(9, campaign.KarmaCap);
+        Assert.Equal(1, campaign.ReinforcedKarma);
+        Assert.Equal(9, campaign.EffectiveKarma);
+        Assert.Equal(10, campaign.DisplayKarma);
+        Assert.Equal(10, campaign.DisplayKarmaCap);
+        Assert.True(campaign.KarmaStoredOutOfRange);
+        Assert.Equal("10 / 10", campaign.KarmaText);
+    }
+
+    [Fact]
+    public void The_minus_one_karma_the_ascension_sequence_writes_reads_as_the_lowest_level()
+    {
+        // VoidSea.VoidWorm.MainWormBehavior.Update sets karma to -1, and Saint reaches disk that
+        // way. Printing the raw -1 is what this interpretation exists to stop.
+        var campaign = CampaignFixture.Campaign(
+            CampaignFixture.Field("SAV STATE NUMBER", "Saint"),
+            CampaignFixture.DeathData(
+                CampaignFixture.DeathEntry("KARMA", "-1"),
+                CampaignFixture.DeathEntry("KARMACAP", "9")));
+
+        Assert.Equal(-1, campaign.Karma);
+        Assert.Equal(0, campaign.EffectiveKarma);
+        Assert.Equal(1, campaign.DisplayKarma);
+        Assert.Equal(10, campaign.DisplayKarmaCap);
+        Assert.True(campaign.KarmaStoredOutOfRange);
+        Assert.Equal("1 / 10", campaign.KarmaText);
     }
 
     [Fact]
@@ -307,6 +388,13 @@ public class CampaignDetailTests
         Assert.Null(campaign.Timeline);
         Assert.Null(campaign.LastDenPos);
         Assert.Equal(0, campaign.TotalKills);
+
+        // Nothing to interpret, so the card shows a dash rather than a 1 invented out of a null.
+        Assert.Null(campaign.EffectiveKarma);
+        Assert.Null(campaign.DisplayKarma);
+        Assert.Null(campaign.DisplayKarmaCap);
+        Assert.False(campaign.KarmaStoredOutOfRange);
+        Assert.Equal("-", campaign.KarmaText);
     }
 
     /// <summary>The five status names the Devourment mod writes.</summary>
@@ -341,8 +429,8 @@ public class CampaignDetailTests
         Assert.Empty(metadata.Campaigns);
     }
 
-    private static int PassageCount(CampaignSummary campaign, string name)
-        => Assert.Single(campaign.Passages, p => p.Name == name).Count;
+    private static int? PassageProgress(CampaignSummary campaign, string name)
+        => Assert.Single(campaign.Passages, p => p.Name == name).Goal.Done;
 
     private static CampaignSummary OnlyCampaign(string fixtureName, int slot)
     {

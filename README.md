@@ -42,22 +42,32 @@ A slot section lists its campaigns. Opening one shows:
 
 - the run: cycle, cycles on this game version, food now, food eaten across the campaign,
   playtime, current and previous shelter, timeline and seed
-- karma and the karma cap as the game stores them, the karma flower, and the flags for the mark
-  of communication, the glow, ascension, beating the game, the citizen ID drone and Hunter's death
+- karma, the karma cap, the karma flower, and the flags the record carries: the mark of
+  communication, the glow, ascension, the citizen ID drone and whether the next cycle skips food
+  drain. Hunter's campaign adds Hunter's death
 - deaths, survives and quits
-- echoes met, gates unlocked, endgame passages, and the creatures the campaign has killed
+- echoes met and whether each was spoken to or only sensed, gates unlocked, endgame passages, and
+  the creatures the campaign has killed
 - Devourment relationships with predator, prey, belly status and food value, plus swallowed items
   and anything held in hand
 
-Karma is a 0-based index in the game, and it can sit above the cap. Both numbers are shown as the
-save stores them and neither is adjusted.
+Karma is shown the way the game shows it. The save holds a 0-based index that Rain World clamps to
+the cap the moment it loads the file, so the panel clamps it the same way and then counts from 1.
+The stored numbers are in the tooltip. A value outside 0 to the cap is ordinary: karma one above
+the cap turns up in saves the game reads fine, and the void sea ascension writes -1. Both are
+marked with an asterisk and explained on hover rather than reported as damage.
+
+Hunter's card counts cycles down. The game's map and its save select screen both show that campaign
+the cycles it has left, and the stored number is in the tooltip.
 
 A value the save did not record shows as a dash. Backups taken before this version recorded seven
 fields per campaign, and their cards fill the rest in with dashes.
 
-Passages are stored in more than one shape. Some hold a plain count, and the chip reads `x17`.
-Others hold a float such as `30.29` or a dotted string such as `25.18.20`, which the app reads as
-progress rather than as a number, and the chip shows that text with the full value in the tooltip.
+A passage chip shows progress against what the passage needs, such as `5 / 5` or `1 / 3`. Green is
+a passage the run has earned and not yet spent, which is the one the game offers at a shelter, and
+slate is one already spent. The save records the spent flag and the progress separately, and
+neither on its own says whether the passage is available, so the chip reads both. A passage added
+by a mod has no requirement this app knows, so its chip carries the stored text on its own.
 
 Devourment works the same way. When the mod writes a relationship in a shape this app does not
 read, the count on the campaign header still includes it and a line under the table says how many

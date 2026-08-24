@@ -35,6 +35,13 @@ public static class SaveMetadataExtractor
     private const string CurrentVersionCyclesField = "CURRVERCYCLES";
     private const string RoboField = "HASROBO";
     private const string JustBeatGameField = "JUSTBEATGAME";
+
+    /// <summary>
+    /// The SAVE STATE half of the extra cycles flag. DEATHPERSISTENTSAVEDATA carries one under the
+    /// same name, and SaveState.RedExtraCycles is true when either is set.
+    /// </summary>
+    private const string RedExtraCyclesField = "REDEXTRACYCLES";
+
     private const string DeathPersistentField = "DEATHPERSISTENTSAVEDATA";
     private const string KillsField = "KILLS";
     private const string SwallowedItemsField = "SWALLOWEDITEMS";
@@ -164,6 +171,7 @@ public static class SaveMetadataExtractor
         bool hasGlow = false;
         bool hasRobo = false;
         bool justBeatGame = false;
+        bool redExtraCycles = false;
         string? timeline = null;
         string? lastDenPos = null;
         int? totalFood = null;
@@ -238,6 +246,10 @@ public static class SaveMetadataExtractor
                     justBeatGame = true;
                     break;
 
+                case RedExtraCyclesField:
+                    redExtraCycles = true;
+                    break;
+
                 case TimelineField:
                     timeline = field.Value;
                     break;
@@ -310,7 +322,8 @@ public static class SaveMetadataExtractor
             Ascended = death.Ascended,
             HasRobo = hasRobo,
             JustBeatGame = justBeatGame,
-            RedsDeath = death.RedsDeath,
+            RedsDeathStored = death.RedsDeathStored,
+            RedExtraCycles = redExtraCycles || death.RedExtraCycles,
             Deaths = death.Deaths,
             Survives = death.Survives,
             Quits = death.Quits,

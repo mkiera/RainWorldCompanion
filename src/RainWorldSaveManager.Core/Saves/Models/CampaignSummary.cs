@@ -60,8 +60,9 @@ public sealed class CampaignSummary
     public string DisplayName => SlugcatCatalog.ForId(SlugcatId).DisplayName;
 
     /// <summary>
-    /// KARMA from DEATHPERSISTENTSAVEDATA, stored exactly as the game holds it. This is a
-    /// 0-based index and it can legitimately sit above <see cref="KarmaCap"/>.
+    /// KARMA from DEATHPERSISTENTSAVEDATA, exactly as it sits on disk. This is a 0-based index,
+    /// and it can sit outside 0..<see cref="KarmaCap"/>, in which case the game discards it on
+    /// load. See <see cref="EffectiveKarma"/>.
     /// </summary>
     public int? Karma { get; init; }
 
@@ -70,6 +71,44 @@ public sealed class CampaignSummary
 
     /// <summary>REINFORCEDKARMA from DEATHPERSISTENTSAVEDATA: the karma flower state.</summary>
     public int? ReinforcedKarma { get; init; }
+
+    /// <summary>
+    /// <see cref="Karma"/> as the game holds it after loading this record.
+    /// DeathPersistentSaveData.FromString ends with an unconditional clamp to 0..karmaCap, so a
+    /// stored value outside that range never reaches play. A null cap leaves the upper bound
+    /// unknown, so only the lower bound applies.
+    ///
+    /// Not serialised, for the same reason as <see cref="DisplayName"/>: it is derived from fields
+    /// the manifest already records, and it has no setter.
+    /// </summary>
+    [JsonIgnore]
+    public int? EffectiveKarma => KarmaMath.EffectiveKarma(Karma, KarmaCap);
+
+    /// <summary>
+    /// The karma level a player reads off the meter. The save stores a 0-based index, which
+    /// HUD.KarmaMeter uses directly as a sprite number over smallKarma0 to smallKarma9, so the
+    /// number on screen is one above the stored one. The +1 here is that offset, not a fudge.
+    /// </summary>
+    [JsonIgnore]
+    public int? DisplayKarma => KarmaMath.DisplayKarma(Karma, KarmaCap);
+
+    /// <summary>The karma cap a player sees, one above the 0-based <see cref="KarmaCap"/>.</summary>
+    [JsonIgnore]
+    public int? DisplayKarmaCap => KarmaMath.DisplayKarmaCap(KarmaCap);
+
+    /// <summary>
+    /// True when <see cref="Karma"/> differs from <see cref="EffectiveKarma"/>, so the value on
+    /// disk is one the game will discard.
+    /// </summary>
+    [JsonIgnore]
+    public bool KarmaStoredOutOfRange => KarmaMath.IsStoredOutOfRange(Karma, KarmaCap);
+
+    /// <summary>
+    /// Player-facing karma as "8 / 10", or "8" when the cap is unknown, or "-" when the record
+    /// carried no karma at all.
+    /// </summary>
+    [JsonIgnore]
+    public string KarmaText => KarmaMath.FormatKarma(Karma, KarmaCap);
 
     /// <summary>True when DEATHPERSISTENTSAVEDATA carries a bare HASTHEMARK flag.</summary>
     public bool HasTheMark { get; init; }
@@ -80,11 +119,54 @@ public sealed class CampaignSummary
     /// <summary>True when the record carries a bare HASROBO flag.</summary>
     public bool HasRobo { get; init; }
 
-    /// <summary>True when the record carries a bare JUSTBEATGAME flag.</summary>
+    /// <summary>
+    /// True when the record carries a bare JUSTBEATGAME flag.
+    ///
+    /// Despite the name the game gives it, this is SaveState.skipNextCycleFoodDrain: a one cycle
+    /// marker whose only reader is MoreSlugcats.PlayerNPCState.CycleTick, which skips one cycle of
+    /// food drain. SaveState.SessionEnded clears it at the end of the next session, and
+    /// Watcher.SpinningTop.MarkSpinningTopEncountered sets it on merely meeting Spinning Top, so
+    /// it is not a record of having beaten the game. That record lives in PlayerProgression's
+    /// miscProgressionData, which this app does not read.
+    /// </summary>
     public bool JustBeatGame { get; init; }
 
-    /// <summary>True when DEATHPERSISTENTSAVEDATA carries a bare REDSDEATH flag.</summary>
-    public bool RedsDeath { get; init; }
+    /// <summary>
+    /// True when DEATHPERSISTENTSAVEDATA carries a bare REDSDEATH token.
+    ///
+    /// The token is not the flag. DeathPersistentSaveData.SaveToString writes it whenever the save
+    /// is written as a death or a quit, whatever the flag holds, which is why eight of the nine
+    /// campaigns in a real slot carry it. See <see cref="EffectiveRedsDeath"/>.
+    /// </summary>
+    public bool RedsDeathStored { get; init; }
+
+    /// <summary>
+    /// True when either REDEXTRACYCLES token is present. The game writes one in the SAVE STATE
+    /// record and one in DEATHPERSISTENTSAVEDATA, and SaveState.RedExtraCycles is true when either
+    /// is set, so this is the two of them together.
+    /// </summary>
+    public bool RedExtraCycles { get; init; }
+
+    /// <summary>
+    /// The redsDeath flag as the game holds it after loading this record. SaveState.LoadGame
+    /// clears it while <see cref="CycleNum"/> is below Hunter's cycle limit.
+    ///
+    /// Not serialised, for the same reason as <see cref="DisplayName"/>: it is derived from fields
+    /// the manifest already records, and it has no setter.
+    /// </summary>
+    [JsonIgnore]
+    public bool EffectiveRedsDeath
+        => RedsIllness.EffectiveRedsDeath(RedsDeathStored, CycleNum, RedExtraCycles);
+
+    /// <summary>
+    /// The cycle number the game puts on screen. Hunter is shown the cycles remaining rather than
+    /// the cycles played, by both HUD.Map.CycleLabel and the save select menu, so for that one
+    /// campaign this is the limit minus <see cref="CycleNum"/>.
+    ///
+    /// Not serialised, for the same reason as <see cref="EffectiveRedsDeath"/>.
+    /// </summary>
+    [JsonIgnore]
+    public int? DisplayCycleNum => RedsIllness.DisplayCycle(SlugcatId, CycleNum, RedExtraCycles);
 
     public int? Deaths { get; init; }
 

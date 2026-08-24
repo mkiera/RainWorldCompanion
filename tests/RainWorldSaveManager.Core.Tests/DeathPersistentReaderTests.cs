@@ -21,7 +21,7 @@ public class DeathPersistentReaderTests
         Assert.Equal(1, campaign.ReinforcedKarma);
         Assert.True(campaign.HasTheMark);
         Assert.True(campaign.Ascended);
-        Assert.True(campaign.RedsDeath);
+        Assert.True(campaign.RedsDeathStored);
         Assert.Equal(206, campaign.Deaths);
         Assert.Equal(77, campaign.Survives);
         Assert.Equal(11, campaign.Quits);
@@ -62,7 +62,7 @@ public class DeathPersistentReaderTests
     }
 
     [Fact]
-    public void Echoes_split_into_a_region_code_and_a_count()
+    public void Echoes_split_into_a_region_code_and_an_encounter_state()
     {
         var campaign = Read(CampaignFixture.DeathEntry("GHOSTS", "SH:1,UW:2,CC:2,SI:1,LF:1,SB:2"));
 
@@ -70,8 +70,12 @@ public class DeathPersistentReaderTests
         Assert.Equal(
             new[] { "SH", "UW", "CC", "SI", "LF", "SB" },
             campaign.Echoes.Select(e => e.RegionCode).ToArray());
-        Assert.Equal(1, Assert.Single(campaign.Echoes, e => e.RegionCode == "SH").Count);
-        Assert.Equal(2, Assert.Single(campaign.Echoes, e => e.RegionCode == "UW").Count);
+
+        // 1 is a hunch and 2 is an echo the player has spoken to. GhostHunch.Update stores the
+        // one and SaveState.GhostEncounter stores the other, both as constants, so no entry can
+        // ever hold anything else and none of them is a repeat count.
+        Assert.Equal(EchoRecord.Hunch, Assert.Single(campaign.Echoes, e => e.RegionCode == "SH").State);
+        Assert.Equal(EchoRecord.TalkedTo, Assert.Single(campaign.Echoes, e => e.RegionCode == "UW").State);
     }
 
     [Fact]
@@ -87,8 +91,8 @@ public class DeathPersistentReaderTests
     {
         var campaign = Read(CampaignFixture.DeathEntry("GHOSTS", "SH:1,,BROKEN,UW:later,CC:2"));
 
-        Assert.Contains(campaign.Echoes, e => e.RegionCode == "SH" && e.Count == 1);
-        Assert.Contains(campaign.Echoes, e => e.RegionCode == "CC" && e.Count == 2);
+        Assert.Contains(campaign.Echoes, e => e.RegionCode == "SH" && e.State == 1);
+        Assert.Contains(campaign.Echoes, e => e.RegionCode == "CC" && e.State == 2);
     }
 
     [Fact]
@@ -104,31 +108,34 @@ public class DeathPersistentReaderTests
     }
 
     [Fact]
-    public void Passages_report_whether_each_one_was_earned()
+    public void Passages_report_whether_each_one_has_been_spent()
     {
         var campaign = Read(CampaignFixture.DeathEntry(
             "WINSTATE",
             "Survivor<egA>1<egA>5<wsA>Traveller<egA>0<egA>0.0.0.1.0<wsA>Saint<egA>1<egA>3<wsA>"));
 
+        // The middle part is WinState.EndgameTracker.consumed, so a 1 means the passage has been
+        // used to travel and the game no longer offers it.
         var survivor = Assert.Single(campaign.Passages, p => p.Name == "Survivor");
-        Assert.True(survivor.Earned);
-        Assert.Equal(5, survivor.Count);
+        Assert.True(survivor.Consumed);
+        Assert.Equal(5, survivor.Goal.Done);
 
         var saint = Assert.Single(campaign.Passages, p => p.Name == "Saint");
-        Assert.True(saint.Earned);
-        Assert.Equal(3, saint.Count);
+        Assert.True(saint.Consumed);
+        Assert.Equal(3, saint.Goal.Done);
 
-        // The third part is a progress string rather than a count on this one, which is the
-        // shape every real save stores Traveller in. The entry still has to be listed.
+        // The third part is a flag array rather than a number on this one, which is the shape
+        // every real save stores Traveller in. The entry still has to be listed.
         var traveller = Assert.Single(campaign.Passages, p => p.Name == "Traveller");
-        Assert.False(traveller.Earned);
+        Assert.False(traveller.Consumed);
+        Assert.Equal(1, traveller.Goal.Done);
+        Assert.Equal(5, traveller.Goal.Needed);
     }
 
     /// <summary>
     /// The passage tracker is not always an int. The live sav stores a float for Rivulet's
-    /// Scholar and a dotted string for Spearmaster's, and both used to collapse to a count of 0,
-    /// which the card draws exactly like a passage with no progress at all. The raw text is kept
-    /// so the two can be told apart.
+    /// Scholar and a dotted string for Spearmaster's. The raw text is kept whatever the shape, so
+    /// a passage with real progress is never drawn like one with none.
     /// </summary>
     [Theory]
     [InlineData("30.29")]
@@ -142,16 +149,14 @@ public class DeathPersistentReaderTests
             DeathPersistentReader.ParseWinState("Scholar<egA>0<egA>" + stored));
 
         Assert.Equal("Scholar", passage.Name);
-        Assert.Equal(0, passage.Count);
         Assert.Equal(stored, passage.Progress);
     }
 
     [Fact]
-    public void An_integer_tracker_fills_both_the_count_and_the_stored_text()
+    public void A_tracker_reaches_the_record_as_the_stored_text()
     {
         var passage = Assert.Single(DeathPersistentReader.ParseWinState("Scholar<egA>0<egA>17"));
 
-        Assert.Equal(17, passage.Count);
         Assert.Equal("17", passage.Progress);
     }
 
@@ -160,15 +165,16 @@ public class DeathPersistentReaderTests
     {
         var passage = Assert.Single(DeathPersistentReader.ParseWinState("Scholar<egA>1"));
 
-        Assert.True(passage.Earned);
-        Assert.Equal(0, passage.Count);
+        Assert.True(passage.Consumed);
         Assert.Equal("", passage.Progress);
+        Assert.Null(passage.Goal.Done);
+        Assert.Null(passage.Goal.Fulfilled);
     }
 
     [Fact]
     public void Progress_is_never_null_even_when_a_manifest_says_it_is()
     {
-        var passage = new PassageRecord("Scholar", false, 0) { Progress = null! };
+        var passage = new PassageRecord("Scholar", false) { Progress = null! };
 
         Assert.Equal("", passage.Progress);
     }
@@ -227,7 +233,7 @@ public class DeathPersistentReaderTests
 
         Assert.True(campaign.HasTheMark);
         Assert.True(campaign.Ascended);
-        Assert.True(campaign.RedsDeath);
+        Assert.True(campaign.RedsDeathStored);
         Assert.Null(campaign.Karma);
         Assert.Null(campaign.KarmaCap);
         Assert.Null(campaign.Deaths);
@@ -242,7 +248,7 @@ public class DeathPersistentReaderTests
 
         Assert.False(campaign.HasTheMark);
         Assert.False(campaign.Ascended);
-        Assert.False(campaign.RedsDeath);
+        Assert.False(campaign.RedsDeathStored);
     }
 
     /// <summary>Every key the format is documented to carry, with the real values measured off this machine.</summary>
@@ -290,7 +296,7 @@ public class DeathPersistentReaderTests
         Assert.Null(campaign.Quits);
         Assert.False(campaign.HasTheMark);
         Assert.False(campaign.Ascended);
-        Assert.False(campaign.RedsDeath);
+        Assert.False(campaign.RedsDeathStored);
         Assert.Empty(campaign.Echoes);
         Assert.Empty(campaign.UnlockedGates);
         Assert.Empty(campaign.Passages);

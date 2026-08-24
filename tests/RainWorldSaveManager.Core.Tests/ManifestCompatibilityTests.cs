@@ -181,7 +181,9 @@ public class ManifestCompatibilityTests
         Assert.False(campaign.Ascended);
         Assert.False(campaign.HasRobo);
         Assert.False(campaign.JustBeatGame);
-        Assert.False(campaign.RedsDeath);
+        Assert.False(campaign.RedsDeathStored);
+        Assert.False(campaign.RedExtraCycles);
+        Assert.False(campaign.EffectiveRedsDeath);
         Assert.Equal(0, campaign.TotalKills);
     }
 
@@ -238,6 +240,22 @@ public class ManifestCompatibilityTests
         {
             Assert.False(campaign.TryGetProperty("displayName", out _));
             Assert.False(campaign.TryGetProperty("totalKills", out _));
+
+            // The same holds for the two values read out of the game's own load rules. Hunter's
+            // countdown and the redsDeath the game keeps are both worked out from the cycle number
+            // and the flags beside them, which the file already records.
+            Assert.False(campaign.TryGetProperty("displayCycleNum", out _));
+            Assert.False(campaign.TryGetProperty("effectiveRedsDeath", out _));
+
+            // A passage's goal is read from its own name and stored progress, so recording it
+            // would freeze a requirement that a later game version can change.
+            if (campaign.TryGetProperty("passages", out var passages))
+            {
+                foreach (var passage in passages.EnumerateArray())
+                {
+                    Assert.False(passage.TryGetProperty("goal", out _));
+                }
+            }
         }
     }
 

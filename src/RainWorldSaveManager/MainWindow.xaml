@@ -24,12 +24,13 @@
         <!-- One labelled value. A value the save never recorded arrives as a dash and is drawn
              muted, so a gap in the data reads as a gap rather than as a missing control. -->
         <DataTemplate x:Key="StatTileTemplate">
-            <Border Style="{StaticResource StatTile}">
+            <!-- The tooltip sits on the whole tile so the label and the padding hover too. -->
+            <Border Style="{StaticResource StatTile}" ToolTip="{Binding HoverText}">
                 <StackPanel>
                     <TextBlock Text="{Binding Label}"
                                Style="{StaticResource Text.SectionLabel}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Value}" Margin="0,3,0,0" ToolTip="{Binding Value}">
+                    <TextBlock Text="{Binding Value}" Margin="0,3,0,0">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Value}">
                                 <Style.Triggers>
@@ -88,13 +89,19 @@
             </Border>
         </DataTemplate>
 
-        <!-- An earned passage is filled, an unearned one is a plain chip -->
+        <!-- A passage the run has earned and not yet spent is filled green, which is the one the
+             game offers. A passage already used to travel is filled slate. Everything else is a
+             plain chip. -->
         <DataTemplate x:Key="PassageTemplate">
             <Border ToolTip="{Binding ToolTipText}">
                 <Border.Style>
                     <Style TargetType="Border" BasedOn="{StaticResource Chip}">
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding Earned}" Value="True">
+                            <DataTrigger Binding="{Binding Spent}" Value="True">
+                                <Setter Property="Background" Value="{StaticResource Brush.Selection}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding Available}" Value="True">
                                 <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
                                 <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
                             </DataTrigger>
@@ -108,7 +115,10 @@
                                 <Setter Property="FontSize" Value="11" />
                                 <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Earned}" Value="True">
+                                    <DataTrigger Binding="{Binding Spent}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Available}" Value="True">
                                         <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
                                         <Setter Property="FontWeight" Value="SemiBold" />
                                     </DataTrigger>
@@ -116,9 +126,9 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                    <TextBlock Text="{Binding CountText}" FontSize="11" Margin="5,0,0,0"
+                    <TextBlock Text="{Binding ProgressText}" FontSize="11" Margin="5,0,0,0"
                                Foreground="{StaticResource Brush.TextMuted}"
-                               Visibility="{Binding CountText, Converter={StaticResource StringToVis}}" />
+                               Visibility="{Binding ProgressText, Converter={StaticResource StringToVis}}" />
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -256,18 +266,46 @@
                                                Visibility="{Binding ShowSlugcatId, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
 
-                                <Border Grid.Column="2" Style="{StaticResource Chip}" Margin="0,0,6,0"
-                                        VerticalAlignment="Center">
+                                <!-- Karma as the meter reads it. A campaign whose stored number the game
+                                     will clamp gets a heavier border and an asterisk pointing at the
+                                     tooltip, which is a footnote rather than a fault: the save is fine. -->
+                                <Border Grid.Column="2" Margin="0,0,6,0"
+                                        VerticalAlignment="Center"
+                                        ToolTip="{Binding KarmaToolTip}">
+                                    <Border.Style>
+                                        <Style TargetType="Border" BasedOn="{StaticResource Chip}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding KarmaStoredOutOfRange}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="Karma" Style="{StaticResource Text.Tiny}" Margin="0,0,6,0"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding KarmaText}" FontSize="12" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding KarmaText}" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                                    <Setter Property="FontSize" Value="12" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding HasKarma}" Value="False">
+                                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                                            <Setter Property="FontWeight" Value="Normal" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="*" Style="{StaticResource Text.Tiny}" Margin="2,0,0,0"
+                                                   VerticalAlignment="Top"
+                                                   Visibility="{Binding KarmaStoredOutOfRange, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
                                 </Border>
 
                                 <Border Grid.Column="3" Style="{StaticResource Chip}" Margin="0,0,6,0"
-                                        VerticalAlignment="Center">
+                                        VerticalAlignment="Center" ToolTip="{Binding CycleToolTip}">
                                     <TextBlock Text="{Binding CycleText}" FontSize="12" />
                                 </Border>
 
