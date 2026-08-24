@@ -142,24 +142,29 @@ public sealed partial class BackupItemViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// A byte count for the list and the detail header. Formatted with the invariant culture, the
+    /// same as every size Core prints, so one operation cannot report "6,0 MB" in a dialog and
+    /// "6.0 MB" in the message box that follows it on a comma-decimal machine.
+    /// </summary>
     public static string FormatSize(long bytes)
     {
         if (bytes >= 1024L * 1024L * 1024L)
         {
-            return (bytes / (1024d * 1024d * 1024d)).ToString("0.0") + " GB";
+            return (bytes / (1024d * 1024d * 1024d)).ToString("0.0", CultureInfo.InvariantCulture) + " GB";
         }
 
         if (bytes >= 1024L * 1024L)
         {
-            return (bytes / (1024d * 1024d)).ToString("0.0") + " MB";
+            return (bytes / (1024d * 1024d)).ToString("0.0", CultureInfo.InvariantCulture) + " MB";
         }
 
         if (bytes >= 1024L)
         {
-            return (bytes / 1024d).ToString("0") + " KB";
+            return (bytes / 1024d).ToString("0", CultureInfo.InvariantCulture) + " KB";
         }
 
-        return bytes + " B";
+        return bytes.ToString(CultureInfo.InvariantCulture) + " B";
     }
 
     private static IReadOnlyList<PortraitViewModel> BuildPortraits(BackupSnapshot snapshot, ISlugcatIconProvider icons)
@@ -203,17 +208,21 @@ public sealed partial class BackupItemViewModel : ObservableObject
             return "no slot data";
         }
 
-        var campaigns = 0;
+        var local = 0;
+        var online = 0;
+
         foreach (var slot in slots)
         {
-            campaigns += slot.Campaigns.Count;
+            if (slot.Realm == SaveRealm.Online)
+            {
+                online += slot.Campaigns.Count;
+            }
+            else
+            {
+                local += slot.Campaigns.Count;
+            }
         }
 
-        return campaigns switch
-        {
-            0 => "no campaigns",
-            1 => "1 campaign",
-            _ => campaigns.ToString(CultureInfo.InvariantCulture) + " campaigns",
-        };
+        return CampaignCount.Describe(local, online);
     }
 }

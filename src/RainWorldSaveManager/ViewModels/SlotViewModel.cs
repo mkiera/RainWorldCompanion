@@ -24,10 +24,15 @@ public sealed class SlotViewModel
         Metadata = slot;
         SlotNumber = slot.Slot;
         FileName = slot.FileName;
+        Realm = slot.Realm;
+
+        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp gives online_sav2 the same slot
+        // number as sav2, so the number alone does not say which of the two a header is naming.
+        string prefix = slot.Realm == SaveRealm.Online ? "ONLINE SLOT " : "SLOT ";
 
         NumberText = slot.Slot > 0 ? slot.Slot.ToString(CultureInfo.InvariantCulture) : "?";
         HeaderText = slot.Slot > 0
-            ? "SLOT " + NumberText
+            ? prefix + NumberText
             : (slot.FileName.Length > 0 ? slot.FileName.ToUpperInvariant() : "SLOT");
 
         Campaigns = slot.Campaigns.Select(campaign => new CampaignViewModel(campaign, icons)).ToList();
@@ -44,6 +49,9 @@ public sealed class SlotViewModel
 
     /// <summary>1, 2 or 3. Zero for a save file with no numbered slot.</summary>
     public int SlotNumber { get; }
+
+    /// <summary>Whether this came from a local save file or a Rain Meadow online one.</summary>
+    public SaveRealm Realm { get; }
 
     public string NumberText { get; }
 
@@ -117,7 +125,9 @@ public sealed class SlotViewModel
 
         if (slot.Campaigns.Count == 0)
         {
-            return "empty";
+            // A Rain Meadow online_sav with no campaign in it still holds the explored map and the
+            // progression record, and this line sits beside a button that overwrites the file.
+            return SlotMetadata.DescribeWithoutCampaigns(slot.RecordCount);
         }
 
         var names = slot.Campaigns

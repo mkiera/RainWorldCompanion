@@ -103,6 +103,41 @@ internal sealed class FailingScope : BackupScope
 }
 
 /// <summary>
+/// A scope that runs an action just after a chosen walk of the save folder returns.
+///
+/// Every operation here starts by taking a safety snapshot, which walks the folder and then spends
+/// seconds hashing and copying. Something else can write into the save folder during that window,
+/// and Steam Cloud syncing a save down from another machine is the case the copy path has to
+/// survive. Driving it from the scope makes the timing exact rather than a race.
+/// </summary>
+internal sealed class ScopeWithSideEffect : BackupScope
+{
+    private readonly Action _after;
+    private readonly int _onCall;
+    private int _calls;
+
+    public ScopeWithSideEffect(string saveRoot, int onCall, Action after)
+        : base(saveRoot)
+    {
+        _onCall = onCall;
+        _after = after;
+    }
+
+    public override ScopeScan Scan()
+    {
+        _calls++;
+        ScopeScan scan = base.Scan();
+
+        if (_calls == _onCall)
+        {
+            _after();
+        }
+
+        return scan;
+    }
+}
+
+/// <summary>
 /// Creates junctions and symlinks for the tests that prove neither one lets a copy or a delete
 /// leave the save folder.
 /// </summary>

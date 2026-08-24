@@ -136,13 +136,21 @@ public class RestoreFailureTests
     /// An empty folder that will not go away leaves the restored saves exactly right. Reporting
     /// it as a failed restore sends the user to a dialog that says the restore did not finish,
     /// for a folder with no files in it.
+    ///
+    /// The folder is emptied by this restore rather than starting empty, because that is the only
+    /// folder a restore may remove. One that was already empty before the restore is not this
+    /// restore's to take away.
     /// </summary>
     [Fact]
     public void An_empty_folder_that_cannot_be_removed_is_a_note_rather_than_a_failure()
     {
         using var world = new BackupWorld();
-        var stuck = world.Live.CreateSubdirectory(@"dvrmentSaveStates\stuck");
         var snapshot = world.Service.CreateBackup("first", null);
+
+        // Written after the backup, so it is in scope, absent from the manifest, and removed by
+        // the restore, which leaves the folder it sat in empty.
+        var stuck = world.Live.CreateSubdirectory(@"dvrmentSaveStates\stuck");
+        world.Live.WriteText(@"dvrmentSaveStates\stuck\contents_9_Rivulet_story.txt", "Rivulet|Slugcat|9|stomach");
 
         var attributes = File.GetAttributes(stuck);
         File.SetAttributes(stuck, attributes | FileAttributes.ReadOnly);

@@ -333,6 +333,7 @@ public static class SaveTree
         "expCore1",
         "online_sav",
         @"ModConfigs\devourment.txt",
+        @"ModConfigs\moreslugcats.txt",
         @"ModConfigs\DvrmentConfs\current.json",
         @"dvrmentSaveStates\contents_0_White_story.txt",
         @"dvrmentSaveStates\contents_2_White_story.txt",
@@ -346,7 +347,7 @@ public static class SaveTree
         "sav.bak",
         "options",
         "steam_autocloud.vdf",
-        @"ModConfigs\moreslugcats.txt",
+        @"ModConfigs\steam_autocloud.vdf",
         @"backup\2026-08-24_120000\sav",
     };
 
@@ -368,6 +369,7 @@ public static class SaveTree
         FixtureFiles.CopyTo(directory, FixtureFiles.Sav2, "sav.bak");
 
         directory.WriteText("steam_autocloud.vdf", "\"RootPaths\"\n{\n}\n");
+        directory.WriteText(@"ModConfigs\steam_autocloud.vdf", "\"RootPaths\"\n{\n}\n");
         directory.WriteText(@"ModConfigs\devourment.txt", "PredatorMode<optB>true<optA>Difficulty<optB>2");
         directory.WriteText(@"ModConfigs\moreslugcats.txt", "SomeOtherMod<optB>1");
         directory.WriteText(@"ModConfigs\DvrmentConfs\current.json", "{\"preset\":\"default\",\"struggle\":0.5}");

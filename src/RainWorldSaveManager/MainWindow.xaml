@@ -609,6 +609,155 @@
             </StackPanel>
         </DataTemplate>
 
+        <!-- One half of a slot pair. A half with no file behind it still draws, dimmed: "there is
+             no online save in this slot yet" is the state a player copying a local save across is
+             starting from. -->
+        <DataTemplate x:Key="SlotPairSideTemplate">
+            <Border Padding="10,8" CornerRadius="5" BorderThickness="1"
+                    Background="{StaticResource Brush.PanelAlt}"
+                    BorderBrush="{StaticResource Brush.Border}"
+                    SnapsToDevicePixels="True">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Exists}" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel>
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding KindLabel}"
+                                   Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding FileName}" Style="{StaticResource Text.Tiny}"
+                                   HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+
+                    <ItemsControl ItemsSource="{Binding Portraits}"
+                                  ItemTemplate="{StaticResource Portrait.Small}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                  Margin="0,7,0,0"
+                                  Visibility="{Binding HasPortraits, Converter={StaticResource BoolToVis}}" />
+
+                    <TextBlock Text="{Binding SummaryText}" Style="{StaticResource Text.Muted}"
+                               Margin="0,5,0,0" TextWrapping="Wrap"
+                               ToolTip="{Binding SummaryText}" />
+
+                    <TextBlock Text="checksum did not recompute" Margin="0,4,0,0"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Warn}"
+                               Visibility="{Binding ChecksumBad, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- A Border is a Decorator and WPF creates no automation peer for one, so a name set on
+             it is dropped and its children are hoisted to the nearest ancestor peer. A GroupBox
+             does have a peer, and this template strips its chrome so the row draws exactly as the
+             Border alone did. -->
+        <ControlTemplate x:Key="BareGroupTemplate" TargetType="GroupBox">
+            <ContentPresenter />
+        </ControlTemplate>
+
+        <!-- One slot number with both of its files side by side, and the copy between them -->
+        <DataTemplate x:Key="SlotPairTemplate">
+            <GroupBox Template="{StaticResource BareGroupTemplate}"
+                      AutomationProperties.Name="{Binding AccessibleName}">
+            <Border Margin="0,0,0,8" Padding="12,10" CornerRadius="5" BorderThickness="1"
+                    Background="{StaticResource Brush.Panel}"
+                    BorderBrush="{StaticResource Brush.Border}"
+                    SnapsToDevicePixels="True">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,9">
+                        <Border Width="24" Height="24" CornerRadius="4"
+                                Background="{StaticResource Brush.PanelAlt}"
+                                BorderBrush="{StaticResource Brush.BorderStrong}"
+                                BorderThickness="1">
+                            <TextBlock Text="{Binding NumberText}" FontSize="12" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="{Binding HeaderText}" Style="{StaticResource Text.Title}"
+                                   Margin="9,0,0,0" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <ContentPresenter Grid.Column="0" Margin="0,0,5,0"
+                                          Content="{Binding Local}"
+                                          ContentTemplate="{StaticResource SlotPairSideTemplate}" />
+
+                        <StackPanel Grid.Column="1" Margin="6,0,6,0" VerticalAlignment="Center"
+                                    Visibility="{Binding ShowCopy, Converter={StaticResource BoolToVis}}">
+                            <Button Content="Copy &#x2192;" Style="{StaticResource Button.Small}" MinWidth="88"
+                                    Command="{Binding CopyToOnlineCommand}"
+                                    ToolTip="{Binding CopyToOnlineToolTip}"
+                                    AutomationProperties.Name="{Binding CopyToOnlineAccessibleName}" />
+                            <Button Content="&#x2190; Copy" Style="{StaticResource Button.Small}" MinWidth="88"
+                                    Margin="0,6,0,0"
+                                    Command="{Binding CopyToLocalCommand}"
+                                    ToolTip="{Binding CopyToLocalToolTip}"
+                                    AutomationProperties.Name="{Binding CopyToLocalAccessibleName}" />
+                        </StackPanel>
+
+                        <ContentPresenter Grid.Column="2" Margin="5,0,0,0"
+                                          Content="{Binding Online}"
+                                          ContentTemplate="{StaticResource SlotPairSideTemplate}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            </GroupBox>
+        </DataTemplate>
+
+        <!-- One character out of meadow.json -->
+        <DataTemplate x:Key="MeadowCharacterTemplate">
+            <Border Style="{StaticResource Card}" Padding="12,10" Margin="0,0,0,8">
+                <StackPanel>
+                    <DockPanel>
+                        <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
+                                Background="{StaticResource Brush.Selection}"
+                                BorderBrush="{StaticResource Brush.Accent}"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="selected in the menu" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource Brush.Accent}" />
+                        </Border>
+                        <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Title}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
+
+                    <ItemsControl ItemsSource="{Binding Stats}"
+                                  ItemTemplate="{StaticResource StatTileTemplate}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                  Margin="0,9,0,0" />
+
+                    <TextBlock Text="{Binding EmoteCountText}" Style="{StaticResource Text.SectionLabel}"
+                               Margin="0,6,0,4" />
+                    <ItemsControl ItemsSource="{Binding Emotes}"
+                                  ItemTemplate="{StaticResource ChipTemplate}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                  Visibility="{Binding HasEmotes, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="No emotes unlocked." Style="{StaticResource Text.Muted}"
+                               Visibility="{Binding HasNoEmotes, Converter={StaticResource BoolToVis}}" />
+
+                    <TextBlock Text="{Binding SkinCountText}" Style="{StaticResource Text.SectionLabel}"
+                               Margin="0,8,0,4" />
+                    <ItemsControl ItemsSource="{Binding Skins}"
+                                  ItemTemplate="{StaticResource ChipTemplate}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                  Visibility="{Binding HasSkins, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="No skins unlocked." Style="{StaticResource Text.Muted}"
+                               Visibility="{Binding HasNoSkins, Converter={StaticResource BoolToVis}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
         <!-- One slot inside the live save card in the list column -->
         <DataTemplate x:Key="LiveSlotRowTemplate">
             <Grid Margin="0,7,0,0">
@@ -899,6 +1048,15 @@
                                    TextWrapping="Wrap"
                                    Margin="0,7,0,0"
                                    Visibility="{Binding HasNoLiveSlots, Converter={StaticResource BoolToVis}}" />
+
+                        <!-- The rows above are the local saves. Rain Meadow's online saves share
+                             those slot numbers, so they are paired with their local halves in the
+                             detail panel and only counted here. -->
+                        <TextBlock Text="{Binding LiveOnlineText}"
+                                   Style="{StaticResource Text.Tiny}"
+                                   Margin="0,7,0,0"
+                                   TextTrimming="CharacterEllipsis"
+                                   Visibility="{Binding LiveOnlineText, Converter={StaticResource StringToVis}}" />
                     </StackPanel>
                 </Button>
 
@@ -1029,6 +1187,69 @@
                                        TextWrapping="Wrap"
                                        Margin="0,16,0,0"
                                        Visibility="{Binding Detail.HasNoSlots, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- Rain Meadow. Both blocks below are left out entirely when the
+                                 folder holds nothing of the mod's, so a player who does not use it
+                                 sees the panel exactly as it was. They are independent: a profile
+                                 can exist with no online save, and an online save with no profile. -->
+                            <!-- IsExpanded is bound rather than set, because this Expander is one
+                                 instance outside any DataTemplate. Set as a literal it stays open
+                                 for every snapshot selected after the first time it is opened,
+                                 including ones whose online saves the user has never seen. The
+                                 bound property is rebuilt with the detail, so a new selection
+                                 starts collapsed. -->
+                            <Expander Margin="0,14,0,0"
+                                      IsExpanded="{Binding Detail.IsOnlineFoldoutExpanded, Mode=TwoWay}"
+                                      Foreground="{StaticResource Brush.TextMuted}"
+                                      Visibility="{Binding Detail.HasOnlineSlots, Converter={StaticResource BoolToVis}}">
+                                <Expander.Header>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="RAIN MEADOW ONLINE SAVES"
+                                                   Style="{StaticResource Text.SectionLabel}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding Detail.OnlineCountText}"
+                                                   Style="{StaticResource Text.Muted}"
+                                                   Margin="10,0,0,0" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Expander.Header>
+                                <StackPanel Margin="0,9,0,0">
+                                    <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
+                                               Margin="0,0,0,9"
+                                               Text="Rain Meadow keeps a second save for each slot and the game picks between them by whether you are in a lobby, so slot 2 is sav2 on your own and online_sav2 in a lobby. Copying replaces the whole target file byte for byte." />
+                                    <ItemsControl ItemsSource="{Binding Detail.SlotPairs}"
+                                                  ItemTemplate="{StaticResource SlotPairTemplate}" />
+                                </StackPanel>
+                            </Expander>
+
+                            <StackPanel Margin="0,10,0,0"
+                                        Visibility="{Binding Detail.HasMeadow, Converter={StaticResource BoolToVis}}">
+                                <DockPanel Margin="0,4,0,8">
+                                    <TextBlock DockPanel.Dock="Left" Text="RAIN MEADOW PROFILE" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}"
+                                            VerticalAlignment="Center" />
+                                </DockPanel>
+
+                                <TextBlock Text="{Binding Detail.Meadow.ErrorText}"
+                                           Style="{StaticResource Text.Muted}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding Detail.Meadow.HasError, Converter={StaticResource BoolToVis}}" />
+
+                                <StackPanel Visibility="{Binding Detail.Meadow.HasProfile, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl ItemsSource="{Binding Detail.Meadow.Stats}"
+                                                  ItemTemplate="{StaticResource StatTileTemplate}"
+                                                  ItemsPanel="{StaticResource WrapPanelTemplate}" />
+
+                                    <ItemsControl ItemsSource="{Binding Detail.Meadow.Characters}"
+                                                  ItemTemplate="{StaticResource MeadowCharacterTemplate}"
+                                                  Margin="0,6,0,0" />
+
+                                    <TextBlock Text="meadow.json records no character progress yet."
+                                               Style="{StaticResource Text.Muted}"
+                                               TextWrapping="Wrap"
+                                               Visibility="{Binding Detail.Meadow.HasNoCharacters, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
 

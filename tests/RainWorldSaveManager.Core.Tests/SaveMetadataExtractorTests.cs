@@ -56,12 +56,61 @@ public class SaveMetadataExtractorTests
     }
 
     [Fact]
+    public void A_file_with_no_save_state_record_still_counts_the_records_it_has()
+    {
+        // The real online_sav holds an empty header, MAP_White, MAPUPDATE_White and MISCPROG, and
+        // no SAVE STATE. Campaigns being empty is therefore not the same question as the file
+        // being empty, and only the record count can tell them apart.
+        var metadata = SaveMetadataExtractor.Extract(FixtureFiles.PathTo(FixtureFiles.OnlineSav), 1, SaveRealm.Online);
+
+        Assert.Empty(metadata.Campaigns);
+        Assert.Equal(4, metadata.RecordCount);
+        Assert.DoesNotContain("empty", metadata.Describe(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("map and progression", metadata.Describe(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_payload_that_is_only_the_digest_counts_no_records_and_is_still_called_empty()
+    {
+        // An untouched online slot: the stored value is the 32 character digest and nothing else.
+        using var temp = new TempDirectory();
+        var path = temp.WriteBytes("online_sav3", SyntheticSave.SaveFile(""));
+
+        var metadata = SaveMetadataExtractor.Extract(path, 3, SaveRealm.Online);
+
+        Assert.Null(metadata.ParseError);
+        Assert.Empty(metadata.Campaigns);
+        Assert.Equal(0, metadata.RecordCount);
+        Assert.Contains("empty", metadata.Describe(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_manifest_that_never_recorded_a_record_count_falls_back_to_the_old_wording()
+    {
+        // Deserialising a snapshot written before the count existed leaves it null. Guessing from
+        // a null would relabel every old backup's slots, so the unknown case keeps saying "empty".
+        var slot = new SlotMetadata { Slot = 1, FileName = "online_sav", Realm = SaveRealm.Online };
+
+        Assert.Null(slot.RecordCount);
+        Assert.Equal("Online slot 1: empty", slot.Describe());
+    }
+
+    [Fact]
     public void An_empty_container_reports_no_campaigns_and_no_error()
     {
         var metadata = SaveMetadataExtractor.Extract(FixtureFiles.PathTo(FixtureFiles.Exp1), 0);
 
         Assert.Null(metadata.ParseError);
         Assert.Empty(metadata.Campaigns);
+    }
+
+    [Fact]
+    public void A_container_with_no_save_key_counts_no_records()
+    {
+        // exp1 has no keys at all, which is a real state rather than a failure.
+        var metadata = SaveMetadataExtractor.Extract(FixtureFiles.PathTo(FixtureFiles.Exp1), 0);
+
+        Assert.Equal(0, metadata.RecordCount);
     }
 
     [Fact]
@@ -231,6 +280,19 @@ public class SaveMetadataExtractorTests
         => Assert.Equal(expected, SaveMetadataExtractor.SlotNumberForFileName(fileName));
 
     [Theory]
+    [InlineData("online_sav", 1)]
+    [InlineData("online_sav2", 2)]
+    [InlineData("online_sav3", 3)]
+    public void SlotNumberForFileName_maps_the_online_containers_to_the_same_numbers(string fileName, int expected)
+    {
+        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp picks online_sav from the same
+        // Options.saveSlot that picks sav, so online_sav2 carries slot number 2 exactly as sav2
+        // does. SaveSlotRef.Realm is what tells the two apart, not the number.
+        Assert.Equal(expected, SaveMetadataExtractor.SlotNumberForFileName(fileName));
+        Assert.Equal(SaveRealm.Online, SaveMetadataExtractor.SlotForFileName(fileName)!.Realm);
+    }
+
+    [Theory]
     [InlineData("sav - Copy")]
     [InlineData("sav - Copy (2)")]
     [InlineData("sav.bak")]
@@ -239,8 +301,8 @@ public class SaveMetadataExtractorTests
     [InlineData("save")]
     [InlineData("exp1")]
     [InlineData("expCore1")]
-    [InlineData("online_sav")]
-    [InlineData("online_sav2")]
+    [InlineData("online_sav4")]
+    [InlineData("online_sav0")]
     [InlineData("options")]
     [InlineData("steam_autocloud.vdf")]
     [InlineData("")]

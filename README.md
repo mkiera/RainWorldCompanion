@@ -7,7 +7,8 @@ snapshot from another before you restore it.
 
 This version does not edit saves. Files are copied byte for byte in both directions, because the
 UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
-reads back.
+reads back. It reads Rain Meadow's online saves with the same reader, pairs each one with the local
+slot it shares a number with, and can copy one whole slot onto the other.
 
 ## What it manages
 
@@ -16,13 +17,26 @@ in the save folder:
 
 - `sav`, `sav2`, `sav3` (story slots 1 to 3)
 - `exp<n>` and `expCore<n>` (expedition state, for example `exp1` and `expCore1`)
-- `online_sav`, `online_sav2`, `online_sav3`
-- `ModConfigs\devourment.txt`
-- `dvrmentSaveStates\` and everything inside it, at any depth
-- `ModConfigs\DvrmentConfs\` and everything inside it, at any depth
+- `online_sav`, `online_sav2`, `online_sav3` (Rain Meadow's online slots), and the
+  `online_sav-<n>` names a lobby joined from an Expedition slot writes
+- `meadow.json` (Rain Meadow character progression)
+- `buffMain<n>` and `buffsave<n>` (RandomBuff save data)
+- every `.txt` file sitting directly in `ModConfigs\`, which is where mods keep their settings
+- `dvrmentSaveStates\`, `ModConfigs\DvrmentConfs\`, `dressmyslugcat\`, `RandomBuff\` and `Warp\`,
+  with everything inside them at any depth
 
-Everything else is left alone, including `options`, the game's own `backup\` and `cloud\` folders,
-`steam_autocloud.vdf`, and other mods' config files.
+The rule behind that list is save data and mod configuration. Anything the game or Steam rewrites
+on its own stays out of it:
+
+- `options` and `localoptions.txt`, which hold resolution, keybinds and arena setup, and are
+  rewritten every time you change one
+- `SJ_0`, `SJ_1` and `SJ_2`, which hold karma cap screenshots the game redraws by itself and run to
+  several megabytes
+- `steam_autocloud.vdf` wherever it appears, including inside a folder the app otherwise takes
+  whole, because putting a stale one back tells the Steam client that files it has already synced
+  are current
+- `cloud\`, which is Steam's, and `backup\`, which belongs to the game's own backup manager and
+  runs to hundreds of megabytes
 
 The name match is exact and anchored. A live save folder often holds files such as `sav - Copy`,
 `sav - Copy (2)` and `sav.bak` sitting next to `sav`, and a pattern such as `sav*` would pull
@@ -96,6 +110,43 @@ number on the campaign header, and a line under the tree says how many were not 
 A backup's panel is filled from the manifest that was written with it, so selecting a backup
 costs no disk read.
 
+## Rain Meadow
+
+Rain Meadow keeps a second save for each slot. It hooks the method the game uses to name the save
+file and returns `online_sav` where the game would have said `sav`, off the same slot number, so
+slot 2 is `sav2` on your own and `online_sav2` in a lobby. The two files sit side by side in the
+save folder and are the same format byte for byte, which is why one reader handles both. Expedition
+is not hooked, so online play is story mode.
+
+The detail panel pairs them: local and online in one row per slot number, inside a foldout that
+starts closed and is absent when the folder holds no online save at all. A slot with no online file
+yet still gets a row, because copying a local save into an empty online slot is what that row is
+for.
+
+The two copy buttons sit between the halves. A copy replaces the whole target file byte for byte
+and takes a safety snapshot of the save folder first, the same kind a restore takes, so the file it
+overwrote can be put back by restoring that snapshot. The operation is a file copy and nothing more,
+so the byte order mark, the padding and the MD5 inside the payload all arrive unchanged and the game
+reads the result as the file it came from. The confirmation names both files, their sizes and what
+is in each, and the copy is refused if the safety snapshot does not hold the file that is about to
+be replaced.
+
+Moving one campaign between slots is not in this version. That means rewriting the payload and
+recomputing the MD5 the game checks it against, and getting that wrong is what destroys a save. It
+belongs with the save editor.
+
+Rain Meadow records the map you have explored and a progression record whether or not a campaign is
+saved, so an online save can hold 12 KB of real progress with no campaign in it. The panel describes
+that as map and progression data. A slot that has never been played holds nothing and says so.
+
+`meadow.json` is Rain Meadow's own progression file, and the panel reads it: the character picked in
+the menu, play time, progress towards the next emote, skin and character, and per character the
+unlocked emotes and skins, the chosen skin and tint, the emote wheel, and the room it last saved in.
+Play time is stored in milliseconds, added at 1000 divided by the frame rate once per game update,
+so it runs slightly short of real time at a frame rate that does not divide 1000. The file belongs
+to the mod and its shape can change with an update, so anything the app cannot make sense of is
+reported in place rather than treated as damage.
+
 ## Slugcat portraits
 
 Campaigns and backup rows carry the face of the slugcat they belong to. The art is read from your
@@ -158,15 +209,37 @@ The order is fixed:
 4. Take a safety snapshot of the save folder as it is right now, and abandon the restore if that
    snapshot does not complete.
 5. Check again that the game is closed, then copy the backup's files over the live ones.
-6. Delete the in-scope live files the backup does not have, then remove folders inside
-   `dvrmentSaveStates\` and `ModConfigs\DvrmentConfs\` that this left empty.
+6. Delete the in-scope live files the backup does not have, then remove the folders that left
+   empty.
 7. Re-hash the restored files and confirm they match the backup.
 
 Step 6 only runs when every file in step 5 was copied, so a restore that failed to write your
 saves back does not reach the step that deletes what is there now.
 
+Step 6 removes only the folders that restore emptied, and only inside the folders the app takes
+whole. A folder that was already empty before the restore stays where it is, and so does the top of
+each of those folders, which the mod that owns it expects to find.
+
 If a restore stops part way, the message says so and names the safety snapshot, which is the way
 back. Restore that snapshot to return the save folder to how it was before you started.
+
+### Restoring a backup taken before this version
+
+The list of managed files grew in this version, and a restore deletes managed files the backup does
+not have, so widening that list widens what a restore can delete. A backup taken before this version
+holds no `meadow.json`, no RandomBuff save data, no mod configs and none of the three folders added
+above, and a restore that read those absences as instructions would remove all of them.
+
+Every backup records which version of the rules decided its contents, and a restore deletes a file
+only when both today's rules and the backup's own rules covered it. A backup written before that
+version was recorded counts as the first one. Restoring a backup from before this version therefore
+leaves the newly covered files as they are, and the confirmation lists them under a heading that
+says so, beside the files that will be deleted.
+
+An exclusion added since a backup was taken cuts the other way. `steam_autocloud.vdf` is left out
+now wherever it appears, so an older backup holding one does not write it back. The confirmation
+lists those too. Either list means the save folder will not match the backup exactly, which is why
+both are on screen before you confirm.
 
 ## The safety snapshot
 

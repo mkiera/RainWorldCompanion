@@ -58,8 +58,19 @@ public static class SaveMetadataExtractor
 
     private const int MaxErrorLength = 200;
 
-    /// <summary>Never throws. On failure returns metadata with ParseError set.</summary>
+    /// <summary>
+    /// Never throws. On failure returns metadata with ParseError set. The realm is taken from the
+    /// file name, so a file read out of the save folder under its real name lands on the right
+    /// side without the caller saying so.
+    /// </summary>
     public static SlotMetadata Extract(string filePath, int slotNumber)
+        => Extract(filePath, slotNumber, SaveSlotRef.RealmForFileName(SafeFileName(filePath)));
+
+    /// <summary>
+    /// Never throws. Same as <see cref="Extract(string, int)"/> with the realm stated outright,
+    /// for a file whose name does not say which set it came from.
+    /// </summary>
+    public static SlotMetadata Extract(string filePath, int slotNumber, SaveRealm realm)
     {
         string fileName = SafeFileName(filePath);
 
@@ -67,25 +78,25 @@ public static class SaveMetadataExtractor
         {
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                return Failed(slotNumber, fileName, "no file path");
+                return Failed(slotNumber, fileName, realm, "no file path");
             }
 
             if (!File.Exists(filePath))
             {
-                return Failed(slotNumber, fileName, "file not found");
+                return Failed(slotNumber, fileName, realm, "file not found");
             }
 
             if (!SaveContainer.TryRead(filePath, out SaveContainer? container, out string? error)
                 || container is null)
             {
-                return Failed(slotNumber, fileName, Shorten(Localise(error, filePath, fileName)) ?? "unreadable save container");
+                return Failed(slotNumber, fileName, realm, Shorten(Localise(error, filePath, fileName)) ?? "unreadable save container");
             }
 
             // A hashtable whose Keys and Values disagree has lost entries. Reporting that as a
             // parse error is the only thing that separates a damaged slot from an unused one.
             if (container.StructureProblem is { } structureProblem)
             {
-                return Failed(slotNumber, fileName, Shorten(structureProblem) ?? "the save file is damaged");
+                return Failed(slotNumber, fileName, realm, Shorten(structureProblem) ?? "the save file is damaged");
             }
 
             // No "save" key is a real state, not a failure: exp1 has no keys at all and
@@ -96,8 +107,10 @@ public static class SaveMetadataExtractor
                 {
                     Slot = slotNumber,
                     FileName = fileName,
+                    Realm = realm,
                     ChecksumValid = null,
                     Campaigns = Array.Empty<CampaignSummary>(),
+                    RecordCount = 0,
                     ParseError = null,
                 };
             }
@@ -107,9 +120,19 @@ public static class SaveMetadataExtractor
             // failed checksum tells the player their save is corrupt when the game reads it fine.
             bool hasDigest = SaveChecksum.TryUnwrap(rawValue, out string payload, out bool checksumValid);
 
+            // An empty payload is an untouched slot, which is what online_sav3 is on a fresh
+            // install: the value is the digest and nothing after it. That reads as no campaigns
+            // and no parse error, so Describe says "empty" rather than reporting a failure.
+            // Every record is counted, not only the campaigns. A Rain Meadow online_sav commonly
+            // holds MAP, MAPUPDATE and MISCPROG records and no SAVE STATE at all, and without the
+            // total the app has no way to tell that file from a slot that has never been played.
             var campaigns = new List<CampaignSummary>();
+            int records = 0;
+
             foreach (RecordSpan record in SavePayloadReader.EnumerateRecords(payload))
             {
+                records++;
+
                 // Compare the header before touching the body. MAP records run to hundreds of
                 // kilobytes and copying one out to look at its header is wasted work.
                 if (!record.HeaderIs(SaveStateHeader))
@@ -124,44 +147,36 @@ public static class SaveMetadataExtractor
             {
                 Slot = slotNumber,
                 FileName = fileName,
+                Realm = realm,
                 ChecksumValid = hasDigest ? checksumValid : null,
                 Campaigns = campaigns,
+                RecordCount = records,
                 ParseError = null,
             };
         }
         catch (Exception ex)
         {
-            return Failed(slotNumber, fileName, Shorten(ex.Message) ?? ex.GetType().Name);
+            return Failed(slotNumber, fileName, realm, Shorten(ex.Message) ?? ex.GetType().Name);
         }
     }
 
-    /// <summary>"sav" to 1, "sav2" to 2, "sav3" to 3. Anything else is null.</summary>
-    public static int? SlotNumberForFileName(string fileName)
-    {
-        if (string.IsNullOrEmpty(fileName))
-        {
-            return null;
-        }
+    /// <summary>
+    /// "sav" to 1, "sav2" to 2, "sav3" to 3, and the Rain Meadow "online_sav", "online_sav2",
+    /// "online_sav3" to the same 1, 2, 3. Anything else is null.
+    /// </summary>
+    public static int? SlotNumberForFileName(string fileName) => SlotForFileName(fileName)?.Slot;
 
-        // Exact match only. The live save folder holds "sav - Copy" and "sav - Copy (2)"
-        // next to "sav", and a prefix or glob match would pick those up.
-        if (string.Equals(fileName, "sav", StringComparison.OrdinalIgnoreCase))
-        {
-            return 1;
-        }
-
-        if (string.Equals(fileName, "sav2", StringComparison.OrdinalIgnoreCase))
-        {
-            return 2;
-        }
-
-        if (string.Equals(fileName, "sav3", StringComparison.OrdinalIgnoreCase))
-        {
-            return 3;
-        }
-
-        return null;
-    }
+    /// <summary>
+    /// The slot a container file name stands for, realm and number together. Null when the name is
+    /// not one of the six.
+    ///
+    /// Both realms are numbered by the same Options.saveSlot. Options.GetSaveFileName_SavOrExp
+    /// returns "sav" for saveSlot 0 and "sav" + (saveSlot + 1) above it, and Rain Meadow's hook
+    /// RainMeadow.RainMeadow.Options_GetSaveFileName_SavOrExp returns "online_sav" and
+    /// "online_sav" + (saveSlot + 1) from the same field once a lobby is joined. So online_sav2
+    /// is the online half of the same UI slot 2 that sav2 is the local half of.
+    /// </summary>
+    public static SaveSlotRef? SlotForFileName(string fileName) => SaveSlotRef.ForFileName(fileName);
 
     private static CampaignSummary BuildCampaign(string body)
     {
@@ -417,11 +432,12 @@ public static class SaveMetadataExtractor
         }
     }
 
-    private static SlotMetadata Failed(int slotNumber, string fileName, string reason) =>
+    private static SlotMetadata Failed(int slotNumber, string fileName, SaveRealm realm, string reason) =>
         new()
         {
             Slot = slotNumber,
             FileName = fileName,
+            Realm = realm,
             ChecksumValid = null,
             Campaigns = Array.Empty<CampaignSummary>(),
             ParseError = reason,

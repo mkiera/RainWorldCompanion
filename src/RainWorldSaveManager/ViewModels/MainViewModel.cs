@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
 using RainWorldSaveManager.Core.Settings;
 using RainWorldSaveManager.Core.System;
@@ -37,6 +38,9 @@ public sealed partial class MainViewModel : ObservableObject
     private AppSettings _settings;
     private BackupService? _backupService;
 
+    /// <summary>Built beside the backup service, because it borrows that service's safety snapshot.</summary>
+    private SlotCopyService? _copyService;
+
     // 1 while a poll is running. Interlocked because the poll's own continuation clears it on a
     // worker thread while the timer tick sets it on the dispatcher.
     private int _pollInFlight;
@@ -48,6 +52,14 @@ public sealed partial class MainViewModel : ObservableObject
     private IReadOnlyList<SlotMetadata> _liveSlotData = Array.Empty<SlotMetadata>();
     private long _liveSizeBytes;
     private int _liveFileCount;
+
+    // meadow.json for the live folder and for each snapshot, read during the refresh with the rest
+    // of the disk work. Null means the folder holds no such file, which is what a save folder
+    // without Rain Meadow looks like and is why the panel leaves the section out rather than
+    // reporting a missing file. A snapshot with no entry here is the same case.
+    private MeadowProfile? _liveMeadow;
+    private IReadOnlyDictionary<string, MeadowProfile> _backupMeadow =
+        new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
 
     public MainViewModel(
         SettingsStore settingsStore,
@@ -147,7 +159,14 @@ public sealed partial class MainViewModel : ObservableObject
 
     public string BackupCountText => Backups.Count == 1 ? "1 backup" : Backups.Count + " backups";
 
-    /// <summary>The one line under the LIVE SAVE heading, for example "3 slots   11 campaigns".</summary>
+    /// <summary>
+    /// The one line under the LIVE SAVE heading, for example "3 slots   11 campaigns".
+    ///
+    /// The campaign count is built by the same helper the detail header and the backup rows use.
+    /// Counting the rows on this card alone made the card and the header beside it print two
+    /// different totals for the same folder, because the header counted the Rain Meadow online
+    /// saves too and the card lists only the local ones.
+    /// </summary>
     public string LiveSummaryText
     {
         get
@@ -157,15 +176,50 @@ public sealed partial class MainViewModel : ObservableObject
                 return "";
             }
 
-            var campaigns = 0;
+            var local = 0;
             foreach (var slot in LiveSlots)
             {
-                campaigns += slot.Campaigns.Count;
+                local += slot.Campaigns.Count;
+            }
+
+            var online = 0;
+            foreach (var slot in _liveSlotData)
+            {
+                if (slot.Realm == SaveRealm.Online)
+                {
+                    online += slot.Campaigns.Count;
+                }
             }
 
             var slots = LiveSlots.Count == 1 ? "1 slot" : LiveSlots.Count + " slots";
-            var runs = campaigns == 1 ? "1 campaign" : campaigns + " campaigns";
-            return slots + "   " + runs;
+            return slots + "   " + CampaignCount.Describe(local, online);
+        }
+    }
+
+    /// <summary>
+    /// The Rain Meadow line under the live save card, or empty when the folder holds no online
+    /// save. The card lists the local slots only, so without this an online save would be invisible
+    /// until the detail panel was opened.
+    /// </summary>
+    public string LiveOnlineText
+    {
+        get
+        {
+            var online = 0;
+            foreach (var slot in _liveSlotData)
+            {
+                if (slot.Realm == SaveRealm.Online)
+                {
+                    online++;
+                }
+            }
+
+            return online switch
+            {
+                0 => "",
+                1 => "1 Rain Meadow online save",
+                _ => online + " Rain Meadow online saves",
+            };
         }
     }
 
@@ -178,9 +232,11 @@ public sealed partial class MainViewModel : ObservableObject
         get
         {
             var summary = LiveSummaryText;
+            var online = LiveOnlineText.Length == 0 ? "" : ", " + LiveOnlineText;
+
             return summary.Length == 0
-                ? "Live save, no save files found"
-                : "Live save, " + summary.Replace("   ", ", ");
+                ? "Live save, no save files found" + online
+                : "Live save, " + summary.Replace("   ", ", ") + online;
         }
     }
 
@@ -229,6 +285,13 @@ public sealed partial class MainViewModel : ObservableObject
         // window that has gone.
         _shutdown.Cancel();
     }
+
+    // The copy buttons in the detail panel are their own commands, so the attributes on IsBusy and
+    // IsGameRunning cannot reach them. These two put the copy buttons behind the same gate as New
+    // Backup and Restore.
+    partial void OnIsBusyChanged(bool value) => Detail?.RaiseCopyStates();
+
+    partial void OnIsGameRunningChanged(bool value) => Detail?.RaiseCopyStates();
 
     /// <summary>Shows the save folder as it is on disk, so a backup can be read against it.</summary>
     [RelayCommand]
@@ -294,11 +357,163 @@ public sealed partial class MainViewModel : ObservableObject
                 SavePathText,
                 _liveSizeBytes,
                 _liveFileCount,
+                _liveMeadow,
+                BuildCopyGate(),
                 _icons);
             return;
         }
 
-        Detail = SelectedBackup is { } item ? SnapshotDetailViewModel.ForBackup(item, _icons) : null;
+        Detail = SelectedBackup is { } item
+            ? SnapshotDetailViewModel.ForBackup(item, FindMeadow(item.Id), _icons)
+            : null;
+    }
+
+    /// <summary>
+    /// What the copy buttons in the detail panel talk to, or null when there is no service to copy
+    /// with. Null is what keeps the buttons off a panel built before the settings were valid.
+    /// </summary>
+    private SlotCopyGate? BuildCopyGate() =>
+        _copyService is null ? null : new SlotCopyGate(CanCopySlot, RequestSlotCopy);
+
+    private bool CanCopySlot() => !IsBusy && !IsGameRunning && _copyService is not null;
+
+    // async void because the gate hands the panel a plain Action. Everything CopySlotAsync can
+    // fail at is already reported as a message box, and this catch is for the rest.
+    private async void RequestSlotCopy(int slot, bool toOnline)
+    {
+        try
+        {
+            await CopySlotAsync(slot, toOnline);
+        }
+        catch (Exception ex)
+        {
+            Report("The copy could not be started.", ex);
+        }
+    }
+
+    private MeadowProfile? FindMeadow(string id) =>
+        _backupMeadow.TryGetValue(id, out var profile) ? profile : null;
+
+    /// <summary>
+    /// Copies one whole slot file onto the other half of the same slot number.
+    ///
+    /// <paramref name="toOnline"/> true means the local save is copied onto the Rain Meadow online
+    /// save, false means the other way. Core does the work: this asks it for a plan, shows that
+    /// plan, and runs the copy on a worker with the busy overlay up, the same shape as Restore.
+    /// </summary>
+    private async Task CopySlotAsync(int slot, bool toOnline)
+    {
+        var copies = _copyService;
+        if (copies is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        var from = new SaveSlotRef(toOnline ? SaveRealm.Local : SaveRealm.Online, slot);
+        var to = new SaveSlotRef(toOnline ? SaveRealm.Online : SaveRealm.Local, slot);
+
+        SlotCopyPlan? plan = null;
+        Exception? failure = null;
+
+        BeginBusy("Copy save slot", "Working out what would change");
+        try
+        {
+            plan = await Task.Run(() => copies.PlanCopy(from, to));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The copy could not be worked out.", failure);
+            return;
+        }
+
+        if (!plan!.CanCopy)
+        {
+            ShowMessage(
+                "This copy cannot be made.\n\n" + FormatList(plan.Problems),
+                "Copy save slot",
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var dialog = new CopySlotDialog(plan);
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SlotCopyResult? result = null;
+
+        BeginBusy("Copying save slot", "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(() =>
+                copies.CopySlot(from, to, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The copy failed.", failure);
+            return;
+        }
+
+        ReportCopyResult(result!);
+    }
+
+    /// <summary>
+    /// Reports a finished copy. The headline is built by Core, so a copy that wrote to the save
+    /// folder can never be reported with the same wording as one that refused to start.
+    /// </summary>
+    private void ReportCopyResult(SlotCopyResult result)
+    {
+        var text = new StringBuilder();
+        text.Append(result.Headline()).Append("\n\n");
+
+        if (result.Success)
+        {
+            if (result.SafetySnapshot is { } safety)
+            {
+                text.Append("Safety snapshot of your previous saves: ").Append(safety.Id).Append("\n\n");
+            }
+
+            text.Append(SteamGuidance);
+
+            if (result.Warnings.Count > 0)
+            {
+                text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+            }
+
+            ShowMessage(text.ToString(), "Copy save slot", MessageBoxImage.Information);
+            return;
+        }
+
+        text.Append(FormatList(result.Errors));
+
+        if (result.Warnings.Count > 0)
+        {
+            text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+        }
+
+        ShowMessage(text.ToString(), "Copy save slot", MessageBoxImage.Error);
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -657,6 +872,10 @@ public sealed partial class MainViewModel : ObservableObject
             ConfigProblem = built.Error is null ? "" : "The backup service could not be started: " + built.Error;
         }
 
+        // The copy service is the backup service plus the game check, and it goes away with it, so
+        // a folder the app cannot back up is also a folder it will not copy a slot inside.
+        _copyService = _backupService?.SlotCopies;
+
         RaiseCommandStates();
     }
 
@@ -683,6 +902,8 @@ public sealed partial class MainViewModel : ObservableObject
             _liveSlotData = Array.Empty<SlotMetadata>();
             _liveSizeBytes = 0;
             _liveFileCount = 0;
+            _liveMeadow = null;
+            _backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
             LiveSlots.Clear();
             Backups.Clear();
             SelectedBackup = null;
@@ -711,16 +932,41 @@ public sealed partial class MainViewModel : ObservableObject
                 var snapshots = service.ListBackups();
                 var measured = MeasureLiveFiles(service.SaveRoot, slots);
                 _icons.Preload(CollectSlugcatIds(slots, snapshots));
-                return (Slots: slots, Snapshots: snapshots, measured.Size, measured.Count);
+
+                // One small json per folder, read here with the rest of the disk work so that
+                // selecting a row still costs nothing. ListBackups has already read a manifest out
+                // of each of these folders, so this is the same order of cost again.
+                var liveMeadow = ReadMeadow(service.SaveRoot);
+                var backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
+                foreach (var snapshot in snapshots)
+                {
+                    if (ReadMeadow(snapshot.DirectoryPath) is { } profile)
+                    {
+                        backupMeadow[snapshot.Id] = profile;
+                    }
+                }
+
+                return (Slots: slots, Snapshots: snapshots, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow);
             });
 
             _liveSlotData = data.Slots;
             _liveSizeBytes = data.Size;
             _liveFileCount = data.Count;
+            _liveMeadow = data.LiveMeadow;
+            _backupMeadow = data.BackupMeadow;
 
+            // The card lists the local slots. The Rain Meadow online saves share these slot
+            // numbers, so listing both here would show slot 2 twice with no way to tell which is
+            // which. They are paired with their local halves in the detail panel instead, and the
+            // line under the card says how many there are.
             LiveSlots.Clear();
             foreach (var slot in data.Slots)
             {
+                if (slot.Realm == SaveRealm.Online)
+                {
+                    continue;
+                }
+
                 LiveSlots.Add(new SlotViewModel(slot, _icons));
             }
 
@@ -819,6 +1065,27 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         return (size, count);
+    }
+
+    /// <summary>
+    /// meadow.json out of one folder, which is either the save folder or a snapshot, or null when
+    /// there is no such file. Runs on the worker with the rest of the disk work.
+    ///
+    /// The absent case is deliberately separate from a read that failed. A save folder with no
+    /// Rain Meadow in it has no meadow.json, and reporting that as an unreadable file would put a
+    /// warning in front of every player who does not use the mod.
+    /// </summary>
+    private static MeadowProfile? ReadMeadow(string folder)
+    {
+        try
+        {
+            var path = Path.Combine(folder, MeadowProfile.FileName);
+            return File.Exists(path) ? MeadowProfile.Read(path) : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -976,6 +1243,7 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasNoBackups));
         OnPropertyChanged(nameof(BackupCountText));
         OnPropertyChanged(nameof(LiveSummaryText));
+        OnPropertyChanged(nameof(LiveOnlineText));
         OnPropertyChanged(nameof(LiveAccessibleName));
     }
 

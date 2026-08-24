@@ -46,7 +46,7 @@ public class BackupScopeTests
     }
 
     [Fact]
-    public void Steam_cloud_state_and_unrelated_mod_configs_are_excluded()
+    public void Steam_cloud_state_is_excluded_wherever_it_sits()
     {
         using var live = new TempDirectory("live");
         SaveTree.Populate(live);
@@ -54,7 +54,22 @@ public class BackupScopeTests
         var found = SaveTree.Sorted(new BackupScope(live.Path).Enumerate().Select(e => e.RelativePath));
 
         Assert.DoesNotContain("steam_autocloud.vdf", found);
-        Assert.DoesNotContain(@"ModConfigs\moreslugcats.txt", found);
+        Assert.DoesNotContain(@"ModConfigs\steam_autocloud.vdf", found);
+    }
+
+    [Fact]
+    public void Every_mod_config_under_ModConfigs_is_included()
+    {
+        // The rule is every .txt in ModConfigs, not devourment.txt alone. A player who has to
+        // restore a save wants the mod settings that save was played with back as well, and the
+        // files are a few kilobytes each.
+        using var live = new TempDirectory("live");
+        SaveTree.Populate(live);
+
+        var found = SaveTree.Sorted(new BackupScope(live.Path).Enumerate().Select(e => e.RelativePath));
+
+        Assert.Contains(@"ModConfigs\devourment.txt", found);
+        Assert.Contains(@"ModConfigs\moreslugcats.txt", found);
     }
 
     [Fact]

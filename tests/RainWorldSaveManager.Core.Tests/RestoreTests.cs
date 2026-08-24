@@ -9,7 +9,9 @@ namespace RainWorldSaveManager.Tests;
 public class RestoreTests
 {
     private const string NewInScopeFile = @"dvrmentSaveStates\contents_1_Rivulet_story.txt";
-    private const string NewOutOfScopeFile = @"ModConfigs\rainmeadow.txt";
+    // Game settings, not save data. ModConfigs\*.txt is in scope now, so an unrelated mod's
+    // config no longer works as the out-of-scope file this suite adds.
+    private const string NewOutOfScopeFile = "localoptions.txt";
 
     // ---- PlanRestore ----
 
@@ -378,6 +380,6 @@ public class RestoreTests
         world.Live.WriteBytes("sav3", SyntheticSave.SaveFile(SyntheticSave.SavePayload(cycle: 999), paddingBytes: 16));
         File.Delete(world.Live.Resolve("online_sav"));
         world.Live.WriteText(NewInScopeFile, "Rivulet|Slugcat|1|stomach");
-        world.Live.WriteText(NewOutOfScopeFile, "SomeOtherMod<optB>7");
+        world.Live.WriteText(NewOutOfScopeFile, "fullscreen<optB>true");
     }
 }

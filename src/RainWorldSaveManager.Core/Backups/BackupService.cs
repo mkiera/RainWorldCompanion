@@ -39,6 +39,7 @@ public sealed class BackupService
 
     private FileStream? _operationLock;
     private int _operationDepth;
+    private SlotCopyService? _slotCopies;
 
     public BackupService(string saveRoot, string backupRoot, IGameProcessDetector gameDetector, string appVersion)
         : this(saveRoot, backupRoot, gameDetector, appVersion, scope: null)
@@ -118,6 +119,11 @@ public sealed class BackupService
         var manifest = new BackupManifest
         {
             SchemaVersion = BackupManifest.CurrentSchemaVersion,
+
+            // Read off the scope that just produced scan, rather than off the current rules, so
+            // the snapshot says which rules actually decided its contents. A restore reads this
+            // back before it deletes anything.
+            ScopeVersion = Scope.Version,
             AppVersion = _appVersion,
             CreatedUtc = DateTime.UtcNow,
             Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
@@ -207,6 +213,9 @@ public sealed class BackupService
     /// <summary>
     /// What restoring this snapshot would do, worked out by comparing it against the live folder.
     /// Timestamps are ignored: sameness means the bytes hash the same.
+    ///
+    /// The deletion list is judged by the scope rules the snapshot was taken under, so it says
+    /// what the restore will really remove rather than what today's wider rules would remove.
     /// </summary>
     public RestorePlan PlanRestore(BackupSnapshot snapshot)
     {
@@ -216,11 +225,15 @@ public sealed class BackupService
         var overwritten = new List<string>();
         var unchanged = new List<string>();
         var deleted = new List<string>();
+        var leftAlone = new List<string>();
+        var notRestored = new List<string>();
 
         if (snapshot.Manifest is not { } manifest)
         {
             return new RestorePlan(added, overwritten, unchanged, deleted);
         }
+
+        var snapshotScopeVersion = manifest.EffectiveScopeVersion;
 
         var live = new Dictionary<string, ScopeEntry>(PathComparer);
         foreach (var entry in Scope.Enumerate())
@@ -239,6 +252,16 @@ public sealed class BackupService
             }
 
             inSnapshot.Add(relative);
+
+            // A file the snapshot holds and today's rules no longer cover is not put back, so it
+            // belongs in neither "added" nor "overwritten". Listing it as added would promise the
+            // user a file the restore is about to skip.
+            if (!Scope.IsInScope(relative)
+                && Scope.IsExcludedSinceScopeVersion(relative, snapshotScopeVersion))
+            {
+                notRestored.Add(relative);
+                continue;
+            }
 
             if (!live.TryGetValue(relative, out var liveEntry))
             {
@@ -276,10 +299,24 @@ public sealed class BackupService
 
         foreach (var liveEntry in live.Values)
         {
-            // Both conditions come from the scope, so nothing outside it can reach this list.
-            if (!inSnapshot.Contains(liveEntry.RelativePath) && Scope.IsInScope(liveEntry.RelativePath))
+            if (inSnapshot.Contains(liveEntry.RelativePath))
+            {
+                continue;
+            }
+
+            // Both conditions come from the scope, so nothing outside it can reach either list.
+            if (!Scope.IsInScope(liveEntry.RelativePath))
+            {
+                continue;
+            }
+
+            if (IsDeletableByRestore(liveEntry.RelativePath, snapshotScopeVersion))
             {
                 deleted.Add(liveEntry.RelativePath);
+            }
+            else
+            {
+                leftAlone.Add(liveEntry.RelativePath);
             }
         }
 
@@ -287,9 +324,29 @@ public sealed class BackupService
         overwritten.Sort(PathComparer);
         unchanged.Sort(PathComparer);
         deleted.Sort(PathComparer);
+        leftAlone.Sort(PathComparer);
+        notRestored.Sort(PathComparer);
 
-        return new RestorePlan(added, overwritten, unchanged, deleted);
+        return new RestorePlan(added, overwritten, unchanged, deleted)
+        {
+            LeftAlone = leftAlone,
+            NotRestored = notRestored,
+        };
     }
+
+    /// <summary>
+    /// Whether restoring a snapshot taken under <paramref name="snapshotScopeVersion"/> may delete
+    /// a live file the snapshot does not hold.
+    ///
+    /// A file is only ever missing from a snapshot for two reasons: it was not there when the
+    /// snapshot was taken, or the rules of the day did not cover it. Only the first is the user
+    /// deleting something. Asking the scope under both versions separates them: the file has to be
+    /// one this app manages today and one the snapshot would have captured, so restoring a backup
+    /// from before Rain Meadow support leaves meadow.json alone instead of reading its absence as
+    /// an instruction.
+    /// </summary>
+    private bool IsDeletableByRestore(string relativePath, int snapshotScopeVersion) =>
+        Scope.IsInScope(relativePath) && Scope.IsInScope(relativePath, snapshotScopeVersion);
 
     /// <summary>
     /// Re-hashes the files inside a snapshot against its own manifest and reports every
@@ -477,8 +534,10 @@ public sealed class BackupService
         // (e) Overwrite the live files. Per-file failures are collected so one locked file does
         // not stop the rest, and every one of them is reported.
         var restored = new List<ManifestFileEntry>(manifest.Files.Count);
+        var notRestored = new List<string>();
         var liveModified = false;
         string? stopped = null;
+        var snapshotScopeVersion = manifest.EffectiveScopeVersion;
 
         for (var index = 0; index < manifest.Files.Count; index++)
         {
@@ -498,6 +557,21 @@ public sealed class BackupService
 
             var file = manifest.Files[index];
             var relative = NormaliseRelative(file.RelativePath);
+
+            // An exclusion added since the snapshot was taken is not a broken manifest. The rules
+            // that wrote this snapshot took the file, today's rules leave it out, and putting a
+            // stale steam_autocloud.vdf back is exactly what excluding it is for. Skipping it is a
+            // note, not a failure: treating it as one would fail the whole restore and, worse,
+            // skip the deletion step below, turning a return to one moment into a merge.
+            if (!Scope.IsInScope(relative)
+                && Scope.IsExcludedSinceScopeVersion(relative, snapshotScopeVersion))
+            {
+                notRestored.Add(relative);
+                warnings.Add(
+                    $"{relative} is in this backup but is no longer one of the files this app manages, " +
+                    "so it was left as it is rather than written back.");
+                continue;
+            }
 
             if (!Scope.IsInScope(relative)
                 || !TryResolveInside(snapshot.DirectoryPath, relative, out var source)
@@ -536,7 +610,12 @@ public sealed class BackupService
             }
         }
 
-        var everyFileLanded = stopped is null && errors.Count == 0 && restored.Count == manifest.Files.Count;
+        // A file skipped because today's rules exclude it counts as landed. It is where the
+        // snapshot's own rules would leave it, and the alternative is that one such entry stops
+        // the deletion step from running at all.
+        var everyFileLanded = stopped is null
+            && errors.Count == 0
+            && restored.Count + notRestored.Count == manifest.Files.Count;
 
         try
         {
@@ -553,6 +632,9 @@ public sealed class BackupService
 
                 progress?.Report("Removing files the backup does not have");
 
+                var leftAlone = new List<string>();
+                var removed = new List<string>();
+
                 foreach (var liveEntry in Scope.Enumerate())
                 {
                     if (ct.IsCancellationRequested)
@@ -561,8 +643,20 @@ public sealed class BackupService
                         break;
                     }
 
-                    if (keep.Contains(liveEntry.RelativePath) || !Scope.IsInScope(liveEntry.RelativePath))
+                    if (keep.Contains(liveEntry.RelativePath))
                     {
+                        continue;
+                    }
+
+                    if (!IsDeletableByRestore(liveEntry.RelativePath, snapshotScopeVersion))
+                    {
+                        // Out of scope entirely, or in scope only under rules newer than this
+                        // snapshot. Either way its absence from the manifest says nothing.
+                        if (Scope.IsInScope(liveEntry.RelativePath))
+                        {
+                            leftAlone.Add(liveEntry.RelativePath);
+                        }
+
                         continue;
                     }
 
@@ -572,6 +666,7 @@ public sealed class BackupService
                         ClearReadOnly(liveEntry.FullPath);
                         File.Delete(liveEntry.FullPath);
                         liveModified = true;
+                        removed.Add(liveEntry.RelativePath);
                     }
                     catch (Exception ex)
                     {
@@ -579,9 +674,17 @@ public sealed class BackupService
                     }
                 }
 
+                if (leftAlone.Count > 0)
+                {
+                    leftAlone.Sort(PathComparer);
+                    warnings.Add(
+                        $"Backup {snapshot.Id} was taken when this app backed up fewer kinds of file, so it does not hold " +
+                        $"{FormatPathList(leftAlone)}. Those files were left as they are rather than deleted.");
+                }
+
                 // An empty folder left behind changes nothing about the saves, so it is a note
                 // rather than a failure.
-                RemoveEmptiedScopeFolders(warnings);
+                RemoveEmptiedScopeFolders(warnings, snapshotScopeVersion, removed);
             }
             else
             {
@@ -678,6 +781,23 @@ public sealed class BackupService
     /// with its ParseError set rather than throwing.
     /// </summary>
     public IReadOnlyList<SlotMetadata> ReadLiveSlots() => ReadSlots(SaveRoot);
+
+    /// <summary>
+    /// Copying one whole slot file onto another. It borrows this service's safety snapshot and
+    /// this service's scope, so it hangs off the same object rather than being built separately.
+    /// </summary>
+    public SlotCopyService SlotCopies => _slotCopies ??= new SlotCopyService(this, _gameDetector);
+
+    /// <summary>
+    /// Copies one whole save slot file onto another, byte for byte. See
+    /// <see cref="SlotCopyService.CopySlot"/> for what that does and does not touch.
+    /// </summary>
+    public SlotCopyResult CopySlot(
+        SaveSlotRef from,
+        SaveSlotRef to,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+        => SlotCopies.CopySlot(from, to, progress, ct);
 
     private void EnsureGameNotRunning()
     {
@@ -776,21 +896,24 @@ public sealed class BackupService
             foreach (var fullPath in Directory.EnumerateFiles(rootDirectory, "*", SearchOption.TopDirectoryOnly))
             {
                 var name = Path.GetFileName(fullPath);
-                if (SaveMetadataExtractor.SlotNumberForFileName(name) is not { } slotNumber)
+                if (SaveMetadataExtractor.SlotForFileName(name) is not { } slot)
                 {
                     continue;
                 }
 
                 try
                 {
-                    slots.Add(SaveMetadataExtractor.Extract(fullPath, slotNumber));
+                    slots.Add(SaveMetadataExtractor.Extract(fullPath, slot.Slot, slot.Realm));
                 }
                 catch (Exception ex)
                 {
+                    // The realm comes from the name rather than being left to default, so a
+                    // Rain Meadow file that could not be read is still listed as an online one.
                     slots.Add(new SlotMetadata
                     {
-                        Slot = slotNumber,
+                        Slot = slot.Slot,
                         FileName = name,
+                        Realm = slot.Realm,
                         ParseError = ex.Message,
                     });
                 }
@@ -979,77 +1102,127 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Deletes folders inside the recursive scope folders that a restore left empty. The two
-    /// scope folders themselves stay, so the mod that owns them does not find them gone.
+    /// Deletes the folders this restore's own deletions left empty, and nothing else.
     ///
-    /// The walk is manual and skips reparse points. SearchOption.AllDirectories walks through a
-    /// junction, so a user who moved dvrmentSaveStates onto another drive and left a junction
-    /// behind would have empty folders deleted on the far side of it, outside the save folder
-    /// and outside anything the safety snapshot holds.
+    /// Only the parent chain of the files just removed is considered. Sweeping the scope folders
+    /// for any empty directory instead takes away ones the restore never touched: Warp\Export
+    /// ships empty, so a restore that changed nothing inside Warp would still remove it and the
+    /// mod would find its export directory gone.
+    ///
+    /// The folder list is the one the snapshot's own rules covered, so restoring a version 1
+    /// snapshot cannot reach into dressmyslugcat, RandomBuff or Warp, which those rules never
+    /// covered and which the confirmation dialog therefore never listed.
+    ///
+    /// The walk stops at the scope folders themselves, so the mod that owns one does not find it
+    /// gone, and every step checks for a reparse point: a user who moved dvrmentSaveStates onto
+    /// another drive and left a junction behind would otherwise have folders deleted on the far
+    /// side of it, outside the save folder and outside anything the safety snapshot holds.
     /// </summary>
-    private void RemoveEmptiedScopeFolders(List<string> warnings)
+    private void RemoveEmptiedScopeFolders(
+        List<string> warnings,
+        int snapshotScopeVersion,
+        IReadOnlyList<string> removedRelativePaths)
     {
-        foreach (var relativeRoot in BackupScope.RecursiveFolders)
+        if (removedRelativePaths.Count == 0)
+        {
+            return;
+        }
+
+        var roots = new List<string>();
+        foreach (var relativeRoot in BackupScope.RecursiveFoldersAt(snapshotScopeVersion))
         {
             var rootPath = Path.Combine(SaveRoot, relativeRoot);
-            if (!Directory.Exists(rootPath) || CanonicalPath.IsLink(rootPath))
+            if (Directory.Exists(rootPath) && !CanonicalPath.IsLink(rootPath))
             {
-                continue;
-            }
-
-            var directories = new List<string>();
-
-            try
-            {
-                var pending = new Stack<string>();
-                pending.Push(rootPath);
-
-                while (pending.Count > 0)
-                {
-                    foreach (var child in Directory.EnumerateDirectories(pending.Pop(), "*", SearchOption.TopDirectoryOnly))
-                    {
-                        if (CanonicalPath.IsLink(child))
-                        {
-                            continue;
-                        }
-
-                        directories.Add(child);
-                        pending.Push(child);
-                    }
-                }
-            }
-            catch (Exception)
-            {
-                continue;
-            }
-
-            // Deepest first, so a folder that only held empty folders also goes.
-            directories.Sort(static (a, b) => b.Length.CompareTo(a.Length));
-
-            foreach (var directory in directories)
-            {
-                try
-                {
-                    if (Directory.EnumerateFileSystemEntries(directory).Any())
-                    {
-                        continue;
-                    }
-
-                    // Last guard before a delete: the resolved path has to still be inside the
-                    // save folder.
-                    if (CanonicalPath.IsLink(directory) || !CanonicalPath.IsInside(SaveRoot, directory))
-                    {
-                        continue;
-                    }
-
-                    Directory.Delete(directory, recursive: false);
-                }
-                catch (Exception ex)
-                {
-                    warnings.Add($"Could not remove the empty folder {Path.GetRelativePath(SaveRoot, directory)}: {ex.Message}");
-                }
+                roots.Add(TrimSeparators(Path.GetFullPath(rootPath)));
             }
         }
+
+        if (roots.Count == 0)
+        {
+            return;
+        }
+
+        var candidates = new HashSet<string>(PathComparer);
+
+        foreach (var relative in removedRelativePaths)
+        {
+            if (!TryResolveInside(SaveRoot, relative, out var fullPath))
+            {
+                continue;
+            }
+
+            var directory = Path.GetDirectoryName(fullPath);
+
+            while (!string.IsNullOrEmpty(directory))
+            {
+                var trimmed = TrimSeparators(Path.GetFullPath(directory));
+
+                // A scope folder is where the climb stops. It stays, and so does everything above
+                // it, which includes the save folder itself.
+                if (IsOneOf(roots, trimmed) || !IsUnderAnyOf(roots, trimmed))
+                {
+                    break;
+                }
+
+                candidates.Add(trimmed);
+                directory = Path.GetDirectoryName(trimmed);
+            }
+        }
+
+        // Deepest first, so a folder that only held empty folders also goes.
+        var ordered = candidates.ToList();
+        ordered.Sort(static (a, b) => b.Length.CompareTo(a.Length));
+
+        foreach (var directory in ordered)
+        {
+            try
+            {
+                if (!Directory.Exists(directory) || Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    continue;
+                }
+
+                // Last guard before a delete: the resolved path has to still be inside the
+                // save folder.
+                if (CanonicalPath.IsLink(directory) || !CanonicalPath.IsInside(SaveRoot, directory))
+                {
+                    continue;
+                }
+
+                Directory.Delete(directory, recursive: false);
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"Could not remove the empty folder {Path.GetRelativePath(SaveRoot, directory)}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool IsOneOf(IReadOnlyList<string> roots, string candidate)
+    {
+        foreach (var root in roots)
+        {
+            if (PathComparer.Equals(root, candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsUnderAnyOf(IReadOnlyList<string> roots, string candidate)
+    {
+        foreach (var root in roots)
+        {
+            if (IsInside(root, candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ClearReadOnly(string path)
@@ -1145,6 +1318,24 @@ public sealed class BackupService
 
     private static string TrimSeparators(string path) =>
         path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    /// <summary>
+    /// Names a set of files for one line of a report, capped so a folder with hundreds of entries
+    /// does not turn a warning into a wall of text.
+    /// </summary>
+    private static string FormatPathList(IReadOnlyList<string> paths)
+    {
+        const int Limit = 8;
+
+        if (paths.Count <= Limit)
+        {
+            return string.Join(", ", paths);
+        }
+
+        var remainder = paths.Count - Limit;
+        return string.Join(", ", paths.Take(Limit))
+            + string.Format(CultureInfo.InvariantCulture, " and {0} more", remainder);
+    }
 
     private static string FormatSize(long bytes)
     {

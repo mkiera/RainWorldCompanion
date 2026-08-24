@@ -36,6 +36,33 @@ public sealed class BackupManifest
     private List<string> _skippedLinks = new();
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    /// <summary>
+    /// Which version of the <see cref="BackupScope"/> rules decided what went into this snapshot.
+    ///
+    /// <para>Restoring makes the in-scope part of the save folder match the snapshot, so a
+    /// snapshot taken under narrower rules must not be read as "the user deleted everything the
+    /// wider rules cover". This is what lets the restore tell the two apart, so it is written by
+    /// <see cref="BackupService.CreateBackup"/> and read by the restore before it deletes.</para>
+    ///
+    /// <para>Deliberately separate from <see cref="SchemaVersion"/>, which describes the shape of
+    /// manifest.json. The rules can widen without the file layout changing, and the layout can
+    /// change without the rules moving.</para>
+    ///
+    /// <para>Zero means the snapshot predates this field. The initialiser is zero rather than the
+    /// current version on purpose: an absent JSON property leaves an initialiser standing, so a
+    /// current default here would make every old snapshot claim today's rules and delete under
+    /// them. <see cref="EffectiveScopeVersion"/> is the value to read.</para>
+    /// </summary>
+    public int ScopeVersion { get; set; }
+
+    /// <summary>
+    /// The scope rules to judge this snapshot by: what it recorded, or version 1 for a snapshot
+    /// written before the version was recorded at all.
+    /// </summary>
+    [JsonIgnore]
+    public int EffectiveScopeVersion => ScopeVersion > 0 ? ScopeVersion : BackupScope.OriginalScopeVersion;
+
     public string AppVersion { get; set; } = "";
     public DateTime CreatedUtc { get; set; }
     public string? Label { get; set; }
@@ -215,7 +242,27 @@ public sealed record RestorePlan(
     IReadOnlyList<string> Added,
     IReadOnlyList<string> Overwritten,
     IReadOnlyList<string> Unchanged,
-    IReadOnlyList<string> Deleted);
+    IReadOnlyList<string> Deleted)
+{
+    /// <summary>
+    /// Live files the snapshot does not hold and the restore will still not delete, because the
+    /// scope rules in force when the snapshot was taken did not cover them. Restoring a backup
+    /// from before Rain Meadow support leaves meadow.json here rather than in
+    /// <see cref="Deleted"/>.
+    ///
+    /// A non-empty list is the difference between "the save folder will match the snapshot" and
+    /// what will really happen, so a confirmation the user is asked to give has to show it.
+    /// </summary>
+    public IReadOnlyList<string> LeftAlone { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Files the snapshot holds that the restore will not put back, because an exclusion added
+    /// since it was taken now covers them. steam_autocloud.vdf inside a folder taken whole is the
+    /// case: older snapshots hold one, and writing a stale copy of it back tells the Steam client
+    /// that files it has already synced are current.
+    /// </summary>
+    public IReadOnlyList<string> NotRestored { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>
 /// The outcome of a restore.

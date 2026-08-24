@@ -14,10 +14,21 @@ public sealed class SlotMetadata
 {
     private readonly IReadOnlyList<CampaignSummary> _campaigns = Array.Empty<CampaignSummary>();
 
-    /// <summary>1..3 for sav, sav2, sav3. 0 for files with no UI slot.</summary>
+    /// <summary>
+    /// 1..3 for sav, sav2, sav3, and the same 1..3 for online_sav, online_sav2, online_sav3.
+    /// 0 for files with no UI slot. <see cref="Realm"/> is what separates the two sets, because
+    /// the game picks both from one Options.saveSlot and they share the numbering.
+    /// </summary>
     public int Slot { get; init; }
 
     public string FileName { get; init; } = "";
+
+    /// <summary>
+    /// Whether this came from a local container or a Rain Meadow online one. Defaults to
+    /// <see cref="SaveRealm.Local"/>, which is also what a manifest written before online
+    /// slots were read deserialises to, since it carries no such key.
+    /// </summary>
+    public SaveRealm Realm { get; init; } = SaveRealm.Local;
 
     /// <summary>
     /// True when the "save" value carried a digest prefix and it recomputed correctly, false
@@ -40,12 +51,42 @@ public sealed class SlotMetadata
     /// <summary>Non-null means extraction failed and the other fields are empty.</summary>
     public string? ParseError { get; init; }
 
-    /// <summary>One line for the UI, for example "Slot 2: White cycle 17".</summary>
+    /// <summary>
+    /// How many records the save payload holds, of every kind, or null when the count is not
+    /// known. A manifest written before this was recorded carries no value, and reads back as null.
+    ///
+    /// <see cref="Campaigns"/> counts only the SAVE STATE records, and a Rain Meadow online_sav
+    /// routinely holds none of those while holding the explored map and the MISCPROG record. That
+    /// file is 12 KB of real progress, so an empty campaign list on its own does not make a
+    /// container empty. <see cref="HasNoContent"/> is the question the UI should ask.
+    /// </summary>
+    public int? RecordCount { get; init; }
+
+    /// <summary>
+    /// What to call a container that holds no campaign. A method rather than a property so it
+    /// stays out of the manifest json, and shared so the three places that word this say the same
+    /// thing.
+    ///
+    /// "empty" is kept for a payload with no records at all, which is what an untouched slot looks
+    /// like: online_sav3 on a fresh install is the digest and nothing after it. A file with records
+    /// but no SAVE STATE among them is a Rain Meadow online save holding the explored map and the
+    /// MISCPROG record, and calling that empty next to a button that overwrites it is wrong.
+    /// A null count comes from a manifest written before the count was recorded, and falls back to
+    /// the old wording rather than guessing.
+    /// </summary>
+    public static string DescribeWithoutCampaigns(int? recordCount) =>
+        recordCount > 0 ? "no campaigns, map and progression data only" : "empty";
+
+    /// <summary>
+    /// One line for the UI, for example "Slot 2: White cycle 17", or "Online slot 2: White cycle 4"
+    /// for a Rain Meadow container.
+    /// </summary>
     public string Describe()
     {
+        string prefix = Realm == SaveRealm.Online ? "Online slot " : "Slot ";
         string label = Slot > 0
-            ? "Slot " + Slot.ToString(CultureInfo.InvariantCulture)
-            : (string.IsNullOrEmpty(FileName) ? "Slot 0" : FileName);
+            ? prefix + Slot.ToString(CultureInfo.InvariantCulture)
+            : (string.IsNullOrEmpty(FileName) ? prefix + "0" : FileName);
 
         if (ParseError is not null)
         {
@@ -54,7 +95,7 @@ public sealed class SlotMetadata
 
         if (Campaigns.Count == 0)
         {
-            return label + ": empty";
+            return label + ": " + DescribeWithoutCampaigns(RecordCount);
         }
 
         var text = new StringBuilder(label);
