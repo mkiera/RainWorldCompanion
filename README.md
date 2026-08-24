@@ -1,8 +1,9 @@
 # Rain World Save Manager
 
 A Windows desktop app that copies your Rain World save files into dated snapshots and restores
-them on demand. It reads the save containers well enough to show which slugcat and which cycle
-each slot holds, so you can tell one snapshot from another before you restore it.
+them on demand. It reads the save containers well enough to show what each slot holds, from the
+slugcat and the cycle down to karma, passages, kills and Devourment state, so you can tell one
+snapshot from another before you restore it.
 
 This version does not edit saves. Files are copied byte for byte in both directions, because the
 UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
@@ -30,6 +31,52 @@ those in as files the app is allowed to overwrite and delete. They are out of sc
 Junctions and symlinks are out of scope too. If one of the folders above is a junction, or a file
 inside it is a symlink, the app copies nothing through it and names what it skipped, in the backup
 progress and again when you restore.
+
+## The detail panel
+
+The window is a list on the left and a detail panel on the right. The list holds the save folder
+as it is right now and every backup under it. Selecting either fills the panel, and the layout is
+the same for both, so a backup can be read against the live save without switching views.
+
+A slot section lists its campaigns. Opening one shows:
+
+- the run: cycle, cycles on this game version, food now, food eaten across the campaign,
+  playtime, current and previous shelter, timeline and seed
+- karma and the karma cap as the game stores them, the karma flower, and the flags for the mark
+  of communication, the glow, ascension, beating the game, the citizen ID drone and Hunter's death
+- deaths, survives and quits
+- echoes met, gates unlocked, endgame passages, and the creatures the campaign has killed
+- Devourment relationships with predator, prey, belly status and food value, plus swallowed items
+  and anything held in hand
+
+Karma is a 0-based index in the game, and it can sit above the cap. Both numbers are shown as the
+save stores them and neither is adjusted.
+
+A value the save did not record shows as a dash. Backups taken before this version recorded seven
+fields per campaign, and their cards fill the rest in with dashes.
+
+Passages are stored in more than one shape. Some hold a plain count, and the chip reads `x17`.
+Others hold a float such as `30.29` or a dotted string such as `25.18.20`, which the app reads as
+progress rather than as a number, and the chip shows that text with the full value in the tooltip.
+
+Devourment works the same way. When the mod writes a relationship in a shape this app does not
+read, the count on the campaign header still includes it and a line under the table says how many
+were not read.
+
+A backup's panel is filled from the manifest that was written with it, so selecting a backup
+costs no disk read.
+
+## Slugcat portraits
+
+Campaigns and backup rows carry the face of the slugcat they belong to. The art is read from your
+own Rain World install at runtime. None of it is copied into this repo or shipped with the app.
+
+Settings can auto-detect the install from Steam, you can browse to it, or you can leave the field
+blank. Where an install has no portrait for a slugcat, and no install has one for Inv, the app
+draws a plain head in the slugcat's own colour.
+
+The install path feeds the portraits and nothing else, so Settings does not validate it. A blank,
+stale or wrong value costs a picture. Backups and restores run the same either way.
 
 ## Where things are stored
 

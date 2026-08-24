@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:RainWorldSaveManager"
         mc:Ignorable="d"
         Title="Rain World Save Manager"
-        Height="600" Width="900" MinHeight="450" MinWidth="700"
+        Height="720" Width="1150" MinHeight="560" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Brush.Window}"
         Foreground="{StaticResource Brush.Text}"
@@ -14,104 +14,674 @@
         FontFamily="Segoe UI"
         FontSize="13">
 
+    <Window.Resources>
+
+        <!-- Panel that lays chips and tiles out in rows and wraps them -->
+        <ItemsPanelTemplate x:Key="WrapPanelTemplate">
+            <WrapPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+
+        <!-- One labelled value. A value the save never recorded arrives as a dash and is drawn
+             muted, so a gap in the data reads as a gap rather than as a missing control. -->
+        <DataTemplate x:Key="StatTileTemplate">
+            <Border Style="{StaticResource StatTile}">
+                <StackPanel>
+                    <TextBlock Text="{Binding Label}"
+                               Style="{StaticResource Text.SectionLabel}"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding Value}" Margin="0,3,0,0" ToolTip="{Binding Value}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Value}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                        <Setter Property="FontWeight" Value="Normal" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- A flag: filled when the campaign has it, outlined and dimmed when it does not -->
+        <DataTemplate x:Key="BadgeTemplate">
+            <Border Margin="0,0,5,5" CornerRadius="3" Padding="8,3" BorderThickness="1" SnapsToDevicePixels="True">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding On}" Value="True">
+                                <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding Text}" FontSize="11">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                            <Setter Property="FontSize" Value="11" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding On}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ChipTemplate">
+            <Border Style="{StaticResource Chip}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{StaticResource Brush.Text}" />
+                    <TextBlock Text="{Binding Detail}" FontSize="11" Margin="5,0,0,0"
+                               Foreground="{StaticResource Brush.TextMuted}"
+                               Visibility="{Binding Detail, Converter={StaticResource StringToVis}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- An earned passage is filled, an unearned one is a plain chip -->
+        <DataTemplate x:Key="PassageTemplate">
+            <Border ToolTip="{Binding ToolTipText}">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource Chip}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Earned}" Value="True">
+                                <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Name}" FontSize="11">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                <Setter Property="FontSize" Value="11" />
+                                <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Earned}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="{Binding CountText}" FontSize="11" Margin="5,0,0,0"
+                               Foreground="{StaticResource Brush.TextMuted}"
+                               Visibility="{Binding CountText, Converter={StaticResource StringToVis}}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <DataTemplate x:Key="KillTemplate">
+            <Border Style="{StaticResource Chip}" ToolTip="{Binding CreatureId}">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Name}" FontSize="11" Foreground="{StaticResource Brush.Text}" />
+                    <TextBlock Text="{Binding CountText}" FontSize="11" FontWeight="SemiBold" Margin="6,0,0,0"
+                               Foreground="{StaticResource Brush.Accent}" />
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- One Devourment relationship. Item prey and creature prey are tagged and set apart,
+             because an item is worth no food and a creature is. -->
+        <DataTemplate x:Key="DevourmentRowTemplate">
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1.2*" />
+                    <ColumnDefinition Width="1.6*" />
+                    <ColumnDefinition Width="96" />
+                    <ColumnDefinition Width="58" />
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Grid.Column="0" Text="{Binding Predator}" FontSize="12"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="{Binding Prey}" FontSize="12"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                <Setter Property="FontSize" Value="12" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PreyIsItem}" Value="True">
+                                        <Setter Property="FontStyle" Value="Italic" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <Border CornerRadius="2" Padding="4,0" Margin="6,0,0,0" BorderThickness="1"
+                            VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding PreyIsItem}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
+                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding PreyKind}" Style="{StaticResource Text.Tiny}" FontSize="10" />
+                    </Border>
+                </StackPanel>
+
+                <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="3" Text="{Binding FoodText}" FontSize="12"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.TextMuted}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- The header strip of a campaign card. Clicking it opens and closes the card. -->
+        <Style x:Key="CampaignHeaderButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="12,10" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}" SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- One campaign: a scannable line, and four groups of detail behind it -->
+        <DataTemplate x:Key="CampaignCardTemplate">
+            <Border CornerRadius="5" Margin="0,0,0,8"
+                    Background="{StaticResource Brush.Panel}"
+                    BorderBrush="{StaticResource Brush.Border}"
+                    BorderThickness="1"
+                    SnapsToDevicePixels="True">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="4" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- The slugcat's own colour, kept to a strip so the window stays neutral -->
+                    <Border Grid.Column="0" Background="{Binding Portrait.Accent}" CornerRadius="4,0,0,4" />
+
+                    <StackPanel Grid.Column="1">
+                        <Button Style="{StaticResource CampaignHeaderButton}" Command="{Binding ToggleCommand}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <ContentPresenter Grid.Column="0"
+                                                  Content="{Binding Portrait}"
+                                                  ContentTemplate="{StaticResource Portrait.Large}"
+                                                  VerticalAlignment="Center" />
+
+                                <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource Text.Title}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding SlugcatId}" Style="{StaticResource Text.Tiny}"
+                                               Margin="0,1,0,0"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding ShowSlugcatId, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+
+                                <Border Grid.Column="2" Style="{StaticResource Chip}" Margin="0,0,6,0"
+                                        VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Karma" Style="{StaticResource Text.Tiny}" Margin="0,0,6,0"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding KarmaText}" FontSize="12" FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="3" Style="{StaticResource Chip}" Margin="0,0,6,0"
+                                        VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding CycleText}" FontSize="12" />
+                                </Border>
+
+                                <Border Grid.Column="4" CornerRadius="3" Padding="7,2" BorderThickness="1"
+                                        Margin="0,0,6,0" VerticalAlignment="Center"
+                                        Background="{StaticResource Brush.Selection}"
+                                        BorderBrush="{StaticResource Brush.Accent}"
+                                        Visibility="{Binding HasDevourment, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding DevourmentChipText}" FontSize="11" FontWeight="SemiBold"
+                                               Foreground="{StaticResource Brush.Accent}" />
+                                </Border>
+
+                                <Grid Grid.Column="5" Width="12" Height="8" VerticalAlignment="Center" Margin="4,0,0,0">
+                                    <Path Data="M 1,1 L 6,6 L 11,1"
+                                          Stroke="{StaticResource Brush.TextMuted}" StrokeThickness="1.6"
+                                          Visibility="{Binding IsExpanded, Converter={StaticResource NotBoolToVis}}" />
+                                    <Path Data="M 1,6 L 6,1 L 11,6"
+                                          Stroke="{StaticResource Brush.TextMuted}" StrokeThickness="1.6"
+                                          Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+                            </Grid>
+                        </Button>
+
+                        <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,1,0,0"
+                                Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Margin="14,4,14,12">
+
+                                <DockPanel Margin="0,10,0,7">
+                                    <TextBlock DockPanel.Dock="Left" Text="RUN" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <ItemsControl ItemsSource="{Binding RunStats}"
+                                              ItemTemplate="{StaticResource StatTileTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}" />
+
+                                <DockPanel Margin="0,10,0,7">
+                                    <TextBlock DockPanel.Dock="Left" Text="KARMA" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <ItemsControl ItemsSource="{Binding KarmaStats}"
+                                              ItemTemplate="{StaticResource StatTileTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                                <ItemsControl ItemsSource="{Binding Badges}"
+                                              ItemTemplate="{StaticResource BadgeTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Margin="0,2,0,0" />
+
+                                <DockPanel Margin="0,10,0,7">
+                                    <TextBlock DockPanel.Dock="Left" Text="PROGRESS" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                </DockPanel>
+                                <ItemsControl ItemsSource="{Binding ProgressStats}"
+                                              ItemTemplate="{StaticResource StatTileTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}" />
+
+                                <TextBlock Text="ECHOES MET" Style="{StaticResource Text.SectionLabel}" Margin="0,4,0,4" />
+                                <ItemsControl ItemsSource="{Binding Echoes}"
+                                              ItemTemplate="{StaticResource ChipTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding HasEchoes, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="No echoes recorded." Style="{StaticResource Text.Muted}"
+                                           Visibility="{Binding HasEchoes, Converter={StaticResource NotBoolToVis}}" />
+
+                                <TextBlock Text="{Binding GateCountText}" Style="{StaticResource Text.SectionLabel}"
+                                           Margin="0,8,0,4" />
+                                <ItemsControl ItemsSource="{Binding Gates}"
+                                              ItemTemplate="{StaticResource ChipTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding HasGates, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="PASSAGES" Style="{StaticResource Text.SectionLabel}" Margin="0,8,0,4" />
+                                <ItemsControl ItemsSource="{Binding Passages}"
+                                              ItemTemplate="{StaticResource PassageTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding HasPassages, Converter={StaticResource BoolToVis}}" />
+                                <TextBlock Text="No passages recorded." Style="{StaticResource Text.Muted}"
+                                           Visibility="{Binding HasPassages, Converter={StaticResource NotBoolToVis}}" />
+
+                                <TextBlock Text="{Binding KillSummaryText}" Style="{StaticResource Text.SectionLabel}"
+                                           Margin="0,8,0,4" />
+                                <ItemsControl ItemsSource="{Binding TopKills}"
+                                              ItemTemplate="{StaticResource KillTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding HasKills, Converter={StaticResource BoolToVis}}" />
+
+                                <DockPanel Margin="0,10,0,7">
+                                    <TextBlock DockPanel.Dock="Left" Text="DEVOURMENT" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                </DockPanel>
+
+                                <StackPanel Visibility="{Binding HasDevourmentRows, Converter={StaticResource BoolToVis}}">
+                                    <Grid Margin="0,0,0,4">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="1.2*" />
+                                            <ColumnDefinition Width="1.6*" />
+                                            <ColumnDefinition Width="96" />
+                                            <ColumnDefinition Width="58" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="PREDATOR" Style="{StaticResource Text.SectionLabel}" />
+                                        <TextBlock Grid.Column="1" Text="PREY" Style="{StaticResource Text.SectionLabel}" />
+                                        <TextBlock Grid.Column="2" Text="STATUS" Style="{StaticResource Text.SectionLabel}" />
+                                        <TextBlock Grid.Column="3" Text="FOOD" Style="{StaticResource Text.SectionLabel}"
+                                                   HorizontalAlignment="Right" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding DevourmentRows}"
+                                                  ItemTemplate="{StaticResource DevourmentRowTemplate}" />
+                                </StackPanel>
+
+                                <!-- Outside the table panel above on purpose. This line is for the
+                                     case where every DEVOURMENTSTATE field failed to parse, which
+                                     is exactly when the table has no rows and that panel is
+                                     collapsed. -->
+                                <TextBlock Text="{Binding UnreadDevourmentText}"
+                                           Style="{StaticResource Text.Muted}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0"
+                                           Visibility="{Binding UnreadDevourmentText, Converter={StaticResource StringToVis}}" />
+
+                                <TextBlock Text="SWALLOWED ITEMS" Style="{StaticResource Text.SectionLabel}"
+                                           Margin="0,8,0,4"
+                                           Visibility="{Binding HasSwallowedItems, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding SwallowedItems}"
+                                              ItemTemplate="{StaticResource ChipTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding HasSwallowedItems, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="HELD IN HAND" Style="{StaticResource Text.SectionLabel}"
+                                           Margin="0,8,0,4"
+                                           Visibility="{Binding HasHeldItems, Converter={StaticResource BoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding HeldItems}"
+                                              ItemTemplate="{StaticResource ChipTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding HasHeldItems, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="No Devourment state recorded."
+                                           Style="{StaticResource Text.Muted}"
+                                           Visibility="{Binding HasNothingDevourment, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- One slot section in the detail panel -->
+        <DataTemplate x:Key="SlotSectionTemplate">
+            <StackPanel Margin="0,0,0,6">
+                <DockPanel Margin="0,10,0,8">
+                    <Border DockPanel.Dock="Left" Width="24" Height="24" CornerRadius="4"
+                            Background="{StaticResource Brush.PanelAlt}"
+                            BorderBrush="{StaticResource Brush.BorderStrong}"
+                            BorderThickness="1">
+                        <TextBlock Text="{Binding NumberText}" FontSize="12" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding HeaderText}"
+                               Style="{StaticResource Text.Title}" Margin="9,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding CampaignCountText}"
+                               Style="{StaticResource Text.Muted}" Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding FileName}" Style="{StaticResource Text.Tiny}"
+                               HorizontalAlignment="Right" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <Border Style="{StaticResource Banner.Warn}" Margin="0,0,0,8"
+                        Visibility="{Binding ChecksumBad, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="The checksum stored in this save file did not recompute. The game discards a save in that state."
+                               TextWrapping="Wrap" Foreground="{StaticResource Brush.Warn}" />
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding Campaigns}"
+                              ItemTemplate="{StaticResource CampaignCardTemplate}" />
+
+                <Border Style="{StaticResource Card}" Margin="0,0,0,8"
+                        Visibility="{Binding HasNoCampaigns, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding EmptyText}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- One slot inside the live save card in the list column -->
+        <DataTemplate x:Key="LiveSlotRowTemplate">
+            <Grid Margin="0,7,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="16" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="{Binding NumberText}"
+                           Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
+                <ItemsControl Grid.Column="1" ItemsSource="{Binding Portraits}"
+                              ItemTemplate="{StaticResource Portrait.Small}"
+                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                              VerticalAlignment="Center" />
+                <TextBlock Grid.Column="2" Text="{Binding SummaryText}"
+                           Style="{StaticResource Text.Muted}" Margin="4,0,0,0"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                           ToolTip="{Binding SummaryText}" />
+            </Grid>
+        </DataTemplate>
+
+        <!-- The live save card is selected the same way a backup row is, so the panel on the
+             right shows the save folder in the same shape as a snapshot. -->
+        <Style x:Key="LiveCardButton" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
+            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="11,10" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                SnapsToDevicePixels="True">
+                            <Grid>
+                                <Border x:Name="Marker" Width="3" HorizontalAlignment="Left"
+                                        CornerRadius="5,0,0,5" Background="Transparent" />
+                                <ContentPresenter Margin="{TemplateBinding Padding}"
+                                                  HorizontalAlignment="Stretch" />
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                            </Trigger>
+                            <DataTrigger Binding="{Binding IsLiveSelected}" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.Selection}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                                <Setter TargetName="Marker" Property="Background" Value="{StaticResource Brush.Accent}" />
+                            </DataTrigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- One backup row. Faces first, so two backups can be told apart without selecting one. -->
+        <DataTemplate x:Key="BackupRowTemplate">
+            <StackPanel ToolTip="{Binding TooltipText}">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Style.Triggers>
+                            <!-- A snapshot with no manifest cannot be restored, so it is kept
+                                 visible but reads as unusable rather than as a normal row. -->
+                            <DataTrigger Binding="{Binding IsComplete}" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}"
+                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding CreatedText}"
+                               Style="{StaticResource Text.Muted}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding CampaignCountText}" Style="{StaticResource Text.Tiny}"
+                               Margin="8,0,6,0" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </DockPanel>
+
+                <TextBlock Text="{Binding LabelText}" FontWeight="SemiBold" Margin="0,2,0,0"
+                           TextTrimming="CharacterEllipsis" />
+
+                <ItemsControl ItemsSource="{Binding Portraits}"
+                              ItemTemplate="{StaticResource Portrait.Small}"
+                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                              Margin="0,6,0,0"
+                              Visibility="{Binding HasPortraits, Converter={StaticResource BoolToVis}}" />
+
+                <DockPanel Margin="0,5,0,0">
+                    <Border DockPanel.Dock="Left" CornerRadius="3" Padding="6,1" BorderThickness="1"
+                            Margin="0,0,8,0" VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSafetyBackup}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
+                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <TextBlock Text="{Binding KindText}" FontSize="10" />
+                    </Border>
+
+                    <Ellipse DockPanel.Dock="Left" Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{StaticResource Brush.BorderStrong}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVerified}" Value="True">
+                                        <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProblem}" Value="True">
+                                        <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+
+                    <TextBlock Text="{Binding StateText}" FontSize="11" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                <Setter Property="FontSize" Value="11" />
+                                <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVerified}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProblem}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </DockPanel>
+            </StackPanel>
+        </DataTemplate>
+
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Header: game status, live save summary, paths -->
+        <!-- Top bar: whether the game is running, and every command -->
         <Border Grid.Row="0"
                 Background="{StaticResource Brush.Panel}"
                 BorderBrush="{StaticResource Brush.Border}"
                 BorderThickness="0,0,0,1"
-                Padding="16,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <StackPanel Grid.Column="0">
-                    <Border HorizontalAlignment="Left" CornerRadius="3" Padding="10,5">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
-                                <Setter Property="BorderThickness" Value="1" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                        <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
-                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <StackPanel Orientation="Horizontal">
-                            <Ellipse Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                                <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Ellipse.Style>
-                            </Ellipse>
-                            <TextBlock Text="{Binding GameStatusText}" FontWeight="SemiBold" VerticalAlignment="Center">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                                <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="LIVE SAVE" Style="{StaticResource Text.SectionLabel}" Margin="1,14,0,4" />
-
-                    <ItemsControl ItemsSource="{Binding LiveSlots}"
-                                  Visibility="{Binding HasLiveSlots, Converter={StaticResource BoolToVis}}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" Margin="1,1" TextTrimming="CharacterEllipsis" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-
-                    <TextBlock Text="No save files were found in the configured folder."
-                               Style="{StaticResource Text.Muted}"
-                               Margin="1,1"
-                               Visibility="{Binding HasNoLiveSlots, Converter={StaticResource BoolToVis}}" />
-
-                    <StackPanel Margin="1,10,0,0">
-                        <TextBlock Style="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding SavePathText}">
-                            <Run Text="Save folder:" />
-                            <Run Text="{Binding SavePathText, Mode=OneWay}" />
-                        </TextBlock>
-                        <TextBlock Style="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis"
-                                   ToolTip="{Binding BackupRootText}">
-                            <Run Text="Backup folder:" />
-                            <Run Text="{Binding BackupRootText, Mode=OneWay}" />
+                Padding="16,10">
+            <DockPanel LastChildFill="False">
+                <Border DockPanel.Dock="Left" CornerRadius="3" Padding="10,5" VerticalAlignment="Center">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
+                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                            <Setter Property="BorderThickness" Value="1" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
+                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                            <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="{Binding GameStatusText}" FontWeight="SemiBold" VerticalAlignment="Center">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
                         </TextBlock>
                     </StackPanel>
-                </StackPanel>
+                </Border>
 
-                <Button Grid.Column="1"
-                        Content="Refresh"
-                        VerticalAlignment="Top"
+                <Button DockPanel.Dock="Left" Content="Refresh" Margin="10,0,0,0"
+                        Style="{StaticResource Button.Small}"
                         Command="{Binding RefreshCommand}" />
-            </Grid>
+
+                <Button DockPanel.Dock="Right" Content="Settings" Style="{StaticResource Button.Small}"
+                        Command="{Binding OpenSettingsCommand}" />
+                <Button DockPanel.Dock="Right" Content="Delete" Style="{StaticResource Button.Danger}"
+                        Margin="0,0,8,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
+                        Command="{Binding DeleteCommand}" />
+                <Button DockPanel.Dock="Right" Content="Open Folder" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0" Command="{Binding OpenFolderCommand}" />
+                <Button DockPanel.Dock="Right" Content="Verify" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0" Command="{Binding VerifyCommand}" />
+                <Button DockPanel.Dock="Right" Content="Restore" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
+                <Button DockPanel.Dock="Right" Content="New Backup" Style="{StaticResource Button.Accent}"
+                        Margin="0,0,8,0" MinWidth="98" MinHeight="26" Padding="10,4" FontSize="12"
+                        Command="{Binding NewBackupCommand}" />
+            </DockPanel>
         </Border>
 
         <!-- Configuration problem banner -->
@@ -137,138 +707,186 @@
             </Grid>
         </Border>
 
-        <!-- Backup list -->
-        <Grid Grid.Row="2" Margin="16,12,16,12">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
+        <Grid Grid.Row="2" Margin="16,12,16,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
 
-            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="1,0,0,6">
-                <TextBlock Text="BACKUPS" Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
-                <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
-                           Margin="10,0,0,0" VerticalAlignment="Center" />
-            </StackPanel>
+            <!-- List column: the live save, then every backup, newest first -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
 
-            <Grid Grid.Row="1">
-                <DataGrid ItemsSource="{Binding Backups}"
-                          SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
-                          RowHeaderWidth="0">
-                    <DataGrid.RowStyle>
-                        <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
-                            <Setter Property="ToolTip" Value="{Binding TooltipText}" />
-                            <Style.Triggers>
-                                <!-- Incomplete snapshots stay visible but read as unusable -->
-                                <DataTrigger Binding="{Binding IsComplete}" Value="False">
-                                    <Setter Property="Opacity" Value="0.55" />
-                                    <Setter Property="FontStyle" Value="Italic" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </DataGrid.RowStyle>
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedText}" Width="128" />
-                        <DataGridTextColumn Header="LABEL" Binding="{Binding LabelText}" Width="1.1*">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
+                <Button Grid.Row="0" Style="{StaticResource LiveCardButton}" Command="{Binding SelectLiveCommand}"
+                        AutomationProperties.Name="{Binding LiveAccessibleName}">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Text="LIVE SAVE"
+                                       Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding LiveSummaryText}" Style="{StaticResource Text.Tiny}"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                        </DockPanel>
 
-                        <DataGridTemplateColumn Header="KIND" Width="122">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Border CornerRadius="3" Padding="7,2" HorizontalAlignment="Left">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-                                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
-                                                <Setter Property="BorderThickness" Value="1" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsSafetyBackup}" Value="True">
-                                                        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
-                                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <TextBlock Text="{Binding KindText}" FontSize="11" />
-                                    </Border>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                        <ItemsControl ItemsSource="{Binding LiveSlots}"
+                                      ItemTemplate="{StaticResource LiveSlotRowTemplate}"
+                                      Visibility="{Binding HasLiveSlots, Converter={StaticResource BoolToVis}}" />
 
-                        <DataGridTextColumn Header="SLOTS" Binding="{Binding SlotsText}" Width="2*">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
+                        <TextBlock Text="No save files were found in the configured folder."
+                                   Style="{StaticResource Text.Muted}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,7,0,0"
+                                   Visibility="{Binding HasNoLiveSlots, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+                </Button>
 
-                        <DataGridTextColumn Header="SIZE" Binding="{Binding SizeText}" Width="82">
-                            <DataGridTextColumn.ElementStyle>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="HorizontalAlignment" Value="Right" />
-                                </Style>
-                            </DataGridTextColumn.ElementStyle>
-                        </DataGridTextColumn>
+                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="1,16,0,7">
+                    <TextBlock Text="BACKUPS" Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
+                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
 
-                        <DataGridTemplateColumn Header="STATE" Width="140">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding StateText}"
-                                               TextTrimming="CharacterEllipsis"
-                                               FontSize="12">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                                <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsProblem}" Value="True">
-                                                        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
-                                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
-                    </DataGrid.Columns>
-                </DataGrid>
+                <Grid Grid.Row="2">
+                    <ListBox ItemsSource="{Binding Backups}"
+                             SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
+                             ItemTemplate="{StaticResource BackupRowTemplate}">
+                        <ListBox.ItemContainerStyle>
+                            <!-- Without this a row announces itself as the view model type name. -->
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
 
-                <TextBlock Text="No backups yet. Use New Backup to make the first one."
-                           Style="{StaticResource Text.Muted}"
-                           HorizontalAlignment="Center"
-                           VerticalAlignment="Center"
-                           IsHitTestVisible="False"
-                           Visibility="{Binding HasNoBackups, Converter={StaticResource BoolToVis}}" />
+                    <TextBlock Text="No backups yet. Use New Backup to make the first one."
+                               Style="{StaticResource Text.Muted}"
+                               TextWrapping="Wrap"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               IsHitTestVisible="False"
+                               Visibility="{Binding HasNoBackups, Converter={StaticResource BoolToVis}}" />
+                </Grid>
+
+                <StackPanel Grid.Row="3" Margin="1,12,0,0">
+                    <TextBlock Style="{StaticResource Text.Tiny}" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding SavePathText}">
+                        <Run Text="Save folder:" />
+                        <Run Text="{Binding SavePathText, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Text.Tiny}" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding BackupRootText}">
+                        <Run Text="Backup folder:" />
+                        <Run Text="{Binding BackupRootText, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
             </Grid>
+
+            <!-- Detail panel: whatever is selected, slot by slot and campaign by campaign -->
+            <Border Grid.Column="1" Margin="16,0,0,0"
+                    Background="{StaticResource Brush.Panel}"
+                    BorderBrush="{StaticResource Brush.Border}"
+                    BorderThickness="1"
+                    CornerRadius="5">
+                <Grid>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Padding="16,14,16,16"
+                                  Visibility="{Binding HasDetail, Converter={StaticResource BoolToVis}}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{Binding Detail.Title}"
+                                               FontSize="19" FontWeight="SemiBold"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding Detail.Subtitle}"
+                                               Style="{StaticResource Text.Muted}"
+                                               Margin="0,2,0,0"
+                                               TextTrimming="CharacterEllipsis"
+                                               ToolTip="{Binding Detail.Subtitle}" />
+                                    <TextBlock Text="{Binding Detail.NoteText}"
+                                               Style="{StaticResource Text.Body}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,7,0,0"
+                                               Visibility="{Binding Detail.HasNote, Converter={StaticResource BoolToVis}}" />
+
+                                    <StackPanel Orientation="Horizontal" Margin="0,9,0,0">
+                                        <Border Style="{StaticResource Chip}">
+                                            <TextBlock Text="{Binding Detail.KindText}" FontSize="11" />
+                                        </Border>
+                                        <Border Style="{StaticResource Chip}">
+                                            <TextBlock Text="{Binding Detail.FileCountText}" FontSize="11" />
+                                        </Border>
+                                        <Border Style="{StaticResource Chip}">
+                                            <TextBlock Text="{Binding Detail.SizeText}" FontSize="11" />
+                                        </Border>
+                                        <Border Style="{StaticResource Chip}">
+                                            <TextBlock Text="{Binding Detail.CampaignCountText}" FontSize="11" />
+                                        </Border>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Detail.Backup.StateText}"
+                                           Margin="12,3,0,0"
+                                           VerticalAlignment="Top"
+                                           TextAlignment="Right"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="220"
+                                           Visibility="{Binding Detail.HasBackup, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                            <Setter Property="FontSize" Value="12" />
+                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Detail.Backup.IsVerified}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Detail.Backup.IsProblem}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+
+                            <Border Height="1" Background="{StaticResource Brush.Border}" Margin="0,14,0,0" />
+
+                            <ItemsControl ItemsSource="{Binding Detail.Slots}"
+                                          ItemTemplate="{StaticResource SlotSectionTemplate}" />
+
+                            <TextBlock Text="{Binding Detail.EmptyText}"
+                                       Style="{StaticResource Text.Muted}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,16,0,0"
+                                       Visibility="{Binding Detail.HasNoSlots, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <TextBlock Text="Select the live save or a backup on the left to see what is in it."
+                               Style="{StaticResource Text.Muted}"
+                               TextWrapping="Wrap"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Margin="24"
+                               Visibility="{Binding HasNoDetail, Converter={StaticResource BoolToVis}}" />
+                </Grid>
+            </Border>
         </Grid>
 
-        <!-- Command bar -->
-        <Border Grid.Row="3"
-                Background="{StaticResource Brush.Panel}"
-                BorderBrush="{StaticResource Brush.Border}"
-                BorderThickness="0,1,0,0"
-                Padding="16,12">
-            <DockPanel LastChildFill="False">
-                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                    <Button Content="New Backup" Style="{StaticResource Button.Accent}" Margin="0,0,8,0"
-                            Command="{Binding NewBackupCommand}" />
-                    <Button Content="Restore" Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
-                    <Button Content="Verify" Margin="0,0,8,0" Command="{Binding VerifyCommand}" />
-                    <Button Content="Open Folder" Margin="0,0,8,0" Command="{Binding OpenFolderCommand}" />
-                    <Button Content="Delete" Style="{StaticResource Button.Danger}" Command="{Binding DeleteCommand}" />
-                </StackPanel>
-                <Button DockPanel.Dock="Right" Content="Settings" Command="{Binding OpenSettingsCommand}" />
-            </DockPanel>
-        </Border>
-
         <!-- Busy overlay -->
-        <Border Grid.Row="0" Grid.RowSpan="4"
+        <Border Grid.Row="0" Grid.RowSpan="3"
                 Panel.ZIndex="10"
                 Background="{StaticResource Brush.Overlay}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">

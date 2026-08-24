@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Threading;
 using RainWorldSaveManager.Core.Settings;
 using RainWorldSaveManager.Core.System;
+using RainWorldSaveManager.Services;
 using RainWorldSaveManager.ViewModels;
 
 namespace RainWorldSaveManager;
@@ -40,7 +41,11 @@ public partial class App : Application
 
         var settingsStore = new SettingsStore();
         var gameDetector = new GameProcessDetector();
-        var viewModel = new MainViewModel(settingsStore, gameDetector, ResolveAppVersion());
+
+        // The provider starts with no install. The view model points it at the configured path
+        // once the settings have been read, which happens off the dispatcher.
+        var icons = new SlugcatIconProvider();
+        var viewModel = new MainViewModel(settingsStore, gameDetector, icons, ResolveAppVersion());
 
         var window = new MainWindow { DataContext = viewModel };
         MainWindow = window;

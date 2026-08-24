@@ -8,9 +8,16 @@ namespace RainWorldSaveManager.Core.Settings;
 public static class SettingsValidation
 {
     /// <summary>
-    /// Returns null when the pair is usable, otherwise a plain-English reason to show the user.
+    /// The half of <see cref="Validate"/> that reads only the text: both paths are set and both
+    /// are fully qualified. Returns null when the text is fine, which does not mean the pair is
+    /// usable, only that the rest of the check is worth running.
+    ///
+    /// It is separate because it touches no disk. The rest of <see cref="Validate"/> resolves
+    /// each path through the filesystem to catch junctions and 8.3 names, and that call blocks
+    /// for the full network timeout on a UNC path whose host does not answer, so a caller that
+    /// validates on every keystroke runs this part inline and the rest on a worker.
     /// </summary>
-    public static string? Validate(string gameSavePath, string backupRootPath)
+    public static string? ValidateText(string gameSavePath, string backupRootPath)
     {
         if (string.IsNullOrWhiteSpace(gameSavePath))
         {
@@ -22,18 +29,34 @@ public static class SettingsValidation
             return "The backup folder is not set.";
         }
 
-        var save = gameSavePath.Trim();
-        var backup = backupRootPath.Trim();
-
-        if (!IsFullPath(save))
+        if (!IsFullPath(gameSavePath.Trim()))
         {
             return "The game save folder must be a full path, for example C:\\Users\\You\\AppData\\LocalLow\\Videocult\\Rain World.";
         }
 
-        if (!IsFullPath(backup))
+        if (!IsFullPath(backupRootPath.Trim()))
         {
             return "The backup folder must be a full path, for example C:\\Users\\You\\AppData\\Local\\RainWorldSaveManager\\backups.";
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns null when the pair is usable, otherwise a plain-English reason to show the user.
+    ///
+    /// Touches the filesystem. See <see cref="ValidateText"/> for the part that does not.
+    /// </summary>
+    public static string? Validate(string gameSavePath, string backupRootPath)
+    {
+        var text = ValidateText(gameSavePath, backupRootPath);
+        if (text is not null)
+        {
+            return text;
+        }
+
+        var save = gameSavePath.Trim();
+        var backup = backupRootPath.Trim();
 
         string normalisedSave;
         string normalisedBackup;

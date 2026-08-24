@@ -106,7 +106,61 @@ public class SettingsTests
         Assert.False(string.IsNullOrWhiteSpace(reason));
     }
 
+    // ---- SettingsValidation.ValidateText ----
+
+    // The settings dialog validates on every keystroke, and the full Validate resolves each path
+    // through the filesystem, which blocks for the whole network timeout on a half-typed UNC
+    // path. ValidateText is the part the dialog can afford to run inline, so it has to answer
+    // without touching disk and give the same reasons for the cases it does cover.
+
+    [Theory]
+    [InlineData("", @"C:\Backups")]
+    [InlineData(@"C:\Games\Rain World", "")]
+    [InlineData("   ", @"C:\Backups")]
+    [InlineData(@"C:\Games\Rain World", "   ")]
+    [InlineData(@"saves", @"C:\Backups")]
+    [InlineData(@"C:\Games\Rain World", @"backups\here")]
+    public void ValidateText_gives_the_same_reason_as_the_full_check(string savePath, string backupPath)
+    {
+        var quick = SettingsValidation.ValidateText(savePath, backupPath);
+
+        Assert.NotNull(quick);
+        Assert.Equal(SettingsValidation.Validate(savePath, backupPath), quick);
+    }
+
+    [Theory]
+    [InlineData(@"C:\Games\Rain World", @"C:\Backups")]
+    // Both are fully qualified, so the text checks pass. Whether they may be used together is
+    // for the full check to say, and these two pairs are ones it rejects.
+    [InlineData(@"C:\Games\Rain World", @"C:\Games\Rain World")]
+    [InlineData(@"C:\Games\Rain World", @"C:\Games\Rain World\backups")]
+    public void ValidateText_passes_anything_whose_text_is_a_full_path(string savePath, string backupPath)
+    {
+        Assert.Null(SettingsValidation.ValidateText(savePath, backupPath));
+    }
+
+    [Fact]
+    public void ValidateText_answers_for_a_path_on_a_host_that_does_not_exist()
+    {
+        // A UNC path is fully qualified from the second backslash on, and resolving one whose
+        // host does not answer is what made typing into the dialog freeze the window.
+        var quick = SettingsValidation.ValidateText(@"\\no-such-host-here\rw\saves", @"C:\Backups");
+
+        Assert.Null(quick);
+    }
+
     // ---- AppSettings ----
+
+    [Fact]
+    public void CreateDefault_does_not_go_looking_for_the_game_install()
+    {
+        // Finding the install reads the Steam registry value, parses every libraryfolders.vdf
+        // and probes each library it names, and a library on a share whose machine is off makes
+        // that probe block for the full SMB timeout. CreateDefault is called on the dispatcher
+        // before the window is shown, so the lookup belongs to SettingsStore.Load, which every
+        // caller runs on a worker.
+        Assert.Null(AppSettings.CreateDefault().GameInstallPath);
+    }
 
     [Fact]
     public void The_default_backup_root_sits_under_the_local_app_data_folder()

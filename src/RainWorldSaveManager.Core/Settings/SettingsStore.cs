@@ -56,6 +56,13 @@ public sealed class SettingsStore
             settings.BackupRootPath = AppSettings.DefaultBackupRootPath;
         }
 
+        if (string.IsNullOrWhiteSpace(settings.GameInstallPath))
+        {
+            // Stays null when no install is found. The portraits are the only thing that reads
+            // it, so an absent install is a normal state and not a validation failure.
+            settings.GameInstallPath = GameInstallLocator.FindInstallPath();
+        }
+
         if (settings.SchemaVersion <= 0)
         {
             settings.SchemaVersion = 1;

@@ -24,7 +24,16 @@ public sealed record ManifestFileEntry(string RelativePath, long SizeBytes, stri
 /// </summary>
 public sealed class BackupManifest
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>
+    /// Version 2 records the full campaign detail per slot. Version 1 manifests carried only
+    /// seven campaign fields and are still read: the added fields deserialise to null or to an
+    /// empty collection, so an old snapshot keeps listing, verifying and restoring.
+    /// </summary>
+    public const int CurrentSchemaVersion = 2;
+
+    private List<ManifestFileEntry> _files = new();
+    private List<SlotMetadata> _slots = new();
+    private List<string> _skippedLinks = new();
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string AppVersion { get; set; } = "";
@@ -32,14 +41,31 @@ public sealed class BackupManifest
     public string? Label { get; set; }
     public string? Note { get; set; }
     public BackupKind Kind { get; set; }
-    public List<ManifestFileEntry> Files { get; set; } = new();
-    public List<SlotMetadata> Slots { get; set; } = new();
+
+    // These three are never null, including after deserialisation. An explicit JSON null
+    // overwrites a field initialiser, and every reader of a manifest walks these lists without a
+    // guard, so a null is turned into an empty list on the way in.
+    public List<ManifestFileEntry> Files
+    {
+        get => _files;
+        set => _files = value ?? new List<ManifestFileEntry>();
+    }
+
+    public List<SlotMetadata> Slots
+    {
+        get => _slots;
+        set => _slots = value ?? new List<SlotMetadata>();
+    }
 
     /// <summary>
     /// In-scope paths that were passed over because they are junctions or symlinks. A snapshot
     /// with entries here does not hold everything the scope names, and says so.
     /// </summary>
-    public List<string> SkippedLinks { get; set; } = new();
+    public List<string> SkippedLinks
+    {
+        get => _skippedLinks;
+        set => _skippedLinks = value ?? new List<string>();
+    }
 }
 
 /// <summary>

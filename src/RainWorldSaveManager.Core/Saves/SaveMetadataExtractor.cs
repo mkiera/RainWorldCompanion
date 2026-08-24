@@ -28,6 +28,23 @@ public static class SaveMetadataExtractor
     private const string SeedField = "SEED";
     private const string GlowField = "HASTHEGLOW";
     private const string DevourmentField = "DEVOURMENTSTATE";
+    private const string TimelineField = "TIMELINE";
+    private const string LastDenPosField = "LASTVDENPOS";
+    private const string TotalFoodField = "TOTFOOD";
+    private const string TotalTimeField = "TOTTIME";
+    private const string CurrentVersionCyclesField = "CURRVERCYCLES";
+    private const string RoboField = "HASROBO";
+    private const string JustBeatGameField = "JUSTBEATGAME";
+    private const string DeathPersistentField = "DEATHPERSISTENTSAVEDATA";
+    private const string KillsField = "KILLS";
+    private const string SwallowedItemsField = "SWALLOWEDITEMS";
+    private const string HeldItemsField = "UNRECOGNIZEDPLAYERGRASPS";
+
+    /// <summary>Separates the entries of the KILLS value.</summary>
+    private const string KillSeparator = "<svC>";
+
+    /// <summary>Separates a creature id from its count inside one KILLS entry.</summary>
+    private const string KillCountSeparator = "<svD>";
 
     private const int MaxErrorLength = 200;
 
@@ -145,7 +162,21 @@ public static class SaveMetadataExtractor
         string? seed = null;
         int devourmentCount = 0;
         bool hasGlow = false;
+        bool hasRobo = false;
+        bool justBeatGame = false;
+        string? timeline = null;
+        string? lastDenPos = null;
+        int? totalFood = null;
+        int? currentVersionCycles = null;
+        TimeSpan? playTime = null;
+        DeathPersistentData death = DeathPersistentData.Empty;
+        List<KillRecord>? kills = null;
+        List<DevourmentRelationship>? devourmentStates = null;
+        List<string>? swallowedItems = null;
+        List<string>? heldItems = null;
 
+        // REGIONSTATE and COMMUNITIES are skipped by omission. REGIONSTATE alone appears about a
+        // hundred times per campaign and each value runs to kilobytes, and nothing here reads them.
         foreach (KeyValuePair<string, string?> field in SavePayloadReader.SplitFields(body))
         {
             switch (field.Key)
@@ -187,7 +218,78 @@ public static class SaveMetadataExtractor
                     break;
 
                 case DevourmentField:
+                    // The count is of fields, not of parsed relationships. A field a newer mod
+                    // version writes in a shape this app does not know still happened, and the
+                    // count is what the UI reports as "carried".
                     devourmentCount++;
+                    if (DevourmentReader.TryRead(field.Value, out DevourmentRelationship? relationship)
+                        && relationship is not null)
+                    {
+                        (devourmentStates ??= new List<DevourmentRelationship>()).Add(relationship);
+                    }
+
+                    break;
+
+                case RoboField:
+                    hasRobo = true;
+                    break;
+
+                case JustBeatGameField:
+                    justBeatGame = true;
+                    break;
+
+                case TimelineField:
+                    timeline = field.Value;
+                    break;
+
+                case LastDenPosField:
+                    lastDenPos = field.Value;
+                    break;
+
+                case TotalFoodField:
+                    if (int.TryParse(field.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedTotalFood))
+                    {
+                        totalFood = parsedTotalFood;
+                    }
+
+                    break;
+
+                case CurrentVersionCyclesField:
+                    if (int.TryParse(field.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedVersionCycles))
+                    {
+                        currentVersionCycles = parsedVersionCycles;
+                    }
+
+                    break;
+
+                case TotalTimeField:
+                    if (int.TryParse(field.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedSeconds)
+                        && parsedSeconds >= 0)
+                    {
+                        playTime = TimeSpan.FromSeconds(parsedSeconds);
+                    }
+
+                    break;
+
+                case DeathPersistentField:
+                    death = DeathPersistentReader.Read(field.Value);
+                    break;
+
+                case KillsField:
+                    AppendKills(field.Value, ref kills);
+                    break;
+
+                case SwallowedItemsField:
+                    // One field per item, holding the game's own serialized item.
+                    if (DevourmentReader.ItemTypeOf(field.Value) is { } swallowed)
+                    {
+                        (swallowedItems ??= new List<string>()).Add(swallowed);
+                    }
+
+                    break;
+
+                case HeldItemsField:
+                    AppendHeldItems(field.Value, ref heldItems);
                     break;
             }
         }
@@ -201,7 +303,92 @@ public static class SaveMetadataExtractor
             Seed = seed,
             DevourmentStateCount = devourmentCount,
             HasGlow = hasGlow,
+            Karma = death.Karma,
+            KarmaCap = death.KarmaCap,
+            ReinforcedKarma = death.ReinforcedKarma,
+            HasTheMark = death.HasTheMark,
+            Ascended = death.Ascended,
+            HasRobo = hasRobo,
+            JustBeatGame = justBeatGame,
+            RedsDeath = death.RedsDeath,
+            Deaths = death.Deaths,
+            Survives = death.Survives,
+            Quits = death.Quits,
+            TotalFoodEaten = totalFood,
+            PlayTime = playTime,
+            CyclesThisVersion = currentVersionCycles,
+            Timeline = timeline,
+            LastDenPos = lastDenPos,
+            Echoes = death.Echoes,
+            UnlockedGates = death.UnlockedGates,
+            Passages = death.Passages,
+            Kills = kills is null ? Array.Empty<KillRecord>() : kills,
+            DevourmentStates = devourmentStates is null
+                ? Array.Empty<DevourmentRelationship>()
+                : devourmentStates,
+            SwallowedItems = swallowedItems is null ? Array.Empty<string>() : swallowedItems,
+            HeldItems = heldItems is null ? Array.Empty<string>() : heldItems,
         };
+    }
+
+    /// <summary>
+    /// Reads one KILLS value: entries separated by &lt;svC&gt;, each "CreatureId&lt;svD&gt;Count".
+    /// An entry with no count, or a count that will not parse, is dropped.
+    /// </summary>
+    private static void AppendKills(string? value, ref List<KillRecord>? kills)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        foreach (string entry in value.Split(KillSeparator, StringSplitOptions.None))
+        {
+            int split = entry.IndexOf(KillCountSeparator, StringComparison.Ordinal);
+            if (split <= 0)
+            {
+                continue;
+            }
+
+            string creatureId = entry.Substring(0, split).Trim();
+            if (creatureId.Length == 0)
+            {
+                continue;
+            }
+
+            string countText = entry.Substring(split + KillCountSeparator.Length);
+            if (!int.TryParse(countText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count))
+            {
+                continue;
+            }
+
+            // Ids carry the game's template bookkeeping after the name, as in "Fly-Creature-0".
+            int hyphen = creatureId.IndexOf('-');
+            string displayName = hyphen > 0 ? creatureId.Substring(0, hyphen) : creatureId;
+
+            (kills ??= new List<KillRecord>()).Add(new KillRecord(creatureId, displayName, count));
+        }
+    }
+
+    /// <summary>
+    /// Reads UNRECOGNIZEDPLAYERGRASPS, which lists one item name per hand separated by
+    /// &lt;svB&gt;. The first &lt;svB&gt; was already consumed as the key boundary.
+    /// </summary>
+    private static void AppendHeldItems(string? value, ref List<string>? heldItems)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return;
+        }
+
+        foreach (string entry in value.Split(SavePayloadReader.ValueSeparator, StringSplitOptions.None))
+        {
+            string item = entry.Trim();
+            if (item.Length != 0)
+            {
+                (heldItems ??= new List<string>()).Add(item);
+            }
+        }
     }
 
     private static SlotMetadata Failed(int slotNumber, string fileName, string reason) =>

@@ -12,6 +12,8 @@ namespace RainWorldSaveManager.Core.Saves.Models;
 /// </summary>
 public sealed class SlotMetadata
 {
+    private readonly IReadOnlyList<CampaignSummary> _campaigns = Array.Empty<CampaignSummary>();
+
     /// <summary>1..3 for sav, sav2, sav3. 0 for files with no UI slot.</summary>
     public int Slot { get; init; }
 
@@ -25,7 +27,15 @@ public sealed class SlotMetadata
     /// </summary>
     public bool? ChecksumValid { get; init; }
 
-    public IReadOnlyList<CampaignSummary> Campaigns { get; init; } = Array.Empty<CampaignSummary>();
+    /// <summary>
+    /// The campaigns in this file, never null. A manifest.json carrying an explicit null here
+    /// would defeat a plain field initialiser, so the init accessor turns one into an empty list.
+    /// </summary>
+    public IReadOnlyList<CampaignSummary> Campaigns
+    {
+        get => _campaigns;
+        init => _campaigns = value ?? Array.Empty<CampaignSummary>();
+    }
 
     /// <summary>Non-null means extraction failed and the other fields are empty.</summary>
     public string? ParseError { get; init; }

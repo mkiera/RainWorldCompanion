@@ -7,8 +7,10 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Saves.Models;
 using RainWorldSaveManager.Core.Settings;
 using RainWorldSaveManager.Core.System;
+using RainWorldSaveManager.Services;
 using RainWorldSaveManager.Views;
 
 namespace RainWorldSaveManager.ViewModels;
@@ -24,25 +26,51 @@ public sealed partial class MainViewModel : ObservableObject
 
     private readonly SettingsStore _settingsStore;
     private readonly IGameProcessDetector _gameDetector;
+    private readonly SlugcatIconProvider _icons;
     private readonly string _appVersion;
     private readonly DispatcherTimer _gameTimer;
 
+    /// <summary>Cancelled by <see cref="Shutdown"/>, so nothing started before the window closed
+    /// tries to write to the view model afterwards.</summary>
+    private readonly CancellationTokenSource _shutdown = new();
+
     private AppSettings _settings;
     private BackupService? _backupService;
-    private bool _pollInFlight;
 
-    public MainViewModel(SettingsStore settingsStore, IGameProcessDetector gameDetector, string appVersion)
+    // 1 while a poll is running. Interlocked because the poll's own continuation clears it on a
+    // worker thread while the timer tick sets it on the dispatcher.
+    private int _pollInFlight;
+
+    // Set while one selection is being moved out of the way for the other. The detail panel is
+    // rebuilt once, by the outer set, instead of once per property that changes on the way.
+    private bool _movingSelection;
+
+    private IReadOnlyList<SlotMetadata> _liveSlotData = Array.Empty<SlotMetadata>();
+    private long _liveSizeBytes;
+    private int _liveFileCount;
+
+    public MainViewModel(
+        SettingsStore settingsStore,
+        IGameProcessDetector gameDetector,
+        SlugcatIconProvider icons,
+        string appVersion)
     {
         _settingsStore = settingsStore;
         _gameDetector = gameDetector;
+        _icons = icons;
         _appVersion = appVersion;
-        _settings = AppSettings.CreateDefault();
+
+        // Empty on purpose. This runs on the dispatcher inside App.OnStartup, before the window
+        // is shown, and every way of guessing a path from here touches disk. InitializeAsync
+        // loads the real settings on a worker and FillInMissingPathsAsync fills the gaps.
+        _settings = new AppSettings();
 
         _gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _gameTimer.Tick += OnGameTimerTick;
     }
 
-    public ObservableCollection<string> LiveSlots { get; } = new();
+    /// <summary>The three save files as they are on disk, shown as the top card in the list column.</summary>
+    public ObservableCollection<SlotViewModel> LiveSlots { get; } = new();
 
     public ObservableCollection<BackupItemViewModel> Backups { get; } = new();
 
@@ -80,6 +108,19 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     private BackupItemViewModel? selectedBackup;
 
+    /// <summary>
+    /// True when the live save card is the selection. It and <see cref="SelectedBackup"/> are two
+    /// halves of one selection: picking either one clears the other.
+    /// </summary>
+    [ObservableProperty]
+    private bool isLiveSelected;
+
+    /// <summary>Whatever the detail panel is showing, or null before the first load.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDetail))]
+    [NotifyPropertyChangedFor(nameof(HasNoDetail))]
+    private SnapshotDetailViewModel? detail;
+
     [ObservableProperty]
     private string savePathText = "";
 
@@ -100,7 +141,48 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool HasNoBackups => Backups.Count == 0;
 
+    public bool HasDetail => Detail is not null;
+
+    public bool HasNoDetail => Detail is null;
+
     public string BackupCountText => Backups.Count == 1 ? "1 backup" : Backups.Count + " backups";
+
+    /// <summary>The one line under the LIVE SAVE heading, for example "3 slots   11 campaigns".</summary>
+    public string LiveSummaryText
+    {
+        get
+        {
+            if (LiveSlots.Count == 0)
+            {
+                return "";
+            }
+
+            var campaigns = 0;
+            foreach (var slot in LiveSlots)
+            {
+                campaigns += slot.Campaigns.Count;
+            }
+
+            var slots = LiveSlots.Count == 1 ? "1 slot" : LiveSlots.Count + " slots";
+            var runs = campaigns == 1 ? "1 campaign" : campaigns + " campaigns";
+            return slots + "   " + runs;
+        }
+    }
+
+    /// <summary>
+    /// What a screen reader announces for the live save card. The card is a button wrapping a
+    /// panel of text blocks, which on its own gives the container no name at all.
+    /// </summary>
+    public string LiveAccessibleName
+    {
+        get
+        {
+            var summary = LiveSummaryText;
+            return summary.Length == 0
+                ? "Live save, no save files found"
+                : "Live save, " + summary.Replace("   ", ", ");
+        }
+    }
 
     /// <summary>Called once when the window is loaded.</summary>
     public async Task InitializeAsync()
@@ -111,7 +193,9 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            _settings = AppSettings.CreateDefault();
+            // Blank rather than CreateDefault, for the same reason as the constructor: this is
+            // the dispatcher. FillInMissingPathsAsync fills both paths on a worker next.
+            _settings = new AppSettings();
             ShowMessage("The settings file could not be read, so defaults are in use.\n\n" + ex.Message,
                 "Settings", MessageBoxImage.Warning);
         }
@@ -139,6 +223,82 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _gameTimer.Stop();
         _gameTimer.Tick -= OnGameTimerTick;
+
+        // Stopping the timer cannot cancel a poll that is already inside the process
+        // enumeration. This is what tells that poll to drop its result instead of writing it to a
+        // window that has gone.
+        _shutdown.Cancel();
+    }
+
+    /// <summary>Shows the save folder as it is on disk, so a backup can be read against it.</summary>
+    [RelayCommand]
+    private void SelectLive() => IsLiveSelected = true;
+
+    partial void OnIsLiveSelectedChanged(bool value)
+    {
+        if (_movingSelection)
+        {
+            return;
+        }
+
+        _movingSelection = true;
+        try
+        {
+            if (value)
+            {
+                SelectedBackup = null;
+            }
+        }
+        finally
+        {
+            _movingSelection = false;
+        }
+
+        RebuildDetail();
+    }
+
+    partial void OnSelectedBackupChanged(BackupItemViewModel? value)
+    {
+        if (_movingSelection)
+        {
+            return;
+        }
+
+        _movingSelection = true;
+        try
+        {
+            if (value is not null)
+            {
+                IsLiveSelected = false;
+            }
+        }
+        finally
+        {
+            _movingSelection = false;
+        }
+
+        RebuildDetail();
+    }
+
+    /// <summary>
+    /// Fills the detail panel from whatever is selected. Both sources are already in memory: the
+    /// live slots were read during the last refresh and a backup carries its own manifest, so
+    /// selecting a row costs no disk read.
+    /// </summary>
+    private void RebuildDetail()
+    {
+        if (IsLiveSelected)
+        {
+            Detail = SnapshotDetailViewModel.ForLive(
+                _liveSlotData,
+                SavePathText,
+                _liveSizeBytes,
+                _liveFileCount,
+                _icons);
+            return;
+        }
+
+        Detail = SelectedBackup is { } item ? SnapshotDetailViewModel.ForBackup(item, _icons) : null;
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -420,9 +580,11 @@ public sealed partial class MainViewModel : ObservableObject
             });
         }
 
+        // DefaultBackupRootPath is a Path.Combine and touches no disk, so it is safe here.
+        // CreateDefault is not: it probes the save folder.
         if (string.IsNullOrWhiteSpace(_settings.BackupRootPath))
         {
-            _settings.BackupRootPath = AppSettings.CreateDefault().BackupRootPath;
+            _settings.BackupRootPath = AppSettings.DefaultBackupRootPath;
         }
     }
 
@@ -461,6 +623,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     private async Task ApplySettingsCoreAsync(string savePath, string backupRoot)
     {
+        // The install path only feeds the portraits, so it is never validated and never blocks
+        // anything here. Probing it still touches disk, so it goes on the worker with the rest.
+        var installPath = _settings.GameInstallPath;
+        await Task.Run(() => _icons.UseInstall(installPath));
+
         var problem = await Task.Run(() => SettingsValidation.Validate(savePath, backupRoot));
         if (problem is not null)
         {
@@ -509,12 +676,18 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var service = _backupService;
         var keepId = SelectedBackup?.Id;
+        var keepLive = IsLiveSelected;
 
         if (service is null)
         {
+            _liveSlotData = Array.Empty<SlotMetadata>();
+            _liveSizeBytes = 0;
+            _liveFileCount = 0;
             LiveSlots.Clear();
             Backups.Clear();
             SelectedBackup = null;
+            IsLiveSelected = false;
+            Detail = null;
             RaiseListStates();
             return;
         }
@@ -529,27 +702,35 @@ public sealed partial class MainViewModel : ObservableObject
 
         try
         {
+            // Reading the saves, listing the snapshots, measuring the live files and decoding the
+            // portraits all happen here, on the worker. What comes back is enough to build every
+            // view model on the dispatcher without touching disk again.
             var data = await Task.Run(() =>
             {
                 var slots = service.ReadLiveSlots();
                 var snapshots = service.ListBackups();
-                return (Slots: slots, Snapshots: snapshots);
+                var measured = MeasureLiveFiles(service.SaveRoot, slots);
+                _icons.Preload(CollectSlugcatIds(slots, snapshots));
+                return (Slots: slots, Snapshots: snapshots, measured.Size, measured.Count);
             });
+
+            _liveSlotData = data.Slots;
+            _liveSizeBytes = data.Size;
+            _liveFileCount = data.Count;
 
             LiveSlots.Clear();
             foreach (var slot in data.Slots)
             {
-                var line = slot.Describe();
-                LiveSlots.Add(string.IsNullOrWhiteSpace(line) ? slot.FileName : line);
+                LiveSlots.Add(new SlotViewModel(slot, _icons));
             }
 
             Backups.Clear();
             foreach (var snapshot in data.Snapshots)
             {
-                Backups.Add(new BackupItemViewModel(snapshot));
+                Backups.Add(new BackupItemViewModel(snapshot, _icons));
             }
 
-            SelectedBackup = FindById(keepId) ?? Backups.FirstOrDefault();
+            RestoreSelection(keepId, keepLive);
         }
         catch (Exception ex)
         {
@@ -583,34 +764,182 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Puts the selection back where it was after a refresh. The backup that was selected wins if
+    /// it is still there; otherwise the newest one; and with no backups at all the live save card
+    /// takes the selection so the panel is never blank.
+    /// </summary>
+    private void RestoreSelection(string? keepId, bool keepLive)
+    {
+        var restored = keepLive ? null : FindById(keepId) ?? Backups.FirstOrDefault();
+
+        _movingSelection = true;
+        try
+        {
+            IsLiveSelected = restored is null;
+            SelectedBackup = restored;
+        }
+        finally
+        {
+            _movingSelection = false;
+        }
+
+        RebuildDetail();
+    }
+
+    /// <summary>
+    /// Size and count of the save files behind the live slots. Runs on the worker with the rest
+    /// of the disk work, and a file that cannot be measured is left out rather than reported.
+    /// </summary>
+    private static (long Size, int Count) MeasureLiveFiles(string saveRoot, IReadOnlyList<SlotMetadata> slots)
+    {
+        long size = 0;
+        var count = 0;
+
+        foreach (var slot in slots)
+        {
+            if (string.IsNullOrWhiteSpace(slot.FileName))
+            {
+                continue;
+            }
+
+            try
+            {
+                var file = new FileInfo(Path.Combine(saveRoot, slot.FileName));
+                if (file.Exists)
+                {
+                    size += file.Length;
+                    count++;
+                }
+            }
+            catch (Exception)
+            {
+                // The slot still lists and still restores. Only the header's size line loses it.
+            }
+        }
+
+        return (size, count);
+    }
+
+    /// <summary>
+    /// Every slugcat id on screen after this refresh, so the portraits are read and decoded on
+    /// the worker instead of one file at a time while the list is being built.
+    /// </summary>
+    private static IEnumerable<string> CollectSlugcatIds(
+        IReadOnlyList<SlotMetadata> liveSlots,
+        IReadOnlyList<BackupSnapshot> snapshots)
+    {
+        foreach (var slot in liveSlots)
+        {
+            foreach (var campaign in slot.Campaigns)
+            {
+                yield return campaign.SlugcatId;
+            }
+        }
+
+        foreach (var snapshot in snapshots)
+        {
+            var slots = snapshot.Manifest?.Slots;
+            if (slots is null)
+            {
+                continue;
+            }
+
+            foreach (var slot in slots)
+            {
+                foreach (var campaign in slot.Campaigns)
+                {
+                    yield return campaign.SlugcatId;
+                }
+            }
+        }
+    }
+
+    // async void, so nothing can observe a failure here. PollGameAsync is written not to throw.
     private async void OnGameTimerTick(object? sender, EventArgs e) => await PollGameAsync();
 
+    /// <summary>
+    /// Asks whether Rain World is running and puts the answer on the banner.
+    ///
+    /// The await does not capture the dispatcher. A poll that is inside the process enumeration
+    /// when the user closes the window would otherwise resume by posting to a dispatcher that has
+    /// already shut down, which throws on the thread pool from an async void timer tick, where
+    /// App.DispatcherUnhandledException cannot reach it and the process ends in a crash report.
+    /// The result is marshalled back explicitly instead, and dropped if the window has gone.
+    /// </summary>
     private async Task PollGameAsync()
     {
-        if (_pollInFlight)
+        if (Interlocked.CompareExchange(ref _pollInFlight, 1, 0) != 0)
         {
             return;
         }
 
-        _pollInFlight = true;
+        var token = _shutdown.Token;
+
         try
         {
             var detector = _gameDetector;
-            var running = await Task.Run(() => detector.IsGameRunning(out _));
+            var running = await Task.Run(() => detector.IsGameRunning(out _), token).ConfigureAwait(false);
 
-            IsGameRunning = running;
-            GameStatusText = running
-                ? "Rain World is running - close it before backing up or restoring"
-                : "Rain World is closed";
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            ApplyGameState(
+                running,
+                running
+                    ? "Rain World is running - close it before backing up or restoring"
+                    : "Rain World is closed");
+        }
+        catch (OperationCanceledException)
+        {
         }
         catch (Exception)
         {
-            IsGameRunning = false;
-            GameStatusText = "Could not check whether Rain World is running";
+            ApplyGameState(false, "Could not check whether Rain World is running");
         }
         finally
         {
-            _pollInFlight = false;
+            Interlocked.Exchange(ref _pollInFlight, 0);
+        }
+    }
+
+    /// <summary>
+    /// Writes the poll result on the dispatcher, or drops it when there is no dispatcher left to
+    /// write to. Called from a worker thread.
+    /// </summary>
+    private void ApplyGameState(bool running, string status)
+    {
+        void Apply()
+        {
+            IsGameRunning = running;
+            GameStatusText = status;
+        }
+
+        if (_shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+        {
+            Apply();
+            return;
+        }
+
+        try
+        {
+            if (!dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+            {
+                dispatcher.BeginInvoke(Apply);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The dispatcher finished shutting down between the check and the post. There is
+            // nothing left to update and nothing to report.
         }
     }
 
@@ -646,6 +975,8 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasBackups));
         OnPropertyChanged(nameof(HasNoBackups));
         OnPropertyChanged(nameof(BackupCountText));
+        OnPropertyChanged(nameof(LiveSummaryText));
+        OnPropertyChanged(nameof(LiveAccessibleName));
     }
 
     private void ReportRestoreResult(BackupItemViewModel item, RestoreResult result)
