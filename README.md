@@ -8,7 +8,7 @@ snapshot from another before you restore it.
 This version does not edit saves. Files are copied byte for byte in both directions, because the
 UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
 reads back. It reads Rain Meadow's online saves with the same reader, pairs each one with the local
-slot it shares a number with, and can copy one whole slot onto the other.
+slot it shares a number with, and can copy any whole slot onto any other.
 
 ## What it manages
 
@@ -119,16 +119,24 @@ save folder and are the same format byte for byte, which is why one reader handl
 is not hooked, so online play is story mode.
 
 The detail panel pairs them in its own banded section: local and online in one row per slot number,
-all three rows always, because copying a local save into an online slot that does not exist yet is
-one of the things the section is for. The section appears when Rain Meadow is on the machine and is
-left out entirely otherwise, so a player who does not use the mod never sees it. Presence is read
-from the game's own enabled mod list when the game folder is known, and otherwise from the save
-folder, which is enough on its own: `meadow.json`, the mod's Remix config and the online saves are
-written by nothing else.
+all three rows always, so an empty online slot is visible rather than absent. The section appears
+when Rain Meadow is on the machine and is left out entirely otherwise, so a player who does not use
+the mod never sees it. Presence is read from the game's own enabled mod list when the game folder is
+known, and otherwise from the save folder, which is enough on its own: `meadow.json`, the mod's
+Remix config and the online saves are written by nothing else.
 
-The two copy buttons sit between the halves and start a copy of that pair, but the confirmation
-lets you change either side, so any slot can be copied onto any other. Local slot 1 onto online
-slot 3 is as available as the matching pair the buttons opened with.
+Rain Meadow records the map you have explored and a progression record whether or not a campaign is
+saved, so an online save can hold 12 KB of real progress with no campaign in it. The panel describes
+that as map and progression data. A slot that has never been played holds nothing and says so.
+
+## Copying a slot
+
+Copy Slot in the top bar picks both ends: a source and a target, from the three local slots and,
+when Rain Meadow is on the machine, the three online ones. Any of them can be copied onto any
+other, so local slot 1 onto online slot 3 is as available as local slot 1 onto local slot 2.
+Changing either picker re-describes the copy from a fresh plan, so what the confirmation names is
+what will run. Picking one file on both sides is refused, in the same words the copy itself would
+use.
 
 A copy replaces the whole target file byte for byte and takes a safety snapshot of the save folder
 first, the same kind a restore takes, so the file it overwrote can be put back by restoring that
@@ -140,10 +148,6 @@ safety snapshot does not hold the file that is about to be replaced.
 Moving one campaign between slots is not in this version. That means rewriting the payload and
 recomputing the MD5 the game checks it against, and getting that wrong is what destroys a save. It
 belongs with the save editor.
-
-Rain Meadow records the map you have explored and a progression record whether or not a campaign is
-saved, so an online save can hold 12 KB of real progress with no campaign in it. The panel describes
-that as map and progression data. A slot that has never been played holds nothing and says so.
 
 `meadow.json` is Rain Meadow's own progression file, and the panel reads it: the character picked in
 the menu, play time, progress towards the next emote, skin and character, and per character the
@@ -187,13 +191,14 @@ Settings live in `%LOCALAPPDATA%\RainWorldSaveManager\settings.json`.
 
 ## Close the game first
 
-Backups and restores are refused while Rain World is running, because the game holds its
-progression in memory and writes it back at its own save points. The header of the window tells
-you whether the game is open, and the Backup and Restore buttons are disabled while it is.
+Backups, restores and slot copies are refused while Rain World is running, because the game holds
+its progression in memory and writes it back at its own save points. The header of the window tells
+you whether the game is open, and the New Backup, Restore and Copy Slot buttons are disabled while
+it is.
 
-The check is repeated during a restore. If the game starts while the restore is running, the
-restore stops rather than writing more files under a process that is reading them, and tells you
-the save folder is part restored.
+The check is repeated during a restore or a copy. If the game starts while one is running, it stops
+rather than writing more files under a process that is reading them, and tells you the save folder
+is part written.
 
 ## What a restore does
 

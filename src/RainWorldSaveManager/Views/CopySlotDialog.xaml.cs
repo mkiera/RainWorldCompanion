@@ -12,34 +12,61 @@ using RainWorldSaveManager.ViewModels;
 namespace RainWorldSaveManager.Views;
 
 /// <summary>
-/// Confirms one whole-slot copy. Both sides come from the plan Core built, so the file this shows
-/// as being replaced is the file that will be written to and nothing here works it out a second
-/// time.
+/// Picks one whole-slot copy and confirms it. Every line comes from the plan Core built for the
+/// pair the pickers are on, so the file this shows as being replaced is the file that will be
+/// written to and nothing here works it out a second time.
 /// </summary>
 public partial class CopySlotDialog : Window, INotifyPropertyChanged
 {
     /// <summary>One entry in either picker.</summary>
-    public sealed record SlotChoice(SaveSlotRef Ref, string Label);
+    public sealed record SlotChoice(SaveSlotRef Ref, string Label)
+    {
+        /// <summary>
+        /// DisplayMemberPath settles what is drawn, but a ComboBoxItem takes its automation name
+        /// from this. The record's own ToString would have a screen reader announce
+        /// "SlotChoice { Ref = sav, Label = Local slot 1 (sav) }".
+        /// </summary>
+        public override string ToString() => Label;
+    }
 
     private readonly Func<SaveSlotRef, SaveSlotRef, SlotCopyPlan> _replan;
+
+    // Planning parses both files, and a full sav is several megabytes. Keeping the plans means
+    // moving a picker back to a pair already looked at costs nothing.
+    private readonly Dictionary<(SaveSlotRef Source, SaveSlotRef Target), SlotCopyPlan> _plans = new();
 
     private SlotChoice _selectedSource;
     private SlotChoice _selectedTarget;
     private SlotCopyPlan _plan;
 
-    /// <param name="plan">The pair the user arrived with, which the pickers start on.</param>
+    /// <param name="plan">The pair the pickers start on.</param>
     /// <param name="replan">
     /// Asks Core to describe a different pair. Every side of this dialog comes from a plan Core
     /// built, so changing a picker cannot make the dialog disagree with what the copy will do.
     /// </param>
-    public CopySlotDialog(SlotCopyPlan plan, Func<SaveSlotRef, SaveSlotRef, SlotCopyPlan> replan)
+    /// <param name="includeOnline">
+    /// Whether the online saves are offered. False when Rain Meadow is not on the machine, where
+    /// online_sav is a file nothing writes and offering it would only invite a copy into a slot
+    /// the game will never read.
+    /// </param>
+    public CopySlotDialog(
+        SlotCopyPlan plan,
+        Func<SaveSlotRef, SaveSlotRef, SlotCopyPlan> replan,
+        bool includeOnline)
     {
         _replan = replan;
         _plan = plan;
+        _plans[(new SaveSlotRef(plan.Source.Realm, plan.Source.Slot),
+                new SaveSlotRef(plan.Target.Realm, plan.Target.Slot))] = plan;
 
-        Choices = BuildChoices();
+        Choices = BuildChoices(includeOnline);
         _selectedSource = Find(plan.Source.Realm, plan.Source.Slot);
         _selectedTarget = Find(plan.Target.Realm, plan.Target.Slot);
+
+        // Find falls back to the first choice for a realm this dialog is not offering, so the
+        // pickers can land on a pair other than the one that was planned. This asks Core about the
+        // pair actually shown, and hits the cache when it is the same one.
+        Replan();
 
         InitializeComponent();
         DataContext = this;
@@ -50,7 +77,7 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>Every slot on both sides, so any one can be copied onto any other.</summary>
+    /// <summary>Every slot that can take part, so any one can be copied onto any other.</summary>
     public IReadOnlyList<SlotChoice> Choices { get; }
 
     public SlotChoice SelectedSource
@@ -89,21 +116,31 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
     public SaveSlotRef ChosenTarget => _selectedTarget.Ref;
 
     /// <summary>
-    /// False when the two pickers name the same file. Copying a file onto itself is refused by
-    /// Core anyway, so this only saves the user the round trip.
+    /// Core's own answer for the pair the pickers are on. The dialog decides nothing itself, so a
+    /// pair it lets through is a pair Core has already agreed to.
     /// </summary>
-    public bool CanCopy => _selectedSource.Ref != _selectedTarget.Ref;
+    public bool CanCopy => _plan.CanCopy;
 
-    public string BlockedReason =>
-        CanCopy ? "" : "Pick two different slots. A file cannot be copied onto itself.";
+    /// <summary>Why the copy is refused, in Core's words. Empty when it is not.</summary>
+    public string BlockedReason => string.Join("\n", _plan.Problems);
 
     public string HeadlineText =>
         "Copy " + _plan.Source.FileName + " onto " + _plan.Target.FileName + "?";
 
-    public string DirectionText => _plan.Source.Slot == _plan.Target.Slot
-        ? "These are the two halves of slot " + Number(_plan.Source.Slot) +
-          ". Rain World picks between them by whether you are in a Rain Meadow lobby."
-        : "Slot " + Number(_plan.Source.Slot) + " is copied onto slot " + Number(_plan.Target.Slot) + ".";
+    public string DirectionText
+    {
+        get
+        {
+            if (_plan.Source.Slot == _plan.Target.Slot && _plan.Source.Realm != _plan.Target.Realm)
+            {
+                return "These are the two halves of slot " + Number(_plan.Source.Slot) +
+                       ". Rain World picks between them by whether you are in a Rain Meadow lobby.";
+            }
+
+            return Capitalise(Describe(_plan.Source.Realm, _plan.Source.Slot)) +
+                   " is copied onto " + Describe(_plan.Target.Realm, _plan.Target.Slot) + ".";
+        }
+    }
 
     public string ReplaceWarningText => _plan.Target.Exists
         ? _plan.Target.FileName + " is replaced entirely. Everything in it now is gone once this finishes."
@@ -126,17 +163,22 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
     public Visibility WarningsVisibility =>
         Warnings.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
 
-    private static IReadOnlyList<SlotChoice> BuildChoices()
+    private static IReadOnlyList<SlotChoice> BuildChoices(bool includeOnline)
     {
-        var choices = new List<SlotChoice>(SaveSlotRef.MaxSlot * 2);
+        var realms = includeOnline
+            ? new[] { SaveRealm.Local, SaveRealm.Online }
+            : new[] { SaveRealm.Local };
 
-        foreach (SaveRealm realm in new[] { SaveRealm.Local, SaveRealm.Online })
+        var choices = new List<SlotChoice>(SaveSlotRef.MaxSlot * realms.Length);
+
+        foreach (SaveRealm realm in realms)
         {
             for (int slot = SaveSlotRef.MinSlot; slot <= SaveSlotRef.MaxSlot; slot++)
             {
                 var reference = new SaveSlotRef(realm, slot);
-                string kind = realm == SaveRealm.Online ? "Online" : "Local";
-                choices.Add(new SlotChoice(reference, kind + " slot " + Number(slot) + "  (" + reference.FileName + ")"));
+                choices.Add(new SlotChoice(
+                    reference,
+                    Capitalise(Describe(realm, slot)) + "  (" + reference.FileName + ")"));
             }
         }
 
@@ -157,15 +199,21 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Rebuilds every line from a fresh plan. Both sides of a self copy would name one file, and
-    /// Core refuses that, so the plan is only asked for when the pair is a real one.
+    /// Rebuilds every line from the plan for the pair the pickers are on, including the pair that
+    /// names one file twice: Core is what refuses that, and asking it means the refusal is worded
+    /// the same here as it would be if the copy were run.
     /// </summary>
     private void Replan()
     {
-        if (CanCopy)
+        var key = (_selectedSource.Ref, _selectedTarget.Ref);
+
+        if (!_plans.TryGetValue(key, out SlotCopyPlan? cached))
         {
-            _plan = _replan(_selectedSource.Ref, _selectedTarget.Ref);
+            cached = _replan(_selectedSource.Ref, _selectedTarget.Ref);
+            _plans[key] = cached;
         }
+
+        _plan = cached;
 
         foreach (string name in new[]
                  {
@@ -230,6 +278,13 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
 
         return lines;
     }
+
+    /// <summary>"local slot 2", the phrase both the pickers and the direction line are built from.</summary>
+    private static string Describe(SaveRealm realm, int slot) =>
+        (realm == SaveRealm.Online ? "online slot " : "local slot ") + Number(slot);
+
+    private static string Capitalise(string text) =>
+        text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
 

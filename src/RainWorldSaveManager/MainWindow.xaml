@@ -661,7 +661,7 @@
             <ContentPresenter />
         </ControlTemplate>
 
-        <!-- One slot number with both of its files side by side, and the copy between them -->
+        <!-- One slot number with both of its files side by side -->
         <DataTemplate x:Key="SlotPairTemplate">
             <GroupBox Template="{StaticResource BareGroupTemplate}"
                       AutomationProperties.Name="{Binding AccessibleName}">
@@ -693,18 +693,8 @@
                                           Content="{Binding Local}"
                                           ContentTemplate="{StaticResource SlotPairSideTemplate}" />
 
-                        <StackPanel Grid.Column="1" Margin="6,0,6,0" VerticalAlignment="Center"
-                                    Visibility="{Binding ShowCopy, Converter={StaticResource BoolToVis}}">
-                            <Button Content="Copy &#x2192;" Style="{StaticResource Button.Small}" MinWidth="88"
-                                    Command="{Binding CopyToOnlineCommand}"
-                                    ToolTip="{Binding CopyToOnlineToolTip}"
-                                    AutomationProperties.Name="{Binding CopyToOnlineAccessibleName}" />
-                            <Button Content="&#x2190; Copy" Style="{StaticResource Button.Small}" MinWidth="88"
-                                    Margin="0,6,0,0"
-                                    Command="{Binding CopyToLocalCommand}"
-                                    ToolTip="{Binding CopyToLocalToolTip}"
-                                    AutomationProperties.Name="{Binding CopyToLocalAccessibleName}" />
-                        </StackPanel>
+                        <Border Grid.Column="1" Width="1" Margin="10,2,10,2"
+                                Background="{StaticResource Brush.Border}" />
 
                         <ContentPresenter Grid.Column="2" Margin="5,0,0,0"
                                           Content="{Binding Online}"
@@ -981,6 +971,11 @@
                         Command="{Binding DeleteCommand}" />
                 <Button DockPanel.Dock="Right" Content="Open Folder" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0" Command="{Binding OpenFolderCommand}" />
+                <!-- The one way in to a slot copy. Both ends are picked in the dialog, so the slot
+                     rows further down carry no buttons of their own. -->
+                <Button DockPanel.Dock="Right" Content="Copy Slot" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0" Command="{Binding CopySlotCommand}"
+                        ToolTip="Copy one whole save slot onto another, byte for byte." />
                 <Button DockPanel.Dock="Right" Content="Restore" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
                 <Button DockPanel.Dock="Right" Content="New Backup" Style="{StaticResource Button.Accent}"
@@ -1218,12 +1213,12 @@
                                     <StackPanel Margin="12,10,12,12">
                                         <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
                                                    Margin="0,0,0,9"
-                                                   Text="Rain Meadow keeps a second save for each slot and the game picks between them by whether you are in a lobby, so slot 2 is sav2 on your own and online_sav2 in a lobby. Copying replaces the whole target file byte for byte." />
+                                                   Text="Rain Meadow keeps a second save for each slot and the game picks between them by whether you are in a lobby, so slot 2 is sav2 on your own and online_sav2 in a lobby. Copy Slot in the top bar moves a whole save between any two of these files." />
 
                                         <ItemsControl ItemsSource="{Binding Detail.SlotPairs}"
                                                       ItemTemplate="{StaticResource SlotPairTemplate}" />
 
-                                        <TextBlock Text="No online saves in this folder yet. Copy a local slot across to start one."
+                                        <TextBlock Text="No online saves in this folder yet. Copy Slot in the top bar puts a local save into one."
                                                    Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
                                                    Visibility="{Binding Detail.HasNoOnlineSlots, Converter={StaticResource BoolToVis}}" />
 

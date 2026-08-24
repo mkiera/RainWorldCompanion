@@ -16,10 +16,10 @@ namespace RainWorldSaveManager.ViewModels;
 /// read. A manifest written by schema version 1 recorded far less per campaign, and those cards
 /// render with dashes where the value was never stored rather than failing to render at all.
 ///
-/// Rain Meadow's online saves are kept out of the slot sections and put in their own foldout,
-/// paired with the local save of the same slot number. That foldout and the meadow.json section
-/// are both left out entirely when there is nothing of Rain Meadow's to show, so a player who
-/// does not use the mod sees the panel exactly as it was before.
+/// Rain Meadow's online saves are kept out of the slot sections and put in their own banded
+/// section, paired with the local save of the same slot number. That section is left out entirely
+/// when the mod is not on the machine, so a player who does not use it sees the panel exactly as
+/// it was before.
 /// </summary>
 public sealed class SnapshotDetailViewModel
 {
@@ -35,7 +35,6 @@ public sealed class SnapshotDetailViewModel
         BackupItemViewModel? backup,
         IReadOnlyList<SlotMetadata> allSlots,
         MeadowProfile? meadow,
-        SlotCopyGate? copyGate,
         ISlugcatIconProvider icons)
     {
         IsLive = isLive;
@@ -52,7 +51,7 @@ public sealed class SnapshotDetailViewModel
         var online = BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons);
 
         Slots = local;
-        SlotPairs = BuildPairs(local, online, copyGate);
+        SlotPairs = BuildPairs(local, online);
         OnlineCountText = FormatFileCount(online.Count, "online save");
 
         Meadow = meadow is null ? null : new MeadowProfileViewModel(meadow);
@@ -136,7 +135,6 @@ public sealed class SnapshotDetailViewModel
         long sizeBytes,
         int fileCount,
         MeadowProfile? meadow,
-        SlotCopyGate? copyGate,
         ISlugcatIconProvider icons)
     {
         return new SnapshotDetailViewModel(
@@ -151,14 +149,10 @@ public sealed class SnapshotDetailViewModel
             backup: null,
             allSlots: slots,
             meadow: meadow,
-            copyGate: copyGate,
             icons: icons);
     }
 
-    /// <summary>
-    /// One backup, read out of the manifest that was written with it. No copy gate: a file inside
-    /// a snapshot is put back by restoring the snapshot, not by writing it over a live slot.
-    /// </summary>
+    /// <summary>One backup, read out of the manifest that was written with it.</summary>
     public static SnapshotDetailViewModel ForBackup(
         BackupItemViewModel item,
         MeadowProfile? meadow,
@@ -182,20 +176,7 @@ public sealed class SnapshotDetailViewModel
             backup: item,
             allSlots: (IReadOnlyList<SlotMetadata>?)source ?? Array.Empty<SlotMetadata>(),
             meadow: meadow,
-            copyGate: null,
             icons: icons);
-    }
-
-    /// <summary>
-    /// Re-asks every copy button whether it is allowed to run. Called by the window when the game
-    /// starts or stops, or when an operation begins or ends.
-    /// </summary>
-    public void RaiseCopyStates()
-    {
-        foreach (var pair in SlotPairs)
-        {
-            pair.RaiseCopyStates();
-        }
     }
 
     private static IReadOnlyList<SlotViewModel> BuildSlots(
@@ -211,20 +192,18 @@ public sealed class SnapshotDetailViewModel
 
     /// <summary>
     /// One row per slot number, all three of them, whenever the Rain Meadow block is drawn at all.
-    /// A row with nothing on either side still earns its place: it is the only way to copy a local
-    /// save into an online slot that does not exist yet, which is exactly what a player who has
-    /// just installed the mod wants to do.
+    /// A row with nothing on either side still earns its place: it shows the player which online
+    /// slots are still empty, which is what they need to know before copying a local save across.
     /// </summary>
     private static IReadOnlyList<SlotPairViewModel> BuildPairs(
         IReadOnlyList<SlotViewModel> local,
-        IReadOnlyList<SlotViewModel> online,
-        SlotCopyGate? copyGate)
+        IReadOnlyList<SlotViewModel> online)
     {
         var pairs = new List<SlotPairViewModel>(SaveSlotRef.MaxSlot);
 
         for (int slot = SaveSlotRef.MinSlot; slot <= SaveSlotRef.MaxSlot; slot++)
         {
-            pairs.Add(new SlotPairViewModel(slot, FindSlot(local, slot), FindSlot(online, slot), copyGate));
+            pairs.Add(new SlotPairViewModel(slot, FindSlot(local, slot), FindSlot(online, slot)));
         }
 
         return pairs;

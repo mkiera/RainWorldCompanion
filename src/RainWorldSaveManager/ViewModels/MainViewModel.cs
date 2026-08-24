@@ -99,6 +99,7 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(NewBackupCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
     private bool isGameRunning;
 
     [ObservableProperty]
@@ -111,6 +112,7 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -295,13 +297,6 @@ public sealed partial class MainViewModel : ObservableObject
         _verifySweep = null;
     }
 
-    // The copy buttons in the detail panel are their own commands, so the attributes on IsBusy and
-    // IsGameRunning cannot reach them. These two put the copy buttons behind the same gate as New
-    // Backup and Restore.
-    partial void OnIsBusyChanged(bool value) => Detail?.RaiseCopyStates();
-
-    partial void OnIsGameRunningChanged(bool value) => Detail?.RaiseCopyStates();
-
     /// <summary>Shows the save folder as it is on disk, so a backup can be read against it.</summary>
     [RelayCommand]
     private void SelectLive() => IsLiveSelected = true;
@@ -382,7 +377,6 @@ public sealed partial class MainViewModel : ObservableObject
                 _liveSizeBytes,
                 _liveFileCount,
                 _liveMeadow,
-                BuildCopyGate(),
                 _icons);
         }
 
@@ -398,40 +392,18 @@ public sealed partial class MainViewModel : ObservableObject
     private string MeadowVersionText =>
         string.IsNullOrWhiteSpace(_meadow.Version) ? "" : "v" + _meadow.Version;
 
-    /// <summary>
-    /// What the copy buttons in the detail panel talk to, or null when there is no service to copy
-    /// with. Null is what keeps the buttons off a panel built before the settings were valid.
-    /// </summary>
-    private SlotCopyGate? BuildCopyGate() =>
-        _copyService is null ? null : new SlotCopyGate(CanCopySlot, RequestSlotCopy);
-
-    private bool CanCopySlot() => !IsBusy && !IsGameRunning && _copyService is not null;
-
-    // async void because the gate hands the panel a plain Action. Everything CopySlotAsync can
-    // fail at is already reported as a message box, and this catch is for the rest.
-    private async void RequestSlotCopy(int slot, bool toOnline)
-    {
-        try
-        {
-            await CopySlotAsync(slot, toOnline);
-        }
-        catch (Exception ex)
-        {
-            Report("The copy could not be started.", ex);
-        }
-    }
-
     private MeadowProfile? FindMeadow(string id) =>
         _backupMeadow.TryGetValue(id, out var profile) ? profile : null;
 
     /// <summary>
-    /// Copies one whole slot file onto the other half of the same slot number.
+    /// Copies one whole slot file onto another. Both ends are picked in the dialog, so this is the
+    /// only entry point and the slot rows in the panel carry no buttons.
     ///
-    /// <paramref name="toOnline"/> true means the local save is copied onto the Rain Meadow online
-    /// save, false means the other way. Core does the work: this asks it for a plan, shows that
-    /// plan, and runs the copy on a worker with the busy overlay up, the same shape as Restore.
+    /// Core does the work: this asks it for a plan of the pair the dialog opens on, shows that plan,
+    /// and runs the copy on a worker with the busy overlay up, the same shape as Restore.
     /// </summary>
-    private async Task CopySlotAsync(int slot, bool toOnline)
+    [RelayCommand(CanExecute = nameof(CanCopySlot))]
+    private async Task CopySlotAsync()
     {
         var copies = _copyService;
         if (copies is null || IsBusy || IsGameRunning)
@@ -439,8 +411,7 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        var from = new SaveSlotRef(toOnline ? SaveRealm.Local : SaveRealm.Online, slot);
-        var to = new SaveSlotRef(toOnline ? SaveRealm.Online : SaveRealm.Local, slot);
+        (SaveSlotRef from, SaveSlotRef to) = DefaultCopyPair();
 
         SlotCopyPlan? plan = null;
         Exception? failure = null;
@@ -465,16 +436,9 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        if (!plan!.CanCopy)
-        {
-            ShowMessage(
-                "This copy cannot be made.\n\n" + FormatList(plan.Problems),
-                "Copy save slot",
-                MessageBoxImage.Warning);
-            return;
-        }
-
-        var dialog = new CopySlotDialog(plan, copies.PlanCopy);
+        // A plan that cannot run still opens the dialog. The pair here is only where the pickers
+        // start, and refusing to open would leave the user no way to reach a pair that does work.
+        var dialog = new CopySlotDialog(plan!, copies.PlanCopy, _meadow.Present);
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -513,6 +477,18 @@ public sealed partial class MainViewModel : ObservableObject
 
         ReportCopyResult(result!);
     }
+
+    private bool CanCopySlot() => !IsBusy && !IsGameRunning && _copyService is not null;
+
+    /// <summary>
+    /// Where the pickers start. Slot 1 to its online half is the copy Rain Meadow players come for,
+    /// and without the mod there is no online half to offer, so it starts on the two local slots the
+    /// game itself shows first.
+    /// </summary>
+    private (SaveSlotRef From, SaveSlotRef To) DefaultCopyPair() =>
+        _meadow.Present
+            ? (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Online, 1))
+            : (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Local, 2));
 
     /// <summary>
     /// Reports a finished copy. The headline is built by Core, so a copy that wrote to the save
@@ -1297,6 +1273,7 @@ public sealed partial class MainViewModel : ObservableObject
         OpenFolderCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         OpenSettingsCommand.NotifyCanExecuteChanged();
+        CopySlotCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()

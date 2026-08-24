@@ -2,41 +2,25 @@
 // exists in the referenced assembly, so a using written inside the namespace body would bind
 // "System" to that namespace instead of the BCL root.
 using System.Globalization;
-using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Saves;
 
 namespace RainWorldSaveManager.ViewModels;
 
 /// <summary>
-/// What a slot pair needs from the window in order to offer the copy: whether a copy may start at
-/// all right now, and where to send the request.
-/// </summary>
-/// <param name="CanCopy">
-/// Read every time a button re-evaluates, so the same gate that disables New Backup and Restore
-/// while the game is running or an operation is in flight disables these too.
-/// </param>
-/// <param name="Request">
-/// Called with the slot number and the direction. True means the local file is copied onto the
-/// online one, false means the other way.
-/// </param>
-public sealed record SlotCopyGate(Func<bool> CanCopy, Action<int, bool> Request);
-
-/// <summary>
-/// One slot number with its local save and its Rain Meadow online save beside each other, and the
-/// copy between them.
+/// One slot number with its local save and its Rain Meadow online save beside each other.
 ///
 /// Rain Meadow hooks Options.GetSaveFileName_SavOrExp and swaps sav for online_sav while a lobby
 /// is joined, so the game's own slot number picks both files. Slot 2 is sav2 and online_sav2, and
 /// pairing them is what lets a player see the two halves of one menu slot together.
+///
+/// The row shows what is in each file. Copying between slots is one command in the window's top
+/// bar, so the row carries no buttons of its own and reads the same in a backup as it does live.
 /// </summary>
 public sealed class SlotPairViewModel
 {
-    private readonly SlotCopyGate? _gate;
-
-    public SlotPairViewModel(int slotNumber, SlotViewModel? local, SlotViewModel? online, SlotCopyGate? gate)
+    public SlotPairViewModel(int slotNumber, SlotViewModel? local, SlotViewModel? online)
     {
         SlotNumber = slotNumber;
-        _gate = gate;
 
         NumberText = slotNumber.ToString(CultureInfo.InvariantCulture);
         HeaderText = "SLOT " + NumberText;
@@ -53,21 +37,6 @@ public sealed class SlotPairViewModel
 
         Local = new SlotSideViewModel("LOCAL", localName, local);
         Online = new SlotSideViewModel("ONLINE", onlineName, online);
-
-        ShowCopy = gate is not null;
-
-        CopyToOnlineToolTip = "Replace " + onlineName + " with a byte for byte copy of " + localName + ".";
-        CopyToLocalToolTip = "Replace " + localName + " with a byte for byte copy of " + onlineName + ".";
-        CopyToOnlineAccessibleName = "Copy " + localName + " onto " + onlineName;
-        CopyToLocalAccessibleName = "Copy " + onlineName + " onto " + localName;
-
-        CopyToOnlineCommand = new RelayCommand(
-            () => _gate?.Request(SlotNumber, true),
-            () => CanCopyToOnline);
-
-        CopyToLocalCommand = new RelayCommand(
-            () => _gate?.Request(SlotNumber, false),
-            () => CanCopyToLocal);
     }
 
     /// <summary>1, 2 or 3, the number the game's own menu shows.</summary>
@@ -81,41 +50,9 @@ public sealed class SlotPairViewModel
 
     public SlotSideViewModel Online { get; }
 
-    /// <summary>
-    /// False for a backup, where there is nothing to copy: the files in a snapshot are put back by
-    /// restoring it, not by writing one of them over a live slot.
-    /// </summary>
-    public bool ShowCopy { get; }
-
-    public RelayCommand CopyToOnlineCommand { get; }
-
-    public RelayCommand CopyToLocalCommand { get; }
-
-    public string CopyToOnlineToolTip { get; }
-
-    public string CopyToLocalToolTip { get; }
-
-    public string CopyToOnlineAccessibleName { get; }
-
-    public string CopyToLocalAccessibleName { get; }
-
     /// <summary>What a screen reader announces for the row as a whole.</summary>
     public string AccessibleName =>
         "Slot " + NumberText + ". Local, " + Local.SummaryText + ". Online, " + Online.SummaryText + ".";
-
-    private bool CanCopyToOnline => Local.Exists && (_gate?.CanCopy() ?? false);
-
-    private bool CanCopyToLocal => Online.Exists && (_gate?.CanCopy() ?? false);
-
-    /// <summary>
-    /// Re-asks both buttons whether they are allowed to run. Called by the window when the game
-    /// starts or stops, or when an operation begins or ends.
-    /// </summary>
-    public void RaiseCopyStates()
-    {
-        CopyToOnlineCommand.NotifyCanExecuteChanged();
-        CopyToLocalCommand.NotifyCanExecuteChanged();
-    }
 }
 
 /// <summary>

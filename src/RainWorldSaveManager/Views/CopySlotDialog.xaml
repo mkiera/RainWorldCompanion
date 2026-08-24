@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Copy save slot"
-        Width="700" Height="560" MinWidth="600" MinHeight="460"
+        Width="760" Height="560" MinWidth="680" MinHeight="460"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource Brush.Window}"
@@ -64,7 +64,9 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <DockPanel Grid.Row="0">
-                        <ComboBox DockPanel.Dock="Right" x:Name="SourcePicker" Width="150"
+                        <!-- Wide enough for the longest label, "Online slot 3  (online_sav3)". A
+                             clipped one reads as a different slot than the one selected. -->
+                        <ComboBox DockPanel.Dock="Right" x:Name="SourcePicker" Width="196"
                                   ItemsSource="{Binding Choices}" DisplayMemberPath="Label"
                                   SelectedItem="{Binding SelectedSource, Mode=TwoWay}"
                                   AutomationProperties.Name="Copy from" />
@@ -97,7 +99,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <DockPanel Grid.Row="0">
-                        <ComboBox DockPanel.Dock="Right" x:Name="TargetPicker" Width="150"
+                        <ComboBox DockPanel.Dock="Right" x:Name="TargetPicker" Width="196"
                                   ItemsSource="{Binding Choices}" DisplayMemberPath="Label"
                                   SelectedItem="{Binding SelectedTarget, Mode=TwoWay}"
                                   AutomationProperties.Name="Replaces" />
