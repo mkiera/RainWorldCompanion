@@ -78,6 +78,17 @@ The outermost entry is whatever nothing else in the save is holding. That is usu
 but when the player has been eaten it is the predator, and the player and everything it was
 carrying hang underneath. The flat list this replaced gave no way to tell those two apart.
 
+Each row carries what the save knows about that entity. A pearl shows its type and the colour the
+game paints it, so one lore pearl is told from another at a glance, and Five Pebbles' own pearls
+show their number instead, which is the only thing that separates them. A creature shows how it
+feels about you, out of its own social memory, and a spear says so when it is explosive, electric,
+a needle, or poisoned. A creature something has already eaten from shows the meat it has left.
+
+A creature on the campaign's friends list is marked tamed. That list is the game's own record of
+which creatures it keeps with you between cycles, and it is deliberately shown apart from the
+feeling beside it, because the two disagree. A creature can like you completely and not be on the
+list: in one campaign here a moth and a vulture both sit at the maximum and neither is tamed.
+
 Backups taken before this version recorded no entity ids, so their contents cannot be linked and
 are drawn flat. A relationship written in a shape this app does not read still counts towards the
 number on the campaign header, and a line under the tree says how many were not read.

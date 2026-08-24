@@ -27,6 +27,7 @@ public sealed class CampaignSummary
     private readonly IReadOnlyList<KillRecord> _kills = Array.Empty<KillRecord>();
     private readonly IReadOnlyList<DevourmentRelationship> _devourmentStates
         = Array.Empty<DevourmentRelationship>();
+    private readonly IReadOnlyList<string> _friendIds = Array.Empty<string>();
     private readonly IReadOnlyList<string> _swallowedItems = Array.Empty<string>();
     private readonly IReadOnlyList<string> _heldItems = Array.Empty<string>();
 
@@ -248,6 +249,18 @@ public sealed class CampaignSummary
     {
         get => _devourmentStates;
         init => _devourmentStates = value ?? Array.Empty<DevourmentRelationship>();
+    }
+
+    /// <summary>
+    /// Entity ids from the FRIENDS field: the creatures the game is keeping with the player
+    /// between cycles. This is the game's own record of taming, and it is not the same as a high
+    /// like value in a creature's social memory. A creature can like the player completely and
+    /// still not be on this list.
+    /// </summary>
+    public IReadOnlyList<string> FriendIds
+    {
+        get => _friendIds;
+        init => _friendIds = value ?? Array.Empty<string>();
     }
 
     /// <summary>Item types from SWALLOWEDITEMS, for example PebblesPearl.</summary>

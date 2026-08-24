@@ -47,6 +47,9 @@ public static class SaveMetadataExtractor
     private const string SwallowedItemsField = "SWALLOWEDITEMS";
     private const string HeldItemsField = "UNRECOGNIZEDPLAYERGRASPS";
 
+    /// <summary>The game's list of creatures it keeps with the player between cycles.</summary>
+    private const string FriendsField = "FRIENDS";
+
     /// <summary>Separates the entries of the KILLS value.</summary>
     private const string KillSeparator = "<svC>";
 
@@ -182,6 +185,7 @@ public static class SaveMetadataExtractor
         List<DevourmentRelationship>? devourmentStates = null;
         List<string>? swallowedItems = null;
         List<string>? heldItems = null;
+        List<string>? friendIds = null;
 
         // REGIONSTATE and COMMUNITIES are skipped by omission. REGIONSTATE alone appears about a
         // hundred times per campaign and each value runs to kilobytes, and nothing here reads them.
@@ -303,6 +307,14 @@ public static class SaveMetadataExtractor
                 case HeldItemsField:
                     AppendHeldItems(field.Value, ref heldItems);
                     break;
+
+                case FriendsField:
+                    foreach (string friendId in EntityBlobReader.ReadFriendIds(field.Value))
+                    {
+                        (friendIds ??= new List<string>()).Add(friendId);
+                    }
+
+                    break;
             }
         }
 
@@ -341,6 +353,7 @@ public static class SaveMetadataExtractor
                 : devourmentStates,
             SwallowedItems = swallowedItems is null ? Array.Empty<string>() : swallowedItems,
             HeldItems = heldItems is null ? Array.Empty<string>() : heldItems,
+            FriendIds = friendIds is null ? Array.Empty<string>() : friendIds,
         };
     }
 

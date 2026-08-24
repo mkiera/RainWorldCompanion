@@ -26,6 +26,11 @@ namespace RainWorldSaveManager.Core.Saves.Models;
 /// under the same id both times. Empty when the blob carried no id, which leaves the row flat.
 /// </param>
 /// <param name="PreyId">Entity id of the prey, in the same form as <paramref name="PredatorId"/>.</param>
+/// <param name="PredatorDetail">
+/// What the predator blob said about itself beyond its type and id. Null when the blob was not
+/// read, which is what a manifest written before this was recorded looks like.
+/// </param>
+/// <param name="PreyDetail">The same for the prey.</param>
 public sealed record DevourmentRelationship(
     string PredatorType,
     string PreyType,
@@ -33,4 +38,6 @@ public sealed record DevourmentRelationship(
     int? FoodValue,
     bool PreyIsItem,
     string PredatorId = "",
-    string PreyId = "");
+    string PreyId = "",
+    DevourmentEntity? PredatorDetail = null,
+    DevourmentEntity? PreyDetail = null);

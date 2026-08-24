@@ -239,6 +239,63 @@
                             <TextBlock Text="{Binding Kind}" Style="{StaticResource Text.Tiny}" FontSize="10" />
                         </Border>
 
+                        <!-- The pearl's own colour, so one lore pearl is told from another at a
+                             glance. Outlined when it is a generic pickup with no lore. -->
+                        <Border CornerRadius="2" Padding="4,0" Margin="6,0,0,0" BorderThickness="1"
+                                VerticalAlignment="Center"
+                                BorderBrush="{Binding PearlBrush}"
+                                Visibility="{Binding HasPearl, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="7" Height="7" VerticalAlignment="Center"
+                                         Fill="{Binding PearlBrush}"
+                                         Stroke="{StaticResource Brush.Border}" StrokeThickness="0.5" />
+                                <TextBlock Text="{Binding PearlLabel}" Style="{StaticResource Text.Tiny}"
+                                           FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- On the campaign's FRIENDS list. Deliberately separate from the like
+                             value beside it, because a creature can like the player completely
+                             and still not be tamed. -->
+                        <Border Style="{StaticResource Chip}" Margin="6,0,0,0" Padding="4,0"
+                                Background="{StaticResource Brush.OkSoft}"
+                                BorderBrush="{StaticResource Brush.Ok}"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding IsTamedFriend, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="tamed" FontSize="10"
+                                       Foreground="{StaticResource Brush.Ok}" FontWeight="SemiBold" />
+                        </Border>
+
+                        <TextBlock Text="{Binding SocialText}"
+                                   Margin="6,0,0,0" VerticalAlignment="Center"
+                                   Visibility="{Binding SocialText, Converter={StaticResource StringToVis}}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Tiny}">
+                                    <Setter Property="FontSize" Value="10" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding DislikesPlayer}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Brush.Warn}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <Border Style="{StaticResource Chip}" Margin="6,0,0,0" Padding="4,0"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasMeat, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding MeatText}" Style="{StaticResource Text.Tiny}" FontSize="10" />
+                        </Border>
+
+                        <Border Style="{StaticResource Chip}" Margin="6,0,0,0" Padding="4,0"
+                                Background="{StaticResource Brush.WarnSoft}"
+                                BorderBrush="{StaticResource Brush.Warn}"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding HasSpear, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding SpearText}" FontSize="10"
+                                       Foreground="{StaticResource Brush.Warn}" FontWeight="SemiBold" />
+                        </Border>
+
                         <TextBlock Text="{Binding ContentsSummary}" Style="{StaticResource Text.Tiny}"
                                    FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"
                                    Visibility="{Binding HasContents, Converter={StaticResource BoolToVis}}" />

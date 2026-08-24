@@ -29,13 +29,23 @@ public static class DevourmentTree
     /// Builds the chains. Every relationship reaches the result exactly once, including ones the
     /// ids cannot place, so nothing is dropped for being malformed.
     /// </summary>
+    /// <param name="friendIds">
+    /// Entity ids from the campaign's FRIENDS field, so a swallowed creature the player had tamed
+    /// can be marked. Optional: without it nothing is marked, which is what a manifest written
+    /// before FRIENDS was recorded gives.
+    /// </param>
     public static IReadOnlyList<DevourmentNode> Build(
-        IReadOnlyList<DevourmentRelationship>? relationships)
+        IReadOnlyList<DevourmentRelationship>? relationships,
+        IReadOnlyCollection<string>? friendIds = null)
     {
         if (relationships is null || relationships.Count == 0)
         {
             return Array.Empty<DevourmentNode>();
         }
+
+        var friends = friendIds is null || friendIds.Count == 0
+            ? null
+            : new HashSet<string>(friendIds, StringComparer.Ordinal);
 
         var byPredator = new Dictionary<string, List<DevourmentRelationship>>(StringComparer.Ordinal);
         var predatorOrder = new List<string>();
@@ -72,7 +82,7 @@ public static class DevourmentTree
         {
             if (!preyIds.Contains(predatorKey) && placed.Add(predatorKey))
             {
-                roots.Add(BuildRoot(predatorKey, byPredator, placed));
+                roots.Add(BuildRoot(predatorKey, byPredator, placed, friends));
             }
         }
 
@@ -82,7 +92,7 @@ public static class DevourmentTree
         {
             if (placed.Add(predatorKey))
             {
-                roots.Add(BuildRoot(predatorKey, byPredator, placed));
+                roots.Add(BuildRoot(predatorKey, byPredator, placed, friends));
             }
         }
 
@@ -92,25 +102,34 @@ public static class DevourmentTree
     private static DevourmentNode BuildRoot(
         string predatorKey,
         Dictionary<string, List<DevourmentRelationship>> byPredator,
-        HashSet<string> placed)
+        HashSet<string> placed,
+        HashSet<string>? friends)
     {
         List<DevourmentRelationship> carried = byPredator[predatorKey];
         var ancestors = new HashSet<string>(StringComparer.Ordinal) { predatorKey };
+        string rootId = carried[0].PredatorId;
 
         return new DevourmentNode(
-            carried[0].PredatorId,
+            rootId,
             carried[0].PredatorType,
             IsItem: false,
             Status: null,
             FoodValue: null,
-            BuildContents(carried, byPredator, placed, ancestors));
+            BuildContents(carried, byPredator, placed, ancestors, friends),
+            RepeatsAncestor: false,
+            carried[0].PredatorDetail,
+            IsFriend(friends, rootId));
     }
+
+    private static bool IsFriend(HashSet<string>? friends, string entityId) =>
+        friends is not null && entityId.Length > 0 && friends.Contains(entityId);
 
     private static IReadOnlyList<DevourmentNode> BuildContents(
         List<DevourmentRelationship> carried,
         Dictionary<string, List<DevourmentRelationship>> byPredator,
         HashSet<string> placed,
-        HashSet<string> ancestors)
+        HashSet<string> ancestors,
+        HashSet<string>? friends)
     {
         var contents = new List<DevourmentNode>(carried.Count);
 
@@ -126,7 +145,7 @@ public static class DevourmentTree
                 && placed.Add(preyKey))
             {
                 ancestors.Add(preyKey);
-                inner = BuildContents(nested, byPredator, placed, ancestors);
+                inner = BuildContents(nested, byPredator, placed, ancestors, friends);
                 ancestors.Remove(preyKey);
             }
 
@@ -137,7 +156,9 @@ public static class DevourmentTree
                 row.Status,
                 row.FoodValue,
                 inner,
-                repeatsAncestor));
+                repeatsAncestor,
+                row.PreyDetail,
+                IsFriend(friends, preyKey)));
         }
 
         return contents;

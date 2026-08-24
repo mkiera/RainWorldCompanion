@@ -86,14 +86,21 @@ public static class DevourmentReader
             foodValue = parsedFood;
         }
 
+        string predatorId = CreatureIdOf(parts[0]) ?? "";
+        string preyId = (preyIsItem ? ItemIdOf(preyRaw) : CreatureIdOf(preyRaw)) ?? "";
+
         relationship = new DevourmentRelationship(
             predator,
             prey,
             status,
             foodValue,
             preyIsItem,
-            CreatureIdOf(parts[0]) ?? "",
-            (preyIsItem ? ItemIdOf(preyRaw) : CreatureIdOf(preyRaw)) ?? "");
+            predatorId,
+            preyId,
+            EntityBlobReader.ReadCreature(parts[0], predatorId, predator),
+            preyIsItem
+                ? EntityBlobReader.ReadItem(preyRaw, preyId, prey)
+                : EntityBlobReader.ReadCreature(preyRaw, preyId, prey));
         return true;
     }
 

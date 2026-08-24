@@ -22,6 +22,12 @@ namespace RainWorldSaveManager.Core.Saves.Models;
 /// that, so the node is left empty rather than followed, which is what stops a malformed save
 /// from being walked forever.
 /// </param>
+/// <param name="Detail">What the blob said about this entity, or null when it was not recorded.</param>
+/// <param name="IsTamedFriend">
+/// True when this entity's id is in the campaign's FRIENDS list. That list is the game's own
+/// record of creatures that follow the player between cycles, and it is NOT the same thing as a
+/// high like value: a creature can like the player completely and still not be on it.
+/// </param>
 public sealed record DevourmentNode(
     string EntityId,
     string Type,
@@ -29,7 +35,9 @@ public sealed record DevourmentNode(
     string? Status,
     int? FoodValue,
     IReadOnlyList<DevourmentNode> Contents,
-    bool RepeatsAncestor = false)
+    bool RepeatsAncestor = false,
+    DevourmentEntity? Detail = null,
+    bool IsTamedFriend = false)
 {
     public bool HasContents => Contents.Count > 0;
 

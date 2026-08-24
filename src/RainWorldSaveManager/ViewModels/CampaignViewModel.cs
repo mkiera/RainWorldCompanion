@@ -192,7 +192,7 @@ public sealed partial class CampaignViewModel : ObservableObject
         KillSummaryText = BuildKillSummary(campaign);
 
         DevourmentRoots = DevourmentTree
-            .Build(campaign.DevourmentStates)
+            .Build(campaign.DevourmentStates, campaign.FriendIds)
             .Select(node => new DevourmentNodeViewModel(node, 0))
             .ToList();
         SwallowedItems = campaign.SwallowedItems.Select(item => new ChipTile(item, "")).ToList();
