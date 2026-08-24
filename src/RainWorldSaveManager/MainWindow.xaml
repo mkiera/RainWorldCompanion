@@ -1,0 +1,294 @@
+<Window x:Class="RainWorldSaveManager.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:RainWorldSaveManager"
+        mc:Ignorable="d"
+        Title="Rain World Save Manager"
+        Height="600" Width="900" MinHeight="450" MinWidth="700"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource Brush.Window}"
+        Foreground="{StaticResource Brush.Text}"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI"
+        FontSize="13">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Header: game status, live save summary, paths -->
+        <Border Grid.Row="0"
+                Background="{StaticResource Brush.Panel}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="0,0,0,1"
+                Padding="16,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <Border HorizontalAlignment="Left" CornerRadius="3" Padding="10,5">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
+                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                                <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding GameStatusText}" FontWeight="SemiBold" VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="LIVE SAVE" Style="{StaticResource Text.SectionLabel}" Margin="1,14,0,4" />
+
+                    <ItemsControl ItemsSource="{Binding LiveSlots}"
+                                  Visibility="{Binding HasLiveSlots, Converter={StaticResource BoolToVis}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" Margin="1,1" TextTrimming="CharacterEllipsis" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="No save files were found in the configured folder."
+                               Style="{StaticResource Text.Muted}"
+                               Margin="1,1"
+                               Visibility="{Binding HasNoLiveSlots, Converter={StaticResource BoolToVis}}" />
+
+                    <StackPanel Margin="1,10,0,0">
+                        <TextBlock Style="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding SavePathText}">
+                            <Run Text="Save folder:" />
+                            <Run Text="{Binding SavePathText, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding BackupRootText}">
+                            <Run Text="Backup folder:" />
+                            <Run Text="{Binding BackupRootText, Mode=OneWay}" />
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="Refresh"
+                        VerticalAlignment="Top"
+                        Command="{Binding RefreshCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Configuration problem banner -->
+        <Border Grid.Row="1"
+                Style="{StaticResource Banner.Warn}"
+                Margin="16,12,16,0"
+                Visibility="{Binding HasConfigProblem, Converter={StaticResource BoolToVis}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0"
+                           Text="{Binding ConfigProblem}"
+                           TextWrapping="Wrap"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Warn}" />
+                <Button Grid.Column="1"
+                        Content="Open Settings"
+                        Style="{StaticResource Button.Small}"
+                        Margin="12,0,0,0"
+                        Command="{Binding OpenSettingsCommand}" />
+            </Grid>
+        </Border>
+
+        <!-- Backup list -->
+        <Grid Grid.Row="2" Margin="16,12,16,12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="1,0,0,6">
+                <TextBlock Text="BACKUPS" Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
+                           Margin="10,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <Grid Grid.Row="1">
+                <DataGrid ItemsSource="{Binding Backups}"
+                          SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
+                          RowHeaderWidth="0">
+                    <DataGrid.RowStyle>
+                        <Style TargetType="DataGridRow" BasedOn="{StaticResource {x:Type DataGridRow}}">
+                            <Setter Property="ToolTip" Value="{Binding TooltipText}" />
+                            <Style.Triggers>
+                                <!-- Incomplete snapshots stay visible but read as unusable -->
+                                <DataTrigger Binding="{Binding IsComplete}" Value="False">
+                                    <Setter Property="Opacity" Value="0.55" />
+                                    <Setter Property="FontStyle" Value="Italic" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGrid.RowStyle>
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedText}" Width="128" />
+                        <DataGridTextColumn Header="LABEL" Binding="{Binding LabelText}" Width="1.1*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTemplateColumn Header="KIND" Width="122">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="3" Padding="7,2" HorizontalAlignment="Left">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                                <Setter Property="BorderThickness" Value="1" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsSafetyBackup}" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
+                                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding KindText}" FontSize="11" />
+                                    </Border>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+
+                        <DataGridTextColumn Header="SLOTS" Binding="{Binding SlotsText}" Width="2*">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTextColumn Header="SIZE" Binding="{Binding SizeText}" Width="82">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="HorizontalAlignment" Value="Right" />
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+
+                        <DataGridTemplateColumn Header="STATE" Width="140">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding StateText}"
+                                               TextTrimming="CharacterEllipsis"
+                                               FontSize="12">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                                <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsProblem}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <TextBlock Text="No backups yet. Use New Backup to make the first one."
+                           Style="{StaticResource Text.Muted}"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           IsHitTestVisible="False"
+                           Visibility="{Binding HasNoBackups, Converter={StaticResource BoolToVis}}" />
+            </Grid>
+        </Grid>
+
+        <!-- Command bar -->
+        <Border Grid.Row="3"
+                Background="{StaticResource Brush.Panel}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="0,1,0,0"
+                Padding="16,12">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button Content="New Backup" Style="{StaticResource Button.Accent}" Margin="0,0,8,0"
+                            Command="{Binding NewBackupCommand}" />
+                    <Button Content="Restore" Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
+                    <Button Content="Verify" Margin="0,0,8,0" Command="{Binding VerifyCommand}" />
+                    <Button Content="Open Folder" Margin="0,0,8,0" Command="{Binding OpenFolderCommand}" />
+                    <Button Content="Delete" Style="{StaticResource Button.Danger}" Command="{Binding DeleteCommand}" />
+                </StackPanel>
+                <Button DockPanel.Dock="Right" Content="Settings" Command="{Binding OpenSettingsCommand}" />
+            </DockPanel>
+        </Border>
+
+        <!-- Busy overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="4"
+                Panel.ZIndex="10"
+                Background="{StaticResource Brush.Overlay}"
+                Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
+            <Border Style="{StaticResource Card}"
+                    Width="400"
+                    Padding="22"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center">
+                <StackPanel>
+                    <TextBlock Text="{Binding BusyTitle}" Style="{StaticResource Text.Title}" />
+                    <ProgressBar IsIndeterminate="True" Height="6" Margin="0,14,0,12"
+                                 Background="{StaticResource Brush.PanelAlt}"
+                                 BorderThickness="0"
+                                 Foreground="{StaticResource Brush.Accent}" />
+                    <TextBlock Text="{Binding BusyMessage}"
+                               Style="{StaticResource Text.Muted}"
+                               TextWrapping="Wrap"
+                               MinHeight="34" />
+                </StackPanel>
+            </Border>
+        </Border>
+    </Grid>
+</Window>
