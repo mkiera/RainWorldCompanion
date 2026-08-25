@@ -19,21 +19,25 @@ public sealed class SlotViewModel
 {
     private const int MaxRowPortraits = 6;
 
-    public SlotViewModel(SlotMetadata slot, ISlugcatIconProvider icons)
+    /// <param name="fileNameOverride">
+    /// What to call the file this came from, when the metadata's own name is not it. A library save
+    /// is parsed out of the copy kept under the library's own storage name, so its metadata says
+    /// save.bin and only the entry's manifest knows the container it was taken from.
+    /// </param>
+    public SlotViewModel(SlotMetadata slot, ISlugcatIconProvider icons, string? fileNameOverride = null)
     {
         Metadata = slot;
         SlotNumber = slot.Slot;
-        FileName = slot.FileName;
+        FileName = string.IsNullOrEmpty(fileNameOverride) ? slot.FileName : fileNameOverride;
         Realm = slot.Realm;
 
-        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp gives online_sav2 the same slot
-        // number as sav2, so the number alone does not say which of the two a header is naming.
-        string prefix = slot.Realm == SaveRealm.Online ? "ONLINE SLOT " : "SLOT ";
-
+        // No realm in the header. The live folder and a backup keep their online files out of these
+        // sections and put them in the Rain Meadow pair rows, which name both halves, and a library
+        // save names the file it came from beside the title.
         NumberText = slot.Slot > 0 ? slot.Slot.ToString(CultureInfo.InvariantCulture) : "?";
         HeaderText = slot.Slot > 0
-            ? prefix + NumberText
-            : (slot.FileName.Length > 0 ? slot.FileName.ToUpperInvariant() : "SLOT");
+            ? "SLOT " + NumberText
+            : (FileName.Length > 0 ? FileName.ToUpperInvariant() : "SLOT");
 
         Campaigns = slot.Campaigns.Select(campaign => new CampaignViewModel(campaign, icons)).ToList();
         Portraits = BuildPortraits(slot, icons);
@@ -83,10 +87,27 @@ public sealed class SlotViewModel
     /// </summary>
     public bool ChecksumBad { get; }
 
-    /// <summary>The line shown when a slot holds nothing to expand.</summary>
-    public string EmptyText => HasParseError
-        ? "This save file could not be read: " + ParseErrorText
-        : "This slot holds no campaigns.";
+    /// <summary>
+    /// The line shown when a save holds no campaign to expand.
+    ///
+    /// A Rain Meadow save routinely holds the explored map and the progression record with no
+    /// campaign among them. Saying only that it holds no campaign reports 12 KB of real progress as
+    /// nothing, so the two cases are worded apart.
+    /// </summary>
+    public string EmptyText
+    {
+        get
+        {
+            if (HasParseError)
+            {
+                return "This save file could not be read: " + ParseErrorText;
+            }
+
+            return Metadata.RecordCount > 0
+                ? "No campaign is saved here. The file still holds the map you have explored and the progression record."
+                : "This save file is empty.";
+        }
+    }
 
     private static IReadOnlyList<PortraitViewModel> BuildPortraits(SlotMetadata slot, ISlugcatIconProvider icons)
     {

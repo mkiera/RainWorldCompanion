@@ -1408,9 +1408,9 @@
 
                             <!-- Rain Meadow, in its own banded panel so the eye can see where the
                                  local saves above stop. The whole thing is left out when the mod is
-                                 not on this machine, so a player who does not use it sees the panel
-                                 exactly as it was. There is no foldout: if the mod is here, its
-                                 saves are part of what this app manages. -->
+                                 not on this machine, and left out for a library save, which is one
+                                 file with no slot pairs to draw. There is no foldout: if the mod is
+                                 here, its saves are part of what this app manages. -->
                             <Border Margin="0,22,0,0" CornerRadius="4"
                                     Background="{StaticResource Brush.MeadowSoft}"
                                     BorderBrush="{StaticResource Brush.Meadow}"
@@ -1482,7 +1482,7 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <TextBlock Text="Select the live save or a backup on the left to see what is in it."
+                    <TextBlock Text="Select the live save, a backup or a library save on the left to see what is in it."
                                Style="{StaticResource Text.Muted}"
                                TextWrapping="Wrap"
                                HorizontalAlignment="Center"

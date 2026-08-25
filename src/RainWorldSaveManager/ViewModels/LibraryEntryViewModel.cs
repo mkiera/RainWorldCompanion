@@ -152,6 +152,14 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
             text.Append(", ").Append(SizeText);
             text.Append(", stored ").Append(CreatedText);
 
+            // Which container it was taken from is announced here and nowhere else. On screen it is
+            // read off the row and the panel subtitle, neither of which a screen reader reaches
+            // through the row's own name.
+            if (SourceText.Length > 0)
+            {
+                text.Append(", ").Append(SourceText);
+            }
+
             if (SlotBadgeText.Length > 0)
             {
                 text.Append(", ").Append(SlotBadgeText);

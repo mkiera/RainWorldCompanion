@@ -16,10 +16,10 @@ namespace RainWorldSaveManager.ViewModels;
 /// read. A manifest written by schema version 1 recorded far less per campaign, and those cards
 /// render with dashes where the value was never stored rather than failing to render at all.
 ///
-/// Rain Meadow's online saves are kept out of the slot sections and put in their own banded
-/// section, paired with the local save of the same slot number. That section is left out entirely
-/// when the mod is not on the machine, so a player who does not use it sees the panel exactly as
-/// it was before.
+/// For the live folder and for a backup, Rain Meadow's online saves are kept out of the slot
+/// sections and put in their own banded section, paired with the local save of the same slot
+/// number. That section is left out when the mod is not on the machine, and left out for a library
+/// save, which is one file with no second half to pair it against.
 /// </summary>
 public sealed class SnapshotDetailViewModel
 {
@@ -49,11 +49,11 @@ public sealed class SnapshotDetailViewModel
         Backup = backup;
         Entry = entry;
 
-        // A library entry is one file, and which realm it came from is provenance rather than a
-        // place in this panel. Splitting it the way a folder is split would drop an online-sourced
-        // entry out of Slots and leave the panel with nothing in it.
+        // A library save is one file and it reads the same whichever slot it came from. Splitting it
+        // by realm the way a folder is split would drop an online sourced save out of Slots and
+        // leave the panel with nothing in it, and there is no second half here to pair it against.
         var local = entry is not null
-            ? BuildSlots(allSlots, icons)
+            ? BuildSlots(allSlots, icons, entry.Entry.Manifest?.SourceFileName)
             : BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons);
         var online = entry is not null
             ? Array.Empty<SlotViewModel>()
@@ -103,7 +103,11 @@ public sealed class SnapshotDetailViewModel
 
     public bool HasEntry => Entry is not null;
 
-    /// <summary>The local save files, one section each. Online files are in <see cref="SlotPairs"/>.</summary>
+    /// <summary>
+    /// One section each. For the live folder and for a backup these are the local save files, and
+    /// the online ones are in <see cref="SlotPairs"/>. A library save puts its one file here
+    /// whichever realm it came from.
+    /// </summary>
     public IReadOnlyList<SlotViewModel> Slots { get; }
 
     public bool HasSlots => Slots.Count > 0;
@@ -112,7 +116,8 @@ public sealed class SnapshotDetailViewModel
 
     /// <summary>
     /// One row per slot number, local and online together. A slot with no online file still gets a
-    /// row, because copying a local save into an empty online slot is what that row is for.
+    /// row, because copying a local save into an empty online slot is what that row is for. Empty
+    /// for a library save, which is one file.
     /// </summary>
     public IReadOnlyList<SlotPairViewModel> SlotPairs { get; }
 
@@ -120,14 +125,22 @@ public sealed class SnapshotDetailViewModel
 
     public bool HasNoOnlineSlots => SlotPairs.Count > 0 && !HasOnlineSlots;
 
-    /// <summary>
-    /// Whether the whole Rain Meadow block is drawn. It follows the mod being on the machine, not
-    /// the folder happening to hold an online save, so a player who has the mod but has not played
-    /// online still gets the rows to copy a save across. A player without the mod sees nothing.
-    /// </summary>
+    /// <summary>Whether Rain Meadow is on this machine.</summary>
     /// Set by the window after the detail is built, because only the window knows what is on the
     /// machine. The whole detail is replaced on every rebuild, so this needs no change notification.
-    public bool ShowMeadowSection { get; set; }
+    public bool MeadowInstalled { get; set; }
+
+    /// <summary>
+    /// Whether the whole Rain Meadow block is drawn.
+    ///
+    /// It follows the mod being on the machine, not the folder happening to hold an online save, so
+    /// a player who has the mod but has not played online still gets the rows to copy a save across.
+    /// A player without the mod sees nothing.
+    ///
+    /// A library save is left out whether or not the mod is here. It is one file, and the block
+    /// exists to pair a slot's two halves against each other.
+    /// </summary>
+    public bool ShowMeadowSection => MeadowInstalled && !HasEntry;
 
     /// <summary>"v0.1.15.1", or empty when the version was not read.</summary>
     public string MeadowVersionText { get; set; } = "";
@@ -228,14 +241,19 @@ public sealed class SnapshotDetailViewModel
             icons: icons);
     }
 
+    /// <param name="fileNameOverride">
+    /// The container name to show instead of the one the metadata carries. Only a library save
+    /// passes this, because it was parsed out of the copy kept under the library's storage name.
+    /// </param>
     private static IReadOnlyList<SlotViewModel> BuildSlots(
         IEnumerable<SlotMetadata> slots,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        string? fileNameOverride = null)
     {
         return slots
             .OrderBy(slot => slot.Slot == 0 ? int.MaxValue : slot.Slot)
             .ThenBy(slot => slot.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(slot => new SlotViewModel(slot, icons))
+            .Select(slot => new SlotViewModel(slot, icons, fileNameOverride))
             .ToList();
     }
 

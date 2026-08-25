@@ -58,7 +58,8 @@ public sealed class SlotMetadata
     /// <see cref="Campaigns"/> counts only the SAVE STATE records, and a Rain Meadow online_sav
     /// routinely holds none of those while holding the explored map and the MISCPROG record. That
     /// file is 12 KB of real progress, so an empty campaign list on its own does not make a
-    /// container empty. <see cref="HasNoContent"/> is the question the UI should ask.
+    /// container empty. This count is what separates the two, through
+    /// <see cref="DescribeWithoutCampaigns"/>.
     /// </summary>
     public int? RecordCount { get; init; }
 
