@@ -30,14 +30,18 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
 
     private readonly Func<SaveSlotRef, CampaignMovePlan> _replan;
     private readonly Dictionary<SaveSlotRef, CampaignMovePlan> _plans = new();
-    private readonly SaveSlotRef _source;
+    private readonly SaveSlotRef? _source;
 
     private SlotChoice _selectedTarget;
     private CampaignMovePlan _plan;
     private bool _takeItOut;
 
     /// <param name="campaignName">The slugcat as a person reads it, for example "Gourmand".</param>
-    /// <param name="source">The slot it is in now, which is the one it can be taken out of.</param>
+    /// <param name="source">
+    /// The slot it is in now, or null when it is not in a slot at all. A campaign in a backup or in
+    /// a library save has nowhere to be taken out of, so that half of this window is not offered.
+    /// </param>
+    /// <param name="sourceName">What to call where it is now, for example "backup 2026-08-24_120000".</param>
     /// <param name="replan">
     /// Asks Core what putting the campaign into a slot would do. Every side of this dialog comes
     /// from one of those answers, so changing the picker cannot make the dialog disagree with the
@@ -49,12 +53,13 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     /// </param>
     public SendCampaignDialog(
         string campaignName,
-        SaveSlotRef source,
+        SaveSlotRef? source,
+        string sourceName,
         Func<SaveSlotRef, CampaignMovePlan> replan,
         bool includeOnline)
     {
         CampaignName = campaignName;
-        SourceName = source.FileName;
+        SourceName = sourceName;
 
         _source = source;
         _replan = replan;
@@ -119,13 +124,24 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     /// <summary>Read after the dialog closes.</summary>
     public SaveSlotRef ChosenTarget => _selectedTarget.Ref;
 
-    public bool ChosenToTakeItOut => _takeItOut;
+    public bool ChosenToTakeItOut => _takeItOut && CanTakeItOut;
 
     /// <summary>Core's own answer for the slot the picker is on.</summary>
     public bool CanSend => _plan.CanWrite && !SameAsTheSource;
 
-    public bool SameAsTheSource =>
-        _selectedTarget.Ref.Realm == _source.Realm && _selectedTarget.Ref.Slot == _source.Slot;
+    public bool SameAsTheSource => _source is { } source
+        && _selectedTarget.Ref.Realm == source.Realm
+        && _selectedTarget.Ref.Slot == source.Slot;
+
+    /// <summary>
+    /// Whether taking it out of where it is now is even a thing that can be done. A backup and a
+    /// library save are copies taken at a moment, and changing one would leave it no longer a copy
+    /// of anything, so the campaign is only ever copied out of them.
+    /// </summary>
+    public bool CanTakeItOut => _source is not null;
+
+    public Visibility TakeItOutVisibility =>
+        CanTakeItOut ? Visibility.Visible : Visibility.Collapsed;
 
     public string BlockedReason
     {
@@ -157,9 +173,20 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     /// wrong. The map goes with a move, because a map left in a slot with no campaign to go with it
     /// is not what anybody means by moving a campaign.
     /// </summary>
-    public string SourceEffectText => _takeItOut
-        ? CampaignName + " is taken out of " + SourceName + ", and its map discovery goes with it."
-        : CampaignName + " stays in " + SourceName + " as well.";
+    public string SourceEffectText
+    {
+        get
+        {
+            if (!CanTakeItOut)
+            {
+                return SourceName + " is only read, and is left exactly as it is.";
+            }
+
+            return _takeItOut
+                ? CampaignName + " is taken out of " + SourceName + ", and its map discovery goes with it."
+                : CampaignName + " stays in " + SourceName + " as well.";
+        }
+    }
 
     public string SafetyText =>
         "The whole save folder is copied before anything is written, and the copy is listed under "
@@ -190,7 +217,7 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     {
         foreach (SlotChoice choice in Slots)
         {
-            if (choice.Ref.Realm == _source.Realm && choice.Ref.Slot == _source.Slot)
+            if (_source is { } source && choice.Ref.Realm == source.Realm && choice.Ref.Slot == source.Slot)
             {
                 continue;
             }

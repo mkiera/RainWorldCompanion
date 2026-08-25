@@ -1128,17 +1128,20 @@
                                     a library save show no bar at all rather than a disabled one.
                                 -->
                                 <DockPanel Margin="0,10,0,0"
-                                           Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}">
+                                           Visibility="{Binding HasActions, Converter={StaticResource BoolToVis}}">
                                     <!--
-                                        Edit changes what is in this campaign. The three beside it
-                                        move the campaign itself, so they go away while an editor is
-                                        open: an unsaved edit and a campaign moving are two answers
-                                        to what this campaign is.
+                                        Edit and Delete change the file the campaign is in, so they
+                                        are drawn only for the live save folder. Save to library and
+                                        Send to slot read it and write somewhere else, so they work
+                                        on a backup and on a library save too. All of them go away
+                                        while an editor is open: an unsaved edit and a campaign
+                                        moving are two answers to what this campaign is.
                                     -->
                                     <StackPanel DockPanel.Dock="Left" Orientation="Horizontal"
                                                 Visibility="{Binding IsEditing, Converter={StaticResource NotBoolToVis}}">
                                         <Button Content="Edit"
                                                 Style="{StaticResource Button.Small}"
+                                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}"
                                                 Command="{Binding DataContext.BeginEditCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}" />
@@ -1156,6 +1159,7 @@
                                                 CommandParameter="{Binding}" />
                                         <Button Content="Delete" Margin="6,0,0,0"
                                                 Style="{StaticResource Button.Small}"
+                                                Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}"
                                                 ToolTip="Takes this campaign out of the slot. The other campaigns there are left alone."
                                                 Command="{Binding DataContext.DeleteCampaignCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}"

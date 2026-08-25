@@ -387,6 +387,137 @@ public class CampaignLibraryTests
         Assert.Contains(imported.Errors, e => e.Contains(".rwcampaign", StringComparison.Ordinal));
     }
 
+    // ---- pulling one campaign out of something that is not a live slot ----
+
+    /// <summary>
+    /// A campaign can be in a live slot, in a backup, in a whole slot kept in the library, or in a
+    /// campaign file on its own. Only the last is not a save container, and one call reads all four.
+    /// </summary>
+    [Fact]
+    public void A_campaign_is_read_out_of_a_save_or_out_of_a_campaign_file_the_same_way()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry stored = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        CampaignSlice fromSlot = CampaignFile.ReadFrom(world.Live.Resolve("sav2"), "White")!;
+        CampaignSlice fromCampaign = CampaignFile.ReadFrom(stored.CampaignPath)!;
+
+        Assert.Equal(fromSlot.SaveStateRecord, fromCampaign.SaveStateRecord);
+        Assert.Equal(fromSlot.MapRecords, fromCampaign.MapRecords);
+
+        Assert.False(CampaignFile.IsOne(world.Live.Resolve("sav2")));
+        Assert.True(CampaignFile.IsOne(stored.CampaignPath));
+    }
+
+    [Fact]
+    public void Reading_a_campaign_that_is_not_there_gives_nothing_rather_than_failing()
+    {
+        using var world = new LibraryWorld();
+
+        Assert.Null(CampaignFile.ReadFrom(world.Live.Resolve("sav2"), "Saint"));
+        Assert.Null(CampaignFile.ReadFrom(world.Live.Resolve("no-such-file"), "White"));
+        Assert.Null(CampaignFile.ReadFrom("", "White"));
+
+        // A save container with no slugcat named has no way to say which campaign was wanted.
+        Assert.Null(CampaignFile.ReadFrom(world.Live.Resolve("sav2")));
+    }
+
+    /// <summary>
+    /// The same refusal a live save gets. A campaign taken out of a damaged file and written into a
+    /// slot would carry the damage in with it under a fresh, correct digest.
+    /// </summary>
+    [Fact]
+    public void A_campaign_is_not_read_out_of_a_file_whose_checksum_is_already_wrong()
+    {
+        using var world = new LibraryWorld();
+        string path = world.Live.Resolve("sav2");
+
+        File.WriteAllBytes(path, SyntheticSave.Bytes(new[]
+        {
+            SyntheticSave.Entry("save", SyntheticSave.WrapWithBadChecksum(SyntheticSave.SavePayload())),
+        }));
+
+        SaveContainerException error = Assert.Throws<SaveContainerException>(
+            () => CampaignFile.ReadFrom(path, "White"));
+
+        Assert.Contains("checksum", error.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_campaign_comes_out_of_a_backup_and_into_a_live_slot()
+    {
+        using var world = new LibraryWorld();
+        int? backedUpCycle = SaveMetadataExtractor.Extract(world.Live.Resolve("sav3"), 3).Campaigns[0].CycleNum;
+
+        BackupSnapshot snapshot = world.Backups.CreateBackup("before the change", null);
+
+        // The live slot moves on afterwards, so what comes back is provably the backup's own.
+        world.PlayASlot(LocalThree, "CYCLENUM", "888");
+
+        CampaignSlice slice = CampaignFile.ReadFrom(Path.Combine(snapshot.DirectoryPath, "sav3"), "White")!;
+        SaveWriteResult result = world.Backups.SlotWriter.Write(
+            world.Backups.SlotWriter.PlanPutCampaign(LocalTwo, slice));
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+
+        SlotMetadata landed = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.True(landed.ChecksumValid);
+        Assert.Equal(backedUpCycle, Assert.Single(landed.Campaigns).CycleNum);
+
+        // Slot three still holds what it was played to, so nothing was rolled back by reading.
+        Assert.Equal(888, SaveMetadataExtractor.Extract(world.Live.Resolve("sav3"), 3).Campaigns[0].CycleNum);
+    }
+
+    [Fact]
+    public void A_campaign_out_of_a_backup_can_be_kept_in_the_library()
+    {
+        using var world = new LibraryWorld();
+        BackupSnapshot snapshot = world.Backups.CreateBackup("before the change", null);
+
+        CampaignSlice slice = CampaignFile.ReadFrom(Path.Combine(snapshot.DirectoryPath, "sav2"), "White")!;
+
+        LibraryEntry entry = world.Library.StoreCampaignFrom(
+            slice, "sav2", SaveRealm.Local, 2, "out of a backup", "kept just in case");
+
+        Assert.True(entry.IsCampaign);
+        Assert.Equal("White", entry.Manifest!.CampaignSlugcatId);
+        Assert.Equal("sav2", entry.Manifest.SourceFileName);
+        Assert.Equal(2, entry.Manifest.SourceSlot);
+        Assert.True(world.Library.VerifyEntry(entry).Ok);
+        Assert.Equal(slice.SaveStateRecord, world.Library.ReadStoredCampaign(entry)!.SaveStateRecord);
+    }
+
+    /// <summary>
+    /// A whole slot in the library holds several campaigns, and until now the only way to get one
+    /// out was to write the whole slot over a live one.
+    /// </summary>
+    [Fact]
+    public void One_campaign_is_pulled_out_of_a_whole_slot_kept_in_the_library()
+    {
+        using var world = new LibraryWorld();
+        world.Seed("sav3", "Gourmand", cycle: 55);
+        LibraryEntry wholeSlot = world.Library.StoreSlot(LocalThree, "everything", null);
+
+        CampaignSlice slice = CampaignFile.ReadFrom(wholeSlot.SavePath, "Gourmand")!;
+
+        Assert.True(world.Backups.SlotWriter.Write(
+            world.Backups.SlotWriter.PlanPutCampaign(LocalTwo, slice)).Success);
+
+        SlotMetadata landed = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.Equal(new[] { "White", "Gourmand" }, landed.Campaigns.Select(c => c.SlugcatId));
+        Assert.Equal(55, landed.Campaigns.First(c => c.SlugcatId == "Gourmand").CycleNum);
+    }
+
+    [Fact]
+    public void Storing_a_campaign_from_somewhere_else_still_needs_a_name()
+    {
+        using var world = new LibraryWorld();
+        CampaignSlice slice = CampaignFile.ReadFrom(world.Live.Resolve("sav2"), "White")!;
+
+        Assert.Throws<ArgumentException>(
+            () => world.Library.StoreCampaignFrom(slice, "sav2", SaveRealm.Local, 2, "  ", null));
+    }
+
     // ---- putting an hour of play back into one ----
 
     [Fact]

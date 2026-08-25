@@ -47,7 +47,9 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         LibraryEntryViewModel? entry,
         IReadOnlyList<SlotMetadata> allSlots,
         MeadowProfile? meadow,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        string sourceDirectory = "",
+        string sourceLabel = "")
     {
         IsLive = isLive;
         Title = title;
@@ -68,11 +70,29 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         // Only the live folder's campaigns are editable. A backup and a library save are copies
         // taken at a moment, and editing one in place would leave it no longer a copy of anything.
         _localSlots = entry is not null
-            ? BuildSlots(allSlots, icons, entry.Entry.Manifest?.SourceFileName)
-            : BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons, nameRealm: true, editable: isLive);
+            ? BuildSlots(
+                allSlots,
+                icons,
+                entry.Entry.Manifest?.SourceFileName,
+                sourceDirectory: entry.Entry.DirectoryPath,
+                sourceLabel: "the library save \"" + entry.Name + "\"",
+                sourceFileOverride: entry.Entry.ContentFileName)
+            : BuildSlots(
+                allSlots.Where(slot => slot.Realm != SaveRealm.Online),
+                icons,
+                nameRealm: true,
+                editable: isLive,
+                sourceDirectory: sourceDirectory,
+                sourceLabel: sourceLabel);
         _onlineSlots = entry is not null
             ? Array.Empty<SlotViewModel>()
-            : BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons, nameRealm: true, editable: isLive);
+            : BuildSlots(
+                allSlots.Where(slot => slot.Realm == SaveRealm.Online),
+                icons,
+                nameRealm: true,
+                editable: isLive,
+                sourceDirectory: sourceDirectory,
+                sourceLabel: sourceLabel);
 
         SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots);
         OnlineCountText = FormatFileCount(_onlineSlots.Count, "online save");
@@ -227,7 +247,9 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             entry: null,
             allSlots: slots,
             meadow: meadow,
-            icons: icons);
+            icons: icons,
+            sourceDirectory: savePath,
+            sourceLabel: "");
     }
 
     /// <summary>
@@ -302,7 +324,11 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             entry: null,
             allSlots: (IReadOnlyList<SlotMetadata>?)source ?? Array.Empty<SlotMetadata>(),
             meadow: meadow,
-            icons: icons);
+            icons: icons,
+            // The panel is filled from the manifest, but taking a campaign out needs the file, so
+            // the folder the snapshot is in comes along too.
+            sourceDirectory: item.Snapshot.DirectoryPath,
+            sourceLabel: "backup " + item.Snapshot.Id);
     }
 
     /// <param name="fileNameOverride">
@@ -319,12 +345,16 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         ISlugcatIconProvider icons,
         string? fileNameOverride = null,
         bool nameRealm = false,
-        bool editable = false)
+        bool editable = false,
+        string sourceDirectory = "",
+        string sourceLabel = "",
+        string sourceFileOverride = "")
     {
         return slots
             .OrderBy(slot => slot.Slot == 0 ? int.MaxValue : slot.Slot)
             .ThenBy(slot => slot.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(slot => new SlotViewModel(slot, icons, fileNameOverride, nameRealm, editable))
+            .Select(slot => new SlotViewModel(
+                slot, icons, fileNameOverride, nameRealm, editable, sourceDirectory, sourceLabel, sourceFileOverride))
             .ToList();
     }
 

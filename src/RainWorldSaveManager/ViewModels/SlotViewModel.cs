@@ -35,12 +35,28 @@ public sealed class SlotViewModel
     /// save are copies taken at a moment, and editing one in place would leave it no longer a copy
     /// of anything.
     /// </param>
+    /// <param name="sourceDirectory">
+    /// The folder holding the file these campaigns were read out of, so one of them can be taken
+    /// back out and sent to a slot. Empty when there is no such file to go back to, which is what a
+    /// backup with a manifest but no snapshot on disk looks like.
+    /// </param>
+    /// <param name="sourceLabel">
+    /// What to call that file in a sentence, for example "backup 2026-08-24_120000". Empty for the
+    /// live folder, where the file name says it.
+    /// </param>
+    /// <param name="sourceFileOverride">
+    /// The file inside <paramref name="sourceDirectory"/>, when it is not named after the slot. A
+    /// library save keeps a whole slot under the library's own storage name.
+    /// </param>
     public SlotViewModel(
         SlotMetadata slot,
         ISlugcatIconProvider icons,
         string? fileNameOverride = null,
         bool nameRealm = false,
-        bool editable = false)
+        bool editable = false,
+        string sourceDirectory = "",
+        string sourceLabel = "",
+        string sourceFileOverride = "")
     {
         Metadata = slot;
         SlotNumber = slot.Slot;
@@ -62,8 +78,11 @@ public sealed class SlotViewModel
             ? new SaveSlotRef(slot.Realm, slot.Slot)
             : null;
 
+        CampaignSource? source = BuildSource(
+            slot, editableSlot, sourceDirectory, sourceLabel, sourceFileOverride);
+
         Campaigns = slot.Campaigns
-            .Select(campaign => new CampaignViewModel(campaign, icons, editableSlot))
+            .Select(campaign => new CampaignViewModel(campaign, icons, source))
             .ToList();
         Portraits = BuildPortraits(slot, icons);
 
@@ -132,6 +151,48 @@ public sealed class SlotViewModel
                 ? "No campaign is saved here. The file still holds the map you have explored and the progression record."
                 : "This save file is empty.";
         }
+    }
+
+    /// <summary>
+    /// Where these campaigns can be read back out of, or null when there is nowhere to read from.
+    ///
+    /// A backup's panel is filled from the manifest written beside it rather than from the files, so
+    /// the campaigns can be described without the snapshot folder being there at all. Taking one out
+    /// needs the file, and this is where the two part company: no folder, no source, no buttons.
+    /// </summary>
+    private static CampaignSource? BuildSource(
+        SlotMetadata slot,
+        SaveSlotRef? editableSlot,
+        string sourceDirectory,
+        string sourceLabel,
+        string sourceFileOverride)
+    {
+        string fileName = sourceFileOverride.Length > 0 ? sourceFileOverride : slot.FileName;
+
+        if (sourceDirectory.Length == 0 || fileName.Length == 0)
+        {
+            return null;
+        }
+
+        string path;
+        try
+        {
+            path = System.IO.Path.Combine(sourceDirectory, fileName);
+        }
+        catch (ArgumentException)
+        {
+            // A file name out of a manifest is whatever was written there. One that will not join to
+            // a path is one this app cannot go back to, which is the same answer as having no folder.
+            return null;
+        }
+
+        return new CampaignSource(
+            path,
+            sourceLabel.Length > 0 ? sourceLabel : fileName,
+            editableSlot,
+            slot.Realm,
+            slot.Slot,
+            fileName);
     }
 
     private static IReadOnlyList<PortraitViewModel> BuildPortraits(SlotMetadata slot, ISlugcatIconProvider icons)

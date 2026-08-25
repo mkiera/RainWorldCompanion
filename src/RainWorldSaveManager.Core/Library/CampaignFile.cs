@@ -66,6 +66,57 @@ public static class CampaignFile
     public static CampaignSlice? Read(byte[]? bytes)
         => bytes is null ? null : FromPayload(Decode(bytes));
 
+    /// <summary>
+    /// Reads one campaign out of whatever kind of file this is.
+    ///
+    /// A campaign can be sitting in a live slot, in a backup, in a whole slot kept in the library,
+    /// or in a campaign file stored on its own. The first three are save containers and the last is
+    /// not, and this is the one place that knows the difference, so a caller pulling a campaign out
+    /// of something does not have to.
+    ///
+    /// A save container is read through <see cref="SaveEditSession"/>, which refuses one whose
+    /// checksum is already wrong. That refusal matters as much for a backup as for a live save: a
+    /// campaign taken out of a damaged file and written into a slot would carry the damage in with
+    /// it under a fresh, correct digest.
+    /// </summary>
+    /// <param name="slugcatId">
+    /// Which campaign to take. Ignored for a campaign file, which holds exactly one.
+    /// </param>
+    /// <exception cref="SaveContainerException">The file is a save container that cannot be read.</exception>
+    public static CampaignSlice? ReadFrom(string filePath, string? slugcatId = null)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            return null;
+        }
+
+        if (IsOne(filePath))
+        {
+            return Read(File.ReadAllBytes(filePath));
+        }
+
+        return string.IsNullOrWhiteSpace(slugcatId)
+            ? null
+            : SaveEditSession.Open(filePath).TakeCampaign(slugcatId);
+    }
+
+    /// <summary>Whether this file is a campaign on its own rather than a whole save container.</summary>
+    public static bool IsOne(string filePath)
+    {
+        Span<byte> head = stackalloc byte[32];
+
+        try
+        {
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            int read = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+            return LooksLikeOne(head[..read]);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Whether these bytes begin the way a campaign file begins.</summary>
     public static bool LooksLikeOne(ReadOnlySpan<byte> head)
     {

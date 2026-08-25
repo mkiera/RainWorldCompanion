@@ -901,7 +901,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         SaveLibrary? library = _library;
 
-        if (library is null || campaign?.EditableSlot is not { } slot || IsBusy || IsGameRunning)
+        if (library is null || campaign?.Source is not { CanBeTaken: true } source || IsBusy || IsGameRunning)
         {
             return;
         }
@@ -910,7 +910,7 @@ public sealed partial class MainViewModel : ObservableObject
             SuggestCampaignName(campaign),
             "",
             "Save " + campaign.DisplayName + " to the library",
-            "Only this campaign is stored. " + slot.FileName + " is not touched, and the other campaigns in it stay where they are.",
+            "Only this campaign is stored. " + WhereItIs(source) + " is not touched, and the other campaigns in it stay where they are.",
             "Save it");
 
         if (ShowDialog(dialog) != true)
@@ -928,7 +928,19 @@ public sealed partial class MainViewModel : ObservableObject
         BeginBusy("Storing " + campaign.DisplayName, name);
         try
         {
-            stored = await Task.Run(() => library.StoreCampaign(slot, slugcat, name, note));
+            // A live slot is read under the operation lock, because the game and Steam Cloud both
+            // write to that folder. A backup and a library save are nobody else's to rewrite, so
+            // they are read where they lie.
+            stored = source.LiveSlot is { } slot
+                ? await Task.Run(() => library.StoreCampaign(slot, slugcat, name, note))
+                : await Task.Run(() =>
+                {
+                    CampaignSlice slice = ReadCampaignFrom(source, slugcat)
+                        ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
+
+                    return library.StoreCampaignFrom(
+                        slice, source.FileName, source.Realm, source.SlotNumber, name, note);
+                });
         }
         catch (Exception ex)
         {
@@ -960,7 +972,7 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
     private async Task SendCampaignAsync(CampaignViewModel? campaign)
     {
-        if (_backupService is not { } backups || campaign?.EditableSlot is not { } source
+        if (_backupService is not { } backups || campaign?.Source is not { CanBeTaken: true } source
             || IsBusy || IsGameRunning)
         {
             return;
@@ -972,10 +984,10 @@ public sealed partial class MainViewModel : ObservableObject
         CampaignSlice? slice;
         Exception? failure = null;
 
-        BeginBusy("Reading " + source.FileName, campaign.DisplayName);
+        BeginBusy("Reading " + WhereItIs(source), campaign.DisplayName);
         try
         {
-            slice = await Task.Run(() => writer.ReadCampaign(source, slugcat));
+            slice = await Task.Run(() => ReadCampaignFrom(source, slugcat));
         }
         catch (Exception ex)
         {
@@ -989,15 +1001,13 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (failure is not null)
         {
-            Report(source.FileName + " could not be read.", failure);
+            Report(WhereItIs(source) + " could not be read.", failure);
             return;
         }
 
         if (slice is null)
         {
-            Report(
-                campaign.DisplayName + " is no longer in " + source.FileName + ". Refresh and try again.",
-                null);
+            Report(NotThereAnyMore(campaign.DisplayName, source), null);
             return;
         }
 
@@ -1009,7 +1019,8 @@ public sealed partial class MainViewModel : ObservableObject
         {
             dialog = new SendCampaignDialog(
                 campaign.DisplayName,
-                source,
+                source.LiveSlot,
+                WhereItIs(source),
                 target => writer.PlanPutCampaign(target, slice),
                 _meadow.Present);
         }
@@ -1025,7 +1036,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
 
         SaveSlotRef target = dialog.ChosenTarget;
-        bool takeItOut = dialog.ChosenToTakeItOut;
+        bool takeItOut = dialog.ChosenToTakeItOut && source.LiveSlot is not null;
         var progress = new Progress<string>(message => BusyMessage = message);
 
         SaveWriteResult? arrival = null;
@@ -1037,10 +1048,10 @@ public sealed partial class MainViewModel : ObservableObject
             arrival = await Task.Run(() =>
                 writer.Write(writer.PlanPutCampaign(target, slice), progress, CancellationToken.None));
 
-            if (arrival.Success && takeItOut)
+            if (arrival.Success && takeItOut && source.LiveSlot is { } from)
             {
                 departure = await Task.Run(() => writer.Write(
-                    writer.PlanTakeCampaign(source, slugcat, includeMaps: true),
+                    writer.PlanTakeCampaign(from, slugcat, includeMaps: true),
                     progress,
                     CancellationToken.None));
             }
@@ -1059,9 +1070,9 @@ public sealed partial class MainViewModel : ObservableObject
             await ReleaseSlotClaimAsync(target);
         }
 
-        if (departure?.LiveFolderModified == true)
+        if (departure?.LiveFolderModified == true && source.LiveSlot is { } emptied)
         {
-            await ReleaseSlotClaimAsync(source);
+            await ReleaseSlotClaimAsync(emptied);
         }
 
         await ReloadAsync();
@@ -1072,7 +1083,7 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        ReportCampaignMove(campaign.DisplayName, arrival!, departure, source, target);
+        ReportCampaignMove(campaign.DisplayName, arrival!, departure, WhereItIs(source), target);
     }
 
     /// <summary>
@@ -1153,7 +1164,7 @@ public sealed partial class MainViewModel : ObservableObject
         string campaignName,
         SaveWriteResult arrival,
         SaveWriteResult? departure,
-        SaveSlotRef source,
+        string sourceName,
         SaveSlotRef target)
     {
         var text = new StringBuilder();
@@ -1170,15 +1181,15 @@ public sealed partial class MainViewModel : ObservableObject
 
         if (departure is null)
         {
-            text.Append("It is still in ").Append(source.FileName).Append(" as well.\n\n");
+            text.Append("It is still in ").Append(sourceName).Append(" as well.\n\n");
         }
         else if (departure.Success)
         {
-            text.Append("It has been taken out of ").Append(source.FileName).Append(".\n\n");
+            text.Append("It has been taken out of ").Append(sourceName).Append(".\n\n");
         }
         else
         {
-            text.Append("It could not be taken out of ").Append(source.FileName)
+            text.Append("It could not be taken out of ").Append(sourceName)
                 .Append(", so it is in both slots for now:\n")
                 .Append(FormatList(departure.Errors))
                 .Append("\n\n");
@@ -1196,6 +1207,20 @@ public sealed partial class MainViewModel : ObservableObject
             "Send a campaign",
             departure is { Success: false } ? MessageBoxImage.Warning : MessageBoxImage.Information);
     }
+
+    /// <summary>
+    /// Reads one campaign out of wherever it is: a live slot, a backup, or a library save. Core
+    /// tells a save container from a campaign file, so this does not have to.
+    /// </summary>
+    private static CampaignSlice? ReadCampaignFrom(CampaignSource source, string slugcatId)
+        => CampaignFile.ReadFrom(source.FilePath, slugcatId);
+
+    /// <summary>What to call the file a campaign is in, for example "sav2" or "backup 2026-08-24".</summary>
+    private static string WhereItIs(CampaignSource source)
+        => source.Label.Length > 0 ? source.Label : source.FileName;
+
+    private static string NotThereAnyMore(string campaignName, CampaignSource source)
+        => campaignName + " is no longer in " + WhereItIs(source) + ". Refresh and try again.";
 
     /// <summary>
     /// A starting name for a stored campaign, for example "Gourmand cycle 42". Something to accept

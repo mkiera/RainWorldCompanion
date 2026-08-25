@@ -472,6 +472,37 @@ public sealed class SaveLibrary
             ?? throw new InvalidOperationException(
                 $"{source.FileName} holds no {SlugcatCatalog.ForId(slugcatId).DisplayName} campaign, so there is nothing to store.");
 
+        var entry = StoreCampaignFrom(slice, source.FileName, source.Realm, source.Slot, trimmedName, note);
+
+        progress?.Report("Stored");
+        return entry;
+    }
+
+    /// <summary>
+    /// Keeps a campaign already in hand, whatever it was taken out of.
+    ///
+    /// A campaign pulled out of a backup, or out of a whole slot kept in the library, is the same
+    /// thing as one pulled out of a live slot once it has been read. Neither touches the save folder,
+    /// so unlike <see cref="StoreCampaign"/> this takes no lock and does not care whether the game is
+    /// running.
+    /// </summary>
+    /// <param name="sourceFileName">What the campaign came out of, for the row to show.</param>
+    public LibraryEntry StoreCampaignFrom(
+        CampaignSlice slice,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string? note)
+    {
+        ArgumentNullException.ThrowIfNull(slice);
+
+        var trimmedName = (name ?? "").Trim();
+        if (trimmedName.Length == 0)
+        {
+            throw new ArgumentException("A library save needs a name.", nameof(name));
+        }
+
         var payload = CampaignFile.ToPayload(slice);
         var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
         var campaignPath = Path.Combine(directory, LibraryEntry.CampaignFileName);
@@ -487,19 +518,18 @@ public sealed class SaveLibrary
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             CreatedUtc = DateTime.UtcNow,
             AppVersion = _appVersion,
-            SourceFileName = source.FileName,
-            SourceRealm = source.Realm,
-            SourceSlot = source.Slot,
+            SourceFileName = sourceFileName ?? "",
+            SourceRealm = sourceRealm,
+            SourceSlot = sourceSlot,
             SizeBytes = new FileInfo(campaignPath).Length,
             Sha256 = Hashing.ComputeFileSha256(campaignPath),
             Metadata = SaveMetadataExtractor.FromPayload(
-                payload, LibraryEntry.CampaignFileName, source.Slot, source.Realm),
+                payload, LibraryEntry.CampaignFileName, sourceSlot, sourceRealm),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
         WriteManifest(directory, manifest);
 
-        progress?.Report("Stored");
         return LibraryEntry.Load(directory);
     }
 

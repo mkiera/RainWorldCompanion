@@ -27,6 +27,7 @@
 
         <CheckBox Content="Take it out of the slot it came from"
                   IsChecked="{Binding TakeItOut, Mode=TwoWay}"
+                  Visibility="{Binding TakeItOutVisibility}"
                   Margin="0,14,0,0" />
 
         <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="10,8">
