@@ -170,11 +170,35 @@ public sealed partial class FlagEditRow : ObservableObject
 /// </summary>
 public sealed partial class CampaignEditViewModel : ObservableObject
 {
+    /// <summary>
+    /// The keys the named boxes and rows above the raw list are built from. An edit made to one of
+    /// these in the raw list has to be read back into them, or the two halves of the panel would be
+    /// showing different answers about the same field.
+    /// </summary>
+    private static readonly HashSet<string> CuratedKeys = new(StringComparer.Ordinal)
+    {
+        SaveFields.Cycle,
+        SaveFields.Food,
+        SaveFields.TotalFood,
+        SaveFields.CyclesThisVersion,
+        SaveFields.DenPos,
+        SaveFields.LastDenPos,
+        SaveFields.Timeline,
+        SaveFields.Seed,
+        SaveFields.Glow,
+        SaveFields.Robo,
+        SaveFields.JustBeatGame,
+        SaveFields.RedExtraCycles,
+        SaveFields.DeathPersistent,
+    };
+
     private readonly SaveEditSession _session;
     private readonly CampaignRecordRef _campaign;
     private readonly CampaignSummary _original;
+    private readonly List<RawFieldRow> _rawFields = new();
 
     private bool _loading = true;
+    private string? _splitNote;
 
     public CampaignEditViewModel(SaveEditSession session, CampaignRecordRef campaign, CampaignSummary original)
     {
@@ -202,13 +226,16 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         survives = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.SurvivesField) ?? "";
         quits = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.QuitsField) ?? "";
 
-        Flags = BuildFlags();
-        Echoes = BuildEchoes();
+        Flags = new ObservableCollection<FlagEditRow>(BuildFlags());
+        Echoes = new ObservableCollection<EchoEditRow>(BuildEchoes());
         Gates = new ObservableCollection<GateEditRow>(BuildGates());
 
         ShelterMatches = new ObservableCollection<string>();
         LastShelterMatches = new ObservableCollection<string>();
         Warnings = new ObservableCollection<string>();
+        VisibleRawFields = new ObservableCollection<RawFieldRow>();
+
+        BuildRawFields();
 
         _loading = false;
 
@@ -221,11 +248,26 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     public bool IsHunter { get; }
 
-    public IReadOnlyList<FlagEditRow> Flags { get; }
+    public ObservableCollection<FlagEditRow> Flags { get; }
 
-    public IReadOnlyList<EchoEditRow> Echoes { get; }
+    public ObservableCollection<EchoEditRow> Echoes { get; }
 
     public ObservableCollection<GateEditRow> Gates { get; }
+
+    /// <summary>
+    /// Every field of the record, filtered by whatever is in the search box.
+    ///
+    /// The boxes above are the fields worth naming. This is all of them, so a field this app has
+    /// never modelled, or one a mod wrote, is still something a person can find and change.
+    /// </summary>
+    public ObservableCollection<RawFieldRow> VisibleRawFields { get; }
+
+    /// <summary>Every field, whether the search is showing it or not.</summary>
+    public IReadOnlyList<RawFieldRow> RawFields => _rawFields;
+
+    public string RawFieldCountText => _rawFields.Count == VisibleRawFields.Count
+        ? _rawFields.Count.ToString(CultureInfo.InvariantCulture) + " fields"
+        : $"{VisibleRawFields.Count} of {_rawFields.Count} fields";
 
     /// <summary>Shelters matching what has been typed into the shelter box.</summary>
     public ObservableCollection<string> ShelterMatches { get; }
@@ -308,6 +350,28 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     [ObservableProperty]
     private string newGateName = "";
+
+    // ---- the raw field list ----
+
+    [ObservableProperty]
+    private string rawSearch = "";
+
+    [ObservableProperty]
+    private string newFieldKey = "";
+
+    [ObservableProperty]
+    private string newFieldValue = "";
+
+    /// <summary>
+    /// Whether the field being added is a bare token rather than a key and a value.
+    ///
+    /// The two are different things in the file and an empty box cannot tell them apart, so this
+    /// asks rather than guessing which one an empty value meant.
+    /// </summary>
+    [ObservableProperty]
+    private bool newFieldIsFlag;
+
+    partial void OnRawSearchChanged(string value) => RefreshVisibleRawFields();
 
     partial void OnCycleChanged(string value) => SetNumber(SaveFields.Cycle, value);
 
@@ -395,6 +459,217 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         }
 
         NewGateName = "";
+    }
+
+    // ---- the raw field list ----
+
+    /// <summary>Puts a field back to what the file held when the editor opened.</summary>
+    [RelayCommand]
+    private void RevertRawField(RawFieldRow? row) => row?.Revert();
+
+    /// <summary>
+    /// Takes a field out of the record. There is no undo short of cancelling the editor, which is
+    /// why it is a button rather than a tick that can be caught by a stray click.
+    /// </summary>
+    [RelayCommand]
+    private void RemoveRawField(RawFieldRow? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        _session.RemoveField(_campaign, row.Key, row.Occurrence);
+        AfterRawChange(row.Key);
+    }
+
+    /// <summary>
+    /// Adds a field the record does not carry. Typing a key it already carries adds a second one,
+    /// which is how the game itself writes the keys that repeat.
+    /// </summary>
+    [RelayCommand]
+    private void AddRawField()
+    {
+        string key = NewFieldKey.Trim();
+
+        if (key.Length == 0)
+        {
+            return;
+        }
+
+        if (NewFieldIsFlag)
+        {
+            NoteAnySplit(key, key);
+            _session.SetFlag(_campaign, key, true);
+        }
+        else
+        {
+            int occurrence = _rawFields.Count(row => string.Equals(row.Key, key, StringComparison.Ordinal));
+            NoteAnySplit(key, key + NewFieldValue);
+            _session.SetField(_campaign, key, NewFieldValue, occurrence);
+        }
+
+        NewFieldKey = "";
+        NewFieldValue = "";
+
+        AfterRawChange(key);
+    }
+
+    private void RawValueChanged(RawFieldRow row)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        NoteAnySplit(row.Label, row.Value);
+        _session.SetField(_campaign, row.Key, row.Value, row.Occurrence);
+        AfterRawChange(row.Key);
+    }
+
+    /// <summary>
+    /// Reads the record back into everything on screen after the raw list changed it.
+    ///
+    /// A raw edit can move a field one of the named boxes above is also showing, so those are read
+    /// again from the record rather than left saying what they said before.
+    /// </summary>
+    private void AfterRawChange(string key)
+    {
+        if (CuratedKeys.Contains(key))
+        {
+            PullCuratedValues();
+            RebuildCuratedRows();
+        }
+
+        AfterChange();
+    }
+
+    private void BuildRawFields()
+    {
+        _rawFields.Clear();
+
+        foreach (RawField field in _session.EnumerateFields(_campaign))
+        {
+            _rawFields.Add(new RawFieldRow(
+                field.Key,
+                field.Occurrence,
+                field.IsFlag,
+                field.Value ?? "",
+                RawValueChanged));
+        }
+
+        RefreshVisibleRawFields();
+    }
+
+    /// <summary>
+    /// Brings the rows back in line with the record.
+    ///
+    /// Values are pushed into the rows that are already there, so typing into one does not rebuild
+    /// the list under the cursor. A record that has gained, lost or reshuffled a field is a
+    /// different list, and that one is rebuilt: a row addresses its field by position, so a stale
+    /// row would write over a field that is not the one it is showing.
+    /// </summary>
+    private void SyncRawFields()
+    {
+        IReadOnlyList<RawField> fields = _session.EnumerateFields(_campaign);
+
+        if (fields.Count != _rawFields.Count)
+        {
+            BuildRawFields();
+            return;
+        }
+
+        for (int i = 0; i < fields.Count; i++)
+        {
+            if (!string.Equals(fields[i].Key, _rawFields[i].Key, StringComparison.Ordinal)
+                || fields[i].Occurrence != _rawFields[i].Occurrence
+                || fields[i].IsFlag != _rawFields[i].IsFlag)
+            {
+                BuildRawFields();
+                return;
+            }
+        }
+
+        for (int i = 0; i < fields.Count; i++)
+        {
+            _rawFields[i].PullValue(fields[i].Value ?? "");
+        }
+    }
+
+    private void RefreshVisibleRawFields()
+    {
+        string query = RawSearch.Trim();
+
+        VisibleRawFields.Clear();
+
+        foreach (RawFieldRow row in _rawFields)
+        {
+            if (query.Length == 0
+                || row.Key.Contains(query, StringComparison.OrdinalIgnoreCase)
+                || row.Value.Contains(query, StringComparison.OrdinalIgnoreCase))
+            {
+                VisibleRawFields.Add(row);
+            }
+        }
+
+        OnPropertyChanged(nameof(RawFieldCountText));
+    }
+
+    /// <summary>Reads the named boxes back out of the record, without writing them back into it.</summary>
+    private void PullCuratedValues()
+    {
+        bool wasLoading = _loading;
+        _loading = true;
+
+        Cycle = Field(SaveFields.Cycle);
+        Food = Field(SaveFields.Food);
+        TotalFoodEaten = Field(SaveFields.TotalFood);
+        CyclesThisVersion = Field(SaveFields.CyclesThisVersion);
+        DenPos = Field(SaveFields.DenPos);
+        LastDenPos = Field(SaveFields.LastDenPos);
+        Timeline = Field(SaveFields.Timeline);
+        Seed = Field(SaveFields.Seed);
+
+        string blob = DeathPersistentBlob;
+        Karma = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.KarmaField) ?? "";
+        KarmaCap = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.KarmaCapField) ?? "";
+        KarmaFlower = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.ReinforcedKarmaField) ?? "";
+        Deaths = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.DeathsField) ?? "";
+        Survives = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.SurvivesField) ?? "";
+        Quits = DeathPersistentEditor.GetValue(blob, DeathPersistentEditor.QuitsField) ?? "";
+
+        _loading = wasLoading;
+
+        RefreshShelterMatches();
+    }
+
+    /// <summary>
+    /// Builds the flag, echo and gate rows again from the record.
+    ///
+    /// Those rows are made once from what the record held, so an echo added or a gate opened by a
+    /// raw edit has no row until they are made again. Each row takes its state through its
+    /// constructor rather than through its setters, so nothing here writes back to the session.
+    /// </summary>
+    private void RebuildCuratedRows()
+    {
+        bool wasLoading = _loading;
+        _loading = true;
+
+        Replace(Flags, BuildFlags());
+        Replace(Echoes, BuildEchoes());
+        Replace(Gates, BuildGates());
+
+        _loading = wasLoading;
+
+        static void Replace<T>(ObservableCollection<T> target, IReadOnlyList<T> rows)
+        {
+            target.Clear();
+
+            foreach (T row in rows)
+            {
+                target.Add(row);
+            }
+        }
     }
 
     // ---- applying ----
@@ -545,6 +820,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     private void AfterChange()
     {
+        SyncRawFields();
         RefreshWarnings();
         OnPropertyChanged(nameof(IsDirty));
         OnPropertyChanged(nameof(Changes));
@@ -765,7 +1041,31 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AddShelterWarning(DenPos, "Shelter");
         AddShelterWarning(LastDenPos, "Last shelter");
 
+        if (_splitNote is not null)
+        {
+            Warnings.Add(_splitNote);
+        }
+
         OnPropertyChanged(nameof(HasWarnings));
+    }
+
+    /// <summary>
+    /// Says so when a raw value was given one of the strings the file splits on.
+    ///
+    /// Nothing stops it, and this is written as something that has happened rather than something
+    /// that is: a value carrying a field separator stops being one field the moment it is written,
+    /// so by the time the list is read back there is nothing left to point at. The note stands
+    /// until the next raw edit, which is long enough to be read.
+    /// </summary>
+    private void NoteAnySplit(string label, string value)
+    {
+        _splitNote = value.Contains(SavePayloadReader.RecordSeparator, StringComparison.Ordinal)
+            ? $"{label} was given {SavePayloadReader.RecordSeparator}, which is what the file splits records on, "
+                + "so what followed it now sits outside this campaign."
+            : value.Contains(SavePayloadReader.FieldSeparator, StringComparison.Ordinal)
+                ? $"{label} was given {SavePayloadReader.FieldSeparator}, which is what the file splits fields on, "
+                    + "so it is now more than one field."
+                : null;
     }
 
     private void AddNotANumber(string value, string label)

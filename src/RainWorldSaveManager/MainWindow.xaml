@@ -428,6 +428,68 @@
             </CheckBox>
         </DataTemplate>
 
+        <!--
+            One field exactly as the record stores it: the name it is written under, and the
+            characters beside it. Nothing here is labelled or checked, because this is the list
+            that has to be able to show a field this app has never heard of.
+        -->
+        <DataTemplate x:Key="RawFieldTemplate">
+            <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,4">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="184" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Text="{Binding Label}" ToolTip="{Binding Label}"
+                               TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsChanged}" Value="True">
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <TextBox Grid.Column="1" VerticalAlignment="Center"
+                             Visibility="{Binding IsFlag, Converter={StaticResource NotBoolToVis}}"
+                             Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}" />
+
+                    <!-- A bare name has no value to show. Removing it is what turns it off. -->
+                    <TextBlock Grid.Column="1" Text="written with no value beside it"
+                               Style="{StaticResource Text.Muted}" VerticalAlignment="Center"
+                               Visibility="{Binding IsFlag, Converter={StaticResource BoolToVis}}" />
+
+                    <TextBlock Grid.Column="2" Text="{Binding LengthText}" MinWidth="58"
+                               Style="{StaticResource Text.Tiny}" TextAlignment="Right"
+                               VerticalAlignment="Center" Margin="8,0,0,0" />
+
+                    <Button Grid.Column="3" Content="Revert" Style="{StaticResource Button.Small}"
+                            Margin="6,0,0,0" VerticalAlignment="Center"
+                            ToolTip="{Binding StoredValue}"
+                            Visibility="{Binding IsChanged, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding DataContext.RevertRawFieldCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}" />
+
+                    <Button Grid.Column="4" Content="Remove" Style="{StaticResource Button.Small}"
+                            Margin="6,0,0,0" VerticalAlignment="Center"
+                            ToolTip="Takes this field out of the campaign. Cancelling the editor is the only way back."
+                            Command="{Binding DataContext.RemoveRawFieldCommand,
+                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                            CommandParameter="{Binding}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
         <DataTemplate x:Key="WarningTemplate">
             <TextBlock Text="{Binding}" Style="{StaticResource Text.Body}" TextWrapping="Wrap"
                        Margin="0,0,0,3" Foreground="{StaticResource Brush.Warn}" />
@@ -587,6 +649,52 @@
                             ToolTip="Opens a gate this app does not list, for one added by a mod."
                             Command="{Binding AddGateCommand}" />
                 </StackPanel>
+
+                <DockPanel Margin="0,14,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="ALL FIELDS" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
+                           Text="Every field this campaign stores, in the order the file holds them. The boxes above are the ones with names; this is the rest, including anything a mod wrote. What is typed here is written as typed." />
+
+                <DockPanel Margin="0,0,0,6">
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding RawFieldCountText}"
+                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center"
+                               Margin="8,0,0,0" />
+                    <TextBox Text="{Binding RawSearch, UpdateSourceTrigger=PropertyChanged}"
+                             ToolTip="Searches the field names and what they hold." />
+                </DockPanel>
+
+                <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                        Padding="9,0,9,0">
+                    <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding VisibleRawFields}"
+                                      ItemTemplate="{StaticResource RawFieldTemplate}" />
+                    </ScrollViewer>
+                </Border>
+
+                <WrapPanel Margin="0,9,0,0">
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="New field name" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.WideBox}"
+                                 Text="{Binding NewFieldKey, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}"
+                                Visibility="{Binding NewFieldIsFlag, Converter={StaticResource NotBoolToVis}}">
+                        <TextBlock Text="Value" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Width="250" Margin="0,2,0,0"
+                                 Text="{Binding NewFieldValue, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <CheckBox Content="No value, just the name" Margin="0,0,12,8"
+                              VerticalAlignment="Bottom"
+                              ToolTip="Writes the name on its own, which the game reads as true by it being there at all."
+                              IsChecked="{Binding NewFieldIsFlag, Mode=TwoWay}" />
+                    <Button Content="Add field" Style="{StaticResource Button.Small}"
+                            VerticalAlignment="Bottom" Margin="0,0,0,8"
+                            Command="{Binding AddRawFieldCommand}" />
+                </WrapPanel>
 
             </StackPanel>
         </DataTemplate>
