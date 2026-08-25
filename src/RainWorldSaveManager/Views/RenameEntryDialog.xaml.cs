@@ -2,12 +2,39 @@ using System.Windows;
 
 namespace RainWorldSaveManager.Views;
 
-/// <summary>Changes a library save's name and note. Nothing else about the entry moves.</summary>
+/// <summary>
+/// Asks for a name and a note.
+///
+/// Renaming a library save is what it was written for, and storing a campaign asks for the same two
+/// things, so the wording is passed in rather than a second dialog being drawn with the same two
+/// boxes on it.
+/// </summary>
 public partial class RenameEntryDialog : Window
 {
+    /// <summary>Changes a library save's name and note. Nothing else about the entry moves.</summary>
     public RenameEntryDialog(string currentName, string currentNote)
+        : this(
+            currentName,
+            currentNote,
+            "Rename a library save",
+            "Only the name and the note change. The save itself is not touched.",
+            "Rename")
     {
+    }
+
+    public RenameEntryDialog(
+        string currentName,
+        string currentNote,
+        string headline,
+        string subtitle,
+        string actionText)
+    {
+        Headline = headline;
+        Subtitle = subtitle;
+        ActionText = actionText;
+
         InitializeComponent();
+        DataContext = this;
 
         NameBox.Text = currentName;
         NoteBox.Text = currentNote;
@@ -18,6 +45,13 @@ public partial class RenameEntryDialog : Window
             NameBox.SelectAll();
         };
     }
+
+    public string Headline { get; }
+
+    public string Subtitle { get; }
+
+    /// <summary>What the accepting button says, which is also this window's title.</summary>
+    public string ActionText { get; }
 
     public string EntryName => NameBox.Text.Trim();
 

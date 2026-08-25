@@ -135,6 +135,60 @@
         <Setter Property="FontSize" Value="12" />
     </Style>
 
+    <!-- For a button carrying one character, such as an arrow, where a word's width is all gap. -->
+    <Style x:Key="Button.Tiny" TargetType="Button" BasedOn="{StaticResource Button.Base}">
+        <Setter Property="MinWidth" Value="24" />
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="Padding" Value="4,1" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <!--
+        A button that stays pressed, for something that is opened rather than done. Its own
+        template rather than one based on Button.Base, because a style cannot retarget a
+        ControlTemplate from Button to ToggleButton.
+    -->
+    <Style x:Key="Button.SmallToggle" TargetType="ToggleButton">
+        <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
+        <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="10,2" />
+        <Setter Property="MinWidth" Value="52" />
+        <Setter Property="MinHeight" Value="22" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToggleButton">
+                    <Border x:Name="Root"
+                            CornerRadius="4"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            Padding="{TemplateBinding Padding}"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.Selection}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                            <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                        </Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.88" />
+                        </Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Inputs -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{StaticResource Brush.Panel}" />

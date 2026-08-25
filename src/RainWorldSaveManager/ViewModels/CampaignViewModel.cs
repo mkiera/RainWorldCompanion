@@ -53,6 +53,38 @@ public sealed record PassageTile(
 public sealed record KillTile(string Name, string CountText, string CreatureId);
 
 /// <summary>
+/// Where a campaign was read from, and so what can be done with it.
+///
+/// The same card is drawn for a campaign in the live save folder, one in a backup and one in a
+/// library save. All three can be taken out and sent to a slot, because that is a read of the file
+/// they are in and a write to a different one. Only the live folder can be edited or have a campaign
+/// removed: a backup and a library save are copies taken at a moment, and changing one in place
+/// would leave it no longer a copy of anything.
+/// </summary>
+/// <param name="FilePath">
+/// The file holding this campaign. Either a save container or a campaign file, which
+/// <see cref="RainWorldSaveManager.Core.Library.CampaignFile.ReadFrom"/> tells apart.
+/// </param>
+/// <param name="Label">What to call that file in a sentence, for example "backup 2026-08-24_120000".</param>
+/// <param name="LiveSlot">The slot this is in, when it is one of the game's own. Null otherwise.</param>
+/// <param name="Realm">Which set the campaign came from, recorded when it is stored.</param>
+/// <param name="SlotNumber">The slot number it came from, or 0 when it came from no numbered slot.</param>
+public sealed record CampaignSource(
+    string FilePath,
+    string Label,
+    SaveSlotRef? LiveSlot,
+    SaveRealm Realm = SaveRealm.Local,
+    int SlotNumber = 0,
+    string FileName = "")
+{
+    /// <summary>True when this is a live slot, the only place an edit can be written.</summary>
+    public bool IsLive => LiveSlot is not null;
+
+    /// <summary>True when the campaign can be read back out of the file it is in.</summary>
+    public bool CanBeTaken => FilePath.Length > 0;
+}
+
+/// <summary>
 /// A slugcat's face and colours. Built once per campaign or per list row, so the icon lookup and
 /// the brush parsing happen in one place instead of in a converter on every redraw.
 ///
@@ -139,15 +171,16 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     private const int TopKillCount = 8;
 
-    /// <param name="editableSlot">
-    /// The slot this campaign can be edited in, or null when it cannot be. Only the live save
-    /// folder passes one: a backup and a library save are snapshots, and editing one in place would
-    /// make it no longer the thing it is a copy of.
+    /// <param name="source">
+    /// The file this campaign was read out of, or null when nothing can be done with it. A backup
+    /// and a library save pass one that is not live: their campaigns can be taken out and sent to a
+    /// slot, but not edited or removed where they are.
     /// </param>
-    public CampaignViewModel(CampaignSummary campaign, ISlugcatIconProvider icons, SaveSlotRef? editableSlot = null)
+    public CampaignViewModel(CampaignSummary campaign, ISlugcatIconProvider icons, CampaignSource? source = null)
     {
         Summary = campaign;
-        EditableSlot = editableSlot;
+        Source = source;
+        EditableSlot = source?.LiveSlot;
 
         var info = SlugcatCatalog.ForId(campaign.SlugcatId);
         Portrait = new PortraitViewModel(info, icons.GetIcon(campaign.SlugcatId));
@@ -247,11 +280,26 @@ public sealed partial class CampaignViewModel : ObservableObject
     [ObservableProperty]
     private bool isExpanded;
 
+    /// <summary>The file this campaign was read out of, or null when nothing can be done with it.</summary>
+    public CampaignSource? Source { get; }
+
     /// <summary>The slot this campaign lives in, when it is one that can be edited.</summary>
     public SaveSlotRef? EditableSlot { get; }
 
-    /// <summary>True when an Edit button belongs on this card.</summary>
+    /// <summary>True when an Edit button belongs on this card, which is the live save folder only.</summary>
     public bool CanEdit => EditableSlot is not null;
+
+    /// <summary>
+    /// True when this campaign can be taken out and sent somewhere, which is anywhere it can be
+    /// read from: the live folder, a backup, or a library save.
+    /// </summary>
+    public bool CanBeTaken => Source?.CanBeTaken == true;
+
+    /// <summary>
+    /// True when there is a bar of buttons to draw at all. Editing needs a live slot and a live slot
+    /// is a file, so anything that can be edited can also be taken, and this is the wider of the two.
+    /// </summary>
+    public bool HasActions => CanEdit || CanBeTaken;
 
     /// <summary>
     /// The open editor for this campaign, or null when it is only being read.

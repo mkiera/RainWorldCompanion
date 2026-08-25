@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
+using RainWorldSaveManager.Core.System;
 
 namespace RainWorldSaveManager.ViewModels;
 
@@ -200,7 +201,16 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     private bool _loading = true;
     private string? _splitNote;
 
-    public CampaignEditViewModel(SaveEditSession session, CampaignRecordRef campaign, CampaignSummary original)
+    /// <param name="expansions">
+    /// Which expansions the game folder has, for advice about a creature from one of them. Optional:
+    /// the game path is optional throughout this app, and without it the panel says less rather
+    /// than nothing.
+    /// </param>
+    public CampaignEditViewModel(
+        SaveEditSession session,
+        CampaignRecordRef campaign,
+        CampaignSummary original,
+        ExpansionPresence? expansions = null)
     {
         _session = session;
         _campaign = campaign;
@@ -237,6 +247,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         BuildRawFields();
 
+        Devourment = new DevourmentEditViewModel(session, campaign, denPos, AfterChange, expansions);
+
         _loading = false;
 
         RefreshShelterMatches();
@@ -264,6 +276,14 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     /// <summary>Every field, whether the search is showing it or not.</summary>
     public IReadOnlyList<RawFieldRow> RawFields => _rawFields;
+
+    /// <summary>
+    /// What this campaign has swallowed, open for editing.
+    ///
+    /// Built for every campaign, not only the ones carrying Devourment data, because a campaign
+    /// with an empty stomach is exactly the one somebody wants to put something in.
+    /// </summary>
+    public DevourmentEditViewModel Devourment { get; }
 
     public string RawFieldCountText => _rawFields.Count == VisibleRawFields.Count
         ? _rawFields.Count.ToString(CultureInfo.InvariantCulture) + " fields"
@@ -1040,6 +1060,12 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AddHunterCycleWarning();
         AddShelterWarning(DenPos, "Shelter");
         AddShelterWarning(LastDenPos, "Last shelter");
+
+        // The Devourment editor works out its own, and it refreshes them before it calls back here.
+        foreach (string warning in Devourment.Warnings)
+        {
+            Warnings.Add(warning);
+        }
 
         if (_splitNote is not null)
         {

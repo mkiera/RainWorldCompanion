@@ -54,6 +54,70 @@ public sealed record SaveWriteResult(
 }
 
 /// <summary>
+/// What moving a campaign onto or off one slot would do, worked out without changing anything.
+///
+/// <see cref="Splice"/> says what the move is: whether it replaces a campaign the slot already had,
+/// how much map comes with it, and anything the game will make of it that a person would not expect.
+/// <see cref="Write"/> is the same plan an edit builds, so writing one runs the same ladder.
+/// </summary>
+public sealed record CampaignMovePlan(
+    SaveWritePlan Write,
+    CampaignSpliceReport Splice,
+    SaveSlotRef Target,
+    string TargetFileName,
+    IReadOnlyList<string> Problems)
+{
+    public bool CanWrite => Problems.Count == 0 && Write.CanWrite;
+
+    /// <summary>What is worth saying before this is written. None of it stops the write.</summary>
+    public IReadOnlyList<string> Warnings => Splice.Warnings;
+
+    /// <summary>One line saying what this would do to the slot.</summary>
+    public string Describe()
+    {
+        string what = Splice.Outcome switch
+        {
+            CampaignSpliceOutcome.Replaced => $"Replaces the campaign in {TargetFileName}",
+            CampaignSpliceOutcome.Added => $"Adds a campaign to {TargetFileName}",
+            CampaignSpliceOutcome.Removed => $"Takes a campaign out of {TargetFileName}",
+            _ => $"Changes nothing in {TargetFileName}",
+        };
+
+        var map = new List<string>();
+
+        if (Splice.MapsCarried > 0)
+        {
+            map.Add(string.Format(
+                CultureInfo.InvariantCulture,
+                "{0} regions of map come with it",
+                Splice.MapsCarried));
+        }
+
+        if (Splice.MapsRemoved > 0)
+        {
+            map.Add(string.Format(
+                CultureInfo.InvariantCulture,
+                "{0} the slot had are dropped",
+                Splice.MapsRemoved));
+        }
+
+        return map.Count == 0 ? what + "." : what + ", and " + string.Join(", ", map) + ".";
+    }
+
+    internal static CampaignMovePlan Refused(
+        string filePath,
+        SaveSlotRef target,
+        string targetFileName,
+        params string[] problems)
+        => new(
+            SaveWritePlan.CannotBuild(filePath, problems),
+            CampaignSpliceReport.Nothing,
+            target,
+            targetFileName,
+            problems);
+}
+
+/// <summary>
 /// Writes an edited save over the slot it came from.
 ///
 /// The ladder that makes overwriting a save undoable is not repeated here. It already exists, a
@@ -174,6 +238,120 @@ public sealed class SaveSlotWriter
         {
             TryDelete(tempPath);
         }
+    }
+
+    /// <summary>Writes a campaign move over its slot, through the same ladder an edit runs.</summary>
+    public SaveWriteResult Write(
+        CampaignMovePlan plan,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return plan.Problems.Count > 0
+            ? SaveWriteResult.Refused(plan.TargetFileName, plan.Problems.ToArray())
+            : Write(plan.Write, plan.Target, progress, ct);
+    }
+
+    /// <summary>Reads one campaign out of a slot, to store it or to move it somewhere else.</summary>
+    public CampaignSlice? ReadCampaign(SaveSlotRef source, string slugcatId)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        SlotSide side = _backups.SlotCopies.ReadSide(source, includeCampaigns: false);
+        return SaveEditSession.Open(side.FullPath).TakeCampaign(slugcatId);
+    }
+
+    /// <summary>
+    /// What putting a campaign into a slot would do. Nothing is written and nothing is locked, so
+    /// the answer is what the slot holds now rather than what it will hold when the write runs.
+    /// </summary>
+    public CampaignMovePlan PlanPutCampaign(SaveSlotRef target, CampaignSlice slice)
+    {
+        ArgumentNullException.ThrowIfNull(slice);
+
+        return Plan(target, session => session.PutCampaignIn(slice));
+    }
+
+    /// <summary>
+    /// What taking a campaign out of a slot would do.
+    /// </summary>
+    /// <param name="includeMaps">
+    /// Whether the slugcat's map discovery goes with it. The game's own WipeSaveState leaves it
+    /// behind, so deleting a campaign in place should too. Moving one to another slot should take
+    /// it, or the map stays in a slot that no longer has the campaign.
+    /// </param>
+    public CampaignMovePlan PlanTakeCampaign(SaveSlotRef target, string slugcatId, bool includeMaps)
+        => Plan(target, session => session.TakeCampaignOut(slugcatId, includeMaps));
+
+    private CampaignMovePlan Plan(SaveSlotRef target, Func<SaveEditSession, CampaignSpliceReport> move)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        SlotSide side = _backups.SlotCopies.ReadSide(target, includeCampaigns: false);
+        string targetName = side.FileName.Length == 0 ? "the target slot" : side.FileName;
+
+        if (!target.IsRealSlot)
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                targetName,
+                string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Slot {0} is not a Rain World slot. The game has slots {1} to {2}.",
+                    target.Slot,
+                    SaveSlotRef.MinSlot,
+                    SaveSlotRef.MaxSlot));
+        }
+
+        if (!side.Exists)
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                targetName,
+                $"{targetName} is not in the save folder, so there is nothing to move a campaign into.");
+        }
+
+        // A plan read while the game is running describes a slot the game is about to rewrite. The
+        // write refuses on its own, but saying so here keeps it out of the dialog that asks.
+        if (_gameDetector.IsGameRunning(out string? processName))
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                targetName,
+                $"Rain World is running (process \"{processName ?? "Rain World"}\"). Close the game first.");
+        }
+
+        SaveEditSession session;
+        try
+        {
+            session = SaveEditSession.Open(side.FullPath);
+        }
+        catch (SaveContainerException ex)
+        {
+            return CampaignMovePlan.Refused(side.FullPath, target, targetName, ex.Message);
+        }
+
+        CampaignSpliceReport splice = move(session);
+
+        if (!session.IsDirty)
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                targetName,
+                $"{targetName} already holds exactly this, so there is nothing to write.");
+        }
+
+        return new CampaignMovePlan(
+            session.BuildWritePlan(),
+            splice,
+            target,
+            targetName,
+            Array.Empty<string>());
     }
 
     /// <summary>
