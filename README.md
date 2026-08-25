@@ -5,7 +5,10 @@ them on demand. It reads the save containers well enough to show what each slot 
 slugcat and the cycle down to karma, passages, kills and Devourment state, so you can tell one
 snapshot from another before you restore it.
 
-This version does not edit saves. Files are copied byte for byte in both directions, because the
+It also keeps a library of named saves outside the game's three slots, so you can keep twenty runs
+and load any of them into any slot.
+
+This version does not edit saves. Files are copied byte for byte in every direction, because the
 UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
 reads back. It reads Rain Meadow's online saves with the same reader, pairs each one with the local
 slot it shares a number with, and can copy any whole slot onto any other.
@@ -50,7 +53,8 @@ progress and again when you restore.
 
 The window is a list on the left and a detail panel on the right. The list holds the save folder
 as it is right now and every backup under it. Selecting either fills the panel, and the layout is
-the same for both, so a backup can be read against the live save without switching views.
+the same for both, so a backup can be read against the live save without switching views. With Rain
+Meadow installed, a toggle above the sections picks which set of saves they show, local or online.
 
 A slot section lists its campaigns. Opening one shows:
 
@@ -118,12 +122,21 @@ slot 2 is `sav2` on your own and `online_sav2` in a lobby. The two files sit sid
 save folder and are the same format byte for byte, which is why one reader handles both. Expedition
 is not hooked, so online play is story mode.
 
-The detail panel pairs them in its own banded section: local and online in one row per slot number,
-all three rows always, so an empty online slot is visible rather than absent. The section appears
-when Rain Meadow is on the machine and is left out entirely otherwise, so a player who does not use
-the mod never sees it. Presence is read from the game's own enabled mod list when the game folder is
-known, and otherwise from the save folder, which is enough on its own: `meadow.json`, the mod's
-Remix config and the online saves are written by nothing else.
+A SHOWING toggle above the slot sections switches them between the three local saves and the three
+online ones. Both hold full campaigns, so both get the same sections and the same campaign cards,
+down to the Devourment tree. An online section names its realm in the header, because `sav2` and
+`online_sav2` share a slot number and the number alone does not say which one is on screen. The
+toggle stays where you put it as you move between the live save and backups.
+
+The paired rows lower down are the other half of it, and they stay as they are whichever way the
+toggle is set: local and online in one row per slot number, all three rows always, so an empty
+online slot is visible rather than absent.
+
+The toggle and the paired section both appear when Rain Meadow is on the machine and are left out
+entirely otherwise, so a player who does not use the mod sees one set of saves and no toggle over
+them. Presence is read from the game's own enabled mod list when the game folder is known, and
+otherwise from the save folder, which is enough on its own: `meadow.json`, the mod's Remix config
+and the online saves are written by nothing else.
 
 Rain Meadow records the map you have explored and a progression record whether or not a campaign is
 saved, so an online save can hold 12 KB of real progress with no campaign in it. The panel describes
@@ -148,6 +161,77 @@ safety snapshot does not hold the file that is about to be replaced.
 Moving one campaign between slots is not in this version. That means rewriting the payload and
 recomputing the MD5 the game checks it against, and getting that wrong is what destroys a save. It
 belongs with the save editor.
+
+## The library
+
+Rain World gives you three slots. The library is a folder of named saves outside them, so a run you
+want to come back to does not have to hold a slot open.
+
+Store Slot in the top bar keeps a copy of one slot under a name of your choosing. The copy is
+proved against the file it came from before it is recorded, so a save the game rewrote mid-copy
+abandons the entry rather than being stored as though it were sound. Nothing in the save folder is
+written.
+
+The LIBRARY tab in the left column lists what you have stored, with the same faces, campaign counts
+and check state the backup rows carry. Selecting one fills the same detail panel a backup does.
+
+A stored save reads the same whichever slot it came from. One taken from `online_sav2` lays out
+exactly like one taken from `sav2`, and neither gets the Rain Meadow section or the local and online
+toggle, both of which work across a slot's two halves and a single stored save has no second half.
+Where it came from is on the row and in the panel subtitle.
+
+The two buttons that move bytes name the direction they move them.
+
+- **Put in slot** writes a library save into whichever slot you pick, local or online.
+- **Take from slot** replaces a library save with what is in that slot now, which is how an hour of
+  play gets back into the save it came from. The save being replaced is kept, so **Undo take** puts
+  it back. Only the last one is kept, and the next take replaces it.
+- **Rename** changes the name and the note and nothing else.
+- **Export** writes one save out as a single `.rwsave` file. **Import** reads one back, and also
+  accepts a bare save file copied straight out of somebody's save folder.
+
+A row says which slot holds it and whether that slot has been played since. Both putting a save in a
+slot and taking one back leave the save and the slot holding the same bytes, so either one starts
+that badge fresh.
+
+One slot has one library save on it. Putting a second save into a slot takes the badge off the first,
+so two rows can never both claim to be in `sav`, and a restore or a slot copy takes it off whatever
+it wrote over. Without a badge, the app is not claiming to know what is in that slot.
+
+The time on a row is when the bytes were last written, so a save you have just taken from a slot
+reads as minutes old rather than as old as the day you first stored it, and it moves to the top of
+the list.
+
+### What loading does
+
+Loading is the only thing the library does that writes into the save folder, and it runs the same
+steps a slot copy runs, in the same order: take a safety snapshot of the whole save folder, prove
+that snapshot holds the file about to be replaced, hold the backup folder for the rest of the
+operation, check again that the game is closed and that nothing has appeared in the target slot,
+then one byte for byte copy, then hash both sides and compare.
+
+The entry carries the SHA-256 recorded when it was stored, and the load holds it to that digest
+immediately before the write. A library save damaged since it was stored is refused rather than
+written over a live slot.
+
+### Bundles and bare files
+
+A `.rwsave` file is a zip holding the save and the manifest that describes it, which is what carries
+the name, the note and the campaigns to another machine. Because the manifest records the save's
+checksum, a bundle whose save no longer matches it has been damaged in transit and is refused.
+
+A bare save file has no recorded checksum to hold it to, so a damaged one is imported with a warning
+instead. A save the game will not load is still one you may want in the library to look at.
+
+Neither writes into the save folder. An imported file lands in the library, and the only way it
+reaches a slot is by being loaded, which takes a safety snapshot first.
+
+### Naming
+
+Entry folders are named for the time they were stored, for example `2026-08-24_19-31-07`. Your name
+for a save lives in its `entry.json` and never in a path, so it can be anything: reserved names such
+as `CON`, characters Windows refuses in a file name, two saves called the same thing. Renaming
+rewrites the manifest and leaves the folder where it is.
 
 `meadow.json` is Rain Meadow's own progression file, and the panel reads it: the character picked in
 the menu, play time, progress towards the next emote, skin and character, and per character the
@@ -183,18 +267,21 @@ file with its size and SHA-256.
 The manifest is written last, so a folder without one is a backup that did not finish. The app
 lists those as incomplete and refuses to restore them, and you can delete them from the list.
 
-The backup folder must not be inside the save folder, and the save folder must not be inside
-the backup folder. The app checks this by resolving both paths through the filesystem, so a
-junction or a subst drive pointing one into the other is refused as well.
+Library saves go to `%LOCALAPPDATA%\RainWorldSaveManager\library` unless you change it. Each one is
+a folder named the same way, holding `save.bin`, an `entry.json` written last for the same reason,
+and a `save.previous.bin` once an update has replaced something.
+
+None of the three folders may sit inside another. The app checks this by resolving every path
+through the filesystem, so a junction or a subst drive pointing one into another is refused as well.
 
 Settings live in `%LOCALAPPDATA%\RainWorldSaveManager\settings.json`.
 
 ## Close the game first
 
-Backups, restores and slot copies are refused while Rain World is running, because the game holds
-its progression in memory and writes it back at its own save points. The header of the window tells
-you whether the game is open, and the New Backup, Restore and Copy Slot buttons are disabled while
-it is.
+Anything that reads or writes a save file is refused while Rain World is running, because the game
+holds its progression in memory and writes it back at its own save points. That covers backups,
+restores, slot copies, and storing, updating and loading a library save. The header of the window
+tells you whether the game is open and those buttons are disabled while it is.
 
 The check is repeated during a restore or a copy. If the game starts while one is running, it stops
 rather than writing more files under a process that is reading them, and tells you the save folder

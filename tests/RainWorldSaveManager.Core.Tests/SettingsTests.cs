@@ -55,6 +55,60 @@ public class SettingsTests
     public void Validate_accepts_two_unrelated_folders(string savePath, string backupPath)
         => Assert.Null(SettingsValidation.Validate(savePath, backupPath));
 
+    // ---- the library root, which has to clear the same rule against both of the others ----
+
+    [Theory]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"C:\Games\Rain World")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"D:\Backups")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"c:\games\rain world\")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"D:\Other\..\Backups")]
+    public void Validate_rejects_a_library_that_is_one_of_the_other_two(string savePath, string backupPath, string libraryPath)
+        => Assert.NotNull(SettingsValidation.Validate(savePath, backupPath, libraryPath));
+
+    [Theory]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"C:\Games\Rain World\library")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"C:\Games\Rain World\a\b\c")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"D:\Backups\library")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"d:\backups\LIBRARY\")]
+    public void Validate_rejects_a_library_inside_one_of_the_other_two(string savePath, string backupPath, string libraryPath)
+        => Assert.NotNull(SettingsValidation.Validate(savePath, backupPath, libraryPath));
+
+    [Theory]
+    [InlineData(@"C:\Library\live", @"D:\Backups", @"C:\Library")]
+    [InlineData(@"C:\Games\Rain World", @"C:\Library\backups", @"C:\Library")]
+    public void Validate_rejects_a_library_that_holds_one_of_the_other_two(string savePath, string backupPath, string libraryPath)
+        => Assert.NotNull(SettingsValidation.Validate(savePath, backupPath, libraryPath));
+
+    [Theory]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", "")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", "   ")]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"library")]
+    public void Validate_rejects_a_library_path_that_is_not_a_full_path(string savePath, string backupPath, string libraryPath)
+        => Assert.NotNull(SettingsValidation.Validate(savePath, backupPath, libraryPath));
+
+    [Theory]
+    [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"E:\Library")]
+    [InlineData(@"C:\Users\Someone\AppData\LocalLow\Videocult\Rain World", @"C:\Users\Someone\AppData\Local\RainWorldSaveManager\backups", @"C:\Users\Someone\AppData\Local\RainWorldSaveManager\library")]
+    [InlineData(@"C:\Foo", @"C:\FooBar", @"C:\FooBaz")]
+    public void Validate_accepts_three_unrelated_folders(string savePath, string backupPath, string libraryPath)
+        => Assert.Null(SettingsValidation.Validate(savePath, backupPath, libraryPath));
+
+    [Fact]
+    public void Validate_still_rejects_a_bad_pair_even_when_the_library_is_fine()
+    {
+        Assert.NotNull(SettingsValidation.Validate(
+            @"C:\Games\Rain World", @"C:\Games\Rain World\backups", @"E:\Library"));
+    }
+
+    [Fact]
+    public void The_default_library_root_clears_the_check_against_the_default_backup_root()
+    {
+        Assert.Null(SettingsValidation.Validate(
+            @"C:\Users\Someone\AppData\LocalLow\Videocult\Rain World",
+            AppSettings.DefaultBackupRootPath,
+            AppSettings.DefaultLibraryRootPath));
+    }
+
     [Theory]
     [InlineData("   ", @"C:\Backups")]
     [InlineData(@"C:\Games\Rain World", "   ")]
@@ -171,6 +225,49 @@ public class SettingsTests
         Assert.False(string.IsNullOrWhiteSpace(settings.BackupRootPath));
         Assert.Contains("RainWorldSaveManager", settings.BackupRootPath, StringComparison.OrdinalIgnoreCase);
         Assert.EndsWith("backups", settings.BackupRootPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void The_default_library_root_sits_beside_the_default_backup_root()
+    {
+        var settings = AppSettings.CreateDefault();
+
+        Assert.False(string.IsNullOrWhiteSpace(settings.LibraryRootPath));
+        Assert.Contains("RainWorldSaveManager", settings.LibraryRootPath, StringComparison.OrdinalIgnoreCase);
+        Assert.EndsWith("library", settings.LibraryRootPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void A_settings_file_written_before_the_library_existed_gets_the_default_one()
+    {
+        // The field is additive, which is why the schema version did not have to move for it. A
+        // file that predates it deserializes the field blank and Load fills it in.
+        using var temp = new TempDirectory("settings");
+        var path = temp.WriteText(
+            "settings.json",
+            """{ "schemaVersion": 1, "gameSavePath": "C:\\Games\\Rain World", "backupRootPath": "D:\\Backups" }""");
+        var store = new SettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal(AppSettings.DefaultLibraryRootPath, settings.LibraryRootPath);
+        Assert.Equal(@"D:\Backups", settings.BackupRootPath);
+    }
+
+    [Fact]
+    public void The_library_root_survives_a_save_and_a_load()
+    {
+        using var temp = new TempDirectory("settings");
+        var store = new SettingsStore(temp.Resolve("settings.json"));
+
+        store.Save(new AppSettings
+        {
+            GameSavePath = @"C:\Games\Rain World",
+            BackupRootPath = @"D:\Backups",
+            LibraryRootPath = @"E:\Library",
+        });
+
+        Assert.Equal(@"E:\Library", store.Load().LibraryRootPath);
     }
 
     [Fact]

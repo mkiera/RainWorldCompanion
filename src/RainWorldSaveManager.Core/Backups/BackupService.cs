@@ -928,94 +928,21 @@ public sealed class BackupService
         return slots;
     }
 
-    /// <summary>
-    /// Picks a snapshot folder name and claims it.
-    ///
-    /// Directory.CreateDirectory succeeds on a folder that already exists, so it cannot decide
-    /// who owns a name: two operations starting in the same second would both be handed the same
-    /// folder and write over each other's copies. Creating a file that must not exist yet is the
-    /// step the filesystem makes atomic, so that is what settles the race.
-    /// </summary>
-    internal string CreateSnapshotDirectory()
-    {
-        // Local time, because the folder name is what the user reads in the list.
-        var stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss", CultureInfo.InvariantCulture);
+    internal string CreateSnapshotDirectory() =>
+        TimestampedFolders.Create(BackupRoot, ClaimFileName, "backup folder");
 
-        Directory.CreateDirectory(BackupRoot);
-
-        for (var attempt = 1; attempt <= 1000; attempt++)
-        {
-            var name = attempt == 1 ? stamp : $"{stamp}_{attempt}";
-            var path = Path.Combine(BackupRoot, name);
-
-            // A folder that is already there belongs to an earlier snapshot, finished or not.
-            if (Directory.Exists(path) || File.Exists(path))
-            {
-                continue;
-            }
-
-            try
-            {
-                Directory.CreateDirectory(path);
-            }
-            catch (IOException)
-            {
-                continue;
-            }
-
-            if (TryClaim(path))
-            {
-                return path;
-            }
-        }
-
-        throw new IOException($"Could not create a backup folder under {BackupRoot}: too many folders share the name {stamp}.");
-    }
-
-    private static bool TryClaim(string directory)
-    {
-        try
-        {
-            using var claim = new FileStream(
-                Path.Combine(directory, ClaimFileName),
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None);
-            return true;
-        }
-        catch (IOException)
-        {
-            return false;
-        }
-        catch (UnauthorizedAccessException)
-        {
-            return false;
-        }
-    }
-
-    private static void ReleaseClaim(string directory)
-    {
-        try
-        {
-            var path = Path.Combine(directory, ClaimFileName);
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (Exception)
-        {
-            // The claim only matters while the folder is being filled. A leftover one is
-            // reported by Verify and ignored.
-        }
-    }
+    private static void ReleaseClaim(string directory) =>
+        TimestampedFolders.ReleaseClaim(directory, ClaimFileName);
 
     /// <summary>
     /// Holds the backup folder for the length of one operation, so a second window or a second
     /// process cannot interleave with a restore that is part way through the live save folder.
     /// Re-entrant, because a restore takes its safety snapshot through the same lock.
+    ///
+    /// Internal rather than private because a slot copy and a library load both write to the save
+    /// folder and have to be held against the same lock a restore takes.
     /// </summary>
-    private IDisposable AcquireOperationLock()
+    internal IDisposable AcquireOperationLock()
     {
         lock (_lockGate)
         {

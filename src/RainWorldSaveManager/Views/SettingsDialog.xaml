@@ -57,6 +57,24 @@
         <TextBlock Style="{StaticResource Text.Muted}" Margin="0,5,0,0" TextWrapping="Wrap"
                    Text="Snapshots are written here, one folder each. Keep it outside the save folder." />
 
+        <TextBlock Text="LIBRARY FOLDER" Style="{StaticResource Text.SectionLabel}" Margin="0,18,0,4" />
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox Grid.Column="0"
+                     Text="{Binding LibraryRootPath, UpdateSourceTrigger=PropertyChanged}"
+                     VerticalContentAlignment="Center" />
+            <Button Grid.Column="1" Content="Browse" Style="{StaticResource Button.Small}" Margin="8,0,0,0"
+                    Command="{Binding BrowseLibraryRootCommand}" />
+            <Button Grid.Column="2" Content="Default" Style="{StaticResource Button.Small}" Margin="8,0,0,0"
+                    Command="{Binding UseDefaultLibraryRootCommand}" />
+        </Grid>
+        <TextBlock Style="{StaticResource Text.Muted}" Margin="0,5,0,0" TextWrapping="Wrap"
+                   Text="Named saves are kept here, one folder each, outside the game's three slots. Keep it outside both of the folders above." />
+
         <TextBlock Text="RAIN WORLD INSTALL FOLDER" Style="{StaticResource Text.SectionLabel}" Margin="0,18,0,4" />
         <Grid>
             <Grid.ColumnDefinitions>

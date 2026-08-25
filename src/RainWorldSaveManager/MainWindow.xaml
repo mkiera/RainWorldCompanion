@@ -812,6 +812,193 @@
             </Setter>
         </Style>
 
+        <!-- One half of the realm toggle. A RadioButton rather than a Button, because a screen
+             reader then reports which half is chosen: a Button exposes nothing but "invoke", so the
+             lit segment was visible and nowhere else. The template drops the radio glyph and paints
+             a pill instead. Hover moves only the foreground, because a style trigger outranks a
+             template trigger and the lit half has to keep its colour under the pointer. -->
+        <Style x:Key="Segment.Base" TargetType="RadioButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="15,5" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="3"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Both halves light to a filled pill with a reversed label. The pale Brush.Selection used
+             for a selected row elsewhere sits at 1.15:1 against this control's own background, so
+             on the toggle it would read as no fill at all. -->
+        <Style x:Key="Segment.Local" TargetType="RadioButton" BasedOn="{StaticResource Segment.Base}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource Brush.Accent}" />
+                    <Setter Property="Foreground" Value="{StaticResource Brush.AccentText}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- The mod's own green, so the chosen half names the section further down that it belongs to. -->
+        <Style x:Key="Segment.Online" TargetType="RadioButton" BasedOn="{StaticResource Segment.Base}">
+            <Style.Triggers>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter Property="Background" Value="{StaticResource Brush.Meadow}" />
+                    <Setter Property="Foreground" Value="{StaticResource Brush.AccentText}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- One of the two list tabs. A RadioButton so the pair is exclusive on its own. -->
+        <Style x:Key="ListTab" TargetType="RadioButton">
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" Background="Transparent" Padding="2,4,14,6"
+                                BorderThickness="0,0,0,2" BorderBrush="Transparent">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The label inside a tab: loud when the tab is the one showing, quiet when it is not. -->
+        <Style x:Key="ListTabText" TargetType="TextBlock" BasedOn="{StaticResource Text.SectionLabel}">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- One library row. The name leads, because that is what the user chose it by. -->
+        <DataTemplate x:Key="LibraryRowTemplate">
+            <StackPanel ToolTip="{Binding TooltipText}">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Style.Triggers>
+                            <!-- A save with no manifest cannot be loaded, so it is kept visible but
+                                 reads as unusable rather than as a normal row. -->
+                            <DataTrigger Binding="{Binding IsComplete}" Value="False">
+                                <Setter Property="Opacity" Value="0.55" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}"
+                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <!-- The time the bytes were last written, not the day the save was first stored,
+                     so an updated save does not read as older than the play that went into it. -->
+                <DockPanel Margin="0,2,0,0">
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SourceText}"
+                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding ModifiedText}"
+                               Style="{StaticResource Text.Muted}" VerticalAlignment="Center" />
+                    <TextBlock Text="updated" Style="{StaticResource Text.Tiny}"
+                               VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding WasUpdated, Converter={StaticResource BoolToVis}}" />
+                </DockPanel>
+
+                <ItemsControl ItemsSource="{Binding Portraits}"
+                              ItemTemplate="{StaticResource Portrait.Small}"
+                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                              Margin="0,6,0,0"
+                              Visibility="{Binding HasPortraits, Converter={StaticResource BoolToVis}}" />
+
+                <DockPanel Margin="0,5,0,0">
+                    <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" Padding="6,1" Margin="0,0,8,0"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="{Binding CampaignCountText}" FontSize="10" />
+                    </Border>
+
+                    <Ellipse DockPanel.Dock="Left" Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{StaticResource Brush.BorderStrong}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVerified}" Value="True">
+                                        <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProblem}" Value="True">
+                                        <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+
+                    <TextBlock Text="{Binding StateText}" FontSize="11" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                <Setter Property="FontSize" Value="11" />
+                                <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVerified}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProblem}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </DockPanel>
+
+                <!-- Where this save was last loaded, and whether that slot has been played since.
+                     The prompt to update the entry rather than lose the run. -->
+                <Border Style="{StaticResource Chip}" Padding="6,1" Margin="0,5,0,0"
+                        HorizontalAlignment="Left"
+                        Background="{StaticResource Brush.Selection}"
+                        BorderBrush="{StaticResource Brush.Accent}"
+                        Visibility="{Binding HasSlotBadge, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding SlotBadgeText}" FontSize="10"
+                               Foreground="{StaticResource Brush.Accent}" />
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+
         <!-- One backup row. Faces first, so two backups can be told apart without selecting one. -->
         <DataTemplate x:Key="BackupRowTemplate">
             <StackPanel ToolTip="{Binding TooltipText}">
@@ -976,6 +1163,9 @@
                 <Button DockPanel.Dock="Right" Content="Copy Slot" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0" Command="{Binding CopySlotCommand}"
                         ToolTip="Copy one whole save slot onto another, byte for byte." />
+                <Button DockPanel.Dock="Right" Content="Store Slot" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0" Command="{Binding StoreSlotCommand}"
+                        ToolTip="Keep a copy of one save slot in the library under a name of your choosing." />
                 <Button DockPanel.Dock="Right" Content="Restore" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
                 <Button DockPanel.Dock="Right" Content="New Backup" Style="{StaticResource Button.Accent}"
@@ -1013,9 +1203,10 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- List column: the live save, then every backup, newest first -->
+            <!-- List column: the live save, then either the backups or the library, newest first -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -1053,34 +1244,99 @@
                     </StackPanel>
                 </Button>
 
+                <!-- Two lists in one column. Switching tabs moves no selection, so a backup stays
+                     open in the panel on the right while the library is being read on the left. -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="1,16,0,7">
-                    <TextBlock Text="BACKUPS" Style="{StaticResource Text.SectionLabel}" VerticalAlignment="Center" />
-                    <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
-                               Margin="10,0,0,0" VerticalAlignment="Center" />
+                    <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
+                                 IsChecked="{Binding IsBackupsTabSelected, Mode=TwoWay}"
+                                 AutomationProperties.Name="Backups tab">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="BACKUPS" Style="{StaticResource ListTabText}" />
+                            <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
+                                       Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+
+                    <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
+                                 IsChecked="{Binding IsLibraryTabSelected, Mode=TwoWay}"
+                                 AutomationProperties.Name="Library tab">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="LIBRARY" Style="{StaticResource ListTabText}" />
+                            <TextBlock Text="{Binding LibraryCountText}" Style="{StaticResource Text.Muted}"
+                                       Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
                 </StackPanel>
 
-                <Grid Grid.Row="2">
-                    <ListBox ItemsSource="{Binding Backups}"
-                             SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
-                             ItemTemplate="{StaticResource BackupRowTemplate}">
-                        <ListBox.ItemContainerStyle>
-                            <!-- Without this a row announces itself as the view model type name. -->
-                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                    </ListBox>
+                <!-- What can be done to the save that is selected in the list below. -->
+                <WrapPanel Grid.Row="2" Margin="1,0,0,8"
+                           Visibility="{Binding IsLibraryTabSelected, Converter={StaticResource BoolToVis}}">
+                    <!-- The two directions are named on the buttons, because "Load" and "Update"
+                         alone left it to the user to work out which way the bytes move. -->
+                    <Button Content="Put in slot" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding LoadSaveCommand}"
+                            ToolTip="Library into game. Writes this save into one of the game's slots, replacing what is there." />
+                    <Button Content="Take from slot" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding UpdateEntryCommand}"
+                            ToolTip="Game into library. Replaces this save with what is in the slot now, so the play since you put it there is kept." />
+                    <Button Content="Undo take" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding UndoUpdateCommand}"
+                            ToolTip="Go back to the save this held before the last take from a slot." />
+                    <Button Content="Rename" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding RenameEntryCommand}" />
+                    <Button Content="Import" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding ImportSaveCommand}"
+                            ToolTip="Read a .rwsave file, or a bare save file, into the library." />
+                    <Button Content="Export" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding ExportSaveCommand}"
+                            ToolTip="Write this library save out as a single .rwsave file." />
+                </WrapPanel>
 
-                    <TextBlock Text="No backups yet. Use New Backup to make the first one."
-                               Style="{StaticResource Text.Muted}"
-                               TextWrapping="Wrap"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"
-                               IsHitTestVisible="False"
-                               Visibility="{Binding HasNoBackups, Converter={StaticResource BoolToVis}}" />
+                <Grid Grid.Row="3">
+                    <Grid Visibility="{Binding IsBackupsTabSelected, Converter={StaticResource BoolToVis}}">
+                        <ListBox ItemsSource="{Binding Backups}"
+                                 SelectedItem="{Binding SelectedBackup, Mode=TwoWay}"
+                                 ItemTemplate="{StaticResource BackupRowTemplate}">
+                            <ListBox.ItemContainerStyle>
+                                <!-- Without this a row announces itself as the view model type name. -->
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+
+                        <TextBlock Text="No backups yet. Use New Backup to make the first one."
+                                   Style="{StaticResource Text.Muted}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False"
+                                   Visibility="{Binding HasNoBackups, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+
+                    <Grid Visibility="{Binding IsLibraryTabSelected, Converter={StaticResource BoolToVis}}">
+                        <ListBox ItemsSource="{Binding LibraryEntries}"
+                                 SelectedItem="{Binding SelectedLibraryEntry, Mode=TwoWay}"
+                                 ItemTemplate="{StaticResource LibraryRowTemplate}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+
+                        <TextBlock Text="No saves in the library yet. Use Store Slot to keep one of your slots here under a name, or Import to read one in."
+                                   Style="{StaticResource Text.Muted}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Margin="20"
+                                   IsHitTestVisible="False"
+                                   Visibility="{Binding HasNoLibraryEntries, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
                 </Grid>
 
-                <StackPanel Grid.Row="3" Margin="1,12,0,0">
+                <StackPanel Grid.Row="4" Margin="1,12,0,0">
                     <TextBlock Style="{StaticResource Text.Tiny}" TextTrimming="CharacterEllipsis"
                                ToolTip="{Binding SavePathText}">
                         <Run Text="Save folder:" />
@@ -1090,6 +1346,11 @@
                                ToolTip="{Binding BackupRootText}">
                         <Run Text="Backup folder:" />
                         <Run Text="{Binding BackupRootText, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Style="{StaticResource Text.Tiny}" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding LibraryRootText}">
+                        <Run Text="Library folder:" />
+                        <Run Text="{Binding LibraryRootText, Mode=OneWay}" />
                     </TextBlock>
                 </StackPanel>
             </Grid>
@@ -1168,24 +1429,89 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
+
+                                <!-- The same corner for a library save, which the sweep checks the
+                                     same way it checks a backup. -->
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding Detail.Entry.StateText}"
+                                           Margin="12,3,0,0"
+                                           VerticalAlignment="Top"
+                                           TextAlignment="Right"
+                                           TextWrapping="Wrap"
+                                           MaxWidth="220"
+                                           Visibility="{Binding Detail.HasEntry, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                            <Setter Property="FontSize" Value="12" />
+                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Detail.Entry.IsVerified}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Detail.Entry.IsProblem}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
                             </Grid>
 
                             <Border Height="1" Background="{StaticResource Brush.Border}" Margin="0,14,0,0" />
 
+                            <!-- Which set of saves the sections below are for. Rain Meadow gives a
+                                 slot number two files, and both hold a full campaign, so both need
+                                 somewhere to be read. Without the mod there is one set and nothing
+                                 to switch between, so the toggle is left out and the panel reads
+                                 exactly as it did. -->
+                            <DockPanel Margin="0,14,0,2"
+                                       Visibility="{Binding Detail.ShowMeadowSection, Converter={StaticResource BoolToVis}}">
+                                <TextBlock DockPanel.Dock="Left" Text="SHOWING"
+                                           Style="{StaticResource Text.SectionLabel}"
+                                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <Border HorizontalAlignment="Left"
+                                        CornerRadius="4" BorderThickness="1"
+                                        BorderBrush="{StaticResource Brush.Border}"
+                                        Background="{StaticResource Brush.PanelAlt}"
+                                        Padding="2"
+                                        SnapsToDevicePixels="True">
+                                    <!-- Checked state is what changes the realm, bound two way. A
+                                         command would be driven by the click and a screen reader
+                                         selecting a radio button raises no click, so the toggle
+                                         would be dead for exactly the user the radio group is for. -->
+                                    <StackPanel Orientation="Horizontal">
+                                        <RadioButton Content="LOCAL"
+                                                     GroupName="DetailRealm"
+                                                     IsChecked="{Binding Detail.ShowLocal, Mode=TwoWay}"
+                                                     Style="{StaticResource Segment.Local}"
+                                                     ToolTip="Show sav, sav2 and sav3, the saves the game uses on your own."
+                                                     AutomationProperties.Name="Show local slots" />
+                                        <RadioButton Content="ONLINE"
+                                                     GroupName="DetailRealm"
+                                                     IsChecked="{Binding Detail.ShowOnline, Mode=TwoWay}"
+                                                     Style="{StaticResource Segment.Online}"
+                                                     ToolTip="Show online_sav, online_sav2 and online_sav3, the saves the game uses in a Rain Meadow lobby."
+                                                     AutomationProperties.Name="Show online slots" />
+                                    </StackPanel>
+                                </Border>
+                            </DockPanel>
+
                             <ItemsControl ItemsSource="{Binding Detail.Slots}"
                                           ItemTemplate="{StaticResource SlotSectionTemplate}" />
 
-                            <TextBlock Text="{Binding Detail.EmptyText}"
+                            <TextBlock Text="{Binding Detail.ActiveEmptyText}"
                                        Style="{StaticResource Text.Muted}"
                                        TextWrapping="Wrap"
                                        Margin="0,16,0,0"
                                        Visibility="{Binding Detail.HasNoSlots, Converter={StaticResource BoolToVis}}" />
 
                             <!-- Rain Meadow, in its own banded panel so the eye can see where the
-                                 local saves above stop. The whole thing is left out when the mod is
-                                 not on this machine, so a player who does not use it sees the panel
-                                 exactly as it was. There is no foldout: if the mod is here, its
-                                 saves are part of what this app manages. -->
+                                 slot sections above stop. The whole thing is left out when the mod is
+                                 not on this machine, and left out for a library save, which is one
+                                 file with no slot pairs to draw. There is no foldout: if the mod is
+                                 here, its saves are part of what this app manages. -->
                             <Border Margin="0,22,0,0" CornerRadius="4"
                                     Background="{StaticResource Brush.MeadowSoft}"
                                     BorderBrush="{StaticResource Brush.Meadow}"
@@ -1257,7 +1583,7 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <TextBlock Text="Select the live save or a backup on the left to see what is in it."
+                    <TextBlock Text="Select the live save, a backup or a library save on the left to see what is in it."
                                Style="{StaticResource Text.Muted}"
                                TextWrapping="Wrap"
                                HorizontalAlignment="Center"

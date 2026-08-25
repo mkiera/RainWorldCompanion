@@ -133,6 +133,49 @@ public sealed record SlotCopyResult(
 }
 
 /// <summary>
+/// One write onto one slot, described in the caller's own words.
+///
+/// <paramref name="SourceExpectedSha256"/> is the digest the source is held to under the lock, or
+/// null for a source that has none. A live slot has none, because nothing recorded it. A library
+/// save has one, and holding it to that digest is what stops a save damaged since it was stored
+/// from reaching the save folder.
+/// </summary>
+/// <param name="SafetyNote">
+/// Called with whether the target file already exists, so the note recorded in the safety snapshot
+/// can say which of the two things happened.
+/// </param>
+internal sealed record SlotWriteJob(
+    SlotSide Target,
+    string SourcePath,
+    string SourceLabel,
+    string? SourceExpectedSha256,
+    string OperationNoun,
+    string ProgressVerb,
+    string SafetyLabel,
+    Func<bool, string> SafetyNote);
+
+/// <summary>
+/// What the shared ladder did. <see cref="LiveFolderModified"/> is false only when the target file
+/// is provably the bytes it was before, which is what lets a caller say nothing was changed without
+/// having to work that out itself.
+/// </summary>
+internal sealed record SlotWriteOutcome(
+    bool Success,
+    BackupSnapshot? SafetySnapshot,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Warnings,
+    bool LiveFolderModified,
+    long BytesCopied)
+{
+    /// <summary>The shape for every path that stops before the target file is written.</summary>
+    internal static SlotWriteOutcome Refused(
+        BackupSnapshot? safety,
+        IReadOnlyList<string> errors,
+        IReadOnlyList<string> warnings) =>
+        new(false, safety, errors, warnings, false, 0);
+}
+
+/// <summary>
 /// Copies one whole save slot file onto another, byte for byte.
 ///
 /// Nothing here parses or rewrites a save. The operation is File.Copy and nothing else, so the
@@ -149,14 +192,6 @@ public sealed record SlotCopyResult(
 /// </summary>
 public sealed class SlotCopyService
 {
-    /// <summary>
-    /// The lock file BackupService takes for the length of one operation. The name is repeated
-    /// here because it is private to that class, and the two have to stay the same string: a copy
-    /// that took a different file would be free to write sav while a restore in another window was
-    /// half way through the save folder.
-    /// </summary>
-    private const string OperationLockFileName = ".operation-lock";
-
     private static readonly StringComparer HashComparer = StringComparer.OrdinalIgnoreCase;
 
     private readonly BackupService _backups;
@@ -332,11 +367,59 @@ public sealed class SlotCopyService
 
         ct.ThrowIfCancellationRequested();
 
-        string sourcePath = plan.Source.FullPath;
-        string targetPath = plan.Target.FullPath;
+        var job = new SlotWriteJob(
+            plan.Target,
+            plan.Source.FullPath,
+            plan.Source.FileName,
 
-        // (c) The bytes that are about to be replaced, so a failed copy can be told apart from a
-        // copy that never started.
+            // Null because the source is a live file with no recorded digest to hold it to. The
+            // ladder hashes it under the lock and again after the write instead.
+            SourceExpectedSha256: null,
+            OperationNoun: "copy",
+            ProgressVerb: "Copying",
+            SafetyLabel: $"Before copying {plan.Source.FileName} onto {plan.Target.FileName}",
+            SafetyNote: targetExists => targetExists
+                ? $"Automatic copy taken before {plan.Source.FileName} was copied over {plan.Target.FileName} ({plan.Target.Describe()})."
+                : $"Automatic copy taken before {plan.Source.FileName} was copied to {plan.Target.FileName}, which did not exist yet.");
+
+        SlotWriteOutcome outcome = CopyOntoSlot(job, progress, ct);
+
+        errors.AddRange(outcome.Errors);
+        warnings.AddRange(outcome.Warnings);
+
+        return new SlotCopyResult(
+            outcome.Success && errors.Count == 0,
+            outcome.SafetySnapshot,
+            errors,
+            warnings,
+            outcome.LiveFolderModified,
+            outcome.BytesCopied,
+            plan);
+    }
+
+    /// <summary>
+    /// Writes one file over one slot, with everything that makes overwriting a save undoable.
+    ///
+    /// This is the ladder, and it is shared rather than copied. A slot copy runs it with a live
+    /// file as its source and a library load runs it with a stored save, so a change to the order
+    /// of these steps changes both and neither can quietly fall behind the other.
+    ///
+    /// The order is the point. Take the bytes about to be replaced, take a safety snapshot and
+    /// prove it holds them, take the lock, re-check the things the snapshot took long enough to
+    /// invalidate, and only then write. Everything before the write returns with the save folder
+    /// untouched.
+    /// </summary>
+    internal SlotWriteOutcome CopyOntoSlot(SlotWriteJob job, IProgress<string>? progress, CancellationToken ct)
+    {
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        string sourcePath = job.SourcePath;
+        string targetPath = job.Target.FullPath;
+        string targetName = job.Target.FileName;
+
+        // (c) The bytes that are about to be replaced, so a failed write can be told apart from a
+        // write that never started.
         string? targetHashBefore = null;
         bool targetExistedBefore = File.Exists(targetPath);
         if (targetExistedBefore)
@@ -347,23 +430,17 @@ public sealed class SlotCopyService
             }
             catch (Exception ex)
             {
-                errors.Add($"{plan.Target.FileName} could not be read before the copy ({ex.Message}), so nothing was copied.");
-                return Refused(plan, null, errors, warnings);
+                errors.Add($"{targetName} could not be read before the {job.OperationNoun} ({ex.Message}), so nothing was changed.");
+                return SlotWriteOutcome.Refused(null, errors, warnings);
             }
         }
 
-        // (d) Safety copy of the current live saves. No safety copy, no copy.
+        // (d) Safety copy of the current live saves. No safety copy, no write.
         BackupSnapshot safety;
         try
         {
             progress?.Report("Saving a copy of the current saves first");
-
-            string label = $"Before copying {plan.Source.FileName} onto {plan.Target.FileName}";
-            string note = targetExistedBefore
-                ? $"Automatic copy taken before {plan.Source.FileName} was copied over {plan.Target.FileName} ({plan.Target.Describe()})."
-                : $"Automatic copy taken before {plan.Source.FileName} was copied to {plan.Target.FileName}, which did not exist yet.";
-
-            safety = _backups.CreateBackup(label, note, BackupKind.PreRestoreSafety, progress, ct);
+            safety = _backups.CreateBackup(job.SafetyLabel, job.SafetyNote(targetExistedBefore), BackupKind.PreRestoreSafety, progress, ct);
         }
         catch (GameRunningException)
         {
@@ -378,44 +455,44 @@ public sealed class SlotCopyService
         }
         catch (Exception ex)
         {
-            errors.Add($"The safety copy of the current saves failed ({ex.Message}), so the copy was abandoned and nothing was changed.");
-            return Refused(plan, null, errors, warnings);
+            errors.Add($"The safety copy of the current saves failed ({ex.Message}), so the {job.OperationNoun} was abandoned and nothing was changed.");
+            return SlotWriteOutcome.Refused(null, errors, warnings);
         }
 
         if (!safety.IsComplete)
         {
-            errors.Add($"The safety copy {safety.Id} did not finish ({safety.Problem}), so the copy was abandoned and nothing was changed.");
-            return Refused(plan, safety, errors, warnings);
+            errors.Add($"The safety copy {safety.Id} did not finish ({safety.Problem}), so the {job.OperationNoun} was abandoned and nothing was changed.");
+            return SlotWriteOutcome.Refused(safety, errors, warnings);
         }
 
         // (e) The safety snapshot has to actually hold the file that is about to be replaced.
         // A snapshot that finished without it, because the file was skipped as a link or went
-        // away mid scan, leaves this copy with nothing to undo it. This is the early out for a
+        // away mid scan, leaves this write with nothing to undo it. This is the early out for a
         // target that was already there; the same rule is applied again under the lock, against
         // what is on disk by then.
-        if (targetExistedBefore && !SnapshotHolds(safety, plan.Target.FileName))
+        if (targetExistedBefore && !SnapshotHolds(safety, targetName))
         {
-            errors.Add($"The safety copy {safety.Id} does not hold {plan.Target.FileName}, so overwriting it could not be undone and nothing was copied.");
-            return Refused(plan, safety, errors, warnings);
+            errors.Add($"The safety copy {safety.Id} does not hold {targetName}, so overwriting it could not be undone and nothing was changed.");
+            return SlotWriteOutcome.Refused(safety, errors, warnings);
         }
 
         // (f) Hold the backup folder for the rest of the operation, so a restore in another window
         // cannot interleave with this write. Taken after the safety snapshot because that snapshot
         // goes through the same lock.
-        FileStream operationLock;
+        IDisposable operationLock;
         try
         {
-            operationLock = OpenOperationLock();
+            operationLock = _backups.AcquireOperationLock();
         }
         catch (BackupBusyException ex)
         {
             errors.Add(ex.Message);
-            return Refused(plan, safety, errors, warnings);
+            return SlotWriteOutcome.Refused(safety, errors, warnings);
         }
         catch (Exception ex)
         {
-            errors.Add($"The backup folder could not be held for the length of the copy ({ex.Message}), so nothing was copied.");
-            return Refused(plan, safety, errors, warnings);
+            errors.Add($"The backup folder could not be held for the length of the {job.OperationNoun} ({ex.Message}), so nothing was changed.");
+            return SlotWriteOutcome.Refused(safety, errors, warnings);
         }
 
         using (operationLock)
@@ -442,13 +519,13 @@ public sealed class SlotCopyService
                 targetExistsNow = true;
             }
 
-            if (targetExistsNow && !SnapshotHolds(safety, plan.Target.FileName))
+            if (targetExistsNow && !SnapshotHolds(safety, targetName))
             {
                 errors.Add(
-                    $"{plan.Target.FileName} appeared while the safety copy {safety.Id} was being taken, so that copy " +
-                    "does not hold it and overwriting it could not be undone. Nothing was copied. Wait for Steam Cloud " +
-                    "to finish syncing and try again.");
-                return Refused(plan, safety, errors, warnings);
+                    $"{targetName} appeared while the safety copy {safety.Id} was being taken, so that copy " +
+                    "does not hold it and overwriting it could not be undone. Nothing was changed. Wait for Steam " +
+                    "Cloud to finish syncing and try again.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
             }
 
             long sourceLength;
@@ -458,8 +535,8 @@ public sealed class SlotCopyService
                 var sourceInfo = new FileInfo(sourcePath);
                 if (!sourceInfo.Exists)
                 {
-                    errors.Add($"{plan.Source.FileName} went away before it could be copied, so nothing was changed.");
-                    return Refused(plan, safety, errors, warnings);
+                    errors.Add($"{job.SourceLabel} went away before it could be copied, so nothing was changed.");
+                    return SlotWriteOutcome.Refused(safety, errors, warnings);
                 }
 
                 sourceLength = sourceInfo.Length;
@@ -467,12 +544,21 @@ public sealed class SlotCopyService
             }
             catch (Exception ex)
             {
-                errors.Add($"{plan.Source.FileName} could not be read ({ex.Message}), so nothing was copied.");
-                return Refused(plan, safety, errors, warnings);
+                errors.Add($"{job.SourceLabel} could not be read ({ex.Message}), so nothing was changed.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
             }
 
-            // (h) The copy itself. One File.Copy, no decode, no rewrite, no recomputed checksum.
-            progress?.Report($"Copying {plan.Source.FileName} onto {plan.Target.FileName} ({FormatSize(sourceLength)})");
+            // A source with a digest recorded against it is held to that digest here, under the
+            // lock, immediately before the write. This is what stops a library save that was
+            // damaged since it was stored from being written over a live slot.
+            if (job.SourceExpectedSha256 is { Length: > 0 } expected && !HashComparer.Equals(sourceHash, expected))
+            {
+                errors.Add($"{job.SourceLabel} does not match the checksum recorded for it, so nothing was changed.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
+            }
+
+            // (h) The write itself. One File.Copy, no decode, no rewrite, no recomputed checksum.
+            progress?.Report($"{job.ProgressVerb} {job.SourceLabel} onto {targetName} ({FormatSize(sourceLength)})");
 
             try
             {
@@ -481,21 +567,20 @@ public sealed class SlotCopyService
             }
             catch (Exception ex)
             {
-                errors.Add($"{plan.Target.FileName} could not be written: {ex.Message}");
-                return new SlotCopyResult(
+                errors.Add($"{targetName} could not be written: {ex.Message}");
+                return new SlotWriteOutcome(
                     false,
                     safety,
                     errors,
                     warnings,
                     TargetChanged(targetPath, targetExistedBefore, targetHashBefore),
-                    0,
-                    plan);
+                    0);
             }
 
             // (i) Prove the target is the source. Both sides are hashed again: hashing only the
-            // target against a digest taken before the copy would pass a source that Steam Cloud
+            // target against a digest taken before the write would pass a source that Steam Cloud
             // rewrote underneath the copy.
-            progress?.Report($"Checking {plan.Target.FileName}");
+            progress?.Report($"Checking {targetName}");
 
             long bytesCopied = 0;
             try
@@ -503,8 +588,8 @@ public sealed class SlotCopyService
                 var targetInfo = new FileInfo(targetPath);
                 if (!targetInfo.Exists)
                 {
-                    errors.Add($"{plan.Target.FileName} is missing after the copy.");
-                    return new SlotCopyResult(false, safety, errors, warnings, true, 0, plan);
+                    errors.Add($"{targetName} is missing after the {job.OperationNoun}.");
+                    return new SlotWriteOutcome(false, safety, errors, warnings, true, 0);
                 }
 
                 bytesCopied = targetInfo.Length;
@@ -514,22 +599,23 @@ public sealed class SlotCopyService
 
                 if (!HashComparer.Equals(sourceHashAfter, sourceHash))
                 {
-                    errors.Add($"{plan.Source.FileName} changed while it was being copied, so {plan.Target.FileName} cannot be shown to match it. Close Steam, or wait for Steam Cloud to finish syncing, and try again.");
+                    errors.Add($"{job.SourceLabel} changed while it was being copied, so {targetName} cannot be shown to match it. Close Steam, or wait for Steam Cloud to finish syncing, and try again.");
                 }
                 else if (!HashComparer.Equals(targetHash, sourceHash))
                 {
-                    errors.Add($"{plan.Target.FileName} does not match {plan.Source.FileName} after the copy.");
+                    errors.Add($"{targetName} does not match {job.SourceLabel} after the {job.OperationNoun}.");
                 }
             }
             catch (Exception ex)
             {
-                errors.Add($"{plan.Target.FileName} could not be checked after the copy: {ex.Message}");
+                errors.Add($"{targetName} could not be checked after the {job.OperationNoun}: {ex.Message}");
             }
 
             bool success = errors.Count == 0;
-            progress?.Report(success ? "Copy finished" : "Copy finished with problems");
+            string finished = char.ToUpperInvariant(job.OperationNoun[0]) + job.OperationNoun[1..] + " finished";
+            progress?.Report(success ? finished : finished + " with problems");
 
-            return new SlotCopyResult(success, safety, errors, warnings, true, bytesCopied, plan);
+            return new SlotWriteOutcome(success, safety, errors, warnings, true, bytesCopied);
         }
     }
 
@@ -574,7 +660,12 @@ public sealed class SlotCopyService
         List<string> warnings) =>
         new(false, safety, errors, warnings, false, 0, plan);
 
-    private SlotSide ReadSide(SaveSlotRef slot, bool includeCampaigns)
+    /// <summary>
+    /// Describes one slot without changing anything. Public because a library load needs the same
+    /// fail-soft reading of its target that a copy needs, and two readers of the same thing is how
+    /// two parts of an app come to disagree about whether a file is there.
+    /// </summary>
+    public SlotSide ReadSide(SaveSlotRef slot, bool includeCampaigns = true)
     {
         string fileName = slot.FileName;
         string fullPath = fileName.Length == 0 ? "" : Path.Combine(SaveRoot, fileName);
@@ -694,30 +785,6 @@ public sealed class SlotCopyService
 
     private static bool SamePath(string left, string right) =>
         string.Equals(CanonicalPath.Resolve(left), CanonicalPath.Resolve(right), StringComparison.OrdinalIgnoreCase);
-
-    private FileStream OpenOperationLock()
-    {
-        try
-        {
-            Directory.CreateDirectory(_backups.BackupRoot);
-
-            return new FileStream(
-                Path.Combine(_backups.BackupRoot, OperationLockFileName),
-                FileMode.OpenOrCreate,
-                FileAccess.ReadWrite,
-                FileShare.None,
-                bufferSize: 1,
-                FileOptions.DeleteOnClose);
-        }
-        catch (IOException ex)
-        {
-            throw new BackupBusyException(_backups.BackupRoot, ex);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            throw new BackupBusyException(_backups.BackupRoot, ex);
-        }
-    }
 
     private static void ClearReadOnly(string path)
     {
