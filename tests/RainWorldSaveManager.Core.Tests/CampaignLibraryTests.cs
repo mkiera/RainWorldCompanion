@@ -1,0 +1,445 @@
+using System.IO.Compression;
+using System.Text;
+using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Editing;
+using RainWorldSaveManager.Core.Library;
+using RainWorldSaveManager.Core.Saves;
+using RainWorldSaveManager.Core.Saves.Models;
+
+namespace RainWorldSaveManager.Tests;
+
+/// <summary>
+/// Keeping one campaign in the library rather than a whole slot.
+///
+/// A stored campaign is the game's own records and nothing else, so what is checked here is that
+/// they survive being written out, carried through a .rwcampaign file and put back into a slot that
+/// has campaigns of its own in it.
+/// </summary>
+public class CampaignLibraryTests
+{
+    private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
+    private static readonly SaveSlotRef LocalThree = new(SaveRealm.Local, 3);
+
+    // ---- storing ----
+
+    [Fact]
+    public void Storing_a_campaign_writes_the_campaign_and_leaves_the_slot_alone()
+    {
+        using var world = new LibraryWorld();
+        byte[] before = world.Live.ReadBytes("sav2");
+
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "Survivor run", "halfway");
+
+        Assert.True(entry.IsComplete);
+        Assert.True(entry.IsCampaign);
+        Assert.Equal(LibraryEntryKind.Campaign, entry.Manifest!.Kind);
+        Assert.Equal("White", entry.Manifest.CampaignSlugcatId);
+        Assert.Equal(LibraryManifest.CurrentSchemaVersion, entry.Manifest.SchemaVersion);
+        Assert.True(File.Exists(entry.CampaignPath));
+        Assert.False(File.Exists(entry.SavePath));
+
+        SnapshotLayout.AssertBytesEqual(before, world.Live.ReadBytes("sav2"), "sav2");
+    }
+
+    [Fact]
+    public void A_stored_campaign_describes_itself_without_being_opened()
+    {
+        using var world = new LibraryWorld();
+        CampaignSummary slot = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2).Campaigns[0];
+
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "Survivor run", null);
+
+        CampaignSummary stored = Assert.Single(entry.Manifest!.Metadata!.Campaigns);
+        Assert.Equal(slot.SlugcatId, stored.SlugcatId);
+        Assert.Equal(slot.CycleNum, stored.CycleNum);
+        Assert.Equal(slot.Karma, stored.Karma);
+        Assert.Equal(slot.UnlockedGates.Count, stored.UnlockedGates.Count);
+
+        // No container round it, so nothing claims a digest either way.
+        Assert.Null(entry.Manifest.Metadata.ChecksumValid);
+    }
+
+    [Fact]
+    public void Storing_a_campaign_the_slot_does_not_have_says_so()
+    {
+        using var world = new LibraryWorld();
+
+        InvalidOperationException error = Assert.Throws<InvalidOperationException>(
+            () => world.Library.StoreCampaign(LocalTwo, "Saint", "nothing", null));
+
+        Assert.Contains("Saint", error.Message, StringComparison.Ordinal);
+        Assert.Empty(world.Library.ListEntries());
+    }
+
+    [Fact]
+    public void A_running_game_stops_a_campaign_being_stored()
+    {
+        using var world = new LibraryWorld(FakeGameDetector.Running());
+
+        Assert.Throws<GameRunningException>(() => world.Library.StoreCampaign(LocalTwo, "White", "run", null));
+    }
+
+    // ---- what the library makes of one ----
+
+    [Fact]
+    public void A_stored_campaign_verifies_against_its_own_checksum()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        Assert.True(world.Library.VerifyEntry(entry).Ok);
+
+        File.WriteAllBytes(entry.CampaignPath, Encoding.UTF8.GetBytes("meddled with"));
+
+        VerifyResult verified = world.Library.VerifyEntry(world.Reload(entry));
+        Assert.False(verified.Ok);
+        Assert.Contains(verified.Problems, problem => problem.Contains("campaign", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_entry_whose_campaign_went_missing_says_which_file_is_gone()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        File.Delete(entry.CampaignPath);
+
+        LibraryEntry reloaded = world.Reload(entry);
+        Assert.False(reloaded.IsComplete);
+        Assert.Contains("campaign.bin", reloaded.Problem!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Entries written before campaigns existed carry no kind at all, and every one of them is a
+    /// whole slot.
+    /// </summary>
+    [Fact]
+    public void An_entry_written_before_campaigns_existed_still_reads_as_a_whole_slot()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreSlot(LocalTwo, "as it was", null);
+
+        File.WriteAllText(entry.ManifestPath, VersionOneManifest(entry.Manifest!.Sha256, entry.Manifest.SizeBytes));
+
+        LibraryEntry reloaded = world.Reload(entry);
+        Assert.True(reloaded.IsComplete);
+        Assert.False(reloaded.IsCampaign);
+        Assert.Equal(LibraryEntryKind.WholeSlot, reloaded.Manifest!.Kind);
+        Assert.Equal(1, reloaded.Manifest.SchemaVersion);
+        Assert.True(world.Library.VerifyEntry(reloaded).Ok);
+    }
+
+    // ---- putting one into a slot ----
+
+    [Fact]
+    public void A_stored_campaign_joins_the_campaigns_a_slot_already_has()
+    {
+        using var world = new LibraryWorld();
+        world.Seed("sav3", "Gourmand", cycle: 55);
+
+        LibraryEntry entry = world.Library.StoreCampaign(LocalThree, "Gourmand", "the big one", null);
+        LibraryLoadResult result = world.Library.LoadCampaignOntoSlot(entry, LocalTwo);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+
+        SlotMetadata metadata = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.Null(metadata.ParseError);
+        Assert.True(metadata.ChecksumValid);
+        Assert.Equal(new[] { "White", "Gourmand" }, metadata.Campaigns.Select(c => c.SlugcatId));
+    }
+
+    [Fact]
+    public void Loading_a_campaign_replaces_only_the_one_for_that_slugcat()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalThree, "White", "from slot three", null);
+
+        CampaignMovePlan plan = world.Library.PlanCampaignLoad(entry, LocalTwo);
+        Assert.Equal(CampaignSpliceOutcome.Replaced, plan.Splice.Outcome);
+        Assert.Contains("Replaces", plan.Describe(), StringComparison.Ordinal);
+
+        Assert.True(world.Library.LoadCampaignOntoSlot(entry, LocalTwo).Success);
+
+        SlotMetadata slotTwo = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        SlotMetadata slotThree = SaveMetadataExtractor.Extract(world.Live.Resolve("sav3"), 3);
+
+        CampaignSummary landed = Assert.Single(slotTwo.Campaigns);
+        Assert.Equal(slotThree.Campaigns[0].CycleNum, landed.CycleNum);
+        Assert.Equal(slotThree.Campaigns[0].Karma, landed.Karma);
+    }
+
+    [Fact]
+    public void Loading_a_campaign_takes_a_safety_snapshot_of_the_slot_it_lands_in()
+    {
+        using var world = new LibraryWorld();
+        byte[] before = world.Live.ReadBytes("sav2");
+        LibraryEntry entry = world.Library.StoreCampaign(LocalThree, "White", "from slot three", null);
+
+        LibraryLoadResult result = world.Library.LoadCampaignOntoSlot(entry, LocalTwo);
+
+        BackupSnapshot safety = Assert.IsType<BackupSnapshot>(result.SafetySnapshot);
+        SnapshotLayout.AssertBytesEqual(
+            before,
+            File.ReadAllBytes(Path.Combine(safety.DirectoryPath, "sav2")),
+            "sav2 in the safety snapshot");
+    }
+
+    [Fact]
+    public void Loading_a_campaign_leaves_every_other_slot_alone()
+    {
+        using var world = new LibraryWorld();
+        Dictionary<string, byte[]> others = new[] { "sav", "sav3", "online_sav", "exp1" }
+            .ToDictionary(name => name, name => world.Live.ReadBytes(name));
+
+        LibraryEntry entry = world.Library.StoreCampaign(LocalThree, "White", "from slot three", null);
+        world.Library.LoadCampaignOntoSlot(entry, LocalTwo);
+
+        foreach ((string name, byte[] bytes) in others)
+        {
+            SnapshotLayout.AssertBytesEqual(bytes, world.Live.ReadBytes(name), name);
+        }
+    }
+
+    /// <summary>
+    /// A whole slot is written over a slot and a campaign is written into one, so neither operation
+    /// takes the other's entry.
+    /// </summary>
+    [Fact]
+    public void The_two_kinds_of_entry_do_not_take_each_others_load()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry slot = world.Library.StoreSlot(LocalTwo, "whole slot", null);
+        LibraryEntry campaign = world.Library.StoreCampaign(LocalTwo, "White", "one campaign", null);
+
+        LibraryLoadPlan wrongWay = world.Library.PlanLoad(campaign, LocalThree);
+        Assert.False(wrongWay.CanLoad);
+        Assert.Contains(wrongWay.Problems, p => p.Contains("one campaign", StringComparison.Ordinal));
+
+        CampaignMovePlan otherWay = world.Library.PlanCampaignLoad(slot, LocalThree);
+        Assert.False(otherWay.CanWrite);
+        Assert.Contains(otherWay.Problems, p => p.Contains("whole slot", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_campaign_that_fails_its_checksum_is_not_written_to_a_slot()
+    {
+        using var world = new LibraryWorld();
+        byte[] before = world.Live.ReadBytes("sav2");
+        LibraryEntry entry = world.Library.StoreCampaign(LocalThree, "White", "run", null);
+
+        File.WriteAllBytes(entry.CampaignPath, CampaignFile.ToBytes(world.Library.ReadStoredCampaign(entry)!)
+            .Concat(Encoding.UTF8.GetBytes("<progDivA>")).ToArray());
+
+        LibraryLoadResult result = world.Library.LoadCampaignOntoSlot(world.Reload(entry), LocalTwo);
+
+        Assert.False(result.Success);
+        Assert.False(result.LiveFolderModified);
+        Assert.Contains(result.Errors, e => e.Contains("checksum check", StringComparison.Ordinal));
+        SnapshotLayout.AssertBytesEqual(before, world.Live.ReadBytes("sav2"), "sav2");
+    }
+
+    // ---- carrying one to another machine ----
+
+    [Fact]
+    public void A_campaign_goes_out_as_a_campaign_file_and_comes_back_as_one()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "Survivor run", "halfway");
+
+        Assert.Equal(".rwcampaign", SaveLibrary.ExportExtensionFor(entry));
+
+        string exported = Path.Combine(world.BackupRoot.Path, "run.rwcampaign");
+        world.Library.ExportEntry(entry, exported);
+        world.Library.DeleteEntry(entry);
+
+        LibraryImportResult imported = world.Library.ImportFile(exported);
+
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.True(imported.Entry!.IsCampaign);
+        Assert.Equal("Survivor run", imported.Entry.Name);
+        Assert.Equal("halfway", imported.Entry.Manifest!.Note);
+        Assert.Equal("White", imported.Entry.Manifest.CampaignSlugcatId);
+        Assert.Equal(entry.Manifest!.Sha256, imported.Entry.Manifest.Sha256);
+    }
+
+    [Fact]
+    public void A_whole_slot_still_goes_out_as_a_save_file()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreSlot(LocalTwo, "whole slot", null);
+
+        Assert.Equal(".rwsave", SaveLibrary.ExportExtensionFor(entry));
+
+        string exported = Path.Combine(world.BackupRoot.Path, "slot.rwsave");
+        world.Library.ExportEntry(entry, exported);
+
+        LibraryImportResult imported = world.Library.ImportFile(exported);
+
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.False(imported.Entry!.IsCampaign);
+        Assert.True(File.Exists(imported.Entry.SavePath));
+    }
+
+    /// <summary>
+    /// Both are zips, so the first bytes say only that it is one of the two. What is inside decides,
+    /// which also means a file renamed on the way keeps working.
+    /// </summary>
+    [Fact]
+    public void What_is_inside_the_file_decides_which_kind_it_is_not_the_name()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        string misnamed = Path.Combine(world.BackupRoot.Path, "looks-like-a-slot.rwsave");
+        world.Library.ExportEntry(entry, misnamed);
+
+        LibraryImportResult imported = world.Library.ImportFile(misnamed);
+
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.True(imported.Entry!.IsCampaign);
+    }
+
+    [Fact]
+    public void A_campaign_file_damaged_on_the_way_is_refused()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        string exported = Path.Combine(world.BackupRoot.Path, "run.rwcampaign");
+        world.Library.ExportEntry(entry, exported);
+        Rewrite(exported, "not a campaign at all"u8.ToArray());
+
+        LibraryImportResult imported = world.Library.ImportFile(exported);
+
+        Assert.False(imported.Success);
+        Assert.Contains(imported.Errors, e => e.Contains("checksum", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_campaign_file_on_its_own_can_be_imported()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        string loose = Path.Combine(world.BackupRoot.Path, "Survivor.bin");
+        File.Copy(entry.CampaignPath, loose);
+
+        LibraryImportResult imported = world.Library.ImportFile(loose);
+
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.True(imported.Entry!.IsCampaign);
+        Assert.Equal("White", imported.Entry.Manifest!.CampaignSlugcatId);
+        Assert.Equal("Survivor", imported.Entry.Name);
+        Assert.Single(imported.Entry.Manifest.Metadata!.Campaigns);
+    }
+
+    [Fact]
+    public void Something_that_is_neither_says_which_three_it_could_have_been()
+    {
+        using var world = new LibraryWorld();
+        string nonsense = Path.Combine(world.BackupRoot.Path, "notes.txt");
+        File.WriteAllText(nonsense, "this is not a save");
+
+        LibraryImportResult imported = world.Library.ImportFile(nonsense);
+
+        Assert.False(imported.Success);
+        Assert.Contains(imported.Errors, e => e.Contains(".rwcampaign", StringComparison.Ordinal));
+    }
+
+    // ---- putting an hour of play back into one ----
+
+    [Fact]
+    public void A_campaign_entry_can_be_brought_level_with_the_slot_again()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+        string storedFirst = entry.Manifest!.Sha256;
+
+        // The slot is played, which here is one field moving.
+        world.PlayASlot(LocalTwo, "CYCLENUM", "999");
+
+        LibraryEntry updated = world.Library.UpdateEntry(entry, LocalTwo);
+
+        Assert.True(updated.IsCampaign);
+        Assert.Equal(999, updated.Manifest!.Metadata!.Campaigns[0].CycleNum);
+        Assert.Equal(storedFirst, updated.Manifest.PreviousSha256);
+        Assert.True(updated.HasPrevious);
+        Assert.True(world.Library.VerifyEntry(updated).Ok);
+    }
+
+    [Fact]
+    public void Undoing_that_puts_the_campaign_it_replaced_back()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+        int? storedCycle = entry.Manifest!.Metadata!.Campaigns[0].CycleNum;
+
+        world.PlayASlot(LocalTwo, "CYCLENUM", "999");
+        LibraryEntry updated = world.Library.UpdateEntry(entry, LocalTwo);
+
+        LibraryEntry undone = world.Library.UndoUpdate(updated);
+
+        Assert.Equal(storedCycle, undone.Manifest!.Metadata!.Campaigns[0].CycleNum);
+        Assert.False(undone.HasPrevious);
+        Assert.True(world.Library.VerifyEntry(undone).Ok);
+    }
+
+    // ---- the file itself ----
+
+    [Fact]
+    public void A_campaign_file_is_the_records_the_game_writes_and_nothing_else()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        byte[] bytes = File.ReadAllBytes(entry.CampaignPath);
+
+        // No mark on the front, so it is never mistaken for a save container.
+        Assert.NotEqual(0xEF, bytes[0]);
+
+        string text = Encoding.UTF8.GetString(bytes);
+        Assert.StartsWith(CampaignFile.Prefix, text, StringComparison.Ordinal);
+        Assert.EndsWith(SavePayloadReader.RecordSeparator, text, StringComparison.Ordinal);
+
+        CampaignSlice slice = CampaignFile.Read(bytes)!;
+        Assert.Equal("White", slice.SlugcatId);
+        Assert.Equal(7, slice.MapRecords.Count);
+        Assert.Equal(text, CampaignFile.ToPayload(slice));
+    }
+
+    [Fact]
+    public void Something_that_is_not_a_campaign_reads_back_as_nothing()
+    {
+        Assert.Null(CampaignFile.Read(null));
+        Assert.Null(CampaignFile.Read(Array.Empty<byte>()));
+        Assert.Null(CampaignFile.FromPayload("MISCPROG<progDivB>CYCLES<misA>1<progDivA>"));
+        Assert.False(CampaignFile.LooksLikeOne(Encoding.UTF8.GetBytes("MISCPROG<progDivB>")));
+        Assert.True(CampaignFile.LooksLikeOne(Encoding.UTF8.GetBytes(CampaignFile.Prefix + "SAV STATE NUMBER")));
+    }
+
+    // ---- helpers ----
+
+    /// <summary>Rewrites the campaign inside a bundle, which is what damage in transit looks like.</summary>
+    private static void Rewrite(string bundlePath, byte[] content)
+    {
+        using var archive = ZipFile.Open(bundlePath, ZipArchiveMode.Update);
+        archive.GetEntry(LibraryEntry.CampaignFileName)?.Delete();
+
+        ZipArchiveEntry replacement = archive.CreateEntry(LibraryEntry.CampaignFileName);
+        using Stream stream = replacement.Open();
+        stream.Write(content, 0, content.Length);
+    }
+
+    private static string VersionOneManifest(string sha256, long sizeBytes) => $$"""
+        {
+          "schemaVersion": 1,
+          "name": "as it was",
+          "createdUtc": "2026-08-01T09:00:00Z",
+          "appVersion": "0.9.0",
+          "sourceFileName": "sav2",
+          "sourceSlot": 2,
+          "sizeBytes": {{sizeBytes}},
+          "sha256": "{{sha256}}"
+        }
+        """;
+}

@@ -275,6 +275,13 @@ public sealed record SaveWritePlan(
         return split < 0 ? record : record[..split];
     }
 
+    /// <summary>
+    /// A plan for something that could not be built at all, such as a slot that would not open. It
+    /// carries no bytes, so nothing can be written from it.
+    /// </summary>
+    internal static SaveWritePlan CannotBuild(string filePath, IReadOnlyList<string> problems)
+        => new(filePath, "", Array.Empty<byte>(), "", 0, 0, Array.Empty<string>(), problems);
+
     private static SaveWritePlan Refused(
         SaveEditSession session,
         ContainerText container,

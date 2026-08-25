@@ -10,30 +10,43 @@ namespace RainWorldSaveManager.Core.Library;
 /// <summary>What a file offered for import turned out to be.</summary>
 internal enum BundleKind
 {
-    /// <summary>Neither a bundle nor a save container.</summary>
+    /// <summary>None of the others.</summary>
     Unknown,
 
-    /// <summary>A .rwsave zip written by <see cref="SaveBundle.Write"/>.</summary>
+    /// <summary>A .rwsave or .rwcampaign zip written by <see cref="SaveBundle.Write"/>.</summary>
     Bundle,
 
     /// <summary>A bare save container, straight out of a save folder.</summary>
     BareContainer,
+
+    /// <summary>A bare campaign.bin, taken out of a bundle or copied from a library folder.</summary>
+    BareCampaign,
 }
 
 /// <summary>
-/// The .rwsave file: a zip holding exactly the save and the manifest that describes it.
+/// The .rwsave and .rwcampaign files: a zip holding exactly one stored thing and the manifest that
+/// describes it.
 ///
 /// One file rather than a folder because the point of an export is to be sent somewhere, and the
 /// manifest is what carries the name, the note and the campaigns across. A bare save file survives
 /// the trip too and can be imported, but it arrives with nothing but its own bytes.
 ///
-/// Only two fixed names are ever read out of a bundle, so no path from inside the archive is ever
+/// The two extensions are the same format and are told apart by what is inside, not by the name or
+/// the first bytes: both are zips, so a signature at the front says only that it is one of the two.
+/// A bundle holding campaign.bin is a campaign and one holding save.bin is a whole slot, and that is
+/// read off the archive rather than off the manifest, so a manifest that says otherwise is corrected
+/// by what is actually there.
+///
+/// Only three fixed names are ever read out of a bundle, so no path from inside the archive is ever
 /// used to build a destination and a bundle cannot write outside the folder it is extracted into.
 /// </summary>
 internal static class SaveBundle
 {
-    /// <summary>The extension an export defaults to.</summary>
+    /// <summary>The extension an export of a whole slot defaults to.</summary>
     internal const string Extension = ".rwsave";
+
+    /// <summary>The extension an export of one campaign defaults to.</summary>
+    internal const string CampaignExtension = ".rwcampaign";
 
     /// <summary>
     /// The largest save this will extract. A real container is a few megabytes; the cap is here so
@@ -47,7 +60,10 @@ internal static class SaveBundle
     /// Writes a bundle through a temp file, so an interrupted export cannot leave a half written
     /// .rwsave behind where a whole one used to be.
     /// </summary>
-    internal static void Write(string destinationPath, LibraryManifest manifest, string savePath)
+    /// <param name="contentFileName">
+    /// save.bin or campaign.bin, which is what tells a reader which of the two this is.
+    /// </param>
+    internal static void Write(string destinationPath, LibraryManifest manifest, string contentPath, string contentFileName)
     {
         var temp = destinationPath + ".tmp";
 
@@ -62,9 +78,9 @@ internal static class SaveBundle
                     writer.Write(JsonSerializer.Serialize(manifest, BackupJson.Options));
                 }
 
-                var saveEntry = archive.CreateEntry(LibraryEntry.SaveFileName, CompressionLevel.Optimal);
+                var saveEntry = archive.CreateEntry(contentFileName, CompressionLevel.Optimal);
                 using var saveStream = saveEntry.Open();
-                using var source = new FileStream(savePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+                using var source = new FileStream(contentPath, FileMode.Open, FileAccess.Read, FileShare.Read);
                 source.CopyTo(saveStream);
             }
 
@@ -94,12 +110,13 @@ internal static class SaveBundle
     /// </summary>
     internal static BundleKind Sniff(string path)
     {
-        Span<byte> head = stackalloc byte[4];
+        Span<byte> head = stackalloc byte[32];
 
         try
         {
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
             var read = stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+            var seen = head[..read];
 
             if (read >= 4 && head[0] == 0x50 && head[1] == 0x4B && head[2] == 0x03 && head[3] == 0x04)
             {
@@ -109,6 +126,13 @@ internal static class SaveBundle
             if (read >= 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF)
             {
                 return BundleKind.BareContainer;
+            }
+
+            // A campaign file has no mark on the front, so what identifies one is its first record,
+            // which is always the campaign.
+            if (CampaignFile.LooksLikeOne(seen))
+            {
+                return BundleKind.BareCampaign;
             }
         }
         catch (Exception)
@@ -134,16 +158,23 @@ internal static class SaveBundle
 
         var manifestEntry = archive.GetEntry(LibraryEntry.ManifestFileName)
             ?? throw new InvalidDataException(
-                $"This .rwsave file has no {LibraryEntry.ManifestFileName} in it, so it is not one this app wrote.");
+                $"This file has no {LibraryEntry.ManifestFileName} in it, so it is not one this app wrote.");
 
-        var saveEntry = archive.GetEntry(LibraryEntry.SaveFileName)
+        // What is in the archive decides which of the two this is, not what the manifest claims and
+        // not the name the file arrived under.
+        var isCampaign = archive.GetEntry(LibraryEntry.SaveFileName) is null;
+        var contentFileName = isCampaign ? LibraryEntry.CampaignFileName : LibraryEntry.SaveFileName;
+
+        var contentEntry = archive.GetEntry(contentFileName)
             ?? throw new InvalidDataException(
-                $"This .rwsave file has no {LibraryEntry.SaveFileName} in it, so there is no save to import.");
+                $"This file holds neither {LibraryEntry.SaveFileName} nor {LibraryEntry.CampaignFileName}, so there is nothing in it to import.");
 
-        if (saveEntry.Length > MaxSaveBytes)
+        var cap = isCampaign ? CampaignFile.MaxBytes : MaxSaveBytes;
+
+        if (contentEntry.Length > cap)
         {
             throw new InvalidDataException(
-                $"The save in this .rwsave file says it is {SlotCopyService.FormatSize(saveEntry.Length)}, which is far larger than a Rain World save.");
+                $"The {contentFileName} in this file says it is {SlotCopyService.FormatSize(contentEntry.Length)}, which is far larger than a Rain World save.");
         }
 
         LibraryManifest? manifest;
@@ -154,26 +185,28 @@ internal static class SaveBundle
 
         if (manifest is null)
         {
-            throw new InvalidDataException($"The {LibraryEntry.ManifestFileName} in this .rwsave file is empty.");
+            throw new InvalidDataException($"The {LibraryEntry.ManifestFileName} in this file is empty.");
         }
 
-        var savePath = Path.Combine(destinationDirectory, LibraryEntry.SaveFileName);
+        manifest.Kind = isCampaign ? LibraryEntryKind.Campaign : LibraryEntryKind.WholeSlot;
 
-        using (var entryStream = saveEntry.Open())
-        using (var destination = new FileStream(savePath, FileMode.Create, FileAccess.Write, FileShare.None))
+        var contentPath = Path.Combine(destinationDirectory, contentFileName);
+
+        using (var entryStream = contentEntry.Open())
+        using (var destination = new FileStream(contentPath, FileMode.Create, FileAccess.Write, FileShare.None))
         {
-            CopyBounded(entryStream, destination, MaxSaveBytes);
+            CopyBounded(entryStream, destination, cap);
         }
 
-        var actual = Hashing.ComputeFileSha256(savePath);
+        var actual = Hashing.ComputeFileSha256(contentPath);
         if (!string.Equals(actual, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException(
-                "The save in this .rwsave file does not match the checksum recorded beside it, so the file has been " +
+                $"The {contentFileName} in this file does not match the checksum recorded beside it, so the file has been " +
                 "damaged or altered since it was exported. Nothing was imported.");
         }
 
-        manifest.SizeBytes = new FileInfo(savePath).Length;
+        manifest.SizeBytes = new FileInfo(contentPath).Length;
         return manifest;
     }
 
@@ -198,7 +231,7 @@ internal static class SaveBundle
             if (total > limit)
             {
                 throw new InvalidDataException(
-                    $"The save in this .rwsave file is larger than {SlotCopyService.FormatSize(limit)}, which is far larger than a Rain World save.");
+                    $"What is in this file is larger than {SlotCopyService.FormatSize(limit)}, which is far larger than a Rain World save.");
             }
 
             destination.Write(buffer, 0, read);

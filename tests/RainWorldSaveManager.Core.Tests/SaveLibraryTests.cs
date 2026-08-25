@@ -1,4 +1,5 @@
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Library;
 using RainWorldSaveManager.Core.Saves;
 
@@ -538,6 +539,21 @@ internal sealed class LibraryWorld : IDisposable
 
     /// <summary>Reads an entry back off disk, for a test that changed it behind the service.</summary>
     public LibraryEntry Reload(LibraryEntry entry) => LibraryEntry.Load(entry.DirectoryPath);
+
+    /// <summary>
+    /// Puts a slot holding one campaign for a chosen slugcat in the save folder. Every fixture is a
+    /// Survivor campaign, so a test about two campaigns in one slot has to make the second one.
+    /// </summary>
+    public void Seed(string fileName, string slugcat, int cycle = 12)
+        => Live.WriteBytes(fileName, SyntheticSave.SaveFile(SyntheticSave.SavePayload(slugcat, cycle)));
+
+    /// <summary>Moves one field of a live slot, standing in for the game having played it.</summary>
+    public void PlayASlot(SaveSlotRef slot, string key, string value)
+    {
+        var session = SaveEditSession.Open(Live.Resolve(slot.FileName));
+        session.SetField(session.Campaigns[0], key, value);
+        Backups.SlotWriter.Write(session.BuildWritePlan(), slot);
+    }
 
     public void Dispose()
     {
