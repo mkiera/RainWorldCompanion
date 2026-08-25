@@ -1,7 +1,7 @@
 using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 
-namespace RainWorldSaveManager.Core.Tests;
+namespace RainWorldSaveManager.Tests;
 
 /// <summary>
 /// Building the strings the game writes for one creature.

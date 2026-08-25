@@ -1,6 +1,6 @@
 using RainWorldSaveManager.Core.Editing;
 
-namespace RainWorldSaveManager.Core.Tests;
+namespace RainWorldSaveManager.Tests;
 
 /// <summary>
 /// Handing out entity ids that do not collide with one already in the campaign.

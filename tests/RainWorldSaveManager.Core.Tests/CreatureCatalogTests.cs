@@ -1,6 +1,6 @@
 using RainWorldSaveManager.Core.Saves;
 
-namespace RainWorldSaveManager.Core.Tests;
+namespace RainWorldSaveManager.Tests;
 
 /// <summary>
 /// The creature names, which were read off the installed game rather than written from memory.
