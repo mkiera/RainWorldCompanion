@@ -56,6 +56,11 @@ public sealed class SettingsStore
             settings.BackupRootPath = AppSettings.DefaultBackupRootPath;
         }
 
+        if (string.IsNullOrWhiteSpace(settings.LibraryRootPath))
+        {
+            settings.LibraryRootPath = AppSettings.DefaultLibraryRootPath;
+        }
+
         if (string.IsNullOrWhiteSpace(settings.GameInstallPath))
         {
             // Stays null when no install is found. The portraits are the only thing that reads
