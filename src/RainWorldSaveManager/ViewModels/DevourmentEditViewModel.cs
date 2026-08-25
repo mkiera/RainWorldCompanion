@@ -35,6 +35,21 @@ public sealed record CreatureChoice(CreatureKind Kind, bool Available, string De
 }
 
 /// <summary>
+/// One item the picker is offering, and whether writing it would produce something the game reads.
+/// </summary>
+/// <param name="Available">
+/// False for an item from an expansion this install does not have, and for the two whose trailing
+/// fields this app has not pinned. Neither is stopped: the button writes it and the panel says what
+/// the game will make of it.
+/// </param>
+public sealed record ObjectChoice(ObjectKind Kind, bool Available, string Detail)
+{
+    public string Name => Kind.Name;
+
+    public string DisplayName => Kind.DisplayName;
+}
+
+/// <summary>
 /// What a campaign has swallowed, as the same nested chains the read-only panel draws.
 ///
 /// The nesting is the thing worth seeing, so editing keeps it rather than flattening it out. What
@@ -211,6 +226,113 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
 
 
     /// <summary>Puts a creature in the chosen stomach, giving it an id nothing else is using.</summary>
+    /// <summary>Whether the picker is offering items rather than creatures.</summary>
+    [ObservableProperty]
+    private bool addingAnItem;
+
+    /// <summary>Adds whichever kind the picker is on, for the button beside the search box.</summary>
+    [RelayCommand]
+    private void Add()
+    {
+        if (AddingAnItem)
+        {
+            AddItem(null);
+        }
+        else
+        {
+            AddCreature(null);
+        }
+    }
+
+    /// <summary>
+    /// The other half of the same choice, as its own property so the pair of radio buttons needs no
+    /// converter. Setting it off does nothing: a radio group clears the old button before it sets
+    /// the new one, and acting on the clear would flip the choice on the way to itself.
+    /// </summary>
+    public bool AddingACreature
+    {
+        get => !AddingAnItem;
+        set
+        {
+            if (value)
+            {
+                AddingAnItem = false;
+            }
+        }
+    }
+
+    partial void OnAddingAnItemChanged(bool value)
+    {
+        OnPropertyChanged(nameof(AddingACreature));
+        OnPropertyChanged(nameof(CreatureMatches));
+        OnPropertyChanged(nameof(ItemMatches));
+        OnPropertyChanged(nameof(CreatureMatchCountText));
+    }
+
+    /// <summary>Items matching what has been typed, whichever expansion they come from.</summary>
+    public IReadOnlyList<ObjectChoice> ItemMatches => ObjectCatalog
+        .Search(NewCreatureSearch)
+        .Select(DescribeItem)
+        .ToArray();
+
+    /// <summary>
+    /// Puts an item in the chosen stomach.
+    ///
+    /// A type this app cannot build is written as the base alone, which is all the game's last
+    /// branch reads. For a type that wanted more, the reader throws inside its own try and drops
+    /// the object, so the warning says exactly that.
+    /// </summary>
+    [RelayCommand]
+    private void AddItem(string? type)
+    {
+        string name = (type ?? NewCreatureSearch).Trim();
+        PredatorChoice? predator = NewCreaturePredator ?? Predators.FirstOrDefault();
+
+        if (name.Length == 0 || predator is null)
+        {
+            return;
+        }
+
+        string id = State.AddItem(name, predator.Blob);
+        _added.Add(id);
+        NewCreatureSearch = "";
+
+        Apply(
+            "devourment|added|" + id,
+            $"put a {ObjectCatalog.ForName(name).DisplayName} inside {predator.DisplayName}");
+    }
+
+    private ObjectChoice DescribeItem(ObjectKind kind)
+    {
+        if (!kind.CanBuild)
+        {
+            return new ObjectChoice(
+                kind,
+                false,
+                "This app does not know what the game reads after this one's position, so it would "
+                + "be written short and the game would drop it.");
+        }
+
+        if (kind.Source == CreatureSource.Vanilla)
+        {
+            return new ObjectChoice(kind, true, "In the base game.");
+        }
+
+        string expansion = kind.Source == CreatureSource.Watcher ? "The Watcher" : "Downpour";
+
+        if (Installed(kind.Source) || _arrivedWith.Contains(kind.Source))
+        {
+            return new ObjectChoice(kind, true, $"From {expansion}.");
+        }
+
+        return new ObjectChoice(
+            kind,
+            false,
+            _expansions.CheckedTheInstall
+                ? $"From {expansion}, which is not installed. The game will not know this item."
+                : $"From {expansion}. Nothing says this save has it, and the game folder was not checked.");
+    }
+
     [RelayCommand]
     private void AddCreature(string? type)
     {
@@ -715,6 +837,37 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         }
     }
 
+    /// <summary>
+    /// Says so when an item was added that this app cannot write in full.
+    ///
+    /// Two of the game's item types read their own fields at their own indices and nothing here
+    /// knows what those are. Written with the base alone, the game's reader throws while unpacking
+    /// them, and because that whole method sits inside a try the object is dropped without a word.
+    /// This is the word.
+    /// </summary>
+    private void AddUnbuildableItemWarnings()
+    {
+        var dropped = AllNodes
+            .Where(node =>
+                node.IsItem
+                && _added.Contains(node.EntityId)
+                && ObjectCatalog.IsKnown(node.RawType)
+                && !ObjectCatalog.ForName(node.RawType).CanBuild)
+            .Select(node => node.DisplayName)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        if (dropped.Count == 0)
+        {
+            return;
+        }
+
+        Warnings.Add(
+            $"{string.Join(", ", dropped)} {(dropped.Count == 1 ? "carries" : "carry")} fields this app does "
+            + "not know how to write, so the game will fail to unpack "
+            + (dropped.Count == 1 ? "it" : "them") + " and leave it out of the stomach. The rest of the save loads.");
+    }
+
     private void RefreshWarnings()
     {
         Warnings.Clear();
@@ -763,6 +916,7 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         }
 
         AddExpansionWarnings();
+        AddUnbuildableItemWarnings();
 
         if (_refusedMove is not null)
         {

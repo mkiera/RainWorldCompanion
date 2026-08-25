@@ -522,6 +522,31 @@
             </Button>
         </DataTemplate>
 
+        <!-- One item the picker is offering, marked the same way an unavailable creature is. -->
+        <DataTemplate x:Key="ItemSuggestionTemplate">
+            <Button Margin="0,0,4,4" ToolTip="{Binding Detail}"
+                    Command="{Binding DataContext.AddItemCommand,
+                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding Name}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource Button.Small}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Available}" Value="False">
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Warn}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                    <TextBlock Text="!" Margin="4,0,0,0" FontWeight="Bold" VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Warn}"
+                               Visibility="{Binding Available, Converter={StaticResource NotBoolToVis}}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+
         <!--
             One thing in a stomach chain, editable, drawn as the same tree the read-only panel
             draws. What is inside what is the thing worth seeing, so editing keeps that shape
@@ -901,23 +926,41 @@
                             <DockPanel Width="240">
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding CreatureMatchCountText}"
                                            Style="{StaticResource Text.Tiny}" Margin="6,0,0,0" />
-                                <TextBlock Text="Search every creature" Style="{StaticResource Text.Tiny}" />
+                                <TextBlock Text="Search" Style="{StaticResource Text.Tiny}" />
                             </DockPanel>
                             <TextBox Width="240" Margin="0,2,0,0"
                                      ToolTip="Matches the base game, Downpour and The Watcher. Anything can be typed, matched or not."
                                      Text="{Binding NewCreatureSearch, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
-                        <Button Content="Add creature" Style="{StaticResource Button.Small}"
+                        <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                            <TextBlock Text="Put in" Style="{StaticResource Text.Tiny}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                <RadioButton Content="A creature" GroupName="AddKind" Margin="0,0,10,0"
+                                             VerticalAlignment="Center"
+                                             IsChecked="{Binding AddingACreature, Mode=TwoWay}" />
+                                <RadioButton Content="An item" GroupName="AddKind" VerticalAlignment="Center"
+                                             IsChecked="{Binding AddingAnItem, Mode=TwoWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <Button Content="Add" Style="{StaticResource Button.Small}"
                                 VerticalAlignment="Bottom" Margin="0,0,0,8"
-                                Command="{Binding AddCreatureCommand}" />
+                                ToolTip="Puts whatever is typed in the box into the chosen stomach, matched or not."
+                                Command="{Binding AddCommand}" />
                     </WrapPanel>
 
                     <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
                             Padding="8,8,8,4">
                         <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{Binding CreatureMatches}"
-                                          ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
-                                          ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                            <Grid>
+                                <ItemsControl ItemsSource="{Binding CreatureMatches}"
+                                              ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding AddingAnItem, Converter={StaticResource NotBoolToVis}}" />
+                                <ItemsControl ItemsSource="{Binding ItemMatches}"
+                                              ItemTemplate="{StaticResource ItemSuggestionTemplate}"
+                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                              Visibility="{Binding AddingAnItem, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
                         </ScrollViewer>
                     </Border>
                 </StackPanel>

@@ -54,12 +54,14 @@ public sealed partial class DevourmentEditNode : ObservableObject
         Children = children;
         IsWellFormed = entry?.IsWellFormed ?? true;
 
-        DisplayName = isItem
-            ? (type.Length == 0 ? "(unknown)" : type)
-            : CreatureCatalog.ForName(type).DisplayName;
+        DisplayName = type.Length == 0
+            ? "(unknown)"
+            : isItem
+                ? ObjectCatalog.ForName(type).DisplayName
+                : CreatureCatalog.ForName(type).DisplayName;
 
         RawType = type;
-        KnownToTheGame = isItem || CreatureCatalog.IsKnown(type);
+        KnownToTheGame = isItem ? ObjectCatalog.IsKnown(type) : CreatureCatalog.IsKnown(type);
 
         status = entry?.Status ?? "";
         food = entry?.Food ?? "";

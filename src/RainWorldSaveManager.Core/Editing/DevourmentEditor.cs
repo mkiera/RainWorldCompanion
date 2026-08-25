@@ -290,9 +290,12 @@ public sealed class DevourmentEditState
         entry.Predator = predatorBlob;
 
         // The mod puts a swallowed thing in the room its predator is in, so it follows the move.
-        if (CreatureBlobBuilder.Parse(predatorBlob) is { } predator && !entry.PreyIsItem)
+        // An item keeps the rest of its coordinate, which a creature does not carry at all.
+        if (CreatureBlobBuilder.Parse(predatorBlob) is { } predator)
         {
-            entry.Prey = CreatureBlobBuilder.WithRoom(entry.Prey, predator.Room, predator.Node);
+            entry.Prey = entry.PreyIsItem
+                ? ItemBlobBuilder.WithRoom(entry.Prey, predator.Room)
+                : CreatureBlobBuilder.WithRoom(entry.Prey, predator.Room, predator.Node);
         }
 
         _entriesChanged = true;
@@ -388,6 +391,32 @@ public sealed class DevourmentEditState
             id,
             predator?.Room ?? "",
             predator?.Node ?? 0);
+
+        _entries.Add(DevourmentEntry.Create(predatorBlob, prey, status, food));
+        _entriesChanged = true;
+
+        return id;
+    }
+
+    /// <summary>
+    /// Puts an item in a predator's stomach, giving it an id nothing else in the campaign holds.
+    ///
+    /// Its food value is written as -1, which is what the game stores for something that is not
+    /// food: an item read back as a number of meals would be a meal.
+    /// </summary>
+    /// <returns>The id the new item was given.</returns>
+    public string AddItem(
+        string type,
+        string predatorBlob,
+        string status = DevourmentStatus.Held,
+        string food = "-1")
+    {
+        string id = _allocator.Allocate();
+        CreatureBlob? predator = CreatureBlobBuilder.Parse(predatorBlob);
+
+        string prey = predator is null
+            ? ItemBlobBuilder.Build(type, id, "")
+            : ItemBlobBuilder.BuildBeside(type, id, predator);
 
         _entries.Add(DevourmentEntry.Create(predatorBlob, prey, status, food));
         _entriesChanged = true;

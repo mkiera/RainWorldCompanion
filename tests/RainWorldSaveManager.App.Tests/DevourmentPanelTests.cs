@@ -506,6 +506,149 @@ public class DevourmentPanelTests : IDisposable
         Assert.True(Stored().IsTamed(added.EntityId));
     }
 
+    // ---- putting an item in ----
+
+    [Fact]
+    public void An_item_can_be_put_inside_something()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Rock");
+
+        Assert.Equal(5, Stored().Entries.Count);
+
+        DevourmentEntry added = Stored().Entries[^1];
+
+        Assert.True(added.PreyIsItem);
+        Assert.Equal("Rock", added.PreyType);
+        Assert.Contains(panel.Roots.Single().Children, c => c.IsItem && c.DisplayName == "Rock");
+    }
+
+    [Fact]
+    public void An_item_is_put_in_the_room_its_predator_is_in()
+    {
+        var panel = Panel();
+        panel.NewCreaturePredator = panel.Predators.Single(p => p.EntityId == OuterLizard);
+        panel.AddItemCommand.Execute("Spear");
+
+        string room = CreatureBlobBuilder.Parse(Node(panel, OuterLizard).Blob)!.Room;
+
+        Assert.Equal(room, ItemBlobBuilder.RoomOf(Stored().Entries[^1].Prey));
+    }
+
+    /// <summary>Something that is not food is worth no meals, which the game stores as -1.</summary>
+    [Fact]
+    public void An_item_is_worth_no_food()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Rock");
+
+        Assert.Equal(-1, DevourmentEditState.FoodOf(Stored().Entries[^1]));
+    }
+
+    [Fact]
+    public void An_item_gets_an_id_nothing_else_is_using()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Rock");
+        panel.AddItemCommand.Execute("Rock");
+
+        var ids = Stored().Entries.Select(e => e.PreyId).ToList();
+
+        Assert.Equal(ids.Count, ids.Distinct().Count());
+    }
+
+    [Fact]
+    public void An_item_carries_the_fields_the_game_reads_after_its_position()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Spear");
+
+        Assert.Equal(8, ItemBlobBuilder.Parse(Stored().Entries[^1].Prey)!.Tail.Count);
+    }
+
+    [Fact]
+    public void An_item_row_can_be_moved_into_another_stomach()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Rock");
+
+        DevourmentEditNode rock = panel.AllNodes.Single(n => n.IsItem && n.DisplayName == "Rock");
+        panel.MoveOnto(rock, Node(panel, OuterLizard));
+
+        Assert.Equal(OuterLizard, Stored().Entries[^1].PredatorId);
+    }
+
+    [Fact]
+    public void An_item_row_can_be_removed()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Rock");
+
+        panel.AllNodes.Single(n => n.IsItem && n.DisplayName == "Rock").RemoveCommand.Execute(null);
+
+        Assert.Equal(4, Stored().Entries.Count);
+    }
+
+    [Fact]
+    public void The_picker_switches_between_creatures_and_items()
+    {
+        var panel = Panel();
+
+        Assert.True(panel.AddingACreature);
+
+        panel.AddingAnItem = true;
+
+        Assert.False(panel.AddingACreature);
+        Assert.Contains(panel.ItemMatches, c => c.Name == "Rock");
+    }
+
+    [Fact]
+    public void The_add_button_adds_whichever_kind_the_picker_is_on()
+    {
+        var panel = Panel();
+
+        panel.NewCreatureSearch = "Rock";
+        panel.AddingAnItem = true;
+        panel.AddCommand.Execute(null);
+
+        Assert.True(Stored().Entries[^1].PreyIsItem);
+
+        panel.NewCreatureSearch = "PinkLizard";
+        panel.AddingAnItem = false;
+        panel.AddCommand.Execute(null);
+
+        Assert.False(Stored().Entries[^1].PreyIsItem);
+    }
+
+    /// <summary>
+    /// Two of the game's item types read their own fields somewhere this app has not followed.
+    /// Written short, the reader throws inside its own try and the object is dropped without a
+    /// word, so this is the word.
+    /// </summary>
+    [Fact]
+    public void An_item_this_app_cannot_write_in_full_is_offered_marked_and_warned_about()
+    {
+        var panel = Panel();
+        panel.AddingAnItem = true;
+
+        ObjectChoice bulb = panel.ItemMatches.Single(c => c.Name == "PrinceBulb");
+        Assert.False(bulb.Available);
+
+        panel.AddItemCommand.Execute("PrinceBulb");
+
+        Assert.Equal("PrinceBulb", Stored().Entries[^1].PreyType);
+        Assert.Contains(panel.Warnings, w => w.Contains("leave it out of the stomach"));
+    }
+
+    [Fact]
+    public void An_item_this_app_can_write_draws_no_such_advice()
+    {
+        var panel = Panel();
+        panel.AddItemCommand.Execute("Rock");
+
+        Assert.DoesNotContain(panel.Warnings, w => w.Contains("leave it out of the stomach"));
+    }
+
     // ---- searching every creature ----
 
     [Fact]
