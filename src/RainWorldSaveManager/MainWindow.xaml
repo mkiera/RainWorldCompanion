@@ -1129,12 +1129,38 @@
                                 -->
                                 <DockPanel Margin="0,10,0,0"
                                            Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}">
-                                    <Button DockPanel.Dock="Left" Content="Edit"
-                                            Style="{StaticResource Button.Small}"
-                                            Visibility="{Binding IsEditing, Converter={StaticResource NotBoolToVis}}"
-                                            Command="{Binding DataContext.BeginEditCommand,
-                                                      RelativeSource={RelativeSource AncestorType=Window}}"
-                                            CommandParameter="{Binding}" />
+                                    <!--
+                                        Edit changes what is in this campaign. The three beside it
+                                        move the campaign itself, so they go away while an editor is
+                                        open: an unsaved edit and a campaign moving are two answers
+                                        to what this campaign is.
+                                    -->
+                                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal"
+                                                Visibility="{Binding IsEditing, Converter={StaticResource NotBoolToVis}}">
+                                        <Button Content="Edit"
+                                                Style="{StaticResource Button.Small}"
+                                                Command="{Binding DataContext.BeginEditCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Save to library" Margin="6,0,0,0"
+                                                Style="{StaticResource Button.Small}"
+                                                ToolTip="Keeps a copy of this one campaign under a name. This slot is not touched."
+                                                Command="{Binding DataContext.StoreCampaignCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Send to slot" Margin="6,0,0,0"
+                                                Style="{StaticResource Button.Small}"
+                                                ToolTip="Copies or moves this campaign into another slot, leaving that slot's other campaigns alone."
+                                                Command="{Binding DataContext.SendCampaignCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Delete" Margin="6,0,0,0"
+                                                Style="{StaticResource Button.Small}"
+                                                ToolTip="Takes this campaign out of the slot. The other campaigns there are left alone."
+                                                Command="{Binding DataContext.DeleteCampaignCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
 
                                     <StackPanel Orientation="Horizontal"
                                                 Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">

@@ -235,6 +235,146 @@ public class CampaignMoveTests
         Assert.Empty(session.Changes);
     }
 
+    // ---- what a move says it will do before it does it ----
+
+    [Fact]
+    public void A_plan_says_what_it_would_do_to_the_slot()
+    {
+        using var world = new MoveWorld();
+        CampaignSlice slice = world.CampaignIn("sav3", "White");
+
+        CampaignMovePlan replaced = world.Writer.PlanPutCampaign(LocalTwo, slice);
+
+        Assert.True(replaced.CanWrite);
+        Assert.Equal(CampaignSpliceOutcome.Replaced, replaced.Splice.Outcome);
+        Assert.Equal("sav2", replaced.TargetFileName);
+        Assert.Contains("Replaces the campaign in sav2", replaced.Describe(), StringComparison.Ordinal);
+        Assert.Contains("2 regions of map come with it", replaced.Describe(), StringComparison.Ordinal);
+        Assert.Contains("5 the slot had are dropped", replaced.Describe(), StringComparison.Ordinal);
+
+        CampaignMovePlan added = world.Writer.PlanPutCampaign(LocalTwo, GourmandSlice());
+        Assert.Equal(CampaignSpliceOutcome.Added, added.Splice.Outcome);
+        Assert.Contains("Adds a campaign to sav2", added.Describe(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_plan_to_take_one_out_says_whether_the_map_goes_too()
+    {
+        using var world = new MoveWorld();
+
+        CampaignMovePlan staying = world.Writer.PlanTakeCampaign(LocalTwo, "White", includeMaps: false);
+        Assert.Equal(CampaignSpliceOutcome.Removed, staying.Splice.Outcome);
+        Assert.Equal("Takes a campaign out of sav2.", staying.Describe());
+
+        CampaignMovePlan going = world.Writer.PlanTakeCampaign(LocalTwo, "White", includeMaps: true);
+        Assert.Contains("7 the slot had are dropped", going.Describe(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Sending a campaign back to the slot it is already in would write the same bytes over the top
+    /// and spend a safety snapshot doing it.
+    /// </summary>
+    [Fact]
+    public void A_move_that_would_change_nothing_is_refused_before_it_is_offered()
+    {
+        using var world = new MoveWorld();
+        CampaignSlice slice = world.CampaignIn("sav2", "White");
+
+        CampaignMovePlan plan = world.Writer.PlanPutCampaign(LocalTwo, slice);
+
+        Assert.False(plan.CanWrite);
+        Assert.Contains(plan.Problems, problem => problem.Contains("nothing to write", StringComparison.Ordinal));
+        Assert.Equal("Changes nothing in sav2.", plan.Describe());
+    }
+
+    [Fact]
+    public void A_campaign_that_is_not_in_the_slot_cannot_be_taken_out_of_it()
+    {
+        using var world = new MoveWorld();
+
+        CampaignMovePlan plan = world.Writer.PlanTakeCampaign(LocalTwo, "Saint", includeMaps: true);
+
+        Assert.False(plan.CanWrite);
+        Assert.Equal(CampaignSpliceOutcome.NotFound, plan.Splice.Outcome);
+    }
+
+    [Fact]
+    public void A_plan_refuses_a_slot_that_is_not_one_and_a_file_that_is_not_there()
+    {
+        using var world = new MoveWorld();
+        CampaignSlice slice = GourmandSlice();
+
+        CampaignMovePlan notASlot = world.Writer.PlanPutCampaign(new SaveSlotRef(SaveRealm.Local, 9), slice);
+        Assert.False(notASlot.CanWrite);
+        Assert.Contains(notASlot.Problems, p => p.Contains("not a Rain World slot", StringComparison.Ordinal));
+
+        File.Delete(world.Live.Resolve("sav2"));
+
+        CampaignMovePlan gone = world.Writer.PlanPutCampaign(LocalTwo, slice);
+        Assert.False(gone.CanWrite);
+        Assert.Contains(gone.Problems, p => p.Contains("not in the save folder", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_running_game_stops_a_move_being_planned_or_written()
+    {
+        using var world = new MoveWorld();
+        CampaignSlice slice = GourmandSlice();
+        byte[] before = world.Live.ReadBytes("sav2");
+
+        CampaignMovePlan plan = world.Writer.PlanPutCampaign(LocalTwo, slice);
+        Assert.True(plan.CanWrite);
+
+        world.Detector.RunningProcessName = "RainWorld";
+
+        CampaignMovePlan blocked = world.Writer.PlanPutCampaign(LocalTwo, slice);
+        Assert.False(blocked.CanWrite);
+        Assert.Contains(blocked.Problems, p => p.Contains("Rain World is running", StringComparison.Ordinal));
+
+        Assert.Throws<GameRunningException>(() => world.Writer.Write(plan));
+        SnapshotLayout.AssertBytesEqual(before, world.Live.ReadBytes("sav2"), "sav2");
+    }
+
+    [Fact]
+    public void A_refused_plan_is_not_written_and_says_why()
+    {
+        using var world = new MoveWorld();
+        byte[] before = world.Live.ReadBytes("sav2");
+
+        SaveWriteResult result = world.Writer.Write(
+            world.Writer.PlanPutCampaign(LocalTwo, world.CampaignIn("sav2", "White")));
+
+        Assert.False(result.Success);
+        Assert.False(result.LiveFolderModified);
+        Assert.NotEmpty(result.Errors);
+        SnapshotLayout.AssertBytesEqual(before, world.Live.ReadBytes("sav2"), "sav2");
+    }
+
+    [Fact]
+    public void A_planned_move_written_through_the_writer_lands_on_disk()
+    {
+        using var world = new MoveWorld();
+
+        SaveWriteResult result = world.Writer.Write(world.Writer.PlanPutCampaign(LocalTwo, GourmandSlice()));
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Equal(
+            new[] { "White", "Gourmand" },
+            SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2).Campaigns.Select(c => c.SlugcatId));
+    }
+
+    [Fact]
+    public void One_campaign_is_read_off_a_slot_without_opening_the_others()
+    {
+        using var world = new MoveWorld();
+
+        CampaignSlice slice = world.Writer.ReadCampaign(LocalTwo, "White")!;
+
+        Assert.Equal("White", slice.SlugcatId);
+        Assert.Equal(7, slice.MapRecords.Count);
+        Assert.Null(world.Writer.ReadCampaign(LocalTwo, "Saint"));
+    }
+
     // ---- reading a campaign on its own ----
 
     [Fact]
@@ -291,6 +431,8 @@ public class CampaignMoveTests
         public BackupService Service { get; }
 
         public SaveEditSession OpenSlotTwo() => SaveEditSession.Open(Live.Resolve("sav2"));
+
+        public SaveSlotWriter Writer => Service.SlotWriter;
 
         public SaveWriteResult Write(SaveEditSession session)
             => Service.SlotWriter.Write(session.BuildWritePlan(), LocalTwo);

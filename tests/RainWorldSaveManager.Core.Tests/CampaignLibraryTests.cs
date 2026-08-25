@@ -238,6 +238,47 @@ public class CampaignLibraryTests
         SnapshotLayout.AssertBytesEqual(before, world.Live.ReadBytes("sav2"), "sav2");
     }
 
+    /// <summary>
+    /// A window offering both kinds asks one question and gets an answer for whichever it is
+    /// holding, rather than having to know first.
+    /// </summary>
+    [Fact]
+    public void One_plan_answers_for_either_kind_of_entry()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry slot = world.Library.StoreSlot(LocalThree, "whole slot", null);
+        LibraryEntry campaign = world.Library.StoreCampaign(LocalThree, "White", "one campaign", null);
+
+        LibraryLoadPlan wholeSlot = world.Library.PlanAnyLoad(slot, LocalTwo);
+        Assert.True(wholeSlot.CanLoad);
+        Assert.Equal("", wholeSlot.Summary);
+
+        LibraryLoadPlan justOne = world.Library.PlanAnyLoad(campaign, LocalTwo);
+        Assert.True(justOne.CanLoad);
+        Assert.Contains("Replaces the campaign in sav2", justOne.Summary, StringComparison.Ordinal);
+        Assert.Equal("sav2", justOne.Target.FileName);
+    }
+
+    [Fact]
+    public void One_load_writes_either_kind_of_entry()
+    {
+        using var world = new LibraryWorld();
+        world.Seed("sav3", "Gourmand", cycle: 55);
+        LibraryEntry campaign = world.Library.StoreCampaign(LocalThree, "Gourmand", "one campaign", null);
+
+        Assert.True(world.Library.LoadAny(campaign, LocalTwo).Success);
+        Assert.Equal(
+            new[] { "White", "Gourmand" },
+            SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2).Campaigns.Select(c => c.SlugcatId));
+
+        LibraryEntry slot = world.Library.StoreSlot(LocalThree, "whole slot", null);
+
+        Assert.True(world.Library.LoadAny(slot, LocalTwo).Success);
+        Assert.Equal(
+            new[] { "Gourmand" },
+            SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2).Campaigns.Select(c => c.SlugcatId));
+    }
+
     // ---- carrying one to another machine ----
 
     [Fact]

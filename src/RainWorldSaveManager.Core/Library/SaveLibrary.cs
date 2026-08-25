@@ -570,7 +570,7 @@ public sealed class SaveLibrary
 
         var side = _backups.SlotCopies.ReadSide(target);
         var move = PlanCampaignLoad(entry, target);
-        var plan = new LibraryLoadPlan(entry, side, move.Problems, move.Warnings);
+        var plan = new LibraryLoadPlan(entry, side, move.Problems, move.Warnings, move.Describe());
 
         if (!move.CanWrite)
         {
@@ -598,6 +598,46 @@ public sealed class SaveLibrary
             result.LiveFolderModified,
             result.BytesWritten,
             plan);
+    }
+
+    /// <summary>
+    /// What loading this entry would do, whichever kind it is. A whole slot is written over the
+    /// target and a campaign is written into it, so a caller offering both goes through here rather
+    /// than having to know which it is holding.
+    /// </summary>
+    public LibraryLoadPlan PlanAnyLoad(LibraryEntry entry, SaveSlotRef target)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (!entry.IsCampaign)
+        {
+            return PlanLoad(entry, target);
+        }
+
+        var move = PlanCampaignLoad(entry, target);
+        var problems = move.Problems.Count > 0 ? move.Problems : move.Write.Problems;
+
+        return new LibraryLoadPlan(
+            entry,
+            _backups.SlotCopies.ReadSide(target),
+            problems,
+            move.Warnings,
+            move.Describe());
+    }
+
+    /// <summary>Loads this entry onto a slot, whichever kind it is.</summary>
+    public LibraryLoadResult LoadAny(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return entry.IsCampaign
+            ? LoadCampaignOntoSlot(entry, target, progress, ct)
+            : LoadEntry(entry, target, progress, ct);
     }
 
     /// <summary>The campaign an entry holds, or null when it holds a whole slot or will not read.</summary>
