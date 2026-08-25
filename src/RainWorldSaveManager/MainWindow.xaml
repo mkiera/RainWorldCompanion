@@ -724,8 +724,15 @@
                                         <TextBlock Text="{Binding Edit.ChangeCountText}"
                                                    Style="{StaticResource Text.Muted}"
                                                    VerticalAlignment="Center" Margin="8,0,0,0" />
-                                        <Button Content="Cancel" Style="{StaticResource Button.Small}"
+                                        <Button Content="Save changes" Style="{StaticResource Button.Accent}"
                                                 Margin="10,0,0,0" VerticalAlignment="Center"
+                                                IsEnabled="{Binding Edit.IsDirty}"
+                                                ToolTip="Backs up the save folder, then writes these changes."
+                                                Command="{Binding DataContext.SaveEditsCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Cancel" Style="{StaticResource Button.Small}"
+                                                Margin="6,0,0,0" VerticalAlignment="Center"
                                                 ToolTip="Closes the editor and forgets the changes."
                                                 Command="{Binding DataContext.CancelEditCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}"

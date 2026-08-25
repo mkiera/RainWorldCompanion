@@ -212,13 +212,15 @@ public sealed class SaveEditSession
     /// keyed on the field name would collapse all of them into one line reading as an unbroken wall
     /// of delimiters. The caller names the part it changed and how it reads.
     /// </summary>
+    /// <param name="before">How the part read before, or null when it was not there.</param>
+    /// <param name="after">How it reads now, or null when it has gone.</param>
     public void SetFieldPart(
         CampaignRecordRef campaign,
         string key,
         string value,
         string partName,
-        string before,
-        string after)
+        string? before,
+        string? after)
     {
         string body = GetRecordBody(campaign);
 

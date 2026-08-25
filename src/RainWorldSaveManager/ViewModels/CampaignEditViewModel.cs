@@ -245,6 +245,12 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     /// <summary>One line per edit made so far, which the save confirmation will show.</summary>
     public IReadOnlyList<string> Changes => _session.Changes;
 
+    /// <summary>
+    /// The edits checked over and turned into the bytes that would be written. Touches no files, so
+    /// a problem is found while the only copy of the edit is still in memory.
+    /// </summary>
+    public SaveWritePlan BuildWritePlan() => _session.BuildWritePlan();
+
     public string ChangeCountText => _session.Changes.Count switch
     {
         0 => "No changes yet",
