@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Library;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
@@ -45,6 +46,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
     private SaveLibrary? _library;
+
+    // The campaign whose editor is open, or null. One at a time: an editor holds a session over a
+    // whole slot file, so two of them would each be working from bytes the other had already
+    // changed.
+    private CampaignViewModel? _openEditor;
 
     // 1 while a poll is running. Interlocked because the poll's own continuation clears it on a
     // worker thread while the timer tick sets it on the dispatcher.
@@ -117,6 +123,8 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     private bool isGameRunning;
 
     [ObservableProperty]
@@ -137,6 +145,8 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RenameEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -441,6 +451,11 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void RebuildDetail()
     {
+        // The panel is thrown away and built again, so an open editor is about to be detached from
+        // anything on screen. Letting go of it here keeps a session from being held by a card the
+        // user can no longer see or cancel.
+        CloseOpenEditor();
+
         // Taken from the panel the user was looking at, while there still is one. A rebuild driven
         // by the list emptying arrives with Detail already null, and this is what carries the realm
         // over that gap to the rebuild that restores the selection.
@@ -630,6 +645,241 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     private bool CanCopySlot() => !IsBusy && !IsGameRunning && _copyService is not null;
+
+    /// <summary>
+    /// Opens one campaign for editing.
+    ///
+    /// Only one campaign is open at a time. Each editor holds a session over a whole slot file, so
+    /// two of them open on the same slot would each be working from bytes the other did not know
+    /// had changed, and whichever saved second would be refused for being out of date.
+    ///
+    /// Nothing is written here. The session sits in memory until it is saved, and closing the
+    /// editor drops it.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBeginEdit))]
+    private async Task BeginEditAsync(CampaignViewModel? campaign)
+    {
+        if (campaign?.EditableSlot is not { } slot || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        if (campaign.IsEditing)
+        {
+            return;
+        }
+
+        string root = _settings.GameSavePath ?? "";
+        if (root.Length == 0)
+        {
+            Report("The save folder is not set, so there is nothing to edit.", null);
+            return;
+        }
+
+        string path = Path.Combine(root, slot.FileName);
+
+        SaveEditSession? session = null;
+        Exception? failure = null;
+
+        BeginBusy("Opening " + slot.FileName, "Reading the save");
+        try
+        {
+            session = await Task.Run(() => SaveEditSession.Open(path));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null || session is null)
+        {
+            Report(slot.FileName + " could not be opened for editing.", failure);
+            return;
+        }
+
+        CampaignRecordRef? record = session.Campaigns
+            .FirstOrDefault(c => string.Equals(c.SlugcatId, campaign.SlugcatId, StringComparison.Ordinal));
+
+        if (record is null)
+        {
+            // The panel was drawn from a reading of the file taken earlier. A campaign that is no
+            // longer in it means the file changed underneath, so a refresh is the answer.
+            Report(
+                campaign.DisplayName + " is no longer in " + slot.FileName + ". Refresh and try again.",
+                null);
+            return;
+        }
+
+        CloseOpenEditor();
+
+        campaign.Edit = new CampaignEditViewModel(session, record, campaign.Summary);
+        _openEditor = campaign;
+    }
+
+    private bool CanBeginEdit() => !IsBusy && !IsGameRunning;
+
+    /// <summary>Closes the editor and drops its unsaved changes.</summary>
+    [RelayCommand]
+    private void CancelEdit(CampaignViewModel? campaign)
+    {
+        if (campaign is null)
+        {
+            return;
+        }
+
+        campaign.Edit = null;
+
+        if (ReferenceEquals(_openEditor, campaign))
+        {
+            _openEditor = null;
+        }
+    }
+
+    private void CloseOpenEditor()
+    {
+        if (_openEditor is not null)
+        {
+            _openEditor.Edit = null;
+            _openEditor = null;
+        }
+    }
+
+    /// <summary>
+    /// Writes an open editor's changes to the slot it came from.
+    ///
+    /// The plan is built and checked before anything is shown, so a refusal is reported instead of
+    /// a confirmation the user would agree to and then watch fail. The write itself runs the shared
+    /// ladder, which takes the backup, holds the lock and proves the result, exactly as a slot copy
+    /// and a library load do.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSaveEdits))]
+    private async Task SaveEditsAsync(CampaignViewModel? campaign)
+    {
+        if (campaign?.Edit is not { } editor
+            || campaign.EditableSlot is not { } slot
+            || _backupService is not { } backups
+            || IsBusy
+            || IsGameRunning)
+        {
+            return;
+        }
+
+        if (!editor.IsDirty)
+        {
+            Report("Nothing was changed, so there is nothing to save.", null);
+            return;
+        }
+
+        SaveWritePlan? plan = null;
+        Exception? failure = null;
+
+        BeginBusy("Saving " + slot.FileName, "Checking the changes");
+        try
+        {
+            plan = await Task.Run(editor.BuildWritePlan);
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null || plan is null)
+        {
+            Report("The changes could not be prepared.", failure);
+            return;
+        }
+
+        if (!plan.CanWrite)
+        {
+            Report("These changes will not be saved.\n\n" + FormatList(plan.Problems), null);
+            return;
+        }
+
+        var dialog = new SaveEditsDialog(plan, campaign.DisplayName, slot.FileName, editor.Warnings.ToArray());
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SaveWriteResult? result = null;
+
+        BeginBusy("Saving " + slot.FileName, "Taking a backup first");
+        try
+        {
+            result = await Task.Run(() => backups.SlotWriter.Write(plan, slot, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            await ReloadAsync();
+            Report("The changes could not be saved.", failure);
+            return;
+        }
+
+        // Whatever library save claimed that slot no longer matches what is in it.
+        if (result!.LiveFolderModified)
+        {
+            await ReleaseSlotClaimAsync(slot);
+        }
+
+        // The panel is rebuilt from disk, which closes the editor along with it. The session it
+        // held describes bytes that are no longer there.
+        await ReloadAsync();
+
+        ReportSaveResult(result, slot.FileName);
+    }
+
+    private bool CanSaveEdits() => !IsBusy && !IsGameRunning;
+
+    private void ReportSaveResult(SaveWriteResult result, string fileName)
+    {
+        var text = new StringBuilder();
+        text.Append(result.Headline()).Append("\n\n");
+
+        if (result.Success)
+        {
+            if (result.SafetySnapshot is { } safety)
+            {
+                text.Append("Backup of your previous saves: ").Append(safety.Id).Append("\n\n");
+            }
+
+            text.Append(SteamGuidance);
+
+            if (result.Warnings.Count > 0)
+            {
+                text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+            }
+
+            ShowMessage(text.ToString(), "Save changes", MessageBoxImage.Information);
+            return;
+        }
+
+        text.Append(FormatList(result.Errors));
+
+        if (result.Warnings.Count > 0)
+        {
+            text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+        }
+
+        ShowMessage(text.ToString(), "Save changes", MessageBoxImage.Error);
+    }
 
     /// <summary>
     /// Where the pickers start. Slot 1 to its online half is the copy Rain Meadow players come for,
@@ -2190,6 +2440,8 @@ public sealed partial class MainViewModel : ObservableObject
         RenameEntryCommand.NotifyCanExecuteChanged();
         ImportSaveCommand.NotifyCanExecuteChanged();
         ExportSaveCommand.NotifyCanExecuteChanged();
+        BeginEditCommand.NotifyCanExecuteChanged();
+        SaveEditsCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()
@@ -2291,7 +2543,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// Every command failure lands here, so an IOException reads as a message instead of ending the app.
     /// </summary>
-    private void Report(string headline, Exception ex)
+    private void Report(string headline, Exception? ex)
     {
         if (ex is GameRunningException running)
         {
@@ -2299,7 +2551,11 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        ShowMessage(headline + "\n\n" + ex.Message, "Rain World Save Manager", MessageBoxImage.Error);
+        // A refusal this app worked out itself has no exception behind it and needs none: the
+        // headline already says what happened.
+        string text = ex is null ? headline : headline + "\n\n" + ex.Message;
+
+        ShowMessage(text, "Rain World Save Manager", MessageBoxImage.Error);
     }
 
     private static string FormatList(IReadOnlyList<string> items)

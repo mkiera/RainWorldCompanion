@@ -20,6 +20,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The editor tests open a real save. Sharing the byte-exact fixtures with the Core tests
+         keeps one copy of them, so the panel is exercised against the same files the parser is. -->
+    <None Include="..\RainWorldSaveManager.Core.Tests\Fixtures\*.bin"
+          Link="Fixtures\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\RainWorldSaveManager\RainWorldSaveManager.csproj" />
   </ItemGroup>
 
