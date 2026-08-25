@@ -592,15 +592,11 @@
                             <Button Content="↑" Style="{StaticResource Button.Tiny}" Margin="0,0,3,0"
                                     ToolTip="Move up, among the things sharing this stomach"
                                     Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}"
-                                    Command="{Binding DataContext.MoveUpCommand,
-                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" />
+                                    Command="{Binding MoveUpCommand}" />
                             <Button Content="↓" Style="{StaticResource Button.Tiny}" Margin="0,0,3,0"
                                     ToolTip="Move down, among the things sharing this stomach"
                                     Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}"
-                                    Command="{Binding DataContext.MoveDownCommand,
-                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" />
+                                    Command="{Binding MoveDownCommand}" />
                             <ToggleButton Content="Edit" Style="{StaticResource Button.SmallToggle}"
                                           IsChecked="{Binding IsEditing, Mode=TwoWay}"
                                           ToolTip="Open the values for this one" />
@@ -658,9 +654,7 @@
                                     VerticalAlignment="Bottom" Margin="0,0,0,8"
                                     ToolTip="Takes this out. Anything inside it moves up to whatever was holding this."
                                     Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}"
-                                    Command="{Binding DataContext.RemoveNodeCommand,
-                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" />
+                                    Command="{Binding RemoveCommand}" />
                         </WrapPanel>
 
                         <TextBlock Style="{StaticResource Text.Tiny}" TextWrapping="Wrap" Margin="0,0,0,8"

@@ -207,6 +207,71 @@ public class DevourmentPanelTests : IDisposable
     public void An_item_row_offers_no_feelings_and_no_taming()
         => Assert.All(Panel().AllNodes.Where(n => n.IsItem), node => Assert.False(node.IsCreature));
 
+    // ---- the buttons a row carries ----
+    //
+    // These go through the commands the row itself binds to, rather than the view model's. A row
+    // reaches its buttons through its own DataContext and nothing else: looking up the visual tree
+    // instead finds the ItemsControl holding that row's siblings, and below the top of a chain that
+    // control belongs to the parent node, which carries no commands. The binding then resolves to
+    // nothing and the button does nothing, which is what shipped and what these hold shut.
+
+    [Fact]
+    public void The_remove_button_on_a_row_takes_it_out()
+    {
+        var panel = Panel();
+
+        Node(panel, TamedLizard).RemoveCommand.Execute(null);
+
+        Assert.DoesNotContain(Stored().Entries, e => e.PreyId == TamedLizard);
+    }
+
+    [Fact]
+    public void The_remove_button_works_on_a_row_nested_below_the_top()
+    {
+        var panel = Panel();
+        DevourmentEditNode nested = Node(panel, PinkInside);
+
+        Assert.True(nested.Depth > 1, "the fixture no longer nests this row");
+
+        nested.RemoveCommand.Execute(null);
+
+        Assert.DoesNotContain(Stored().Entries, e => e.PreyId == PinkInside);
+    }
+
+    [Fact]
+    public void The_arrow_buttons_on_a_row_move_it()
+    {
+        var panel = Panel();
+        var before = panel.Roots.Single().Children.Select(c => c.EntityId).ToList();
+
+        panel.Roots.Single().Children[0].MoveDownCommand.Execute(null);
+
+        Assert.Equal(
+            new[] { before[1], before[0], before[2] },
+            panel.Roots.Single().Children.Select(c => c.EntityId));
+
+        Node(panel, before[0]).MoveUpCommand.Execute(null);
+
+        Assert.Equal(before, panel.Roots.Single().Children.Select(c => c.EntityId));
+    }
+
+    /// <summary>
+    /// The row a person is most likely to press Remove on is the one they just opened, so the two
+    /// have to work together rather than only apart.
+    /// </summary>
+    [Fact]
+    public void A_row_can_be_opened_and_then_removed()
+    {
+        var panel = Panel();
+        DevourmentEditNode node = Node(panel, TamedLizard);
+
+        node.IsEditing = true;
+        node.RemoveCommand.Execute(null);
+
+        Assert.DoesNotContain(Stored().Entries, e => e.PreyId == TamedLizard);
+        Assert.DoesNotContain(panel.AllNodes, n => n.EntityId == TamedLizard);
+    }
+
     // ---- moving one thing inside another ----
 
     [Fact]

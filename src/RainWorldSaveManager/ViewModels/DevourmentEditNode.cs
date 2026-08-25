@@ -4,6 +4,7 @@
 using System.Globalization;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 
@@ -207,6 +208,23 @@ public sealed partial class DevourmentEditNode : ObservableObject
     public float? LikesValue => Number(Likes);
 
     public float? KnowsValue => Number(Knows);
+
+    // ---- what the row's own buttons do ----
+    //
+    // On the node rather than on the view model, because a row reaches its buttons through its own
+    // DataContext and nothing else. Going up the visual tree instead would find the ItemsControl
+    // holding this row's siblings, and for anything below the top of a chain that control belongs
+    // to the parent node, which has no commands on it. The binding then resolves to nothing and the
+    // button quietly does nothing at all.
+
+    [RelayCommand]
+    private void Remove() => _owner.RemoveNode(this);
+
+    [RelayCommand]
+    private void MoveUp() => _owner.MoveUp(this);
+
+    [RelayCommand]
+    private void MoveDown() => _owner.MoveDown(this);
 
     /// <summary>Every node below this one, at any depth, this one included.</summary>
     public IEnumerable<DevourmentEditNode> Flatten()

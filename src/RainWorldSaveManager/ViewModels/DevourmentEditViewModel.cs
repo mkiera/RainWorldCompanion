@@ -236,7 +236,7 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     /// it, because the alternative is quietly removing everything below as well.
     /// </summary>
     [RelayCommand]
-    private void RemoveNode(DevourmentEditNode? node)
+    internal void RemoveNode(DevourmentEditNode? node)
     {
         if (node is null || node.EntryIndex < 0)
         {
@@ -296,10 +296,10 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     }
 
     [RelayCommand]
-    private void MoveUp(DevourmentEditNode? node) => Shuffle(node, -1);
+    internal void MoveUp(DevourmentEditNode? node) => Shuffle(node, -1);
 
     [RelayCommand]
-    private void MoveDown(DevourmentEditNode? node) => Shuffle(node, 1);
+    internal void MoveDown(DevourmentEditNode? node) => Shuffle(node, 1);
 
     /// <summary>
     /// Moves a row past the one beside it, among the things sharing its stomach. The arrows change
