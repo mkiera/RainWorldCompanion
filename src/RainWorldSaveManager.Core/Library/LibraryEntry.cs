@@ -28,6 +28,13 @@ public sealed class LibraryManifest
 
     public DateTime CreatedUtc { get; set; }
 
+    /// <summary>
+    /// When the save bytes were last replaced, by an update or by undoing one. Null while the entry
+    /// still holds what it was first stored with, which is why a row falls back to
+    /// <see cref="CreatedUtc"/> rather than showing a blank.
+    /// </summary>
+    public DateTime? UpdatedUtc { get; set; }
+
     public string AppVersion { get; set; } = "";
 
     /// <summary>The file this was stored from, for display. Empty for an unnamed import.</summary>
@@ -48,15 +55,24 @@ public sealed class LibraryManifest
     /// </summary>
     public SlotMetadata? Metadata { get; set; }
 
-    /// <summary>Where the last load put this entry, so an update knows which slot to offer.</summary>
+    /// <summary>
+    /// The slot holding these same bytes, so an update knows which slot to offer and a row can say
+    /// where the save went.
+    ///
+    /// A load sets it, and so does an update, because either way the entry and that slot file are
+    /// byte for byte the same afterwards. At most one entry names a given slot: whichever entry
+    /// last put its bytes there owns the link, and everyone else's is cleared, so two rows can never
+    /// both claim to be in sav.
+    /// </summary>
     public SaveRealm? LastLoadedRealm { get; set; }
 
     public int? LastLoadedSlot { get; set; }
 
+    /// <summary>When the entry and the slot were last made to match.</summary>
     public DateTime? LastLoadedUtc { get; set; }
 
     /// <summary>
-    /// The size and write time of the slot file immediately after the last load. Comparing these
+    /// The size and write time of the slot file at the moment the two matched. Comparing these
     /// against the file today says whether the slot has been played since, which is a hint on a row
     /// rather than a check, so a stamp rather than a hash is the right cost.
     /// </summary>
@@ -78,6 +94,14 @@ public sealed class LibraryManifest
         LastLoadedRealm is { } realm && LastLoadedSlot is { } slot
             ? new SaveSlotRef(realm, slot)
             : null;
+
+    /// <summary>
+    /// The slot this was taken from, or null for an import whose file name named no slot. A save
+    /// that has never been loaded still knows where it came from, which is the slot worth offering
+    /// when there is no load on record.
+    /// </summary>
+    public SaveSlotRef? SourceSlotRef =>
+        new SaveSlotRef(SourceRealm, SourceSlot) is { IsRealSlot: true } slot ? slot : null;
 }
 
 /// <summary>
@@ -125,6 +149,15 @@ public sealed class LibraryEntry
     public bool IsComplete => Manifest is not null;
 
     public DateTime CreatedUtc { get; }
+
+    /// <summary>
+    /// When the bytes in this entry were last written, which is the time a row shows. An entry that
+    /// has never been updated still holds what it was stored with, so that is its own store time.
+    /// </summary>
+    public DateTime ModifiedUtc => Manifest?.UpdatedUtc ?? CreatedUtc;
+
+    /// <summary>Whether an update has replaced the bytes this was first stored with.</summary>
+    public bool WasUpdated => Manifest?.UpdatedUtc is not null;
 
     /// <summary>The user's name for it, falling back to the folder name for a broken entry.</summary>
     public string Name

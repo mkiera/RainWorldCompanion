@@ -47,12 +47,27 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
     public bool IsComplete => Entry.IsComplete;
 
     /// <summary>
-    /// The time the save was stored, in the same calendar as the folder name beside it. The folder
-    /// name is built with the invariant culture, so formatting this with the current one would print
-    /// 2569 next to 2026 on a machine set to the Thai Buddhist calendar.
+    /// When the bytes in this save were last written, which is what the row shows. An update
+    /// replaces them, so a save brought level with an hour of play reads as an hour old rather than
+    /// as old as the day it was first stored.
     /// </summary>
-    public string CreatedText =>
-        Entry.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    public string ModifiedText => FormatTime(Entry.ModifiedUtc);
+
+    /// <summary>When the save was first stored, whether or not an update has replaced it since.</summary>
+    public string CreatedText => FormatTime(Entry.CreatedUtc);
+
+    public bool WasUpdated => Entry.WasUpdated;
+
+    /// <summary>"updated" or "stored", the word in front of the time on the row.</summary>
+    public string ModifiedLabel => WasUpdated ? "updated" : "stored";
+
+    /// <summary>
+    /// In the same calendar as the folder name beside it. The folder name is built with the
+    /// invariant culture, so formatting this with the current one would print 2569 next to 2026 on
+    /// a machine set to the Thai Buddhist calendar.
+    /// </summary>
+    private static string FormatTime(DateTime utc) =>
+        utc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     public string NoteText => Entry.Manifest?.Note?.Trim() ?? "";
 
@@ -100,8 +115,8 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// "in slot 1", or "in slot 1, changed since loaded" when the slot file no longer looks like it
-    /// did straight after the load.
+    /// "in sav", or "in sav, played since" when the slot file no longer looks like it did when the
+    /// two were last level. Empty when no slot holds this save.
     ///
     /// A size and a write time rather than a hash. This is a hint on a row, and re-hashing every
     /// slot on every refresh would cost several megabytes of reading to answer a question the user
@@ -150,7 +165,7 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
             text.Append("Library save, ").Append(Name);
             text.Append(", ").Append(CampaignCountText);
             text.Append(", ").Append(SizeText);
-            text.Append(", stored ").Append(CreatedText);
+            text.Append(", ").Append(ModifiedLabel).Append(' ').Append(ModifiedText);
 
             // Which container it was taken from is announced here and nowhere else. On screen it is
             // read off the row and the panel subtitle, neither of which a screen reader reaches
@@ -178,9 +193,14 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
             text.Append(Name).Append('\n');
             text.Append("Stored ").Append(CreatedText);
 
+            if (WasUpdated)
+            {
+                text.Append("\nUpdated ").Append(ModifiedText);
+            }
+
             if (SourceText.Length > 0)
             {
-                text.Append("   ").Append(SourceText);
+                text.Append("\n").Append(char.ToUpperInvariant(SourceText[0])).Append(SourceText[1..]);
             }
 
             text.Append('\n').Append(CampaignCountText).Append("   ").Append(SizeText);
@@ -254,7 +274,7 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
 
             return info.Length == size && info.LastWriteTimeUtc == written
                 ? where
-                : where + ", changed since loaded";
+                : where + ", played since";
         }
         catch (Exception)
         {

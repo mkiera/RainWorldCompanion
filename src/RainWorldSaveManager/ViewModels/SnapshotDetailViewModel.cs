@@ -240,9 +240,13 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             ? "This save did not finish being stored, so it recorded no campaign detail."
             : "This save could not be read, so there is no campaign detail to show.";
 
+        var when = item.WasUpdated
+            ? "updated " + item.ModifiedText
+            : "stored " + item.ModifiedText;
+
         var subtitle = item.SourceText.Length > 0
-            ? item.CreatedText + "    " + item.SourceText + "    " + item.Entry.Id
-            : item.CreatedText + "    " + item.Entry.Id;
+            ? when + "    " + item.SourceText + "    " + item.Entry.Id
+            : when + "    " + item.Entry.Id;
 
         return new SnapshotDetailViewModel(
             isLive: false,

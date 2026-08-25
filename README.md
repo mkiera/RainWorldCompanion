@@ -180,16 +180,27 @@ exactly like one taken from `sav2`, and neither gets the Rain Meadow section or 
 toggle, both of which work across a slot's two halves and a single stored save has no second half.
 Where it came from is on the row and in the panel subtitle.
 
-- **Load** writes a library save into whichever slot you pick, local or online.
-- **Update** replaces a library save with what is in the slot it was last loaded into, which is how
-  an hour of play gets back into the entry it came from. The save being replaced is kept, so
-  **Undo update** puts it back. Only the last one is kept, and the next update replaces it.
+The two buttons that move bytes name the direction they move them.
+
+- **Put in slot** writes a library save into whichever slot you pick, local or online.
+- **Take from slot** replaces a library save with what is in that slot now, which is how an hour of
+  play gets back into the save it came from. The save being replaced is kept, so **Undo take** puts
+  it back. Only the last one is kept, and the next take replaces it.
 - **Rename** changes the name and the note and nothing else.
 - **Export** writes one save out as a single `.rwsave` file. **Import** reads one back, and also
   accepts a bare save file copied straight out of somebody's save folder.
 
-A row says which slot it was last loaded into, and whether that slot has changed since. A slot that
-has changed holds play the library save does not, which is what Update is for.
+A row says which slot holds it and whether that slot has been played since. Both putting a save in a
+slot and taking one back leave the save and the slot holding the same bytes, so either one starts
+that badge fresh.
+
+One slot has one library save on it. Putting a second save into a slot takes the badge off the first,
+so two rows can never both claim to be in `sav`, and a restore or a slot copy takes it off whatever
+it wrote over. Without a badge, the app is not claiming to know what is in that slot.
+
+The time on a row is when the bytes were last written, so a save you have just taken from a slot
+reads as minutes old rather than as old as the day you first stored it, and it moves to the top of
+the list.
 
 ### What loading does
 

@@ -926,11 +926,16 @@
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                 </DockPanel>
 
+                <!-- The time the bytes were last written, not the day the save was first stored,
+                     so an updated save does not read as older than the play that went into it. -->
                 <DockPanel Margin="0,2,0,0">
                     <TextBlock DockPanel.Dock="Right" Text="{Binding SourceText}"
                                Style="{StaticResource Text.Tiny}" VerticalAlignment="Center" Margin="6,0,0,0" />
-                    <TextBlock Text="{Binding CreatedText}" Style="{StaticResource Text.Muted}"
-                               VerticalAlignment="Center" />
+                    <TextBlock DockPanel.Dock="Left" Text="{Binding ModifiedText}"
+                               Style="{StaticResource Text.Muted}" VerticalAlignment="Center" />
+                    <TextBlock Text="updated" Style="{StaticResource Text.Tiny}"
+                               VerticalAlignment="Center" Margin="6,0,0,0"
+                               Visibility="{Binding WasUpdated, Converter={StaticResource BoolToVis}}" />
                 </DockPanel>
 
                 <ItemsControl ItemsSource="{Binding Portraits}"
@@ -1266,15 +1271,17 @@
                 <!-- What can be done to the save that is selected in the list below. -->
                 <WrapPanel Grid.Row="2" Margin="1,0,0,8"
                            Visibility="{Binding IsLibraryTabSelected, Converter={StaticResource BoolToVis}}">
-                    <Button Content="Load" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                    <!-- The two directions are named on the buttons, because "Load" and "Update"
+                         alone left it to the user to work out which way the bytes move. -->
+                    <Button Content="Put in slot" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding LoadSaveCommand}"
-                            ToolTip="Write a library save into one of the game's slots." />
-                    <Button Content="Update" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            ToolTip="Library into game. Writes this save into one of the game's slots, replacing what is there." />
+                    <Button Content="Take from slot" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding UpdateEntryCommand}"
-                            ToolTip="Replace this library save with what is in the slot it was loaded into." />
-                    <Button Content="Undo update" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            ToolTip="Game into library. Replaces this save with what is in the slot now, so the play since you put it there is kept." />
+                    <Button Content="Undo take" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding UndoUpdateCommand}"
-                            ToolTip="Go back to the save held before the last update." />
+                            ToolTip="Go back to the save this held before the last take from a slot." />
                     <Button Content="Rename" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding RenameEntryCommand}" />
                     <Button Content="Import" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
