@@ -50,7 +50,8 @@ progress and again when you restore.
 
 The window is a list on the left and a detail panel on the right. The list holds the save folder
 as it is right now and every backup under it. Selecting either fills the panel, and the layout is
-the same for both, so a backup can be read against the live save without switching views.
+the same for both, so a backup can be read against the live save without switching views. With Rain
+Meadow installed, a toggle above the sections picks which set of saves they show, local or online.
 
 A slot section lists its campaigns. Opening one shows:
 
@@ -118,12 +119,20 @@ slot 2 is `sav2` on your own and `online_sav2` in a lobby. The two files sit sid
 save folder and are the same format byte for byte, which is why one reader handles both. Expedition
 is not hooked, so online play is story mode.
 
-The detail panel pairs them in its own banded section: local and online in one row per slot number,
-all three rows always, so an empty online slot is visible rather than absent. The section appears
-when Rain Meadow is on the machine and is left out entirely otherwise, so a player who does not use
-the mod never sees it. Presence is read from the game's own enabled mod list when the game folder is
-known, and otherwise from the save folder, which is enough on its own: `meadow.json`, the mod's
-Remix config and the online saves are written by nothing else.
+A SHOWING toggle above the slot sections switches them between the three local saves and the three
+online ones. Both hold full campaigns, so both get the same sections and the same campaign cards,
+down to the Devourment tree. The toggle stays where you put it as you move between the live save
+and backups.
+
+The paired rows lower down are the other half of it, and they stay as they are whichever way the
+toggle is set: local and online in one row per slot number, all three rows always, so an empty
+online slot is visible rather than absent.
+
+The toggle and the paired section both appear when Rain Meadow is on the machine and are left out
+entirely otherwise, so a player who does not use the mod sees one set of saves and no toggle over
+them. Presence is read from the game's own enabled mod list when the game folder is known, and
+otherwise from the save folder, which is enough on its own: `meadow.json`, the mod's Remix config
+and the online saves are written by nothing else.
 
 Rain Meadow records the map you have explored and a progression record whether or not a campaign is
 saved, so an online save can hold 12 KB of real progress with no campaign in it. The panel describes
