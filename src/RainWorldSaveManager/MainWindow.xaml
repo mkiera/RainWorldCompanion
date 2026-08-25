@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:RainWorldSaveManager"
         xmlns:vm="clr-namespace:RainWorldSaveManager.ViewModels"
+        xmlns:behaviors="clr-namespace:RainWorldSaveManager.Views.Behaviors"
         mc:Ignorable="d"
         Title="Rain World Save Manager"
         Height="720" Width="1150" MinHeight="560" MinWidth="900"
@@ -490,6 +491,131 @@
             </Border>
         </DataTemplate>
 
+        <!-- One creature the picker is offering. Clicking one puts it in the chosen stomach. -->
+        <DataTemplate x:Key="CreatureSuggestionTemplate">
+            <Button Content="{Binding DisplayName}" Style="{StaticResource Button.Small}" Margin="0,0,4,4"
+                    ToolTip="{Binding Name}"
+                    Command="{Binding DataContext.AddCreatureCommand,
+                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding Name}" />
+        </DataTemplate>
+
+        <!--
+            One swallowed thing, editable. The read-only panel draws these as a tree, because what
+            a person wants to see is what is inside what. Editing wants the stored order instead:
+            that is the order the record keeps, and it is what dragging a row changes.
+        -->
+        <DataTemplate x:Key="DevourmentEditTemplate">
+            <Border x:Name="Row" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1"
+                    Padding="0,6" Background="Transparent">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <!-- The grip says the row can be dragged. The buttons beside it do the same
+                             job from the keyboard, which a drag cannot. -->
+                        <TextBlock Grid.Column="0" Text="⠿" VerticalAlignment="Center" Margin="0,0,8,0"
+                                   Foreground="{StaticResource Brush.TextMuted}" FontSize="14"
+                                   ToolTip="Drag to move this, or use the arrows." />
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Position}" Style="{StaticResource Text.Tiny}"
+                                           MinWidth="18" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding DisplayName}" Margin="4,0,0,0"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsItem}" Value="True">
+                                                    <Setter Property="FontStyle" Value="Italic" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <TextBlock Style="{StaticResource Text.Tiny}" Margin="22,1,0,0"
+                                       TextTrimming="CharacterEllipsis">
+                                <Run Text="inside " /><Run Text="{Binding PredatorName, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding IsWellFormed, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="State" Style="{StaticResource Text.Tiny}" />
+                                <ComboBox Width="118" Margin="0,2,0,0" IsEditable="True"
+                                          ItemsSource="{Binding StatusChoices}"
+                                          Text="{Binding Status, UpdateSourceTrigger=PropertyChanged}"
+                                          ToolTip="One of the six the mod knows. Anything else stops the save loading." />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Food" Style="{StaticResource Text.Tiny}" />
+                                <TextBox Width="52" Margin="0,2,0,0"
+                                         Text="{Binding Food, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center"
+                                    Visibility="{Binding IsCreature, Converter={StaticResource BoolToVis}}">
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Likes you" Style="{StaticResource Text.Tiny}" />
+                                <TextBox Width="60" Margin="0,2,0,0"
+                                         ToolTip="-1 to 1. Zero takes the whole memory of you away."
+                                         Text="{Binding Likes, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Margin="0,0,8,0">
+                                <TextBlock Text="Knows you" Style="{StaticResource Text.Tiny}" />
+                                <TextBox Width="60" Margin="0,2,0,0"
+                                         Text="{Binding Knows, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <CheckBox Content="Tamed" VerticalAlignment="Bottom" Margin="0,0,8,4"
+                                      ToolTip="On the campaign's friends list, so it stays with you between cycles."
+                                      IsChecked="{Binding IsTamed, Mode=TwoWay}" />
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                            <Button Content="↑" Style="{StaticResource Button.Small}" Margin="0,0,3,0"
+                                    ToolTip="Move up"
+                                    Command="{Binding DataContext.MoveUpCommand,
+                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                            <Button Content="↓" Style="{StaticResource Button.Small}" Margin="0,0,3,0"
+                                    ToolTip="Move down"
+                                    Command="{Binding DataContext.MoveDownCommand,
+                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                            <Button Content="Remove" Style="{StaticResource Button.Small}"
+                                    ToolTip="Takes this out of the stomach. It stays tamed if it was tamed."
+                                    Command="{Binding DataContext.RemoveRowCommand,
+                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Style="{StaticResource Text.Tiny}" Margin="22,3,0,0" TextWrapping="Wrap"
+                               Foreground="{StaticResource Brush.Warn}"
+                               Text="This field is not in a shape this app can read, so it is left exactly as it is."
+                               Visibility="{Binding IsWellFormed, Converter={StaticResource NotBoolToVis}}" />
+                </StackPanel>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding (behaviors:ListDragDropBehavior.IsDropTarget),
+                             RelativeSource={RelativeSource AncestorType=ContentPresenter}}" Value="True">
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource Brush.Selection}" />
+                    <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
         <DataTemplate x:Key="WarningTemplate">
             <TextBlock Text="{Binding}" Style="{StaticResource Text.Body}" TextWrapping="Wrap"
                        Margin="0,0,0,3" Foreground="{StaticResource Brush.Warn}" />
@@ -648,6 +774,58 @@
                             VerticalAlignment="Center"
                             ToolTip="Opens a gate this app does not list, for one added by a mod."
                             Command="{Binding AddGateCommand}" />
+                </StackPanel>
+
+                <DockPanel Margin="0,14,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="SWALLOWED" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding Devourment.CountText}"
+                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center"
+                               Margin="8,0,0,0" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
+                           Text="In the order the record stores them, which is what the mod reads back. Drag a row, or use the arrows, to change it." />
+
+                <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                        Padding="9,0,9,0"
+                        Visibility="{Binding Devourment.HasRows, Converter={StaticResource BoolToVis}}">
+                    <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Devourment.Rows}"
+                                      DataContext="{Binding Devourment}"
+                                      behaviors:ListDragDropBehavior.Move="{Binding}"
+                                      ItemTemplate="{StaticResource DevourmentEditTemplate}" />
+                    </ScrollViewer>
+                </Border>
+
+                <TextBlock Text="This campaign has swallowed nothing. Adding a creature below puts one in."
+                           Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
+                           Visibility="{Binding Devourment.HasRows, Converter={StaticResource NotBoolToVis}}" />
+
+                <StackPanel DataContext="{Binding Devourment}" Margin="0,9,0,0">
+                    <WrapPanel>
+                        <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                            <TextBlock Text="Put a creature inside" Style="{StaticResource Text.Tiny}" />
+                            <ComboBox Width="210" Margin="0,2,0,0"
+                                      ItemsSource="{Binding Predators}"
+                                      SelectedItem="{Binding NewCreaturePredator, Mode=TwoWay}"
+                                      ToolTip="Anything already in this campaign can hold something, and so can you." />
+                        </StackPanel>
+                        <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                            <TextBlock Text="Creature" Style="{StaticResource Text.Tiny}" />
+                            <TextBox Width="180" Margin="0,2,0,0"
+                                     ToolTip="Type a name. Anything can be typed, matched or not."
+                                     Text="{Binding NewCreatureSearch, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <Button Content="Add creature" Style="{StaticResource Button.Small}"
+                                VerticalAlignment="Bottom" Margin="0,0,0,8"
+                                Command="{Binding AddCreatureCommand}" />
+                    </WrapPanel>
+
+                    <ItemsControl ItemsSource="{Binding CreatureMatches}" Margin="0,2,0,0"
+                                  ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}" />
                 </StackPanel>
 
                 <DockPanel Margin="0,14,0,7">

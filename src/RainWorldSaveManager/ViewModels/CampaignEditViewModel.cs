@@ -237,6 +237,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         BuildRawFields();
 
+        Devourment = new DevourmentEditViewModel(session, campaign, denPos, AfterChange);
+
         _loading = false;
 
         RefreshShelterMatches();
@@ -264,6 +266,14 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     /// <summary>Every field, whether the search is showing it or not.</summary>
     public IReadOnlyList<RawFieldRow> RawFields => _rawFields;
+
+    /// <summary>
+    /// What this campaign has swallowed, open for editing.
+    ///
+    /// Built for every campaign, not only the ones carrying Devourment data, because a campaign
+    /// with an empty stomach is exactly the one somebody wants to put something in.
+    /// </summary>
+    public DevourmentEditViewModel Devourment { get; }
 
     public string RawFieldCountText => _rawFields.Count == VisibleRawFields.Count
         ? _rawFields.Count.ToString(CultureInfo.InvariantCulture) + " fields"
@@ -1040,6 +1050,12 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AddHunterCycleWarning();
         AddShelterWarning(DenPos, "Shelter");
         AddShelterWarning(LastDenPos, "Last shelter");
+
+        // The Devourment editor works out its own, and it refreshes them before it calls back here.
+        foreach (string warning in Devourment.Warnings)
+        {
+            Warnings.Add(warning);
+        }
 
         if (_splitNote is not null)
         {

@@ -285,6 +285,31 @@ public sealed class SaveEditSession
     }
 
     /// <summary>
+    /// Replaces a record body, logging the change in the caller's own words.
+    ///
+    /// An edit that spans several fields at once has no key and value to read a line out of, and
+    /// "DEVOURMENTSTATE changed" says nothing a person can check. The caller knows it moved a row
+    /// or renamed a status, so it writes that and this stores it.
+    /// </summary>
+    /// <param name="changeKey">
+    /// What is being changed, so doing it again replaces the line rather than adding one. Two edits
+    /// sharing a key are one line; two edits that are different things need different keys.
+    /// </param>
+    public void ReplaceRecordBody(CampaignRecordRef campaign, string newBody, string changeKey, string note)
+    {
+        if (_changes.TryGetValue(changeKey, out TrackedChange? existing))
+        {
+            existing.Note = note;
+        }
+        else
+        {
+            _changes[changeKey] = new TrackedChange(_changeOrder++, Name(campaign), note);
+        }
+
+        Apply(campaign, newBody);
+    }
+
+    /// <summary>
     /// Everything needed to write this session to disk, with the result checked before anything
     /// is written. A plan with problems is one to report, not one to write.
     /// </summary>
@@ -361,6 +386,14 @@ public sealed class SaveEditSession
             After = after;
         }
 
+        /// <summary>For a change the caller has already put into words.</summary>
+        public TrackedChange(int order, string campaign, string note)
+            : this(order, campaign, "", null, null)
+            => Note = note;
+
+        /// <summary>The caller's own wording, used in place of one built from the value.</summary>
+        public string? Note { get; set; }
+
         public int Order { get; }
 
         public string Campaign { get; }
@@ -371,11 +404,13 @@ public sealed class SaveEditSession
 
         public string? After { get; set; }
 
-        public string Describe() => Before is null
-            ? $"{Campaign}: set {Label} to {After}"
-            : After is null
-                ? $"{Campaign}: removed {Label}"
-                : $"{Campaign}: {Label} {Before} to {After}";
+        public string Describe() => Note is not null
+            ? $"{Campaign}: {Note}"
+            : Before is null
+                ? $"{Campaign}: set {Label} to {After}"
+                : After is null
+                    ? $"{Campaign}: removed {Label}"
+                    : $"{Campaign}: {Label} {Before} to {After}";
     }
 
     private RecordSpan RecordAt(CampaignRecordRef campaign)
