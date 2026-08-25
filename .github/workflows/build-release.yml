@@ -34,6 +34,17 @@ jobs:
           # the installer's AppVersion. Tagging v1.1.0 while the build called itself something
           # else would ship a copy that keeps being offered its own release as an update.
           VERSION=${GITHUB_REF#refs/tags/v}
+
+          # The same grammar SemVer.TryParse accepts, so a tag this step passes is a tag the
+          # shipped updater can read. Without the check, v1.0.1b publishes happily and is then
+          # invisible: it holds no hyphen, so the test below calls it stable, and it fails to
+          # parse, so every client skips it. Better to lose the build than the release.
+          SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?(\+([0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*))?$'
+          if [[ ! "$VERSION" =~ $SEMVER ]]; then
+            echo "::error::Tag v$VERSION is not semantic versioning 2.0, so the updater cannot read it. Stable is three numbers, as in v1.2.0. A pre-release puts its name after a hyphen, as in v1.2.0-beta.1. A trailing letter with no hyphen, as in v1.2.0b, is the one to avoid."
+            exit 1
+          fi
+
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "RELEASE_NAME=v$VERSION" >> $GITHUB_OUTPUT
 
