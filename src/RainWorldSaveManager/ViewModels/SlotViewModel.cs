@@ -24,19 +24,30 @@ public sealed class SlotViewModel
     /// is parsed out of the copy kept under the library's own storage name, so its metadata says
     /// save.bin and only the entry's manifest knows the container it was taken from.
     /// </param>
-    public SlotViewModel(SlotMetadata slot, ISlugcatIconProvider icons, string? fileNameOverride = null)
+    /// <param name="nameRealm">
+    /// Whether the header says which realm this is. True for a panel whose sections are one realm
+    /// at a time, where the realm toggle picks between two files that share a slot number and the
+    /// number alone does not say which one is on screen. False for a library save, which is a single
+    /// section that names the file it came from beside the title.
+    /// </param>
+    public SlotViewModel(
+        SlotMetadata slot,
+        ISlugcatIconProvider icons,
+        string? fileNameOverride = null,
+        bool nameRealm = false)
     {
         Metadata = slot;
         SlotNumber = slot.Slot;
         FileName = string.IsNullOrEmpty(fileNameOverride) ? slot.FileName : fileNameOverride;
         Realm = slot.Realm;
 
-        // No realm in the header. The live folder and a backup keep their online files out of these
-        // sections and put them in the Rain Meadow pair rows, which name both halves, and a library
-        // save names the file it came from beside the title.
+        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp gives online_sav2 the same slot
+        // number as sav2, so the number alone does not say which of the two a header is naming.
+        string prefix = nameRealm && slot.Realm == SaveRealm.Online ? "ONLINE SLOT " : "SLOT ";
+
         NumberText = slot.Slot > 0 ? slot.Slot.ToString(CultureInfo.InvariantCulture) : "?";
         HeaderText = slot.Slot > 0
-            ? "SLOT " + NumberText
+            ? prefix + NumberText
             : (FileName.Length > 0 ? FileName.ToUpperInvariant() : "SLOT");
 
         Campaigns = slot.Campaigns.Select(campaign => new CampaignViewModel(campaign, icons)).ToList();

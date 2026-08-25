@@ -54,6 +54,12 @@ public sealed partial class MainViewModel : ObservableObject
     // rebuilt once, by the outer set, instead of once per property that changes on the way.
     private bool _movingSelection;
 
+    // Which realm the detail panel's slot sections are showing. Kept here rather than read off the
+    // panel each time, because a reload clears the backup list, the list box writes null back into
+    // SelectedBackup as it empties, and the rebuild that follows leaves Detail null. Reading the
+    // realm off a null panel is how a refresh used to drop the user back to the local saves.
+    private bool _showOnline;
+
     private IReadOnlyList<SlotMetadata> _liveSlotData = Array.Empty<SlotMetadata>();
     private long _liveSizeBytes;
     private int _liveFileCount;
@@ -435,6 +441,18 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void RebuildDetail()
     {
+        // Taken from the panel the user was looking at, while there still is one. A rebuild driven
+        // by the list emptying arrives with Detail already null, and this is what carries the realm
+        // over that gap to the rebuild that restores the selection.
+        if (Detail is { } current)
+        {
+            _showOnline = current.ShowOnline;
+        }
+
+        // The realm cannot outlive the mod: the toggle that would put it back is drawn only while
+        // the mod is on the machine.
+        bool keepOnline = _showOnline && _meadow.Present;
+
         // Stamped before the assignment, not after. MeadowInstalled raises no change notification,
         // and ShowMeadowSection is computed from it, so a binding that read it when Detail changed
         // would see the default and never look again, which left the whole block hidden.
@@ -443,6 +461,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             built.MeadowInstalled = _meadow.Present;
             built.MeadowVersionText = MeadowVersionText;
+            built.ShowOnline = keepOnline;
         }
 
         Detail = built;
