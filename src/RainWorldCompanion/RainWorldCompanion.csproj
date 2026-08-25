@@ -21,6 +21,15 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+
+    <!-- Sets the exe's own icon, which is what Explorer, the taskbar and any window that does not
+         name one of its own all pick up. app.ico holds 16 through 256 in one file: Windows chooses
+         a size per surface, and leaving one out means it scales a neighbour and the result looks
+         soft next to everything around it.
+
+         app-icon-source.png is the art it was built from, kept beside it so the ico can be rebuilt
+         without going hunting. Nothing in the build reads the png. -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
 </Project>

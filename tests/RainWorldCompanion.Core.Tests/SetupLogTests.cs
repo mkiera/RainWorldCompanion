@@ -113,6 +113,36 @@ public class SetupLogTests
         Assert.Null(SetupLog.PendingDialog([]));
     }
 
+    /// <summary>
+    /// The opening lines of a log this project's own installer actually wrote, copied out of a run
+    /// of Inno Setup 6.7.3 with the switches the updater passes. The shape is what everything above
+    /// assumes, so it is worth holding one real sample against it: a byte order mark on the first
+    /// line, a timestamp and three spaces, and CRLF endings.
+    /// </summary>
+    [Fact]
+    public void A_log_this_installer_really_wrote_reads_as_ordinary_progress()
+    {
+        string[] lines =
+        [
+            "﻿2026-08-25 09:07:52.244   Log opened. (Time zone: UTC-06:00)",
+            "2026-08-25 09:07:52.244   Setup version: Inno Setup version 6.7.3",
+            "2026-08-25 09:07:52.244   Setup command line: /SL5=\"$F50202\" /SILENT /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS /LOG=update.log",
+            "2026-08-25 09:07:52.244   Windows version: 10.0.26100",
+            "2026-08-25 09:07:52.710   Starting the installation process.",
+            "2026-08-25 09:07:57.480   Type: Exec",
+            "2026-08-25 09:07:57.533   Need to restart Windows? No",
+            "2026-08-25 09:07:57.596   Log closed.",
+        ];
+
+        var messages = SetupLog.ReadMessages(lines);
+
+        Assert.Equal(lines.Length, messages.Count);
+        Assert.Equal("Log opened. (Time zone: UTC-06:00)", messages[0]);
+        Assert.Equal("Starting the installation process.", messages[4]);
+        // Nothing was asked, so the app is clear to close and let Setup replace its files.
+        Assert.Null(SetupLog.PendingDialog(messages));
+    }
+
     [Fact]
     public void Every_documented_exit_code_has_a_sentence_and_only_zero_is_success()
     {
