@@ -38,6 +38,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _current = current;
         gameSavePath = current.GameSavePath ?? "";
         backupRootPath = current.BackupRootPath ?? "";
+        libraryRootPath = current.LibraryRootPath ?? "";
         gameInstallPath = current.GameInstallPath ?? "";
         introMessage = reason ?? "";
         Revalidate();
@@ -60,6 +61,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string backupRootPath;
+
+    /// <summary>
+    /// Where the named save library lives. Checked against both of the other folders for the same
+    /// reason they are checked against each other: nothing this app writes to may sit inside
+    /// anything else it writes to.
+    /// </summary>
+    [ObservableProperty]
+    private string libraryRootPath;
 
     /// <summary>
     /// Where Rain World is installed. Only the slugcat portraits are read from it, so a blank or
@@ -106,6 +115,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     partial void OnBackupRootPathChanged(string value) => Revalidate();
 
+    partial void OnLibraryRootPathChanged(string value) => Revalidate();
+
     partial void OnGameInstallPathChanged(string value) => _ = CheckInstallAsync(value, debounce: true);
 
     [RelayCommand]
@@ -127,6 +138,19 @@ public sealed partial class SettingsViewModel : ObservableObject
             BackupRootPath = picked;
         }
     }
+
+    [RelayCommand]
+    private async Task BrowseLibraryRootAsync()
+    {
+        var picked = await PickFolderAsync("Select the folder that will hold the save library", LibraryRootPath);
+        if (picked is not null)
+        {
+            LibraryRootPath = picked;
+        }
+    }
+
+    [RelayCommand]
+    private void UseDefaultLibraryRoot() => LibraryRootPath = AppSettings.DefaultLibraryRootPath;
 
     [RelayCommand(CanExecute = nameof(CanAutoDetect))]
     private async Task AutoDetectAsync()
@@ -296,6 +320,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             SchemaVersion = _current.SchemaVersion,
             GameSavePath = GameSavePath.Trim(),
             BackupRootPath = BackupRootPath.Trim(),
+            LibraryRootPath = LibraryRootPath.Trim(),
             GameInstallPath = installPath.Length == 0 ? null : installPath,
         };
 
@@ -333,8 +358,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         var savePath = GameSavePath.Trim();
         var backupRoot = BackupRootPath.Trim();
+        var libraryRoot = LibraryRootPath.Trim();
 
-        var problem = SettingsValidation.ValidateText(savePath, backupRoot);
+        var problem = SettingsValidation.ValidateText(savePath, backupRoot, libraryRoot);
         if (problem is not null)
         {
             // Moves the version on, so any full check already running is discarded.
@@ -347,14 +373,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         ValidationMessage = "";
         IsValid = false;
-        _ = ValidateFullAsync(savePath, backupRoot);
+        _ = ValidateFullAsync(savePath, backupRoot, libraryRoot);
     }
 
     /// <summary>
     /// The half of validation that touches disk, off the dispatcher. A stale result is dropped
-    /// when either path has moved on.
+    /// when any path has moved on.
     /// </summary>
-    private async Task ValidateFullAsync(string savePath, string backupRoot)
+    private async Task ValidateFullAsync(string savePath, string backupRoot, string libraryRoot)
     {
         var version = ++_validationVersion;
 
@@ -362,7 +388,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             try
             {
-                return SettingsValidation.Validate(savePath, backupRoot);
+                return SettingsValidation.Validate(savePath, backupRoot, libraryRoot);
             }
             catch (Exception ex)
             {

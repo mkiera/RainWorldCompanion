@@ -6,7 +6,9 @@ using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Library;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
 using RainWorldSaveManager.Core.Settings;
@@ -40,6 +42,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Built beside the backup service, because it borrows that service's safety snapshot.</summary>
     private SlotCopyService? _copyService;
+
+    /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
+    private SaveLibrary? _library;
 
     // 1 while a poll is running. Interlocked because the poll's own continuation clears it on a
     // worker thread while the timer tick sets it on the dispatcher.
@@ -99,6 +104,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<BackupItemViewModel> Backups { get; } = new();
 
+    /// <summary>The named saves, newest first. The other half of the list column.</summary>
+    public ObservableCollection<LibraryEntryViewModel> LibraryEntries { get; } = new();
+
     // The banner is not enough on its own. Without these, Restore stays enabled while the game
     // is open and the user is walked all the way through the destructive confirmation before
     // Core refuses the job.
@@ -106,6 +114,9 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(NewBackupCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     private bool isGameRunning;
 
     [ObservableProperty]
@@ -119,6 +130,13 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UndoUpdateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RenameEntryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ImportSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -132,6 +150,31 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     private BackupItemViewModel? selectedBackup;
+
+    /// <summary>The library row that is selected, or null. The third of the three selections.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UndoUpdateCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RenameEntryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
+    private LibraryEntryViewModel? selectedLibraryEntry;
+
+    /// <summary>
+    /// Which of the two lists the column is showing. Only a view state: switching tabs moves no
+    /// selection, so a backup stays selected while the library is on screen and the detail panel
+    /// keeps showing it.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsBackupsTabSelected))]
+    private bool isLibraryTabSelected;
+
+    public bool IsBackupsTabSelected
+    {
+        get => !IsLibraryTabSelected;
+        set => IsLibraryTabSelected = !value;
+    }
 
     /// <summary>
     /// True when the live save card is the selection. It and <see cref="SelectedBackup"/> are two
@@ -153,6 +196,9 @@ public sealed partial class MainViewModel : ObservableObject
     private string backupRootText = "";
 
     [ObservableProperty]
+    private string libraryRootText = "";
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasConfigProblem))]
     private string configProblem = "";
 
@@ -165,6 +211,12 @@ public sealed partial class MainViewModel : ObservableObject
     public bool HasBackups => Backups.Count > 0;
 
     public bool HasNoBackups => Backups.Count == 0;
+
+    public bool HasLibraryEntries => LibraryEntries.Count > 0;
+
+    public bool HasNoLibraryEntries => LibraryEntries.Count == 0;
+
+    public string LibraryCountText => LibraryEntries.Count == 1 ? "1 save" : LibraryEntries.Count + " saves";
 
     public bool HasDetail => Detail is not null;
 
@@ -307,6 +359,9 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void SelectLive() => IsLiveSelected = true;
 
+    // The three selections are one selection wearing three hats: the live card, a backup row and a
+    // library row. Picking any of them clears the other two, and _movingSelection is what keeps the
+    // clearing from rebuilding the detail panel once per property on the way through.
     partial void OnIsLiveSelectedChanged(bool value)
     {
         if (_movingSelection)
@@ -320,6 +375,7 @@ public sealed partial class MainViewModel : ObservableObject
             if (value)
             {
                 SelectedBackup = null;
+                SelectedLibraryEntry = null;
             }
         }
         finally
@@ -343,6 +399,31 @@ public sealed partial class MainViewModel : ObservableObject
             if (value is not null)
             {
                 IsLiveSelected = false;
+                SelectedLibraryEntry = null;
+            }
+        }
+        finally
+        {
+            _movingSelection = false;
+        }
+
+        RebuildDetail();
+    }
+
+    partial void OnSelectedLibraryEntryChanged(LibraryEntryViewModel? value)
+    {
+        if (_movingSelection)
+        {
+            return;
+        }
+
+        _movingSelection = true;
+        try
+        {
+            if (value is not null)
+            {
+                IsLiveSelected = false;
+                SelectedBackup = null;
             }
         }
         finally
@@ -372,13 +453,13 @@ public sealed partial class MainViewModel : ObservableObject
         // the mod is on the machine.
         bool keepOnline = _showOnline && _meadow.Present;
 
-        // Stamped before the assignment, not after. ShowMeadowSection raises no change
-        // notification, so a binding that reads it when Detail changes would see the default and
-        // never look again, which left the whole Rain Meadow block hidden.
+        // Stamped before the assignment, not after. MeadowInstalled raises no change notification,
+        // and ShowMeadowSection is computed from it, so a binding that read it when Detail changed
+        // would see the default and never look again, which left the whole block hidden.
         SnapshotDetailViewModel? built = BuildDetail();
         if (built is not null)
         {
-            built.ShowMeadowSection = _meadow.Present;
+            built.MeadowInstalled = _meadow.Present;
             built.MeadowVersionText = MeadowVersionText;
             built.ShowOnline = keepOnline;
         }
@@ -397,6 +478,11 @@ public sealed partial class MainViewModel : ObservableObject
                 _liveFileCount,
                 _liveMeadow,
                 _icons);
+        }
+
+        if (SelectedLibraryEntry is { } entry)
+        {
+            return SnapshotDetailViewModel.ForLibraryEntry(entry, _icons);
         }
 
         return SelectedBackup is { } item
@@ -508,6 +594,591 @@ public sealed partial class MainViewModel : ObservableObject
         _meadow.Present
             ? (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Online, 1))
             : (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Local, 2));
+
+    /// <summary>
+    /// Keeps a copy of one live slot in the library under a name. Nothing in the save folder is
+    /// written, so there is no safety snapshot and no confirmation beyond the dialog itself.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanStoreSlot))]
+    private async Task StoreSlotAsync()
+    {
+        var library = _library;
+        var copies = _copyService;
+        if (library is null || copies is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        IReadOnlyList<SlotSide> sides;
+        Exception? failure = null;
+
+        BeginBusy("Store a slot", "Reading the save folder");
+        try
+        {
+            sides = await Task.Run(() => ReadStorableSides(copies, _meadow.Present));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+            sides = Array.Empty<SlotSide>();
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The save folder could not be read.", failure);
+            return;
+        }
+
+        if (sides.Count == 0)
+        {
+            ShowMessage("There are no save slots to store.", "Store a slot", MessageBoxImage.Warning);
+            return;
+        }
+
+        var dialog = new StoreSlotDialog(sides, FirstSlotWithASave(sides));
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var source = dialog.ChosenSource;
+        var name = dialog.ChosenName;
+        var note = dialog.ChosenNote;
+        var progress = new Progress<string>(message => BusyMessage = message);
+
+        LibraryEntry? stored = null;
+
+        BeginBusy("Storing " + source.FileName, name);
+        try
+        {
+            stored = await Task.Run(() => library.StoreSlot(source, name, note, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The slot could not be stored.", failure);
+            return;
+        }
+
+        ShowLibrarySave(stored!.Id);
+    }
+
+    private bool CanStoreSlot() => !IsBusy && !IsGameRunning && _library is not null && _copyService is not null;
+
+    /// <summary>
+    /// Writes a library save over a live slot. Both ends are picked in the dialog, and the load runs
+    /// the same ladder a slot copy runs, so the slot it replaces is in a safety snapshot first.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanLoadSave))]
+    private async Task LoadSaveAsync()
+    {
+        var library = _library;
+        if (library is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        var entries = LibraryEntries.Where(item => item.IsComplete).Select(item => item.Entry).ToList();
+        if (entries.Count == 0)
+        {
+            ShowMessage("There are no library saves to load.", "Load a library save", MessageBoxImage.Warning);
+            return;
+        }
+
+        var entry = entries.FirstOrDefault(
+            item => string.Equals(item.Id, SelectedLibraryEntry?.Id, StringComparison.OrdinalIgnoreCase))
+            ?? entries[0];
+
+        var target = entry.Manifest?.LastLoadedSlotRef ?? new SaveSlotRef(SaveRealm.Local, 1);
+
+        LibraryLoadPlan? plan = null;
+        Exception? failure = null;
+
+        BeginBusy("Load a library save", "Working out what would change");
+        try
+        {
+            plan = await Task.Run(() => library.PlanLoad(entry, target));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The load could not be worked out.", failure);
+            return;
+        }
+
+        // A plan that cannot run still opens the dialog, for the reason Copy Slot does: the pair
+        // here is only where the pickers start.
+        var dialog = new LoadSaveDialog(entries, plan!, library.PlanLoad, _meadow.Present);
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var chosen = dialog.ChosenEntry;
+        var chosenTarget = dialog.ChosenTarget;
+        var progress = new Progress<string>(message => BusyMessage = message);
+
+        LibraryLoadResult? result = null;
+
+        BeginBusy("Loading " + chosen.Name, "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(() => library.LoadEntry(chosen, chosenTarget, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The load failed.", failure);
+            return;
+        }
+
+        ReportLoadResult(result!);
+    }
+
+    private bool CanLoadSave() =>
+        !IsBusy && !IsGameRunning && _library is not null && LibraryEntries.Any(item => item.IsComplete);
+
+    /// <summary>
+    /// Writes what is in a slot now back over the library save it came from, which is how an hour of
+    /// play gets back into the entry. The bytes being replaced are kept, so this can be undone.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanUpdateEntry))]
+    private async Task UpdateEntryAsync()
+    {
+        var library = _library;
+        var copies = _copyService;
+        var item = SelectedLibraryEntry;
+        if (library is null || copies is null || item is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        // The slot this save was last loaded into is the one the user played, so that is what an
+        // update means. Without a load on record there is nothing to guess from and the whole
+        // dialog is a better place to ask.
+        var source = item.Entry.Manifest?.LastLoadedSlotRef;
+        if (source is null)
+        {
+            ShowMessage(
+                "This save has not been loaded into a slot yet, so there is nothing to update it from.\n\n" +
+                "Load it into a slot first, or use Store Slot to keep a slot as a new library save.",
+                "Update a library save",
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var side = await Task.Run(() => copies.ReadSide(source));
+
+        if (!side.Exists)
+        {
+            ShowMessage(
+                source.FileName + " is not in the save folder, so there is nothing to update from.",
+                "Update a library save",
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var confirm = AskYesNo(
+            "Replace \"" + item.Name + "\" with what is in " + source.FileName + " now?\n\n" +
+            source.FileName + ": " + side.Describe() + "\n" +
+            "Stored now: " + item.CampaignCountText + ", " + item.SizeText + "\n\n" +
+            "The save being replaced is kept, so this can be undone.",
+            "Update a library save");
+        if (!confirm)
+        {
+            return;
+        }
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        Exception? failure = null;
+
+        BeginBusy("Updating " + item.Name, "From " + source.FileName);
+        try
+        {
+            await Task.Run(() => library.UpdateEntry(item.Entry, source, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        var id = item.Id;
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The library save could not be updated.", failure);
+            return;
+        }
+
+        ShowLibrarySave(id);
+    }
+
+    private bool CanUpdateEntry() =>
+        !IsBusy && !IsGameRunning && _library is not null && SelectedLibraryEntry is { IsComplete: true };
+
+    /// <summary>Puts back the save the last update replaced.</summary>
+    [RelayCommand(CanExecute = nameof(CanUndoUpdate))]
+    private async Task UndoUpdateAsync()
+    {
+        var library = _library;
+        var item = SelectedLibraryEntry;
+        if (library is null || item is null || IsBusy)
+        {
+            return;
+        }
+
+        var confirm = AskYesNo(
+            "Go back to the save \"" + item.Name + "\" held before it was last updated?\n\n" +
+            "What is stored now is discarded.",
+            "Undo an update");
+        if (!confirm)
+        {
+            return;
+        }
+
+        Exception? failure = null;
+
+        BeginBusy("Undoing the update", item.Name);
+        try
+        {
+            await Task.Run(() => library.UndoUpdate(item.Entry));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        var id = item.Id;
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The update could not be undone.", failure);
+            return;
+        }
+
+        ShowLibrarySave(id);
+    }
+
+    private bool CanUndoUpdate() =>
+        !IsBusy && _library is not null && SelectedLibraryEntry is { CanUndoUpdate: true };
+
+    /// <summary>Changes the name and the note. The stored save is not touched.</summary>
+    [RelayCommand(CanExecute = nameof(CanRenameEntry))]
+    private async Task RenameEntryAsync()
+    {
+        var library = _library;
+        var item = SelectedLibraryEntry;
+        if (library is null || item is null || IsBusy)
+        {
+            return;
+        }
+
+        var dialog = new RenameEntryDialog(item.Name, item.NoteText);
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var name = dialog.EntryName;
+        var note = dialog.EntryNote;
+        Exception? failure = null;
+
+        try
+        {
+            await Task.Run(() => library.RenameEntry(item.Entry, name, note));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+
+        var id = item.Id;
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The library save could not be renamed.", failure);
+            return;
+        }
+
+        ShowLibrarySave(id);
+    }
+
+    private bool CanRenameEntry() =>
+        !IsBusy && _library is not null && SelectedLibraryEntry is { IsComplete: true };
+
+    /// <summary>Writes the selected save out as a single .rwsave file.</summary>
+    [RelayCommand(CanExecute = nameof(CanExportSave))]
+    private async Task ExportSaveAsync()
+    {
+        var library = _library;
+        var item = SelectedLibraryEntry;
+        if (library is null || item is null || IsBusy)
+        {
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export a library save",
+            Filter = "Rain World save bundle (*.rwsave)|*.rwsave|All files (*.*)|*.*",
+            DefaultExt = ".rwsave",
+            AddExtension = true,
+            FileName = SafeFileName(item.Name) + ".rwsave",
+        };
+
+        if (dialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        var destination = dialog.FileName;
+        Exception? failure = null;
+
+        BeginBusy("Exporting " + item.Name, destination);
+        try
+        {
+            await Task.Run(() => library.ExportEntry(item.Entry, destination));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The save could not be exported.", failure);
+            return;
+        }
+
+        ShowMessage(
+            "Exported \"" + item.Name + "\" to:\n" + destination +
+            "\n\nThe file holds the save and the name, the note and the campaigns beside it.",
+            "Export a library save",
+            MessageBoxImage.Information);
+    }
+
+    private bool CanExportSave() =>
+        !IsBusy && _library is not null && SelectedLibraryEntry is { IsComplete: true };
+
+    /// <summary>
+    /// Reads a .rwsave bundle, or a bare save file, into a new library save. An import never writes
+    /// into the save folder, so a file from somewhere else reaches a live slot only by being loaded.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanImportSave))]
+    private async Task ImportSaveAsync()
+    {
+        var library = _library;
+        if (library is null || IsBusy)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import a save into the library",
+            Filter = "Rain World saves (*.rwsave, sav, online_sav)|*.rwsave;sav;sav2;sav3;online_sav;online_sav2;online_sav3"
+                + "|Rain World save bundle (*.rwsave)|*.rwsave"
+                + "|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+
+        if (dialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        var source = dialog.FileName;
+        LibraryImportResult? result = null;
+        Exception? failure = null;
+
+        BeginBusy("Importing", source);
+        try
+        {
+            result = await Task.Run(() => library.ImportFile(source));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The file could not be imported.", failure);
+            return;
+        }
+
+        if (!result!.Success)
+        {
+            ShowMessage(
+                "This file was not imported.\n\n" + FormatList(result.Errors),
+                "Import a save",
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        ShowLibrarySave(result.Entry!.Id);
+
+        if (result.Warnings.Count > 0)
+        {
+            ShowMessage(
+                "Imported \"" + result.Entry.Name + "\".\n\nNotes:\n" + FormatList(result.Warnings),
+                "Import a save",
+                MessageBoxImage.Information);
+        }
+    }
+
+    private bool CanImportSave() => !IsBusy && _library is not null;
+
+    /// <summary>
+    /// Reports a finished load. The headline is built by Core, so a load that wrote to the save
+    /// folder can never be reported with the same wording as one that refused to start.
+    /// </summary>
+    private void ReportLoadResult(LibraryLoadResult result)
+    {
+        var text = new StringBuilder();
+        text.Append(result.Headline()).Append("\n\n");
+
+        if (result.Success)
+        {
+            if (result.SafetySnapshot is { } safety)
+            {
+                text.Append("Safety snapshot of your previous saves: ").Append(safety.Id).Append("\n\n");
+            }
+
+            text.Append(SteamGuidance);
+
+            if (result.Warnings.Count > 0)
+            {
+                text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+            }
+
+            ShowMessage(text.ToString(), "Load a library save", MessageBoxImage.Information);
+            return;
+        }
+
+        text.Append(FormatList(result.Errors));
+
+        if (result.Warnings.Count > 0)
+        {
+            text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+        }
+
+        ShowMessage(text.ToString(), "Load a library save", MessageBoxImage.Error);
+    }
+
+    /// <summary>Shows the library tab with one save selected, after storing or importing it.</summary>
+    private void ShowLibrarySave(string id)
+    {
+        IsLibraryTabSelected = true;
+
+        var match = LibraryEntries.FirstOrDefault(
+            item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            SelectedLibraryEntry = match;
+        }
+    }
+
+    /// <summary>
+    /// The slots the store dialog offers. Online slots only when Rain Meadow is on the machine,
+    /// because without it those files are written by nothing.
+    /// </summary>
+    private static IReadOnlyList<SlotSide> ReadStorableSides(SlotCopyService copies, bool includeOnline)
+    {
+        var sides = new List<SlotSide>(SaveSlotRef.MaxSlot * 2);
+        sides.AddRange(copies.ReadSlots(SaveRealm.Local));
+
+        if (includeOnline)
+        {
+            sides.AddRange(copies.ReadSlots(SaveRealm.Online));
+        }
+
+        return sides;
+    }
+
+    private static SaveSlotRef FirstSlotWithASave(IReadOnlyList<SlotSide> sides)
+    {
+        foreach (var side in sides)
+        {
+            if (side.Exists)
+            {
+                return new SaveSlotRef(side.Realm, side.Slot);
+            }
+        }
+
+        return new SaveSlotRef(sides[0].Realm, sides[0].Slot);
+    }
+
+    /// <summary>
+    /// Turns a user's name into something a file dialog can start on. This is the one place a name
+    /// touches a path, and the user still picks the final one in the dialog.
+    /// </summary>
+    private static string SafeFileName(string name)
+    {
+        var cleaned = new StringBuilder(name.Length);
+
+        foreach (var character in name.Trim())
+        {
+            cleaned.Append(Array.IndexOf(Path.GetInvalidFileNameChars(), character) >= 0 ? '_' : character);
+        }
+
+        var result = cleaned.ToString().Trim('.', ' ');
+        return result.Length == 0 ? "library save" : result;
+    }
 
     /// <summary>
     /// Reports a finished copy. The headline is built by Core, so a copy that wrote to the save
@@ -677,12 +1348,12 @@ public sealed partial class MainViewModel : ObservableObject
         !IsBusy && !IsGameRunning && _backupService is not null && SelectedBackup is { CanRestore: true };
 
     /// <summary>
-    /// Re-hashes every listed snapshot against its own manifest, in the background, so the state
-    /// column is answered without the user having to ask. It runs one at a time off the UI thread
-    /// and updates each row as it finishes, so a long list fills in rather than blocking.
+    /// Re-hashes every listed snapshot and library save against its own manifest, in the background,
+    /// so the state column is answered without the user having to ask. It runs one at a time off the
+    /// UI thread and updates each row as it finishes, so a long list fills in rather than blocking.
     ///
-    /// A restore still verifies for itself immediately beforehand. This is about telling the user
-    /// which of their backups is sound before they need one, not about gating the restore.
+    /// A restore and a load both check for themselves immediately beforehand. This is about telling
+    /// the user which of their saves is sound before they need one, not about gating anything.
     /// </summary>
     private async Task VerifyAllAsync(CancellationToken token)
     {
@@ -692,7 +1363,7 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Copied first: the collection is rebuilt on the UI thread by a refresh, and iterating the
+        // Copied first: the collections are rebuilt on the UI thread by a refresh, and iterating a
         // live one across an await would throw when that happens.
         var pending = Backups.Where(item => item.CanRestore && item.VerifiedOk is null).ToList();
 
@@ -726,20 +1397,57 @@ public sealed partial class MainViewModel : ObservableObject
 
             item.VerifiedOk = ok;
         }
+
+        var library = _library;
+        if (library is null)
+        {
+            return;
+        }
+
+        var pendingEntries = LibraryEntries.Where(item => item.IsComplete && item.VerifiedOk is null).ToList();
+
+        foreach (LibraryEntryViewModel item in pendingEntries)
+        {
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            bool ok;
+            try
+            {
+                ok = await Task.Run(() => library.VerifyEntry(item.Entry).Ok, token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                continue;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            item.VerifiedOk = ok;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanUseSelection))]
     private void OpenFolder()
     {
-        var item = SelectedBackup;
-        if (item is null)
+        var folder = SelectedLibraryEntry?.Entry.DirectoryPath ?? SelectedBackup?.Snapshot.DirectoryPath;
+        if (folder is null)
         {
             return;
         }
 
         try
         {
-            var info = new ProcessStartInfo("explorer.exe", "\"" + item.Snapshot.DirectoryPath + "\"")
+            var info = new ProcessStartInfo("explorer.exe", "\"" + folder + "\"")
             {
                 UseShellExecute = true,
             };
@@ -747,13 +1455,23 @@ public sealed partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            Report("The snapshot folder could not be opened.", ex);
+            Report("The folder could not be opened.", ex);
         }
     }
 
+    /// <summary>
+    /// Deletes whichever of the two lists has the selection. The wording says which kind of thing is
+    /// going, because a backup and a library save are worth very different amounts to a user.
+    /// </summary>
     [RelayCommand(CanExecute = nameof(CanUseSelection))]
     private async Task DeleteAsync()
     {
+        if (SelectedLibraryEntry is not null)
+        {
+            await DeleteLibraryEntryAsync();
+            return;
+        }
+
         var service = _backupService;
         var item = SelectedBackup;
         if (service is null || item is null)
@@ -793,7 +1511,51 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private bool CanUseSelection() => !IsBusy && _backupService is not null && SelectedBackup is not null;
+    private async Task DeleteLibraryEntryAsync()
+    {
+        var library = _library;
+        var item = SelectedLibraryEntry;
+        if (library is null || item is null)
+        {
+            return;
+        }
+
+        var confirm = AskYesNo(
+            "Delete this library save for good?\n\n" + item.Name + "\n" + item.CampaignCountText + "   " + item.SizeText +
+            "\nFolder: " + item.Id +
+            "\n\nThe live save slots are not changed.",
+            "Delete library save");
+        if (!confirm)
+        {
+            return;
+        }
+
+        Exception? failure = null;
+
+        BeginBusy("Deleting library save", item.Name);
+        try
+        {
+            await Task.Run(() => library.DeleteEntry(item.Entry));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The library save could not be deleted.", failure);
+        }
+    }
+
+    private bool CanUseSelection() =>
+        !IsBusy && _backupService is not null && (SelectedBackup is not null || SelectedLibraryEntry is not null);
 
     [RelayCommand(CanExecute = nameof(CanOpenSettings))]
     private async Task OpenSettingsAsync() => await ShowSettingsAsync(null);
@@ -837,6 +1599,11 @@ public sealed partial class MainViewModel : ObservableObject
         {
             _settings.BackupRootPath = AppSettings.DefaultBackupRootPath;
         }
+
+        if (string.IsNullOrWhiteSpace(_settings.LibraryRootPath))
+        {
+            _settings.LibraryRootPath = AppSettings.DefaultLibraryRootPath;
+        }
     }
 
     /// <summary>
@@ -850,8 +1617,10 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var savePath = _settings.GameSavePath ?? "";
         var backupRoot = _settings.BackupRootPath ?? "";
+        var libraryRoot = _settings.LibraryRootPath ?? "";
         SavePathText = savePath.Length == 0 ? "not set" : savePath;
         BackupRootText = backupRoot.Length == 0 ? "not set" : backupRoot;
+        LibraryRootText = libraryRoot.Length == 0 ? "not set" : libraryRoot;
 
         var ownsBusy = !IsBusy;
         if (ownsBusy)
@@ -861,7 +1630,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         try
         {
-            await ApplySettingsCoreAsync(savePath, backupRoot);
+            await ApplySettingsCoreAsync(savePath, backupRoot, libraryRoot);
         }
         finally
         {
@@ -872,14 +1641,14 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    private async Task ApplySettingsCoreAsync(string savePath, string backupRoot)
+    private async Task ApplySettingsCoreAsync(string savePath, string backupRoot, string libraryRoot)
     {
         // The install path only feeds the portraits, so it is never validated and never blocks
         // anything here. Probing it still touches disk, so it goes on the worker with the rest.
         var installPath = _settings.GameInstallPath;
         await Task.Run(() => _icons.UseInstall(installPath));
 
-        var problem = await Task.Run(() => SettingsValidation.Validate(savePath, backupRoot));
+        var problem = await Task.Run(() => SettingsValidation.Validate(savePath, backupRoot, libraryRoot));
         if (problem is not null)
         {
             _backupService = null;
@@ -912,6 +1681,33 @@ public sealed partial class MainViewModel : ObservableObject
         // a folder the app cannot back up is also a folder it will not copy a slot inside.
         _copyService = _backupService?.SlotCopies;
 
+        // The library borrows the backup service's safety snapshot for its loads, so it goes the
+        // same way: no backup service, no library.
+        _library = null;
+        if (_backupService is { } backups)
+        {
+            var built = await Task.Run<(SaveLibrary? Library, string? Error)>(() =>
+            {
+                try
+                {
+                    return (new SaveLibrary(backups, libraryRoot, _gameDetector, _appVersion), null);
+                }
+                catch (Exception ex)
+                {
+                    return (null, ex.Message);
+                }
+            });
+
+            _library = built.Library;
+
+            // Reported without taking the backup service down with it. A library path that will not
+            // work costs the library tab, and backing up and restoring still matter more.
+            if (built.Error is not null && ConfigProblem.Length == 0)
+            {
+                ConfigProblem = "The library folder could not be used: " + built.Error;
+            }
+        }
+
         RaiseCommandStates();
     }
 
@@ -930,7 +1726,9 @@ public sealed partial class MainViewModel : ObservableObject
     private async Task ReloadAsync()
     {
         var service = _backupService;
+        var library = _library;
         var keepId = SelectedBackup?.Id;
+        var keepEntryId = SelectedLibraryEntry?.Id;
         var keepLive = IsLiveSelected;
 
         if (service is null)
@@ -942,7 +1740,9 @@ public sealed partial class MainViewModel : ObservableObject
             _backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
             LiveSlots.Clear();
             Backups.Clear();
+            LibraryEntries.Clear();
             SelectedBackup = null;
+            SelectedLibraryEntry = null;
             IsLiveSelected = false;
             Detail = null;
             RaiseListStates();
@@ -966,8 +1766,9 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 var slots = service.ReadLiveSlots();
                 var snapshots = service.ListBackups();
+                var entries = library?.ListEntries() ?? Array.Empty<LibraryEntry>();
                 var measured = MeasureLiveFiles(service.SaveRoot, slots);
-                _icons.Preload(CollectSlugcatIds(slots, snapshots));
+                _icons.Preload(CollectSlugcatIds(slots, snapshots, entries));
 
                 // One small json per folder, read here with the rest of the disk work so that
                 // selecting a row still costs nothing. ListBackups has already read a manifest out
@@ -986,7 +1787,7 @@ public sealed partial class MainViewModel : ObservableObject
                 // the worker with the rest of the disk work rather than on the dispatcher.
                 var meadow = RainMeadowDetector.Detect(service.SaveRoot, _settings.GameInstallPath);
 
-                return (Slots: slots, Snapshots: snapshots, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow);
+                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow);
             });
 
             _meadow = data.Meadow;
@@ -1017,7 +1818,13 @@ public sealed partial class MainViewModel : ObservableObject
                 Backups.Add(new BackupItemViewModel(snapshot, _icons));
             }
 
-            RestoreSelection(keepId, keepLive);
+            LibraryEntries.Clear();
+            foreach (var entry in data.Entries)
+            {
+                LibraryEntries.Add(new LibraryEntryViewModel(entry, _icons, service.SaveRoot));
+            }
+
+            RestoreSelection(keepId, keepEntryId, keepLive);
         }
         catch (Exception ex)
         {
@@ -1071,19 +1878,30 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Puts the selection back where it was after a refresh. The backup that was selected wins if
-    /// it is still there; otherwise the newest one; and with no backups at all the live save card
-    /// takes the selection so the panel is never blank.
+    /// Puts the selection back where it was after a refresh. Whatever was selected wins if it is
+    /// still there; otherwise the newest backup; and with nothing at all the live save card takes
+    /// the selection so the panel is never blank.
     /// </summary>
-    private void RestoreSelection(string? keepId, bool keepLive)
+    private void RestoreSelection(string? keepId, string? keepEntryId, bool keepLive)
     {
-        var restored = keepLive ? null : FindById(keepId) ?? Backups.FirstOrDefault();
+        LibraryEntryViewModel? entry = null;
+        BackupItemViewModel? backup = null;
+
+        if (!keepLive)
+        {
+            entry = FindEntryById(keepEntryId);
+            if (entry is null)
+            {
+                backup = FindById(keepId) ?? (keepEntryId is null ? Backups.FirstOrDefault() : null);
+            }
+        }
 
         _movingSelection = true;
         try
         {
-            IsLiveSelected = restored is null;
-            SelectedBackup = restored;
+            IsLiveSelected = entry is null && backup is null;
+            SelectedBackup = backup;
+            SelectedLibraryEntry = entry;
         }
         finally
         {
@@ -1092,6 +1910,11 @@ public sealed partial class MainViewModel : ObservableObject
 
         RebuildDetail();
     }
+
+    private LibraryEntryViewModel? FindEntryById(string? id) =>
+        id is null
+            ? null
+            : LibraryEntries.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// Size and count of the save files behind the live slots. Runs on the worker with the rest
@@ -1154,7 +1977,8 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private static IEnumerable<string> CollectSlugcatIds(
         IReadOnlyList<SlotMetadata> liveSlots,
-        IReadOnlyList<BackupSnapshot> snapshots)
+        IReadOnlyList<BackupSnapshot> snapshots,
+        IReadOnlyList<LibraryEntry> entries)
     {
         foreach (var slot in liveSlots)
         {
@@ -1178,6 +2002,19 @@ public sealed partial class MainViewModel : ObservableObject
                 {
                     yield return campaign.SlugcatId;
                 }
+            }
+        }
+
+        foreach (var entry in entries)
+        {
+            if (entry.Manifest?.Metadata is not { } metadata)
+            {
+                continue;
+            }
+
+            foreach (var campaign in metadata.Campaigns)
+            {
+                yield return campaign.SlugcatId;
             }
         }
     }
@@ -1293,6 +2130,13 @@ public sealed partial class MainViewModel : ObservableObject
         DeleteCommand.NotifyCanExecuteChanged();
         OpenSettingsCommand.NotifyCanExecuteChanged();
         CopySlotCommand.NotifyCanExecuteChanged();
+        StoreSlotCommand.NotifyCanExecuteChanged();
+        LoadSaveCommand.NotifyCanExecuteChanged();
+        UpdateEntryCommand.NotifyCanExecuteChanged();
+        UndoUpdateCommand.NotifyCanExecuteChanged();
+        RenameEntryCommand.NotifyCanExecuteChanged();
+        ImportSaveCommand.NotifyCanExecuteChanged();
+        ExportSaveCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()
@@ -1302,9 +2146,16 @@ public sealed partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(HasBackups));
         OnPropertyChanged(nameof(HasNoBackups));
         OnPropertyChanged(nameof(BackupCountText));
+        OnPropertyChanged(nameof(HasLibraryEntries));
+        OnPropertyChanged(nameof(HasNoLibraryEntries));
+        OnPropertyChanged(nameof(LibraryCountText));
         OnPropertyChanged(nameof(LiveSummaryText));
         OnPropertyChanged(nameof(LiveOnlineText));
         OnPropertyChanged(nameof(LiveAccessibleName));
+
+        // The library list decides whether there is anything to load, and that answer is not a
+        // property any attribute can watch.
+        LoadSaveCommand.NotifyCanExecuteChanged();
     }
 
     private void ReportRestoreResult(BackupItemViewModel item, RestoreResult result)

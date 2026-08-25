@@ -14,6 +14,15 @@ public sealed class AppSettings
     public string BackupRootPath { get; set; } = "";
 
     /// <summary>
+    /// Where the named save library lives.
+    ///
+    /// Blank in a settings file written before the library existed. SettingsStore.Load fills a
+    /// blank with <see cref="DefaultLibraryRootPath"/>, which is why the schema version did not
+    /// have to move for this field.
+    /// </summary>
+    public string LibraryRootPath { get; set; } = "";
+
+    /// <summary>
     /// Where Rain World is installed, used only to read the slugcat portrait art out of the
     /// player's own copy of the game.
     ///
@@ -32,6 +41,14 @@ public sealed class AppSettings
         "backups");
 
     /// <summary>
+    /// %LOCALAPPDATA%\RainWorldSaveManager\library
+    /// </summary>
+    public static string DefaultLibraryRootPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "RainWorldSaveManager",
+        "library");
+
+    /// <summary>
     /// Settings for a first run: the detected save directory, or the standard location when
     /// nothing is installed yet, and the default backup root.
     ///
@@ -46,5 +63,6 @@ public sealed class AppSettings
         SchemaVersion = 1,
         GameSavePath = SavePathResolver.FindSavePath() ?? SavePathResolver.DefaultSavePath,
         BackupRootPath = DefaultBackupRootPath,
+        LibraryRootPath = DefaultLibraryRootPath,
     };
 }

@@ -10,18 +10,21 @@ using RainWorldSaveManager.Services;
 namespace RainWorldSaveManager.ViewModels;
 
 /// <summary>
-/// What the detail panel shows: either the save folder as it stands right now, or one backup,
-/// laid out the same way so the two can be read against each other.
+/// What the detail panel shows: the save folder as it stands right now, one backup, or one library
+/// save, laid out the same way so any two of them can be read against each other.
 ///
 /// A backup is filled from the manifest that was written with it, so selecting one costs no disk
 /// read. A manifest written by schema version 1 recorded far less per campaign, and those cards
 /// render with dashes where the value was never stored rather than failing to render at all.
 ///
-/// Local saves and Rain Meadow online saves are both built into full slot sections, and
-/// <see cref="ShowOnline"/> settles which set is on screen. The toggle that changes it is drawn
-/// only when the mod is on the machine, so a player without it sees the local sections and nothing
-/// else, exactly as before. The paired rows further down show both realms beside each other
+/// For the live folder and for a backup, local saves and Rain Meadow's online saves are both built
+/// into full slot sections, and <see cref="ShowOnline"/> settles which set is on screen. The toggle
+/// that changes it is drawn only when the mod is on the machine, so a player without it sees the
+/// local sections and nothing else. The paired rows further down show both realms beside each other
 /// whichever way the toggle is set.
+///
+/// A library save is one file. It has no second half to pair against and no realm to switch, so it
+/// gets neither the toggle nor the banded section.
 /// </summary>
 public sealed partial class SnapshotDetailViewModel : ObservableObject
 {
@@ -41,6 +44,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         string localEmptyText,
         string onlineEmptyText,
         BackupItemViewModel? backup,
+        LibraryEntryViewModel? entry,
         IReadOnlyList<SlotMetadata> allSlots,
         MeadowProfile? meadow,
         ISlugcatIconProvider icons)
@@ -53,23 +57,26 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         FileCountText = fileCountText;
         NoteText = noteText;
         Backup = backup;
+        Entry = entry;
 
         _localEmptyText = localEmptyText;
         _onlineEmptyText = onlineEmptyText;
 
-        _localSlots = BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons);
-        _onlineSlots = BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons);
+        // A library save is one file and it reads the same whichever slot it came from. Splitting it
+        // by realm the way a folder is split would drop an online sourced save out of Slots and
+        // leave the panel with nothing in it, and there is no second half here to pair it against.
+        _localSlots = entry is not null
+            ? BuildSlots(allSlots, icons, entry.Entry.Manifest?.SourceFileName)
+            : BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons, nameRealm: true);
+        _onlineSlots = entry is not null
+            ? Array.Empty<SlotViewModel>()
+            : BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons, nameRealm: true);
 
-        SlotPairs = BuildPairs(_localSlots, _onlineSlots);
+        SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots);
         OnlineCountText = FormatFileCount(_onlineSlots.Count, "online save");
 
         Meadow = meadow is null ? null : new MeadowProfileViewModel(meadow);
         CampaignCountText = CampaignCount.Describe(CountCampaigns(_localSlots), CountCampaigns(_onlineSlots));
-
-        // Both lists, because the toggle can be on either one and switching realms should land on a
-        // list of slots with a worked example already open rather than on a wall of closed cards.
-        OpenFirstCampaign(_localSlots);
-        OpenFirstCampaign(_onlineSlots);
     }
 
     /// <summary>True for the save folder on disk, false for a backup.</summary>
@@ -101,6 +108,14 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     public bool HasBackup => Backup is not null;
 
     /// <summary>
+    /// The library row this panel was built from, or null for anything else. The header binds the
+    /// checked state through this the same way it binds a backup's.
+    /// </summary>
+    public LibraryEntryViewModel? Entry { get; }
+
+    public bool HasEntry => Entry is not null;
+
+    /// <summary>
     /// Which realm the slot sections are showing. The toggle above them sets it, and the window
     /// carries the choice from one selection to the next, so reading the same slot across several
     /// backups does not drop back to the local saves every time.
@@ -126,10 +141,15 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The save files on screen, one section each: the local ones, or Rain Meadow's online ones.
-    /// Both sets are built up front, so the toggle costs no parsing.
+    /// One section each: for the live folder and for a backup, the local save files or Rain Meadow's
+    /// online ones, whichever the toggle names. Both sets are built up front, so switching costs no
+    /// parsing.
+    ///
+    /// A library save ignores the realm and puts its one file here whichever slot it came from. The
+    /// toggle is not drawn for it, and a realm carried over from the previous selection would
+    /// otherwise leave the panel showing nothing.
     /// </summary>
-    public IReadOnlyList<SlotViewModel> Slots => ShowOnline ? _onlineSlots : _localSlots;
+    public IReadOnlyList<SlotViewModel> Slots => ShowOnline && !HasEntry ? _onlineSlots : _localSlots;
 
     public bool HasSlots => Slots.Count > 0;
 
@@ -141,6 +161,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// <summary>
     /// One row per slot number, local and online together. A slot with no online file still gets a
     /// row, because an empty online slot is what a player about to copy a save across is looking at.
+    /// Empty for a library save, which is one file.
     /// </summary>
     public IReadOnlyList<SlotPairViewModel> SlotPairs { get; }
 
@@ -153,15 +174,22 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// </summary>
     public bool HasNoOnlineSlots => SlotPairs.Count > 0 && !HasOnlineSlots && !ShowOnline;
 
-    /// <summary>
-    /// Whether the Rain Meadow block and the realm toggle are drawn. Both follow the mod being on
-    /// the machine, not the folder happening to hold an online save, so a player who has the mod
-    /// but has not played online still gets the rows to copy a save across. A player without the
-    /// mod sees neither.
-    /// </summary>
+    /// <summary>Whether Rain Meadow is on this machine.</summary>
     /// Set by the window after the detail is built, because only the window knows what is on the
     /// machine. The whole detail is replaced on every rebuild, so this needs no change notification.
-    public bool ShowMeadowSection { get; set; }
+    public bool MeadowInstalled { get; set; }
+
+    /// <summary>
+    /// Whether the Rain Meadow block and the realm toggle above the sections are drawn.
+    ///
+    /// Both follow the mod being on the machine, not the folder happening to hold an online save, so
+    /// a player who has the mod but has not played online still gets the rows to copy a save across.
+    /// A player without the mod sees neither.
+    ///
+    /// A library save is left out whether or not the mod is here. It is one file, and both the block
+    /// and the toggle exist to work across a slot's two halves.
+    /// </summary>
+    public bool ShowMeadowSection => MeadowInstalled && !HasEntry;
 
     /// <summary>"v0.1.15.1", or empty when the version was not read.</summary>
     public string MeadowVersionText { get; set; } = "";
@@ -194,8 +222,43 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             localEmptyText: "No save files were found in the save folder.",
             onlineEmptyText: "No online saves in this folder yet. Copy Slot in the top bar puts a local save into one.",
             backup: null,
+            entry: null,
             allSlots: slots,
             meadow: meadow,
+            icons: icons);
+    }
+
+    /// <summary>
+    /// One library save. Filled from the manifest written beside it, so selecting a row costs no
+    /// disk read, and drawn as a single slot section because that is what an entry holds.
+    /// </summary>
+    public static SnapshotDetailViewModel ForLibraryEntry(LibraryEntryViewModel item, ISlugcatIconProvider icons)
+    {
+        var metadata = item.Entry.Manifest?.Metadata;
+
+        var empty = item.Entry.Manifest is null
+            ? "This save did not finish being stored, so it recorded no campaign detail."
+            : "This save could not be read, so there is no campaign detail to show.";
+
+        var subtitle = item.SourceText.Length > 0
+            ? item.CreatedText + "    " + item.SourceText + "    " + item.Entry.Id
+            : item.CreatedText + "    " + item.Entry.Id;
+
+        return new SnapshotDetailViewModel(
+            isLive: false,
+            title: item.Name,
+            subtitle: subtitle,
+            kindText: "Library save",
+            sizeText: item.SizeText,
+            fileCountText: "1 save file",
+            noteText: item.NoteText,
+            // One file, so the realm never changes what this panel would say is missing.
+            localEmptyText: empty,
+            onlineEmptyText: empty,
+            backup: null,
+            entry: item,
+            allSlots: metadata is null ? Array.Empty<SlotMetadata>() : new[] { metadata },
+            meadow: null,
             icons: icons);
     }
 
@@ -230,19 +293,30 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             localEmptyText: empty,
             onlineEmptyText: onlineEmpty,
             backup: item,
+            entry: null,
             allSlots: (IReadOnlyList<SlotMetadata>?)source ?? Array.Empty<SlotMetadata>(),
             meadow: meadow,
             icons: icons);
     }
 
+    /// <param name="fileNameOverride">
+    /// The container name to show instead of the one the metadata carries. Only a library save
+    /// passes this, because it was parsed out of the copy kept under the library's storage name.
+    /// </param>
+    /// <param name="nameRealm">
+    /// Whether the section headers say which realm they are. True wherever the realm toggle can
+    /// swap these sections for the other realm's, which is everything except a library save.
+    /// </param>
     private static IReadOnlyList<SlotViewModel> BuildSlots(
         IEnumerable<SlotMetadata> slots,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        string? fileNameOverride = null,
+        bool nameRealm = false)
     {
         return slots
             .OrderBy(slot => slot.Slot == 0 ? int.MaxValue : slot.Slot)
             .ThenBy(slot => slot.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(slot => new SlotViewModel(slot, icons))
+            .Select(slot => new SlotViewModel(slot, icons, fileNameOverride, nameRealm))
             .ToList();
     }
 
@@ -276,22 +350,6 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Opens the first campaign, so the panel reads as a list of slots with one worked example
-    /// already open. Everything else starts closed.
-    /// </summary>
-    private static void OpenFirstCampaign(IReadOnlyList<SlotViewModel> slots)
-    {
-        foreach (var slot in slots)
-        {
-            if (slot.Campaigns.Count > 0)
-            {
-                slot.Campaigns[0].IsExpanded = true;
-                return;
-            }
-        }
     }
 
     private static int CountCampaigns(IEnumerable<SlotViewModel> slots)
