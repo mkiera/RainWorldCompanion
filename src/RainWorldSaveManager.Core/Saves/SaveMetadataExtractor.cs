@@ -123,41 +123,71 @@ public static class SaveMetadataExtractor
             // An empty payload is an untouched slot, which is what online_sav3 is on a fresh
             // install: the value is the digest and nothing after it. That reads as no campaigns
             // and no parse error, so Describe says "empty" rather than reporting a failure.
-            // Every record is counted, not only the campaigns. A Rain Meadow online_sav commonly
-            // holds MAP, MAPUPDATE and MISCPROG records and no SAVE STATE at all, and without the
-            // total the app has no way to tell that file from a slot that has never been played.
-            var campaigns = new List<CampaignSummary>();
-            int records = 0;
-
-            foreach (RecordSpan record in SavePayloadReader.EnumerateRecords(payload))
-            {
-                records++;
-
-                // Compare the header before touching the body. MAP records run to hundreds of
-                // kilobytes and copying one out to look at its header is wasted work.
-                if (!record.HeaderIs(SaveStateHeader))
-                {
-                    continue;
-                }
-
-                campaigns.Add(BuildCampaign(record.Body()));
-            }
-
-            return new SlotMetadata
-            {
-                Slot = slotNumber,
-                FileName = fileName,
-                Realm = realm,
-                ChecksumValid = hasDigest ? checksumValid : null,
-                Campaigns = campaigns,
-                RecordCount = records,
-                ParseError = null,
-            };
+            return Walk(payload, fileName, slotNumber, realm, hasDigest ? checksumValid : null);
         }
         catch (Exception ex)
         {
             return Failed(slotNumber, fileName, realm, Shorten(ex.Message) ?? ex.GetType().Name);
         }
+    }
+
+    /// <summary>
+    /// The same read as <see cref="Extract(string, int)"/>, over a payload already in hand rather
+    /// than a file on disk.
+    ///
+    /// A campaign stored on its own is a payload with no container around it, so there is no digest
+    /// to check and <see cref="SlotMetadata.ChecksumValid"/> comes back null, which is the state
+    /// this format already uses for a value that carries none.
+    /// </summary>
+    public static SlotMetadata FromPayload(string? payload, string fileName, int slotNumber, SaveRealm realm)
+    {
+        try
+        {
+            return Walk(payload ?? "", fileName, slotNumber, realm, checksumValid: null);
+        }
+        catch (Exception ex)
+        {
+            return Failed(slotNumber, fileName, realm, Shorten(ex.Message) ?? ex.GetType().Name);
+        }
+    }
+
+    private static SlotMetadata Walk(
+        string payload,
+        string fileName,
+        int slotNumber,
+        SaveRealm realm,
+        bool? checksumValid)
+    {
+        // Every record is counted, not only the campaigns. A Rain Meadow online_sav commonly holds
+        // MAP, MAPUPDATE and MISCPROG records and no SAVE STATE at all, and without the total the
+        // app has no way to tell that file from a slot that has never been played.
+        var campaigns = new List<CampaignSummary>();
+        int records = 0;
+
+        foreach (RecordSpan record in SavePayloadReader.EnumerateRecords(payload))
+        {
+            records++;
+
+            // Compare the header before touching the body. MAP records run to hundreds of
+            // kilobytes and copying one out to look at its header is wasted work.
+            if (!record.HeaderIs(SaveStateHeader))
+            {
+                continue;
+            }
+
+            campaigns.Add(BuildCampaign(record.Body()));
+        }
+
+        return new SlotMetadata
+        {
+            Slot = slotNumber,
+            FileName = fileName,
+            Realm = realm,
+            ChecksumValid = checksumValid,
+            Campaigns = campaigns,
+            RecordCount = records,
+            ParseError = null,
+        };
     }
 
     /// <summary>

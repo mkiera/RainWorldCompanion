@@ -47,15 +47,28 @@ public enum CampaignSpliceOutcome
 /// Regions the target had for this slugcat and no longer has, because the campaign arriving has not
 /// been to them.
 /// </param>
+/// <param name="RecordsWritten">
+/// The records the splice put into the payload, and <paramref name="RecordsRemoved"/> the ones it
+/// took out. A write plan holds the splice to exactly these: every other record of the payload has
+/// to come back in the same order, character for character, or something was moved by accident.
+/// </param>
 public sealed record CampaignSpliceReport(
     CampaignSpliceOutcome Outcome,
     int MapsReplaced,
     int MapsAdded,
     int MapsRemoved,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> RecordsWritten,
+    IReadOnlyList<string> RecordsRemoved)
 {
-    public static CampaignSpliceReport Nothing { get; } =
-        new(CampaignSpliceOutcome.NotFound, 0, 0, 0, Array.Empty<string>());
+    public static CampaignSpliceReport Nothing { get; } = new(
+        CampaignSpliceOutcome.NotFound,
+        0,
+        0,
+        0,
+        Array.Empty<string>(),
+        Array.Empty<string>(),
+        Array.Empty<string>());
 
     /// <summary>True when the payload came back the same as it went in.</summary>
     public bool DidNothing => Outcome == CampaignSpliceOutcome.NotFound
@@ -169,16 +182,18 @@ public static class CampaignSplicer
     {
         ArgumentNullException.ThrowIfNull(slice);
 
-        var warnings = new List<string>();
-        WarnAboutWhatTheGameWillMakeOfIt(slice, warnings);
+        var log = new SpliceLog();
+        WarnAboutWhatTheGameWillMakeOfIt(slice, log.Warnings);
 
         var slots = new List<string?>(Split(payload));
         var appended = new List<string>();
 
-        CampaignSpliceOutcome outcome = ReplaceTheCampaign(slots, slice, appended, warnings);
-        (int replaced, int added, int removed) = ReplaceTheMaps(slots, slice, appended);
+        CampaignSpliceOutcome outcome = ReplaceTheCampaign(slots, slice, appended, log);
+        (int replaced, int added, int removed) = ReplaceTheMaps(slots, slice, appended, log);
 
-        report = new CampaignSpliceReport(outcome, replaced, added, removed, warnings);
+        report = new CampaignSpliceReport(
+            outcome, replaced, added, removed, log.Warnings, log.Written, log.Removed);
+
         return Rebuild(slots, appended);
     }
 
@@ -203,6 +218,7 @@ public static class CampaignSplicer
         }
 
         var slots = new List<string?>(Split(payload));
+        var log = new SpliceLog();
         bool found = false;
         int mapsRemoved = 0;
 
@@ -215,6 +231,7 @@ public static class CampaignSplicer
                 if (Same(SlugcatOf(record), slugcatId))
                 {
                     slots[i] = null;
+                    log.Removed.Add(record);
                     found = true;
                 }
 
@@ -224,6 +241,7 @@ public static class CampaignSplicer
             if (includeMaps && Same(MapOwnerOf(record), slugcatId))
             {
                 slots[i] = null;
+                log.Removed.Add(record);
                 mapsRemoved++;
             }
         }
@@ -233,7 +251,9 @@ public static class CampaignSplicer
             0,
             0,
             mapsRemoved,
-            Array.Empty<string>());
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            log.Removed);
 
         return Rebuild(slots, Array.Empty<string>());
     }
@@ -294,7 +314,7 @@ public static class CampaignSplicer
         List<string?> slots,
         CampaignSlice slice,
         List<string> appended,
-        List<string> warnings)
+        SpliceLog log)
     {
         int at = -1;
 
@@ -305,17 +325,20 @@ public static class CampaignSplicer
                 continue;
             }
 
+            log.Removed.Add(slots[i]!);
+
             if (at < 0)
             {
                 at = i;
                 slots[i] = slice.SaveStateRecord;
+                log.Written.Add(slice.SaveStateRecord);
                 continue;
             }
 
             // The game keeps whichever it reaches first and rewrites the rest as they are, so a
             // second copy would go on shadowing this one for as long as the file lives.
             slots[i] = null;
-            warnings.Add(
+            log.Warnings.Add(
                 $"The slot held more than one {Name(slice.SlugcatId)} campaign. The extra one has been dropped.");
         }
 
@@ -325,13 +348,15 @@ public static class CampaignSplicer
         }
 
         appended.Add(slice.SaveStateRecord);
+        log.Written.Add(slice.SaveStateRecord);
         return CampaignSpliceOutcome.Added;
     }
 
     private static (int Replaced, int Added, int Removed) ReplaceTheMaps(
         List<string?> slots,
         CampaignSlice slice,
-        List<string> appended)
+        List<string> appended,
+        SpliceLog log)
     {
         var owned = new Dictionary<string, int>(StringComparer.Ordinal);
         var spare = new List<int>();
@@ -357,12 +382,15 @@ public static class CampaignSplicer
         {
             if (owned.TryGetValue(MapKey(record), out int at) && taken.Add(at))
             {
+                log.Removed.Add(slots[at]!);
                 slots[at] = record;
+                log.Written.Add(record);
                 replaced++;
                 continue;
             }
 
             appended.Add(record);
+            log.Written.Add(record);
             added++;
         }
 
@@ -375,6 +403,7 @@ public static class CampaignSplicer
                 continue;
             }
 
+            log.Removed.Add(slots[at]!);
             slots[at] = null;
             removed++;
         }
@@ -552,4 +581,20 @@ public static class CampaignSplicer
     }
 
     private static string Name(string? slugcatId) => SlugcatCatalog.ForId(slugcatId).DisplayName;
+
+    /// <summary>
+    /// What a splice did, collected as it goes.
+    ///
+    /// The two record lists are what a write plan checks the result against. A record replaced in
+    /// place is in both of them, which is what makes putting a campaign back where it came from
+    /// cancel out to no change at all.
+    /// </summary>
+    private sealed class SpliceLog
+    {
+        public List<string> Written { get; } = new();
+
+        public List<string> Removed { get; } = new();
+
+        public List<string> Warnings { get; } = new();
+    }
 }

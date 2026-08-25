@@ -50,8 +50,14 @@ public sealed class SaveEditSession
     private readonly Dictionary<string, TrackedChange> _changes = new(StringComparer.Ordinal);
     private readonly HashSet<int> _touchedRecords = new();
 
+    /// <summary>Records a campaign splice put in, and took out, so the plan can check it did only that.</summary>
+    private readonly List<string> _recordsWritten = new();
+
+    private readonly List<string> _recordsRemoved = new();
+
     private string _payload;
     private int _changeOrder;
+    private int _splices;
 
     private SaveEditSession(string filePath, string fileSha256, ContainerText container, string payload)
     {
@@ -309,12 +315,103 @@ public sealed class SaveEditSession
         Apply(campaign, newBody);
     }
 
+    /// <summary>The campaign the session is holding for each slugcat, in stored order.</summary>
+    public IReadOnlyList<string> CampaignSlugcats => CampaignSplicer.Campaigns(_payload);
+
+    /// <summary>Takes one campaign out of this slot, to store it or to move it somewhere else.</summary>
+    public CampaignSlice? TakeCampaign(string slugcatId) => CampaignSplicer.Extract(_payload, slugcatId);
+
+    /// <summary>
+    /// Puts a campaign into this slot, replacing whatever campaign the slot has for that slugcat.
+    ///
+    /// This is a whole-record change rather than a field edit, so the plan built afterwards checks
+    /// the result a different way: it holds the splice to the records it said it wrote and took out,
+    /// and every other record of the payload has to come back in the same order character for
+    /// character.
+    /// </summary>
+    public CampaignSpliceReport PutCampaignIn(CampaignSlice slice)
+    {
+        ArgumentNullException.ThrowIfNull(slice);
+
+        string newPayload = CampaignSplicer.InsertCampaign(_payload, slice, out CampaignSpliceReport report);
+
+        string what = report.Outcome == CampaignSpliceOutcome.Replaced
+            ? "replaced this campaign"
+            : "added this campaign to the slot";
+
+        ApplySplice(newPayload, report, "campaign|" + slice.SlugcatId, Name(slice.SlugcatId), what);
+        return report;
+    }
+
+    /// <summary>
+    /// Takes a campaign out of this slot.
+    /// </summary>
+    /// <param name="includeMaps">
+    /// Whether the slugcat's map discovery goes with it. The game's own WipeSaveState leaves it
+    /// behind, so deleting a campaign in place should too. Moving one to another slot should take
+    /// it, or the map stays in a slot that no longer has the campaign.
+    /// </param>
+    public CampaignSpliceReport TakeCampaignOut(string slugcatId, bool includeMaps)
+    {
+        string newPayload = CampaignSplicer.RemoveCampaign(_payload, slugcatId, includeMaps, out CampaignSpliceReport report);
+
+        if (report.Outcome == CampaignSpliceOutcome.NotFound && report.MapsRemoved == 0)
+        {
+            return report;
+        }
+
+        string what = includeMaps && report.MapsRemoved > 0
+            ? "took this campaign out, map and all"
+            : "took this campaign out";
+
+        ApplySplice(newPayload, report, "campaign|" + slugcatId, Name(slugcatId), what);
+        return report;
+    }
+
     /// <summary>
     /// Everything needed to write this session to disk, with the result checked before anything
     /// is written. A plan with problems is one to report, not one to write.
     /// </summary>
     public SaveWritePlan BuildWritePlan(SizePolicy policy = SizePolicy.GrowIfNeeded)
-        => SaveWritePlan.Build(this, _container, _originalPayload, _payload, _touchedRecords, Changes, policy);
+        => SaveWritePlan.Build(
+            this,
+            _container,
+            _originalPayload,
+            _payload,
+            _touchedRecords,
+            Changes,
+            _splices > 0 ? new RecordSetChange(_recordsWritten, _recordsRemoved) : null,
+            policy);
+
+    /// <summary>
+    /// Replaces the whole payload after a campaign was moved in or out, and notes what moved.
+    ///
+    /// The record lists build up across splices rather than being replaced, so taking one campaign
+    /// out and putting another in is still one set of records the plan can check the result against.
+    /// </summary>
+    private void ApplySplice(
+        string newPayload,
+        CampaignSpliceReport report,
+        string changeKey,
+        string campaignName,
+        string note)
+    {
+        if (_changes.TryGetValue(changeKey, out TrackedChange? existing))
+        {
+            existing.Note = note;
+        }
+        else
+        {
+            _changes[changeKey] = new TrackedChange(_changeOrder++, campaignName, note);
+        }
+
+        _recordsWritten.AddRange(report.RecordsWritten);
+        _recordsRemoved.AddRange(report.RecordsRemoved);
+        _splices++;
+
+        _payload = newPayload;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 
     private void Apply(CampaignRecordRef campaign, string newBody)
     {
@@ -436,7 +533,9 @@ public sealed class SaveEditSession
         throw new SaveContainerException($"This save has no record {campaign.RecordIndex} to edit.");
     }
 
-    private static string Name(CampaignRecordRef campaign) => SlugcatCatalog.ForId(campaign.SlugcatId).DisplayName;
+    private static string Name(CampaignRecordRef campaign) => Name(campaign.SlugcatId);
+
+    private static string Name(string slugcatId) => SlugcatCatalog.ForId(slugcatId).DisplayName;
 
     private string Describe(CampaignRecordRef campaign, string key, string? before, string after)
         => before is null
