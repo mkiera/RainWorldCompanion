@@ -5,7 +5,10 @@ them on demand. It reads the save containers well enough to show what each slot 
 slugcat and the cycle down to karma, passages, kills and Devourment state, so you can tell one
 snapshot from another before you restore it.
 
-This version does not edit saves. Files are copied byte for byte in both directions, because the
+It also keeps a library of named saves outside the game's three slots, so you can keep twenty runs
+and load any of them into any slot.
+
+This version does not edit saves. Files are copied byte for byte in every direction, because the
 UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
 reads back. It reads Rain Meadow's online saves with the same reader, pairs each one with the local
 slot it shares a number with, and can copy any whole slot onto any other.
@@ -149,6 +152,61 @@ Moving one campaign between slots is not in this version. That means rewriting t
 recomputing the MD5 the game checks it against, and getting that wrong is what destroys a save. It
 belongs with the save editor.
 
+## The library
+
+Rain World gives you three slots. The library is a folder of named saves outside them, so a run you
+want to come back to does not have to hold a slot open.
+
+Store Slot in the top bar keeps a copy of one slot under a name of your choosing. The copy is
+proved against the file it came from before it is recorded, so a save the game rewrote mid-copy
+abandons the entry rather than being stored as though it were sound. Nothing in the save folder is
+written.
+
+The LIBRARY tab in the left column lists what you have stored, with the same faces, campaign counts
+and check state the backup rows carry. Selecting one fills the same detail panel a backup does.
+
+- **Load** writes a library save into whichever slot you pick, local or online.
+- **Update** replaces a library save with what is in the slot it was last loaded into, which is how
+  an hour of play gets back into the entry it came from. The save being replaced is kept, so
+  **Undo update** puts it back. Only the last one is kept, and the next update replaces it.
+- **Rename** changes the name and the note and nothing else.
+- **Export** writes one save out as a single `.rwsave` file. **Import** reads one back, and also
+  accepts a bare save file copied straight out of somebody's save folder.
+
+A row says which slot it was last loaded into, and whether that slot has changed since. A slot that
+has changed holds play the library save does not, which is what Update is for.
+
+### What loading does
+
+Loading is the only thing the library does that writes into the save folder, and it runs the same
+steps a slot copy runs, in the same order: take a safety snapshot of the whole save folder, prove
+that snapshot holds the file about to be replaced, hold the backup folder for the rest of the
+operation, check again that the game is closed and that nothing has appeared in the target slot,
+then one byte for byte copy, then hash both sides and compare.
+
+The entry carries the SHA-256 recorded when it was stored, and the load holds it to that digest
+immediately before the write. A library save damaged since it was stored is refused rather than
+written over a live slot.
+
+### Bundles and bare files
+
+A `.rwsave` file is a zip holding the save and the manifest that describes it, which is what carries
+the name, the note and the campaigns to another machine. Because the manifest records the save's
+checksum, a bundle whose save no longer matches it has been damaged in transit and is refused.
+
+A bare save file has no recorded checksum to hold it to, so a damaged one is imported with a warning
+instead. A save the game will not load is still one you may want in the library to look at.
+
+Neither writes into the save folder. An imported file lands in the library, and the only way it
+reaches a slot is by being loaded, which takes a safety snapshot first.
+
+### Naming
+
+Entry folders are named for the time they were stored, for example `2026-08-24_19-31-07`. Your name
+for a save lives in its `entry.json` and never in a path, so it can be anything: reserved names such
+as `CON`, characters Windows refuses in a file name, two saves called the same thing. Renaming
+rewrites the manifest and leaves the folder where it is.
+
 `meadow.json` is Rain Meadow's own progression file, and the panel reads it: the character picked in
 the menu, play time, progress towards the next emote, skin and character, and per character the
 unlocked emotes and skins, the chosen skin and tint, the emote wheel, and the room it last saved in.
@@ -183,18 +241,21 @@ file with its size and SHA-256.
 The manifest is written last, so a folder without one is a backup that did not finish. The app
 lists those as incomplete and refuses to restore them, and you can delete them from the list.
 
-The backup folder must not be inside the save folder, and the save folder must not be inside
-the backup folder. The app checks this by resolving both paths through the filesystem, so a
-junction or a subst drive pointing one into the other is refused as well.
+Library saves go to `%LOCALAPPDATA%\RainWorldSaveManager\library` unless you change it. Each one is
+a folder named the same way, holding `save.bin`, an `entry.json` written last for the same reason,
+and a `save.previous.bin` once an update has replaced something.
+
+None of the three folders may sit inside another. The app checks this by resolving every path
+through the filesystem, so a junction or a subst drive pointing one into another is refused as well.
 
 Settings live in `%LOCALAPPDATA%\RainWorldSaveManager\settings.json`.
 
 ## Close the game first
 
-Backups, restores and slot copies are refused while Rain World is running, because the game holds
-its progression in memory and writes it back at its own save points. The header of the window tells
-you whether the game is open, and the New Backup, Restore and Copy Slot buttons are disabled while
-it is.
+Anything that reads or writes a save file is refused while Rain World is running, because the game
+holds its progression in memory and writes it back at its own save points. That covers backups,
+restores, slot copies, and storing, updating and loading a library save. The header of the window
+tells you whether the game is open and those buttons are disabled while it is.
 
 The check is repeated during a restore or a copy. If the game starts while one is running, it stops
 rather than writing more files under a process that is reading them, and tells you the save folder

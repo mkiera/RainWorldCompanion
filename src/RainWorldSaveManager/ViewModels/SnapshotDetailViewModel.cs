@@ -9,8 +9,8 @@ using RainWorldSaveManager.Services;
 namespace RainWorldSaveManager.ViewModels;
 
 /// <summary>
-/// What the detail panel shows: either the save folder as it stands right now, or one backup,
-/// laid out the same way so the two can be read against each other.
+/// What the detail panel shows: the save folder as it stands right now, one backup, or one library
+/// save, laid out the same way so any two of them can be read against each other.
 ///
 /// A backup is filled from the manifest that was written with it, so selecting one costs no disk
 /// read. A manifest written by schema version 1 recorded far less per campaign, and those cards
@@ -33,6 +33,7 @@ public sealed class SnapshotDetailViewModel
         string noteText,
         string emptyText,
         BackupItemViewModel? backup,
+        LibraryEntryViewModel? entry,
         IReadOnlyList<SlotMetadata> allSlots,
         MeadowProfile? meadow,
         ISlugcatIconProvider icons)
@@ -46,12 +47,20 @@ public sealed class SnapshotDetailViewModel
         NoteText = noteText;
         EmptyText = emptyText;
         Backup = backup;
+        Entry = entry;
 
-        var local = BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons);
-        var online = BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons);
+        // A library entry is one file, and which realm it came from is provenance rather than a
+        // place in this panel. Splitting it the way a folder is split would drop an online-sourced
+        // entry out of Slots and leave the panel with nothing in it.
+        var local = entry is not null
+            ? BuildSlots(allSlots, icons)
+            : BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons);
+        var online = entry is not null
+            ? Array.Empty<SlotViewModel>()
+            : BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons);
 
         Slots = local;
-        SlotPairs = BuildPairs(local, online);
+        SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(local, online);
         OnlineCountText = FormatFileCount(online.Count, "online save");
 
         Meadow = meadow is null ? null : new MeadowProfileViewModel(meadow);
@@ -85,6 +94,14 @@ public sealed class SnapshotDetailViewModel
     public BackupItemViewModel? Backup { get; }
 
     public bool HasBackup => Backup is not null;
+
+    /// <summary>
+    /// The library row this panel was built from, or null for anything else. The header binds the
+    /// checked state through this the same way it binds a backup's.
+    /// </summary>
+    public LibraryEntryViewModel? Entry { get; }
+
+    public bool HasEntry => Entry is not null;
 
     /// <summary>The local save files, one section each. Online files are in <see cref="SlotPairs"/>.</summary>
     public IReadOnlyList<SlotViewModel> Slots { get; }
@@ -145,8 +162,41 @@ public sealed class SnapshotDetailViewModel
             noteText: "",
             emptyText: "No save files were found in the save folder.",
             backup: null,
+            entry: null,
             allSlots: slots,
             meadow: meadow,
+            icons: icons);
+    }
+
+    /// <summary>
+    /// One library save. Filled from the manifest written beside it, so selecting a row costs no
+    /// disk read, and drawn as a single slot section because that is what an entry holds.
+    /// </summary>
+    public static SnapshotDetailViewModel ForLibraryEntry(LibraryEntryViewModel item, ISlugcatIconProvider icons)
+    {
+        var metadata = item.Entry.Manifest?.Metadata;
+
+        var empty = item.Entry.Manifest is null
+            ? "This save did not finish being stored, so it recorded no campaign detail."
+            : "This save could not be read, so there is no campaign detail to show.";
+
+        var subtitle = item.SourceText.Length > 0
+            ? item.CreatedText + "    " + item.SourceText + "    " + item.Entry.Id
+            : item.CreatedText + "    " + item.Entry.Id;
+
+        return new SnapshotDetailViewModel(
+            isLive: false,
+            title: item.Name,
+            subtitle: subtitle,
+            kindText: "Library save",
+            sizeText: item.SizeText,
+            fileCountText: "1 save file",
+            noteText: item.NoteText,
+            emptyText: empty,
+            backup: null,
+            entry: item,
+            allSlots: metadata is null ? Array.Empty<SlotMetadata>() : new[] { metadata },
+            meadow: null,
             icons: icons);
     }
 
@@ -172,6 +222,7 @@ public sealed class SnapshotDetailViewModel
             noteText: item.NoteText,
             emptyText: empty,
             backup: item,
+            entry: null,
             allSlots: (IReadOnlyList<SlotMetadata>?)source ?? Array.Empty<SlotMetadata>(),
             meadow: meadow,
             icons: icons);
