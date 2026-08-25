@@ -94,6 +94,194 @@ public sealed class SaveLibrary
     }
 
     /// <summary>
+    /// What loading an entry onto a slot would do, worked out without changing anything.
+    ///
+    /// The entry's own bytes are checked here rather than only at the moment of the write, so a
+    /// damaged save is reported in the dialog instead of after the user has agreed to overwrite
+    /// something with it.
+    /// </summary>
+    public LibraryLoadPlan PlanLoad(LibraryEntry entry, SaveSlotRef target)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(target);
+
+        var problems = new List<string>();
+        var warnings = new List<string>();
+
+        var side = _backups.SlotCopies.ReadSide(target);
+
+        if (!target.IsRealSlot)
+        {
+            problems.Add(string.Format(
+                CultureInfo.InvariantCulture,
+                "Slot {0} is not a Rain World slot. The game has slots {1} to {2}.",
+                target.Slot,
+                SaveSlotRef.MinSlot,
+                SaveSlotRef.MaxSlot));
+
+            return new LibraryLoadPlan(entry, side, problems, warnings);
+        }
+
+        if (_gameDetector.IsGameRunning(out var processName))
+        {
+            problems.Add($"Rain World is running (process \"{processName ?? "Rain World"}\"). Close the game before loading a save.");
+        }
+
+        if (entry.Manifest is not { } manifest)
+        {
+            problems.Add($"\"{entry.Name}\" did not finish being stored ({entry.Problem}), so it cannot be loaded.");
+            return new LibraryLoadPlan(entry, side, problems, warnings);
+        }
+
+        var verification = VerifyEntry(entry);
+        if (!verification.Ok)
+        {
+            problems.Add($"\"{entry.Name}\" failed its checksum check, so it will not be written to a slot.");
+            problems.AddRange(verification.Problems);
+        }
+
+        // The target has to be a file the backup scope covers, because the safety snapshot taken
+        // before the load is what makes overwriting it undoable. A target outside the scope would
+        // be written over with no copy of it anywhere.
+        if (!_backups.Scope.IsInScope(side.FileName))
+        {
+            problems.Add($"{side.FileName} is not one of the files this app manages, so it will not be written to.");
+        }
+        else if (CanonicalPath.LeadsThroughLink(SaveRoot, side.FullPath))
+        {
+            problems.Add($"{side.FileName} is a link, so writing to it would land outside the save folder.");
+        }
+
+        if (manifest.Metadata?.ParseError is { } parseError)
+        {
+            warnings.Add($"\"{entry.Name}\" cannot be read by this app ({parseError}). It will still be loaded exactly as it is.");
+        }
+
+        if (manifest.Metadata?.ChecksumValid == false)
+        {
+            warnings.Add($"\"{entry.Name}\" has a checksum the game will reject, and loading it does not repair that.");
+        }
+
+        if (side.Exists && side.Metadata?.ParseError is { } targetError)
+        {
+            warnings.Add($"{side.FileName} cannot be read by this app ({targetError}), so what is about to be replaced cannot be described.");
+        }
+
+        var entryCampaigns = manifest.Metadata?.Campaigns.Count ?? 0;
+        var targetCampaigns = side.Metadata?.Campaigns.Count ?? 0;
+
+        if (entryCampaigns == 0 && targetCampaigns > 0)
+        {
+            // A save with records but no SAVE STATE is not an empty file. It is a Rain Meadow
+            // online save holding the explored map and the progression record, and the game will
+            // still show the slot as having no campaign in it.
+            warnings.Add(manifest.Metadata?.RecordCount > 0
+                ? $"\"{entry.Name}\" holds no campaign, only map and progression data, so this leaves {side.FileName} with no campaign in it."
+                : $"\"{entry.Name}\" holds no campaign, so this replaces {side.FileName} with an empty slot.");
+        }
+
+        return new LibraryLoadPlan(entry, side, problems, warnings);
+    }
+
+    /// <summary>
+    /// Writes an entry's save over a live slot.
+    ///
+    /// This is the one thing in the library that touches the save folder, and it runs the same
+    /// ladder a slot copy runs: safety snapshot first, proved to hold the file being replaced, then
+    /// the operation lock, then the re-checks, then one copy. The entry's recorded digest goes down
+    /// with it, so a save that was damaged since it was stored is refused under the lock rather
+    /// than written.
+    /// </summary>
+    public LibraryLoadResult LoadEntry(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(target);
+
+        var errors = new List<string>();
+
+        EnsureGameNotRunning();
+
+        var plan = PlanLoad(entry, target);
+        var warnings = new List<string>(plan.Warnings);
+
+        if (!plan.CanLoad)
+        {
+            errors.AddRange(plan.Problems);
+            return new LibraryLoadResult(false, null, errors, warnings, false, 0, plan);
+        }
+
+        ct.ThrowIfCancellationRequested();
+
+        var manifest = entry.Manifest!;
+        var quotedName = "\"" + entry.Name + "\"";
+
+        var job = new SlotWriteJob(
+            plan.Target,
+            entry.SavePath,
+            quotedName,
+            manifest.Sha256,
+            OperationNoun: "load",
+            ProgressVerb: "Loading",
+            SafetyLabel: $"Before loading {quotedName} into {plan.Target.FileName}",
+            SafetyNote: targetExists => targetExists
+                ? $"Automatic copy taken before the library save {quotedName} was loaded over {plan.Target.FileName} ({plan.Target.Describe()})."
+                : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.");
+
+        var outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
+
+        errors.AddRange(outcome.Errors);
+        warnings.AddRange(outcome.Warnings);
+
+        var success = outcome.Success && errors.Count == 0;
+
+        if (success)
+        {
+            RecordLoad(entry, manifest, plan.Target.FullPath, target);
+        }
+
+        return new LibraryLoadResult(
+            success,
+            outcome.SafetySnapshot,
+            errors,
+            warnings,
+            outcome.LiveFolderModified,
+            outcome.BytesCopied,
+            plan);
+    }
+
+    /// <summary>
+    /// Notes where the load put the entry and what the slot file looked like straight afterwards,
+    /// so an update knows which slot to offer and a row can say whether that slot has been played
+    /// since.
+    ///
+    /// Best effort on purpose. The save is already in the slot by this point, and a manifest that
+    /// could not be rewritten costs a hint on a row. Turning that into a reported failure would
+    /// tell the user their load did not work when it did.
+    /// </summary>
+    private static void RecordLoad(LibraryEntry entry, LibraryManifest manifest, string targetPath, SaveSlotRef target)
+    {
+        try
+        {
+            var info = new FileInfo(targetPath);
+
+            manifest.LastLoadedRealm = target.Realm;
+            manifest.LastLoadedSlot = target.Slot;
+            manifest.LastLoadedUtc = DateTime.UtcNow;
+            manifest.LastLoadedSizeBytes = info.Exists ? info.Length : null;
+            manifest.LastLoadedWriteUtc = info.Exists ? info.LastWriteTimeUtc : null;
+
+            WriteManifest(entry.DirectoryPath, manifest);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    /// <summary>
     /// Copies one live slot into a new entry.
     ///
     /// Refuses while the game is running, by throwing, which is what CreateBackup and CopySlot do
@@ -383,6 +571,154 @@ public sealed class SaveLibrary
     }
 
     /// <summary>
+    /// Writes an entry out as a single .rwsave file, which is what gets sent to someone else or
+    /// carried to another machine.
+    /// </summary>
+    public void ExportEntry(LibraryEntry entry, string destinationPath)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new ArgumentException("An export needs somewhere to write to.", nameof(destinationPath));
+        }
+
+        if (entry.Manifest is not { } manifest)
+        {
+            throw new InvalidOperationException(
+                $"\"{entry.Name}\" did not finish being stored ({entry.Problem}), so it cannot be exported.");
+        }
+
+        var verification = VerifyEntry(entry);
+        if (!verification.Ok)
+        {
+            throw new IOException(
+                $"\"{entry.Name}\" failed its checksum check, so it was not exported: " + string.Join("; ", verification.Problems));
+        }
+
+        SaveBundle.Write(Path.GetFullPath(destinationPath), manifest, entry.SavePath);
+    }
+
+    /// <summary>
+    /// Reads a .rwsave bundle, or a bare save file, into a new entry.
+    ///
+    /// An import never writes into the save folder. It lands in the library and is loaded from
+    /// there like anything else, which keeps the guarded write path the only way a file that
+    /// arrived from outside reaches a live slot.
+    /// </summary>
+    public LibraryImportResult ImportFile(string sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return new LibraryImportResult(null, Array.Empty<string>(), new[] { "No file was chosen." });
+        }
+
+        var full = Path.GetFullPath(sourcePath.Trim());
+        var warnings = new List<string>();
+
+        if (!File.Exists(full))
+        {
+            return new LibraryImportResult(null, warnings, new[] { $"{Path.GetFileName(full)} is not there." });
+        }
+
+        var kind = SaveBundle.Sniff(full);
+        if (kind == BundleKind.Unknown)
+        {
+            return new LibraryImportResult(null, warnings, new[]
+            {
+                $"{Path.GetFileName(full)} is not a Rain World save or a {SaveBundle.Extension} file.",
+            });
+        }
+
+        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+
+        try
+        {
+            var manifest = kind == BundleKind.Bundle
+                ? ImportBundle(full, directory)
+                : ImportBareContainer(full, directory, warnings);
+
+            manifest.SchemaVersion = LibraryManifest.CurrentSchemaVersion;
+
+            // The load history belonged to whoever exported it and says nothing about this machine.
+            manifest.LastLoadedRealm = null;
+            manifest.LastLoadedSlot = null;
+            manifest.LastLoadedUtc = null;
+            manifest.LastLoadedSizeBytes = null;
+            manifest.LastLoadedWriteUtc = null;
+
+            // The bundle carries one save, so there is no earlier generation to go back to here.
+            manifest.PreviousSha256 = null;
+            manifest.PreviousSizeBytes = null;
+            manifest.PreviousReplacedUtc = null;
+            manifest.PreviousMetadata = null;
+
+            TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
+            WriteManifest(directory, manifest);
+
+            return new LibraryImportResult(LibraryEntry.Load(directory), warnings, Array.Empty<string>());
+        }
+        catch (Exception ex)
+        {
+            TryDeleteDirectory(directory);
+            return new LibraryImportResult(null, warnings, new[] { ex.Message });
+        }
+    }
+
+    private static LibraryManifest ImportBundle(string sourcePath, string directory)
+    {
+        var manifest = SaveBundle.Extract(sourcePath, directory);
+
+        if (string.IsNullOrWhiteSpace(manifest.Name))
+        {
+            manifest.Name = Path.GetFileNameWithoutExtension(sourcePath);
+        }
+
+        return manifest;
+    }
+
+    /// <summary>
+    /// Takes a save file straight out of somebody's save folder. There is no recorded hash to check
+    /// it against, so unlike a bundle a damaged one is imported with a warning rather than refused:
+    /// getting a broken save into the library is how somebody looks at what is left of it.
+    /// </summary>
+    private LibraryManifest ImportBareContainer(string sourcePath, string directory, List<string> warnings)
+    {
+        var savePath = Path.Combine(directory, LibraryEntry.SaveFileName);
+        var fileName = Path.GetFileName(sourcePath);
+
+        var copied = CopyProving(sourcePath, savePath, fileName, progress: null);
+
+        var slot = SaveSlotRef.ForFileName(fileName);
+        var realm = slot?.Realm ?? SaveSlotRef.RealmForFileName(fileName);
+        var metadata = SaveMetadataExtractor.Extract(savePath, slot?.Slot ?? 0, realm);
+
+        if (metadata.ParseError is { } parseError)
+        {
+            warnings.Add($"{fileName} could not be read by this app ({parseError}). It was imported exactly as it is.");
+        }
+        else if (metadata.ChecksumValid == false)
+        {
+            warnings.Add($"{fileName} has a checksum the game will reject. It was imported exactly as it is, and importing does not repair that.");
+        }
+
+        return new LibraryManifest
+        {
+            SchemaVersion = LibraryManifest.CurrentSchemaVersion,
+            Name = Path.GetFileNameWithoutExtension(fileName) is { Length: > 0 } stem ? stem : fileName,
+            Note = null,
+            CreatedUtc = DateTime.UtcNow,
+            AppVersion = _appVersion,
+            SourceFileName = fileName,
+            SourceRealm = realm,
+            SourceSlot = slot?.Slot ?? 0,
+            SizeBytes = copied.SizeBytes,
+            Sha256 = copied.Sha256,
+            Metadata = metadata,
+        };
+    }
+
+    /// <summary>
     /// Copies a file and proves the copy against what it came from, the same discipline a backup
     /// copy follows. A file that moves under the copy is copied again, and one that will not sit
     /// still throws rather than being recorded as sound.
@@ -513,6 +849,23 @@ public sealed class SaveLibrary
         if (_gameDetector.IsGameRunning(out var processName))
         {
             throw new GameRunningException(string.IsNullOrWhiteSpace(processName) ? "Rain World" : processName);
+        }
+    }
+
+    /// <summary>Clears away a folder an import claimed and then could not fill.</summary>
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+            {
+                Directory.Delete(path, recursive: true);
+            }
+        }
+        catch (Exception)
+        {
+            // A folder left behind has no entry.json, so it lists as an import that did not finish
+            // rather than as a save the user can act on.
         }
     }
 
