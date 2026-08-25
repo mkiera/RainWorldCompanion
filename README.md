@@ -165,6 +165,11 @@ written.
 The LIBRARY tab in the left column lists what you have stored, with the same faces, campaign counts
 and check state the backup rows carry. Selecting one fills the same detail panel a backup does.
 
+A stored save reads the same whichever slot it came from. One taken from `online_sav2` lays out
+exactly like one taken from `sav2`, and neither gets the Rain Meadow section, which exists to pair a
+slot's two halves and a single stored save has no second half. Where it came from is on the row and
+in the panel subtitle.
+
 - **Load** writes a library save into whichever slot you pick, local or online.
 - **Update** replaces a library save with what is in the slot it was last loaded into, which is how
   an hour of play gets back into the entry it came from. The save being replaced is kept, so

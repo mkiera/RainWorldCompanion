@@ -9,10 +9,11 @@ namespace RainWorldSaveManager.ViewModels;
 /// The one wording for "how many campaigns", used by the live save card, the backup rows and the
 /// detail header.
 ///
-/// The two realms are counted separately because they are shown separately: the slot sections list
-/// the local saves and the Rain Meadow foldout lists the online ones. A single total would head a
-/// list that does not add up to it, and counting them differently in different places puts two
-/// numbers for the same folder on screen at once.
+/// A folder counts its two realms separately because it shows them separately: the slot sections
+/// list the local saves and the Rain Meadow section lists the online ones. A single total would
+/// head a list that does not add up to it, and counting them differently in different places puts
+/// two numbers for the same folder on screen at once. One library save is a single file with one
+/// section, so it passes zero for the online half whichever realm it came from.
 /// </summary>
 internal static class CampaignCount
 {

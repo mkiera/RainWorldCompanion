@@ -435,13 +435,13 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void RebuildDetail()
     {
-        // Stamped before the assignment, not after. ShowMeadowSection raises no change
-        // notification, so a binding that reads it when Detail changes would see the default and
-        // never look again, which left the whole Rain Meadow block hidden.
+        // Stamped before the assignment, not after. MeadowInstalled raises no change notification,
+        // and ShowMeadowSection is computed from it, so a binding that read it when Detail changed
+        // would see the default and never look again, which left the whole block hidden.
         SnapshotDetailViewModel? built = BuildDetail();
         if (built is not null)
         {
-            built.ShowMeadowSection = _meadow.Present;
+            built.MeadowInstalled = _meadow.Present;
             built.MeadowVersionText = MeadowVersionText;
         }
 
