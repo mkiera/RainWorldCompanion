@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
 using RainWorldSaveManager.Core.Settings;
@@ -40,6 +41,7 @@ public sealed class BackupService
     private FileStream? _operationLock;
     private int _operationDepth;
     private SlotCopyService? _slotCopies;
+    private SaveSlotWriter? _slotWriter;
 
     public BackupService(string saveRoot, string backupRoot, IGameProcessDetector gameDetector, string appVersion)
         : this(saveRoot, backupRoot, gameDetector, appVersion, scope: null)
@@ -787,6 +789,12 @@ public sealed class BackupService
     /// this service's scope, so it hangs off the same object rather than being built separately.
     /// </summary>
     public SlotCopyService SlotCopies => _slotCopies ??= new SlotCopyService(this, _gameDetector);
+
+    /// <summary>
+    /// Writing an edited campaign back over its slot. It hangs off this service for the same reason
+    /// slot copying does: the safety snapshot it depends on is this service's.
+    /// </summary>
+    public SaveSlotWriter SlotWriter => _slotWriter ??= new SaveSlotWriter(this, _gameDetector);
 
     /// <summary>
     /// Copies one whole save slot file onto another, byte for byte. See

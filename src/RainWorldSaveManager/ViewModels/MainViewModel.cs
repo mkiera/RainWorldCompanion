@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -8,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Library;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
@@ -45,6 +47,11 @@ public sealed partial class MainViewModel : ObservableObject
 
     /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
     private SaveLibrary? _library;
+
+    // The campaign whose editor is open, or null. One at a time: an editor holds a session over a
+    // whole slot file, so two of them would each be working from bytes the other had already
+    // changed.
+    private CampaignViewModel? _openEditor;
 
     // 1 while a poll is running. Interlocked because the poll's own continuation clears it on a
     // worker thread while the timer tick sets it on the dispatcher.
@@ -117,6 +124,8 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     private bool isGameRunning;
 
     [ObservableProperty]
@@ -137,6 +146,8 @@ public sealed partial class MainViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RenameEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -441,6 +452,11 @@ public sealed partial class MainViewModel : ObservableObject
     /// </summary>
     private void RebuildDetail()
     {
+        // The panel is thrown away and built again, so an open editor is about to be detached from
+        // anything on screen. Letting go of it here keeps a session from being held by a card the
+        // user can no longer see or cancel.
+        CloseOpenEditor();
+
         // Taken from the panel the user was looking at, while there still is one. A rebuild driven
         // by the list emptying arrives with Detail already null, and this is what carries the realm
         // over that gap to the rebuild that restores the selection.
@@ -632,6 +648,590 @@ public sealed partial class MainViewModel : ObservableObject
     private bool CanCopySlot() => !IsBusy && !IsGameRunning && _copyService is not null;
 
     /// <summary>
+    /// Opens one campaign for editing.
+    ///
+    /// Only one campaign is open at a time. Each editor holds a session over a whole slot file, so
+    /// two of them open on the same slot would each be working from bytes the other did not know
+    /// had changed, and whichever saved second would be refused for being out of date.
+    ///
+    /// Nothing is written here. The session sits in memory until it is saved, and closing the
+    /// editor drops it.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBeginEdit))]
+    private async Task BeginEditAsync(CampaignViewModel? campaign)
+    {
+        if (campaign?.EditableSlot is not { } slot || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        if (campaign.IsEditing)
+        {
+            return;
+        }
+
+        string root = _settings.GameSavePath ?? "";
+        if (root.Length == 0)
+        {
+            Report("The save folder is not set, so there is nothing to edit.", null);
+            return;
+        }
+
+        string path = Path.Combine(root, slot.FileName);
+
+        SaveEditSession? session = null;
+        Exception? failure = null;
+
+        BeginBusy("Opening " + slot.FileName, "Reading the save");
+        try
+        {
+            session = await Task.Run(() => SaveEditSession.Open(path));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null || session is null)
+        {
+            Report(slot.FileName + " could not be opened for editing.", failure);
+            return;
+        }
+
+        CampaignRecordRef? record = session.Campaigns
+            .FirstOrDefault(c => string.Equals(c.SlugcatId, campaign.SlugcatId, StringComparison.Ordinal));
+
+        if (record is null)
+        {
+            // The panel was drawn from a reading of the file taken earlier. A campaign that is no
+            // longer in it means the file changed underneath, so a refresh is the answer.
+            Report(
+                campaign.DisplayName + " is no longer in " + slot.FileName + ". Refresh and try again.",
+                null);
+            return;
+        }
+
+        CloseOpenEditor();
+
+        campaign.Edit = new CampaignEditViewModel(
+            session,
+            record,
+            campaign.Summary,
+            ExpansionDetector.Detect(_settings.GameInstallPath));
+        _openEditor = campaign;
+    }
+
+    private bool CanBeginEdit() => !IsBusy && !IsGameRunning;
+
+    /// <summary>Closes the editor and drops its unsaved changes.</summary>
+    [RelayCommand]
+    private void CancelEdit(CampaignViewModel? campaign)
+    {
+        if (campaign is null)
+        {
+            return;
+        }
+
+        campaign.Edit = null;
+
+        if (ReferenceEquals(_openEditor, campaign))
+        {
+            _openEditor = null;
+        }
+    }
+
+    private void CloseOpenEditor()
+    {
+        if (_openEditor is not null)
+        {
+            _openEditor.Edit = null;
+            _openEditor = null;
+        }
+    }
+
+    /// <summary>
+    /// Writes an open editor's changes to the slot it came from.
+    ///
+    /// The plan is built and checked before anything is shown, so a refusal is reported instead of
+    /// a confirmation the user would agree to and then watch fail. The write itself runs the shared
+    /// ladder, which takes the backup, holds the lock and proves the result, exactly as a slot copy
+    /// and a library load do.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSaveEdits))]
+    private async Task SaveEditsAsync(CampaignViewModel? campaign)
+    {
+        if (campaign?.Edit is not { } editor
+            || campaign.EditableSlot is not { } slot
+            || _backupService is not { } backups
+            || IsBusy
+            || IsGameRunning)
+        {
+            return;
+        }
+
+        if (!editor.IsDirty)
+        {
+            Report("Nothing was changed, so there is nothing to save.", null);
+            return;
+        }
+
+        SaveWritePlan? plan = null;
+        Exception? failure = null;
+
+        BeginBusy("Saving " + slot.FileName, "Checking the changes");
+        try
+        {
+            plan = await Task.Run(editor.BuildWritePlan);
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null || plan is null)
+        {
+            Report("The changes could not be prepared.", failure);
+            return;
+        }
+
+        if (!plan.CanWrite)
+        {
+            Report("These changes will not be saved.\n\n" + FormatList(plan.Problems), null);
+            return;
+        }
+
+        var dialog = new SaveEditsDialog(plan, campaign.DisplayName, slot.FileName, editor.Warnings.ToArray());
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SaveWriteResult? result = null;
+
+        BeginBusy("Saving " + slot.FileName, "Taking a backup first");
+        try
+        {
+            result = await Task.Run(() => backups.SlotWriter.Write(plan, slot, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            await ReloadAsync();
+            Report("The changes could not be saved.", failure);
+            return;
+        }
+
+        // Whatever library save claimed that slot no longer matches what is in it.
+        if (result!.LiveFolderModified)
+        {
+            await ReleaseSlotClaimAsync(slot);
+        }
+
+        // The panel is rebuilt from disk, which closes the editor along with it. The session it
+        // held describes bytes that are no longer there.
+        await ReloadAsync();
+
+        ReportSaveResult(result, slot.FileName);
+    }
+
+    private bool CanSaveEdits() => !IsBusy && !IsGameRunning;
+
+    private void ReportSaveResult(SaveWriteResult result, string fileName)
+    {
+        var text = new StringBuilder();
+        text.Append(result.Headline()).Append("\n\n");
+
+        if (result.Success)
+        {
+            if (result.SafetySnapshot is { } safety)
+            {
+                text.Append("Backup of your previous saves: ").Append(safety.Id).Append("\n\n");
+            }
+
+            text.Append(SteamGuidance);
+
+            if (result.Warnings.Count > 0)
+            {
+                text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+            }
+
+            ShowMessage(text.ToString(), "Save changes", MessageBoxImage.Information);
+            return;
+        }
+
+        text.Append(FormatList(result.Errors));
+
+        if (result.Warnings.Count > 0)
+        {
+            text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+        }
+
+        ShowMessage(text.ToString(), "Save changes", MessageBoxImage.Error);
+    }
+
+    // ---- one campaign at a time ----
+    //
+    // These three sit beside Edit on a campaign card and act on that one campaign. Everything they
+    // write goes through the same ladder an edit goes through, so the slot they change is in a
+    // safety snapshot first, and the slot they read is never written to at all.
+
+    /// <summary>
+    /// Keeps one campaign in the library under a name. Nothing in the save folder is written, so
+    /// there is no safety snapshot and no confirmation beyond the dialog itself.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
+    private async Task StoreCampaignAsync(CampaignViewModel? campaign)
+    {
+        SaveLibrary? library = _library;
+
+        if (library is null || campaign?.Source is not { CanBeTaken: true } source || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        var dialog = new RenameEntryDialog(
+            SuggestCampaignName(campaign),
+            "",
+            "Save " + campaign.DisplayName + " to the library",
+            "Only this campaign is stored. " + WhereItIs(source) + " is not touched, and the other campaigns in it stay where they are.",
+            "Save it");
+
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        string name = dialog.EntryName;
+        string? note = dialog.EntryNote;
+        string slugcat = campaign.SlugcatId;
+
+        LibraryEntry? stored = null;
+        Exception? failure = null;
+
+        BeginBusy("Storing " + campaign.DisplayName, name);
+        try
+        {
+            // A live slot is read under the operation lock, because the game and Steam Cloud both
+            // write to that folder. A backup and a library save are nobody else's to rewrite, so
+            // they are read where they lie.
+            stored = source.LiveSlot is { } slot
+                ? await Task.Run(() => library.StoreCampaign(slot, slugcat, name, note))
+                : await Task.Run(() =>
+                {
+                    CampaignSlice slice = ReadCampaignFrom(source, slugcat)
+                        ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
+
+                    return library.StoreCampaignFrom(
+                        slice, source.FileName, source.Realm, source.SlotNumber, name, note);
+                });
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report(campaign.DisplayName + " could not be stored.", failure);
+            return;
+        }
+
+        ShowLibrarySave(stored!.Id);
+    }
+
+    /// <summary>
+    /// Copies or moves one campaign into another slot, leaving that slot's other campaigns alone.
+    ///
+    /// A move is two writes, and the order matters: the campaign lands in the slot it is going to
+    /// before it leaves the one it came from. If the second write is refused, the campaign is in
+    /// both slots, which is the safe way round to fail.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
+    private async Task SendCampaignAsync(CampaignViewModel? campaign)
+    {
+        if (_backupService is not { } backups || campaign?.Source is not { CanBeTaken: true } source
+            || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        SaveSlotWriter writer = backups.SlotWriter;
+        string slugcat = campaign.SlugcatId;
+
+        CampaignSlice? slice;
+        Exception? failure = null;
+
+        BeginBusy("Reading " + WhereItIs(source), campaign.DisplayName);
+        try
+        {
+            slice = await Task.Run(() => ReadCampaignFrom(source, slugcat));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+            slice = null;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report(WhereItIs(source) + " could not be read.", failure);
+            return;
+        }
+
+        if (slice is null)
+        {
+            Report(NotThereAnyMore(campaign.DisplayName, source), null);
+            return;
+        }
+
+        // The dialog asks Core what each slot would do with the campaign, which means reading those
+        // slots. A slot that will not read at all is a reason to say so rather than to open a window
+        // that cannot describe anything.
+        SendCampaignDialog dialog;
+        try
+        {
+            dialog = new SendCampaignDialog(
+                campaign.DisplayName,
+                source.LiveSlot,
+                WhereItIs(source),
+                target => writer.PlanPutCampaign(target, slice),
+                _meadow.Present);
+        }
+        catch (Exception ex)
+        {
+            Report("The save folder could not be read.", ex);
+            return;
+        }
+
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        SaveSlotRef target = dialog.ChosenTarget;
+        bool takeItOut = dialog.ChosenToTakeItOut && source.LiveSlot is not null;
+        var progress = new Progress<string>(message => BusyMessage = message);
+
+        SaveWriteResult? arrival = null;
+        SaveWriteResult? departure = null;
+
+        BeginBusy("Sending " + campaign.DisplayName + " to " + target.FileName, "Taking a safety snapshot");
+        try
+        {
+            arrival = await Task.Run(() =>
+                writer.Write(writer.PlanPutCampaign(target, slice), progress, CancellationToken.None));
+
+            if (arrival.Success && takeItOut && source.LiveSlot is { } from)
+            {
+                departure = await Task.Run(() => writer.Write(
+                    writer.PlanTakeCampaign(from, slugcat, includeMaps: true),
+                    progress,
+                    CancellationToken.None));
+            }
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (arrival?.LiveFolderModified == true)
+        {
+            await ReleaseSlotClaimAsync(target);
+        }
+
+        if (departure?.LiveFolderModified == true && source.LiveSlot is { } emptied)
+        {
+            await ReleaseSlotClaimAsync(emptied);
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report(campaign.DisplayName + " could not be sent to " + target.FileName + ".", failure);
+            return;
+        }
+
+        ReportCampaignMove(campaign.DisplayName, arrival!, departure, WhereItIs(source), target);
+    }
+
+    /// <summary>
+    /// Takes one campaign out of the slot it is in, leaving the other campaigns there alone.
+    ///
+    /// The map discovery stays, which is what the game's own wipe does. A slot that has lost a
+    /// campaign but kept the map is a slot that has been played, and that is what it is.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
+    private async Task DeleteCampaignAsync(CampaignViewModel? campaign)
+    {
+        if (_backupService is not { } backups || campaign?.EditableSlot is not { } slot
+            || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        bool confirmed = AskYesNo(
+            "Take " + campaign.DisplayName + " out of " + slot.FileName + "?\n\n"
+            + "The other campaigns in that slot are left alone, and the map this one explored stays, the "
+            + "way it does when the game itself wipes a save.\n\n"
+            + "The whole save folder is copied first, and restoring that backup puts this campaign back.",
+            "Delete a campaign");
+
+        if (!confirmed)
+        {
+            return;
+        }
+
+        SaveSlotWriter writer = backups.SlotWriter;
+        string slugcat = campaign.SlugcatId;
+        var progress = new Progress<string>(message => BusyMessage = message);
+
+        SaveWriteResult? result = null;
+        Exception? failure = null;
+
+        BeginBusy("Taking " + campaign.DisplayName + " out of " + slot.FileName, "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(() => writer.Write(
+                writer.PlanTakeCampaign(slot, slugcat, includeMaps: false),
+                progress,
+                CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (result?.LiveFolderModified == true)
+        {
+            await ReleaseSlotClaimAsync(slot);
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report(campaign.DisplayName + " could not be taken out of " + slot.FileName + ".", failure);
+            return;
+        }
+
+        ReportSaveResult(result!, slot.FileName);
+    }
+
+    private bool CanActOnCampaign() =>
+        !IsBusy && !IsGameRunning && _library is not null && _backupService is not null;
+
+    /// <summary>
+    /// Reports both halves of a send as one message, because to the user it was one thing they
+    /// asked for. A move whose second half was refused says so rather than reading as a success.
+    /// </summary>
+    private void ReportCampaignMove(
+        string campaignName,
+        SaveWriteResult arrival,
+        SaveWriteResult? departure,
+        string sourceName,
+        SaveSlotRef target)
+    {
+        var text = new StringBuilder();
+
+        if (!arrival.Success)
+        {
+            text.Append(campaignName).Append(" was not written to ").Append(target.FileName).Append(".\n\n");
+            text.Append(FormatList(arrival.Errors));
+            ShowMessage(text.ToString(), "Send a campaign", MessageBoxImage.Error);
+            return;
+        }
+
+        text.Append(campaignName).Append(" is now in ").Append(target.FileName).Append(".\n\n");
+
+        if (departure is null)
+        {
+            text.Append("It is still in ").Append(sourceName).Append(" as well.\n\n");
+        }
+        else if (departure.Success)
+        {
+            text.Append("It has been taken out of ").Append(sourceName).Append(".\n\n");
+        }
+        else
+        {
+            text.Append("It could not be taken out of ").Append(sourceName)
+                .Append(", so it is in both slots for now:\n")
+                .Append(FormatList(departure.Errors))
+                .Append("\n\n");
+        }
+
+        if (arrival.SafetySnapshot is { } safety)
+        {
+            text.Append("Backup of your previous saves: ").Append(safety.Id).Append("\n\n");
+        }
+
+        text.Append(SteamGuidance);
+
+        ShowMessage(
+            text.ToString(),
+            "Send a campaign",
+            departure is { Success: false } ? MessageBoxImage.Warning : MessageBoxImage.Information);
+    }
+
+    /// <summary>
+    /// Reads one campaign out of wherever it is: a live slot, a backup, or a library save. Core
+    /// tells a save container from a campaign file, so this does not have to.
+    /// </summary>
+    private static CampaignSlice? ReadCampaignFrom(CampaignSource source, string slugcatId)
+        => CampaignFile.ReadFrom(source.FilePath, slugcatId);
+
+    /// <summary>What to call the file a campaign is in, for example "sav2" or "backup 2026-08-24".</summary>
+    private static string WhereItIs(CampaignSource source)
+        => source.Label.Length > 0 ? source.Label : source.FileName;
+
+    private static string NotThereAnyMore(string campaignName, CampaignSource source)
+        => campaignName + " is no longer in " + WhereItIs(source) + ". Refresh and try again.";
+
+    /// <summary>
+    /// A starting name for a stored campaign, for example "Gourmand cycle 42". Something to accept
+    /// or type over beats an empty box the user has to fill before the button works.
+    /// </summary>
+    private static string SuggestCampaignName(CampaignViewModel campaign)
+        => campaign.Summary.DisplayCycleNum is { } cycle
+            ? campaign.DisplayName + " cycle " + cycle.ToString(CultureInfo.InvariantCulture)
+            : campaign.DisplayName;
+
+    /// <summary>
     /// Where the pickers start. Slot 1 to its online half is the copy Rain Meadow players come for,
     /// and without the mod there is no online half to offer, so it starts on the two local slots the
     /// game itself shows first.
@@ -757,7 +1357,7 @@ public sealed partial class MainViewModel : ObservableObject
         BeginBusy("Load a library save", "Working out what would change");
         try
         {
-            plan = await Task.Run(() => library.PlanLoad(entry, target));
+            plan = await Task.Run(() => library.PlanAnyLoad(entry, target));
         }
         catch (Exception ex)
         {
@@ -776,7 +1376,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         // A plan that cannot run still opens the dialog, for the reason Copy Slot does: the pair
         // here is only where the pickers start.
-        var dialog = new LoadSaveDialog(entries, plan!, library.PlanLoad, _meadow.Present);
+        var dialog = new LoadSaveDialog(entries, plan!, library.PlanAnyLoad, _meadow.Present);
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -791,7 +1391,7 @@ public sealed partial class MainViewModel : ObservableObject
         BeginBusy("Loading " + chosen.Name, "Taking a safety snapshot");
         try
         {
-            result = await Task.Run(() => library.LoadEntry(chosen, chosenTarget, progress, CancellationToken.None));
+            result = await Task.Run(() => library.LoadAny(chosen, chosenTarget, progress, CancellationToken.None));
         }
         catch (Exception ex)
         {
@@ -1007,13 +1607,20 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
+        // A campaign and a whole slot are the same format under different names, and the name is
+        // what tells somebody receiving one which of the two they were sent.
+        var extension = SaveLibrary.ExportExtensionFor(item.Entry);
+        var title = item.Entry.IsCampaign ? "Export a campaign" : "Export a library save";
+
         var dialog = new SaveFileDialog
         {
-            Title = "Export a library save",
-            Filter = "Rain World save bundle (*.rwsave)|*.rwsave|All files (*.*)|*.*",
-            DefaultExt = ".rwsave",
+            Title = title,
+            Filter = item.Entry.IsCampaign
+                ? "Rain World campaign (*.rwcampaign)|*.rwcampaign|All files (*.*)|*.*"
+                : "Rain World save bundle (*.rwsave)|*.rwsave|All files (*.*)|*.*",
+            DefaultExt = extension,
             AddExtension = true,
-            FileName = SafeFileName(item.Name) + ".rwsave",
+            FileName = SafeFileName(item.Name) + extension,
         };
 
         if (dialog.ShowDialog(OwnerWindow) != true)
@@ -1046,8 +1653,10 @@ public sealed partial class MainViewModel : ObservableObject
 
         ShowMessage(
             "Exported \"" + item.Name + "\" to:\n" + destination +
-            "\n\nThe file holds the save and the name, the note and the campaigns beside it.",
-            "Export a library save",
+            (item.Entry.IsCampaign
+                ? "\n\nThe file holds the campaign and the name, the note and its detail beside it."
+                : "\n\nThe file holds the save and the name, the note and the campaigns beside it."),
+            title,
             MessageBoxImage.Information);
     }
 
@@ -1070,8 +1679,10 @@ public sealed partial class MainViewModel : ObservableObject
         var dialog = new OpenFileDialog
         {
             Title = "Import a save into the library",
-            Filter = "Rain World saves (*.rwsave, sav, online_sav)|*.rwsave;sav;sav2;sav3;online_sav;online_sav2;online_sav3"
+            Filter = "Rain World saves (*.rwsave, *.rwcampaign, sav, online_sav)"
+                + "|*.rwsave;*.rwcampaign;sav;sav2;sav3;online_sav;online_sav2;online_sav3"
                 + "|Rain World save bundle (*.rwsave)|*.rwsave"
+                + "|Rain World campaign (*.rwcampaign)|*.rwcampaign"
                 + "|All files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false,
@@ -2190,6 +2801,11 @@ public sealed partial class MainViewModel : ObservableObject
         RenameEntryCommand.NotifyCanExecuteChanged();
         ImportSaveCommand.NotifyCanExecuteChanged();
         ExportSaveCommand.NotifyCanExecuteChanged();
+        BeginEditCommand.NotifyCanExecuteChanged();
+        SaveEditsCommand.NotifyCanExecuteChanged();
+        StoreCampaignCommand.NotifyCanExecuteChanged();
+        SendCampaignCommand.NotifyCanExecuteChanged();
+        DeleteCampaignCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()
@@ -2291,7 +2907,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>
     /// Every command failure lands here, so an IOException reads as a message instead of ending the app.
     /// </summary>
-    private void Report(string headline, Exception ex)
+    private void Report(string headline, Exception? ex)
     {
         if (ex is GameRunningException running)
         {
@@ -2299,7 +2915,11 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        ShowMessage(headline + "\n\n" + ex.Message, "Rain World Save Manager", MessageBoxImage.Error);
+        // A refusal this app worked out itself has no exception behind it and needs none: the
+        // headline already says what happened.
+        string text = ex is null ? headline : headline + "\n\n" + ex.Message;
+
+        ShowMessage(text, "Rain World Save Manager", MessageBoxImage.Error);
     }
 
     private static string FormatList(IReadOnlyList<string> items)

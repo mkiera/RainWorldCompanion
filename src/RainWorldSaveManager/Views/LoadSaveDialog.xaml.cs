@@ -137,13 +137,32 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
     public string HeadlineText =>
         "Load \"" + _plan.Entry.Name + "\" into " + _plan.Target.FileName + "?";
 
-    public string DirectionText =>
-        "The library save is copied into " + Describe(_plan.Target.Realm, _plan.Target.Slot) +
-        ". Rain World reads that slot the next time you open it.";
+    /// <summary>
+    /// A whole slot is copied over the target and a campaign is spliced into it, which are different
+    /// enough that saying the wrong one would mislead about what survives.
+    /// </summary>
+    public string DirectionText => _plan.Entry.IsCampaign
+        ? "The campaign is written into " + Describe(_plan.Target.Realm, _plan.Target.Slot) +
+          ". Rain World reads that slot the next time you open it."
+        : "The library save is copied into " + Describe(_plan.Target.Realm, _plan.Target.Slot) +
+          ". Rain World reads that slot the next time you open it.";
 
-    public string ReplaceWarningText => _plan.Target.Exists
-        ? _plan.Target.FileName + " is replaced entirely. Everything in it now is gone once this finishes."
-        : _plan.Target.FileName + " does not exist yet and will be created.";
+    public string ReplaceWarningText
+    {
+        get
+        {
+            if (_plan.Entry.IsCampaign)
+            {
+                return _plan.Summary.Length > 0
+                    ? _plan.Summary + " Every other campaign in " + _plan.Target.FileName + " is left alone."
+                    : "Every other campaign in " + _plan.Target.FileName + " is left alone.";
+            }
+
+            return _plan.Target.Exists
+                ? _plan.Target.FileName + " is replaced entirely. Everything in it now is gone once this finishes."
+                : _plan.Target.FileName + " does not exist yet and will be created.";
+        }
+    }
 
     public string SourceName => _plan.Entry.Name;
 
@@ -199,12 +218,14 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
 
         foreach (var entry in entries)
         {
-            var detail = entry.Manifest?.Metadata?.Campaigns.Count switch
-            {
-                null or 0 => "",
-                1 => "  (1 campaign)",
-                var count => "  (" + Number(count.Value) + " campaigns)",
-            };
+            var detail = entry.IsCampaign
+                ? "  (one campaign)"
+                : entry.Manifest?.Metadata?.Campaigns.Count switch
+                {
+                    null or 0 => "",
+                    1 => "  (1 campaign)",
+                    var count => "  (" + Number(count.Value) + " campaigns)",
+                };
 
             choices.Add(new EntryChoice(entry, entry.Name + detail));
         }

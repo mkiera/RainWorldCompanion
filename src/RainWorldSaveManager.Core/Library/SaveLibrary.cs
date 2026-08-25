@@ -2,8 +2,10 @@
 // exists elsewhere in this assembly, so a using written inside the namespace body would bind
 // "System" to that namespace instead of the BCL root.
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using RainWorldSaveManager.Core.Backups;
+using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
 using RainWorldSaveManager.Core.Settings;
@@ -132,6 +134,15 @@ public sealed class SaveLibrary
         if (entry.Manifest is not { } manifest)
         {
             problems.Add($"\"{entry.Name}\" did not finish being stored ({entry.Problem}), so it cannot be loaded.");
+            return new LibraryLoadPlan(entry, side, problems, warnings);
+        }
+
+        // A campaign is spliced into whatever the slot already holds rather than written over it,
+        // which is a different operation with a different plan behind it.
+        if (entry.IsCampaign)
+        {
+            problems.Add(
+                $"\"{entry.Name}\" holds one campaign rather than a whole slot, so it is loaded into a slot rather than over one.");
             return new LibraryLoadPlan(entry, side, problems, warnings);
         }
 
@@ -417,6 +428,269 @@ public sealed class SaveLibrary
     }
 
     /// <summary>
+    /// Copies one campaign out of a live slot into a new entry.
+    ///
+    /// The slot is left exactly as it was. Storing a campaign is a read, and moving one somewhere
+    /// else is this followed by a separate write that the user agrees to on its own.
+    /// </summary>
+    public LibraryEntry StoreCampaign(
+        SaveSlotRef source,
+        string slugcatId,
+        string name,
+        string? note,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var trimmedName = (name ?? "").Trim();
+        if (trimmedName.Length == 0)
+        {
+            throw new ArgumentException("A library save needs a name.", nameof(name));
+        }
+
+        EnsureGameNotRunning();
+        ct.ThrowIfCancellationRequested();
+
+        var sourcePath = ResolveSlotPath(source);
+
+        using var lease = _backups.AcquireOperationLock();
+
+        if (!File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException($"{source.FileName} is not in the save folder, so there is nothing to store.", sourcePath);
+        }
+
+        if (CanonicalPath.IsLink(sourcePath))
+        {
+            throw new IOException($"{source.FileName} is a link, and this app copies only real files inside the save folder.");
+        }
+
+        progress?.Report($"Reading {source.FileName}");
+
+        var slice = SaveEditSession.Open(sourcePath).TakeCampaign(slugcatId)
+            ?? throw new InvalidOperationException(
+                $"{source.FileName} holds no {SlugcatCatalog.ForId(slugcatId).DisplayName} campaign, so there is nothing to store.");
+
+        var entry = StoreCampaignFrom(slice, source.FileName, source.Realm, source.Slot, trimmedName, note);
+
+        progress?.Report("Stored");
+        return entry;
+    }
+
+    /// <summary>
+    /// Keeps a campaign already in hand, whatever it was taken out of.
+    ///
+    /// A campaign pulled out of a backup, or out of a whole slot kept in the library, is the same
+    /// thing as one pulled out of a live slot once it has been read. Neither touches the save folder,
+    /// so unlike <see cref="StoreCampaign"/> this takes no lock and does not care whether the game is
+    /// running.
+    /// </summary>
+    /// <param name="sourceFileName">What the campaign came out of, for the row to show.</param>
+    public LibraryEntry StoreCampaignFrom(
+        CampaignSlice slice,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string? note)
+    {
+        ArgumentNullException.ThrowIfNull(slice);
+
+        var trimmedName = (name ?? "").Trim();
+        if (trimmedName.Length == 0)
+        {
+            throw new ArgumentException("A library save needs a name.", nameof(name));
+        }
+
+        var payload = CampaignFile.ToPayload(slice);
+        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+        var campaignPath = Path.Combine(directory, LibraryEntry.CampaignFileName);
+
+        File.WriteAllBytes(campaignPath, CampaignFile.ToBytes(slice));
+
+        var manifest = new LibraryManifest
+        {
+            SchemaVersion = LibraryManifest.CurrentSchemaVersion,
+            Kind = LibraryEntryKind.Campaign,
+            CampaignSlugcatId = slice.SlugcatId,
+            Name = trimmedName,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            CreatedUtc = DateTime.UtcNow,
+            AppVersion = _appVersion,
+            SourceFileName = sourceFileName ?? "",
+            SourceRealm = sourceRealm,
+            SourceSlot = sourceSlot,
+            SizeBytes = new FileInfo(campaignPath).Length,
+            Sha256 = Hashing.ComputeFileSha256(campaignPath),
+            Metadata = SaveMetadataExtractor.FromPayload(
+                payload, LibraryEntry.CampaignFileName, sourceSlot, sourceRealm),
+        };
+
+        TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
+        WriteManifest(directory, manifest);
+
+        return LibraryEntry.Load(directory);
+    }
+
+    /// <summary>
+    /// What loading a stored campaign into a slot would do, worked out without changing anything.
+    ///
+    /// A campaign goes into whatever the slot already holds rather than over it, so the other
+    /// campaigns in that slot are untouched and the one for this slugcat is replaced.
+    /// </summary>
+    public CampaignMovePlan PlanCampaignLoad(LibraryEntry entry, SaveSlotRef target)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(target);
+
+        var side = _backups.SlotCopies.ReadSide(target);
+        var name = side.FileName.Length == 0 ? "the target slot" : side.FileName;
+
+        if (!entry.IsCampaign)
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                name,
+                $"\"{entry.Name}\" holds a whole slot rather than one campaign, so it is written over a slot rather than into one.");
+        }
+
+        var verification = VerifyEntry(entry);
+        if (!verification.Ok)
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                name,
+                new[] { $"\"{entry.Name}\" failed its checksum check, so it will not be written to a slot." }
+                    .Concat(verification.Problems)
+                    .ToArray());
+        }
+
+        if (ReadStoredCampaign(entry) is not { } slice)
+        {
+            return CampaignMovePlan.Refused(
+                side.FullPath,
+                target,
+                name,
+                $"\"{entry.Name}\" does not read back as a campaign, so it will not be written to a slot.");
+        }
+
+        return _backups.SlotWriter.PlanPutCampaign(target, slice);
+    }
+
+    /// <summary>
+    /// Puts a stored campaign into a live slot.
+    ///
+    /// The write runs the same ladder a slot copy and a whole-slot load run: safety snapshot first,
+    /// then the lock, then the re-checks. The difference is what is written, which is the slot's own
+    /// bytes with one campaign spliced in rather than a file copied over the top.
+    /// </summary>
+    public LibraryLoadResult LoadCampaignOntoSlot(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(target);
+
+        EnsureGameNotRunning();
+
+        var side = _backups.SlotCopies.ReadSide(target);
+        var move = PlanCampaignLoad(entry, target);
+        var plan = new LibraryLoadPlan(entry, side, move.Problems, move.Warnings, move.Describe());
+
+        if (!move.CanWrite)
+        {
+            var problems = move.Problems.Count > 0 ? move.Problems : move.Write.Problems;
+            return new LibraryLoadResult(false, null, problems, move.Warnings, false, 0, plan);
+        }
+
+        ct.ThrowIfCancellationRequested();
+
+        var result = _backups.SlotWriter.Write(move, progress, ct);
+        var warnings = move.Warnings.Concat(result.Warnings).ToArray();
+
+        if (result.Success)
+        {
+            // A slot holding one campaign from this entry and everything else of its own is not the
+            // entry's bytes, so no claim on the slot is recorded and any older one still stands.
+            progress?.Report(move.Describe());
+        }
+
+        return new LibraryLoadResult(
+            result.Success,
+            result.SafetySnapshot,
+            result.Errors,
+            warnings,
+            result.LiveFolderModified,
+            result.BytesWritten,
+            plan);
+    }
+
+    /// <summary>
+    /// What loading this entry would do, whichever kind it is. A whole slot is written over the
+    /// target and a campaign is written into it, so a caller offering both goes through here rather
+    /// than having to know which it is holding.
+    /// </summary>
+    public LibraryLoadPlan PlanAnyLoad(LibraryEntry entry, SaveSlotRef target)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(target);
+
+        if (!entry.IsCampaign)
+        {
+            return PlanLoad(entry, target);
+        }
+
+        var move = PlanCampaignLoad(entry, target);
+        var problems = move.Problems.Count > 0 ? move.Problems : move.Write.Problems;
+
+        return new LibraryLoadPlan(
+            entry,
+            _backups.SlotCopies.ReadSide(target),
+            problems,
+            move.Warnings,
+            move.Describe());
+    }
+
+    /// <summary>Loads this entry onto a slot, whichever kind it is.</summary>
+    public LibraryLoadResult LoadAny(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        return entry.IsCampaign
+            ? LoadCampaignOntoSlot(entry, target, progress, ct)
+            : LoadEntry(entry, target, progress, ct);
+    }
+
+    /// <summary>The campaign an entry holds, or null when it holds a whole slot or will not read.</summary>
+    public CampaignSlice? ReadStoredCampaign(LibraryEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        if (!entry.IsCampaign)
+        {
+            return null;
+        }
+
+        try
+        {
+            return CampaignFile.Read(File.ReadAllBytes(entry.CampaignPath));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Replaces an entry's save with what is in a live slot now, which is how an hour of play gets
     /// back into the entry it came from.
     ///
@@ -457,6 +731,11 @@ public sealed class SaveLibrary
             throw new IOException($"{source.FileName} is a link, and this app copies only real files inside the save folder.");
         }
 
+        if (entry.IsCampaign)
+        {
+            return UpdateCampaign(entry, manifest, source, sourcePath, progress);
+        }
+
         // The new bytes land beside the old ones and are proved before anything is replaced, so a
         // copy that goes wrong leaves the entry exactly as it was.
         var stagedPath = Path.Combine(entry.DirectoryPath, LibraryEntry.SaveFileName + ".tmp");
@@ -493,6 +772,58 @@ public sealed class SaveLibrary
     }
 
     /// <summary>
+    /// Takes the campaign out of the slot again, for an entry that holds one.
+    ///
+    /// The same shape as updating a whole slot: the new bytes are written beside the old ones, the
+    /// old ones move aside as the one generation that can be undone, and only then is the manifest
+    /// rewritten. No slot link is recorded, because a slot holding this campaign and eight others
+    /// is not this entry's bytes.
+    /// </summary>
+    private LibraryEntry UpdateCampaign(
+        LibraryEntry entry,
+        LibraryManifest manifest,
+        SaveSlotRef source,
+        string sourcePath,
+        IProgress<string>? progress)
+    {
+        var slugcat = manifest.CampaignSlugcatId ?? "";
+
+        progress?.Report($"Reading {source.FileName}");
+
+        var slice = SaveEditSession.Open(sourcePath).TakeCampaign(slugcat)
+            ?? throw new InvalidOperationException(
+                $"{source.FileName} holds no {SlugcatCatalog.ForId(slugcat).DisplayName} campaign, so there is nothing to update from.");
+
+        var payload = CampaignFile.ToPayload(slice);
+        var stagedPath = Path.Combine(entry.DirectoryPath, LibraryEntry.CampaignFileName + ".tmp");
+
+        File.WriteAllBytes(stagedPath, CampaignFile.ToBytes(slice));
+
+        File.Move(entry.CampaignPath, entry.PreviousContentPath, overwrite: true);
+        File.Move(stagedPath, entry.CampaignPath, overwrite: true);
+
+        manifest.PreviousSha256 = manifest.Sha256;
+        manifest.PreviousSizeBytes = manifest.SizeBytes;
+        manifest.PreviousReplacedUtc = DateTime.UtcNow;
+        manifest.PreviousMetadata = manifest.Metadata;
+
+        manifest.SizeBytes = new FileInfo(entry.CampaignPath).Length;
+        manifest.Sha256 = Hashing.ComputeFileSha256(entry.CampaignPath);
+        manifest.Metadata = SaveMetadataExtractor.FromPayload(
+            payload, LibraryEntry.CampaignFileName, source.Slot, source.Realm);
+        manifest.CampaignSlugcatId = slice.SlugcatId;
+        manifest.SourceFileName = source.FileName;
+        manifest.SourceRealm = source.Realm;
+        manifest.SourceSlot = source.Slot;
+        manifest.UpdatedUtc = DateTime.UtcNow;
+
+        WriteManifest(entry.DirectoryPath, manifest);
+
+        progress?.Report("Updated");
+        return LibraryEntry.Load(entry.DirectoryPath);
+    }
+
+    /// <summary>
     /// Puts back the save an update replaced. Refuses when the previous bytes are not both on disk
     /// and recorded, and proves them against the recorded hash before swapping them in.
     /// </summary>
@@ -508,12 +839,12 @@ public sealed class SaveLibrary
                 $"\"{entry.Name}\" did not finish being stored ({entry.Problem}), so there is nothing to undo.");
         }
 
-        if (manifest.PreviousSha256 is not { Length: > 0 } previousHash || !File.Exists(entry.PreviousSavePath))
+        if (manifest.PreviousSha256 is not { Length: > 0 } previousHash || !File.Exists(entry.PreviousContentPath))
         {
             throw new InvalidOperationException($"\"{entry.Name}\" has no earlier save to go back to.");
         }
 
-        var actual = Hashing.ComputeFileSha256(entry.PreviousSavePath);
+        var actual = Hashing.ComputeFileSha256(entry.PreviousContentPath);
         if (!HashComparer.Equals(actual, previousHash))
         {
             throw new IOException(
@@ -522,11 +853,11 @@ public sealed class SaveLibrary
 
         var metadata = manifest.PreviousMetadata;
 
-        var stagedPath = Path.Combine(entry.DirectoryPath, LibraryEntry.SaveFileName + ".tmp");
-        File.Copy(entry.PreviousSavePath, stagedPath, overwrite: true);
-        File.Move(stagedPath, entry.SavePath, overwrite: true);
+        var stagedPath = Path.Combine(entry.DirectoryPath, entry.ContentFileName + ".tmp");
+        File.Copy(entry.PreviousContentPath, stagedPath, overwrite: true);
+        File.Move(stagedPath, entry.ContentPath, overwrite: true);
 
-        manifest.SizeBytes = manifest.PreviousSizeBytes ?? new FileInfo(entry.SavePath).Length;
+        manifest.SizeBytes = manifest.PreviousSizeBytes ?? new FileInfo(entry.ContentPath).Length;
         manifest.Sha256 = previousHash;
         manifest.Metadata = metadata;
 
@@ -547,7 +878,7 @@ public sealed class SaveLibrary
 
         WriteManifest(entry.DirectoryPath, manifest);
 
-        TryDelete(entry.PreviousSavePath);
+        TryDelete(entry.PreviousContentPath);
 
         return LibraryEntry.Load(entry.DirectoryPath);
     }
@@ -612,46 +943,55 @@ public sealed class SaveLibrary
             return new VerifyResult(false, problems);
         }
 
+        var what = entry.IsCampaign ? "the stored campaign" : "the stored save";
+
         FileInfo info;
         try
         {
-            info = new FileInfo(entry.SavePath);
+            info = new FileInfo(entry.ContentPath);
             if (!info.Exists)
             {
-                problems.Add("the stored save is missing");
+                problems.Add(what + " is missing");
                 return new VerifyResult(false, problems);
             }
         }
         catch (Exception ex)
         {
-            problems.Add("the stored save could not be read: " + ex.Message);
+            problems.Add(what + " could not be read: " + ex.Message);
             return new VerifyResult(false, problems);
         }
 
         if (info.Length != manifest.SizeBytes)
         {
-            problems.Add($"the stored save is {info.Length} bytes and was recorded as {manifest.SizeBytes}");
+            problems.Add($"{what} is {info.Length} bytes and was recorded as {manifest.SizeBytes}");
         }
 
         try
         {
-            var actual = Hashing.ComputeFileSha256(entry.SavePath);
+            var actual = Hashing.ComputeFileSha256(entry.ContentPath);
             if (!HashComparer.Equals(actual, manifest.Sha256))
             {
-                problems.Add("the stored save does not match its recorded checksum");
+                problems.Add(what + " does not match its recorded checksum");
             }
         }
         catch (Exception ex)
         {
-            problems.Add("the stored save could not be read: " + ex.Message);
+            problems.Add(what + " could not be read: " + ex.Message);
         }
 
         return new VerifyResult(problems.Count == 0, problems);
     }
 
+    /// <summary>The extension an export of this entry should default to.</summary>
+    public static string ExportExtensionFor(LibraryEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return entry.IsCampaign ? SaveBundle.CampaignExtension : SaveBundle.Extension;
+    }
+
     /// <summary>
-    /// Writes an entry out as a single .rwsave file, which is what gets sent to someone else or
-    /// carried to another machine.
+    /// Writes an entry out as a single file, which is what gets sent to someone else or carried to
+    /// another machine. A whole slot goes out as .rwsave and one campaign as .rwcampaign.
     /// </summary>
     public void ExportEntry(LibraryEntry entry, string destinationPath)
     {
@@ -675,7 +1015,7 @@ public sealed class SaveLibrary
                 $"\"{entry.Name}\" failed its checksum check, so it was not exported: " + string.Join("; ", verification.Problems));
         }
 
-        SaveBundle.Write(Path.GetFullPath(destinationPath), manifest, entry.SavePath);
+        SaveBundle.Write(Path.GetFullPath(destinationPath), manifest, entry.ContentPath, entry.ContentFileName);
     }
 
     /// <summary>
@@ -705,7 +1045,7 @@ public sealed class SaveLibrary
         {
             return new LibraryImportResult(null, warnings, new[]
             {
-                $"{Path.GetFileName(full)} is not a Rain World save or a {SaveBundle.Extension} file.",
+                $"{Path.GetFileName(full)} is not a Rain World save, a {SaveBundle.Extension} or a {SaveBundle.CampaignExtension} file.",
             });
         }
 
@@ -713,9 +1053,12 @@ public sealed class SaveLibrary
 
         try
         {
-            var manifest = kind == BundleKind.Bundle
-                ? ImportBundle(full, directory)
-                : ImportBareContainer(full, directory, warnings);
+            var manifest = kind switch
+            {
+                BundleKind.Bundle => ImportBundle(full, directory),
+                BundleKind.BareCampaign => ImportBareCampaign(full, directory, warnings),
+                _ => ImportBareContainer(full, directory, warnings),
+            };
 
             manifest.SchemaVersion = LibraryManifest.CurrentSchemaVersion;
 
@@ -754,6 +1097,47 @@ public sealed class SaveLibrary
         }
 
         return manifest;
+    }
+
+    /// <summary>
+    /// Takes a campaign file that arrived on its own, out of a bundle somebody unzipped or copied
+    /// straight from a library folder. Like a bare save it has no recorded hash to be held to, so
+    /// one that will not read back is imported with a warning rather than refused.
+    /// </summary>
+    private LibraryManifest ImportBareCampaign(string sourcePath, string directory, List<string> warnings)
+    {
+        var campaignPath = Path.Combine(directory, LibraryEntry.CampaignFileName);
+        var fileName = Path.GetFileName(sourcePath);
+
+        var copied = CopyProving(sourcePath, campaignPath, fileName, progress: null);
+
+        var payload = File.ReadAllBytes(campaignPath);
+        var slice = CampaignFile.Read(payload);
+
+        if (slice is null)
+        {
+            warnings.Add($"{fileName} does not read back as a campaign. It was imported exactly as it is.");
+        }
+
+        var metadata = SaveMetadataExtractor.FromPayload(
+            Encoding.UTF8.GetString(payload), LibraryEntry.CampaignFileName, 0, SaveRealm.Local);
+
+        return new LibraryManifest
+        {
+            SchemaVersion = LibraryManifest.CurrentSchemaVersion,
+            Kind = LibraryEntryKind.Campaign,
+            CampaignSlugcatId = slice?.SlugcatId,
+            Name = Path.GetFileNameWithoutExtension(fileName) is { Length: > 0 } stem ? stem : fileName,
+            Note = null,
+            CreatedUtc = DateTime.UtcNow,
+            AppVersion = _appVersion,
+            SourceFileName = fileName,
+            SourceRealm = SaveRealm.Local,
+            SourceSlot = 0,
+            SizeBytes = copied.SizeBytes,
+            Sha256 = copied.Sha256,
+            Metadata = metadata,
+        };
     }
 
     /// <summary>

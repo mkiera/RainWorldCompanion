@@ -144,6 +144,16 @@ public sealed record SlotCopyResult(
 /// Called with whether the target file already exists, so the note recorded in the safety snapshot
 /// can say which of the two things happened.
 /// </param>
+/// <param name="TargetExpectedSha256">
+/// The digest the target is held to under the lock, or null to write over whatever is there.
+///
+/// A copy and a library load both replace the target wholesale, so neither cares what it held. An
+/// edit does: it was built from the bytes that were in that slot when the editor opened, and
+/// writing it over a slot the game has since played would throw away those cycles and put back an
+/// edited copy of an older save. Checking here rather than before the call is deliberate, because
+/// here is inside the lock and after the safety snapshot, which is the last moment the answer can
+/// still change.
+/// </param>
 internal sealed record SlotWriteJob(
     SlotSide Target,
     string SourcePath,
@@ -152,7 +162,8 @@ internal sealed record SlotWriteJob(
     string OperationNoun,
     string ProgressVerb,
     string SafetyLabel,
-    Func<bool, string> SafetyNote);
+    Func<bool, string> SafetyNote,
+    string? TargetExpectedSha256 = null);
 
 /// <summary>
 /// What the shared ladder did. <see cref="LiveFolderModified"/> is false only when the target file
@@ -526,6 +537,32 @@ public sealed class SlotCopyService
                     "does not hold it and overwriting it could not be undone. Nothing was changed. Wait for Steam " +
                     "Cloud to finish syncing and try again.");
                 return SlotWriteOutcome.Refused(safety, errors, warnings);
+            }
+
+            // (g3) A job built from the target's own bytes is only valid while the target still
+            // holds them. The safety snapshot above already has whatever is there now, so refusing
+            // here costs the player nothing and saves them a slot rolled back to an edited copy of
+            // an older save.
+            if (job.TargetExpectedSha256 is { Length: > 0 } expectedTarget)
+            {
+                string? targetHashNow = null;
+                try
+                {
+                    targetHashNow = targetExistsNow ? Hashing.ComputeFileSha256(targetPath) : null;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{targetName} could not be read before the {job.OperationNoun} ({ex.Message}), so nothing was changed.");
+                    return SlotWriteOutcome.Refused(safety, errors, warnings);
+                }
+
+                if (targetHashNow is null || !HashComparer.Equals(targetHashNow, expectedTarget))
+                {
+                    errors.Add(
+                        $"{targetName} is not the file this {job.OperationNoun} was built from. It has been written to since, " +
+                        "so nothing was changed. Reopen the save and make the change again.");
+                    return SlotWriteOutcome.Refused(safety, errors, warnings);
+                }
             }
 
             long sourceLength;

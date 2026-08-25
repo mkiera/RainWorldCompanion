@@ -13,11 +13,16 @@ namespace RainWorldSaveManager.Core.Library;
 /// live slot and every line it builds says so, and a dialog that described a library entry as
 /// "local slot 1" would be describing something that is not there.
 /// </summary>
+/// <param name="Summary">
+/// One line saying what this would do to the slot, for a load that does not replace it wholesale.
+/// Empty for a whole slot, where the answer is always the same sentence and the dialog says it.
+/// </param>
 public sealed record LibraryLoadPlan(
     LibraryEntry Entry,
     SlotSide Target,
     IReadOnlyList<string> Problems,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    string Summary = "")
 {
     public bool CanLoad => Problems.Count == 0;
 }

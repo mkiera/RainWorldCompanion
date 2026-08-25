@@ -47,7 +47,9 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         LibraryEntryViewModel? entry,
         IReadOnlyList<SlotMetadata> allSlots,
         MeadowProfile? meadow,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        string sourceDirectory = "",
+        string sourceLabel = "")
     {
         IsLive = isLive;
         Title = title;
@@ -65,12 +67,32 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         // A library save is one file and it reads the same whichever slot it came from. Splitting it
         // by realm the way a folder is split would drop an online sourced save out of Slots and
         // leave the panel with nothing in it, and there is no second half here to pair it against.
+        // Only the live folder's campaigns are editable. A backup and a library save are copies
+        // taken at a moment, and editing one in place would leave it no longer a copy of anything.
         _localSlots = entry is not null
-            ? BuildSlots(allSlots, icons, entry.Entry.Manifest?.SourceFileName)
-            : BuildSlots(allSlots.Where(slot => slot.Realm != SaveRealm.Online), icons, nameRealm: true);
+            ? BuildSlots(
+                allSlots,
+                icons,
+                entry.Entry.Manifest?.SourceFileName,
+                sourceDirectory: entry.Entry.DirectoryPath,
+                sourceLabel: "the library save \"" + entry.Name + "\"",
+                sourceFileOverride: entry.Entry.ContentFileName)
+            : BuildSlots(
+                allSlots.Where(slot => slot.Realm != SaveRealm.Online),
+                icons,
+                nameRealm: true,
+                editable: isLive,
+                sourceDirectory: sourceDirectory,
+                sourceLabel: sourceLabel);
         _onlineSlots = entry is not null
             ? Array.Empty<SlotViewModel>()
-            : BuildSlots(allSlots.Where(slot => slot.Realm == SaveRealm.Online), icons, nameRealm: true);
+            : BuildSlots(
+                allSlots.Where(slot => slot.Realm == SaveRealm.Online),
+                icons,
+                nameRealm: true,
+                editable: isLive,
+                sourceDirectory: sourceDirectory,
+                sourceLabel: sourceLabel);
 
         SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots);
         OnlineCountText = FormatFileCount(_onlineSlots.Count, "online save");
@@ -225,7 +247,9 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             entry: null,
             allSlots: slots,
             meadow: meadow,
-            icons: icons);
+            icons: icons,
+            sourceDirectory: savePath,
+            sourceLabel: "");
     }
 
     /// <summary>
@@ -300,7 +324,11 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             entry: null,
             allSlots: (IReadOnlyList<SlotMetadata>?)source ?? Array.Empty<SlotMetadata>(),
             meadow: meadow,
-            icons: icons);
+            icons: icons,
+            // The panel is filled from the manifest, but taking a campaign out needs the file, so
+            // the folder the snapshot is in comes along too.
+            sourceDirectory: item.Snapshot.DirectoryPath,
+            sourceLabel: "backup " + item.Snapshot.Id);
     }
 
     /// <param name="fileNameOverride">
@@ -311,16 +339,22 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// Whether the section headers say which realm they are. True wherever the realm toggle can
     /// swap these sections for the other realm's, which is everything except a library save.
     /// </param>
+    /// <param name="editable">True only for the live save folder, whose files are the ones an edit writes to.</param>
     private static IReadOnlyList<SlotViewModel> BuildSlots(
         IEnumerable<SlotMetadata> slots,
         ISlugcatIconProvider icons,
         string? fileNameOverride = null,
-        bool nameRealm = false)
+        bool nameRealm = false,
+        bool editable = false,
+        string sourceDirectory = "",
+        string sourceLabel = "",
+        string sourceFileOverride = "")
     {
         return slots
             .OrderBy(slot => slot.Slot == 0 ? int.MaxValue : slot.Slot)
             .ThenBy(slot => slot.FileName, StringComparer.OrdinalIgnoreCase)
-            .Select(slot => new SlotViewModel(slot, icons, fileNameOverride, nameRealm))
+            .Select(slot => new SlotViewModel(
+                slot, icons, fileNameOverride, nameRealm, editable, sourceDirectory, sourceLabel, sourceFileOverride))
             .ToList();
     }
 

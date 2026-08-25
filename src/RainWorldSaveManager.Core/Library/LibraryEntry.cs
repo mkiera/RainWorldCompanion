@@ -8,6 +8,16 @@ using RainWorldSaveManager.Core.Saves.Models;
 
 namespace RainWorldSaveManager.Core.Library;
 
+/// <summary>What one library entry holds.</summary>
+public enum LibraryEntryKind
+{
+    /// <summary>A whole slot file, byte for byte as the game wrote it.</summary>
+    WholeSlot,
+
+    /// <summary>One campaign taken out of a slot, with the map discovery that belongs to it.</summary>
+    Campaign,
+}
+
 /// <summary>
 /// What entry.json holds: everything needed to list, describe and check one stored save without
 /// opening the save itself.
@@ -18,9 +28,23 @@ namespace RainWorldSaveManager.Core.Library;
 /// </summary>
 public sealed class LibraryManifest
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>
+    /// Two, because an entry can now hold one campaign rather than a whole slot.
+    ///
+    /// A version one manifest carries no kind at all and reads back as a whole slot, which is what
+    /// every one of them is. Going the other way, a version of this app that predates campaign
+    /// entries skips the key it does not know and then finds no save.bin, so such an entry lists
+    /// with a problem rather than being loaded as something it is not.
+    /// </summary>
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    /// <summary>Whether this is a whole slot or one campaign out of one.</summary>
+    public LibraryEntryKind Kind { get; set; } = LibraryEntryKind.WholeSlot;
+
+    /// <summary>Which slugcat the stored campaign belongs to. Null for a whole slot.</summary>
+    public string? CampaignSlugcatId { get; set; }
 
     public string Name { get; set; } = "";
 
@@ -121,8 +145,13 @@ public sealed class LibraryEntry
 
     public const string SaveFileName = "save.bin";
 
+    /// <summary>What an entry holding one campaign keeps it in, in place of save.bin.</summary>
+    public const string CampaignFileName = "campaign.bin";
+
     /// <summary>What an update moves the save it is replacing to. One generation, no more.</summary>
     public const string PreviousSaveFileName = "save.previous.bin";
+
+    public const string PreviousCampaignFileName = "campaign.previous.bin";
 
     /// <summary>Claims an entry folder while it is being written.</summary>
     internal const string ClaimFileName = ".creating";
@@ -169,15 +198,32 @@ public sealed class LibraryEntry
         }
     }
 
+    /// <summary>True when this entry holds one campaign rather than a whole slot.</summary>
+    public bool IsCampaign => Manifest?.Kind == LibraryEntryKind.Campaign;
+
     public string ManifestPath => Path.Combine(DirectoryPath, ManifestFileName);
 
     public string SavePath => Path.Combine(DirectoryPath, SaveFileName);
 
+    public string CampaignPath => Path.Combine(DirectoryPath, CampaignFileName);
+
+    /// <summary>
+    /// The file this entry is about, whichever of the two it holds. Everything that hashes, copies,
+    /// exports or verifies an entry goes through this rather than through the kind.
+    /// </summary>
+    public string ContentPath => IsCampaign ? CampaignPath : SavePath;
+
+    public string ContentFileName => IsCampaign ? CampaignFileName : SaveFileName;
+
     public string PreviousSavePath => Path.Combine(DirectoryPath, PreviousSaveFileName);
+
+    public string PreviousContentPath => Path.Combine(
+        DirectoryPath,
+        IsCampaign ? PreviousCampaignFileName : PreviousSaveFileName);
 
     /// <summary>Whether an update can be undone, which needs both the file and its recorded hash.</summary>
     public bool HasPrevious =>
-        Manifest?.PreviousSha256 is { Length: > 0 } && File.Exists(PreviousSavePath);
+        Manifest?.PreviousSha256 is { Length: > 0 } && File.Exists(PreviousContentPath);
 
     /// <summary>
     /// Reads one entry folder. Never throws: a folder that cannot be read comes back with a
@@ -211,9 +257,11 @@ public sealed class LibraryEntry
             return new LibraryEntry(full, null, "entry.json is empty", created);
         }
 
-        if (!File.Exists(Path.Combine(full, SaveFileName)))
+        string contentFileName = manifest.Kind == LibraryEntryKind.Campaign ? CampaignFileName : SaveFileName;
+
+        if (!File.Exists(Path.Combine(full, contentFileName)))
         {
-            return new LibraryEntry(full, null, "save.bin is missing", created);
+            return new LibraryEntry(full, null, contentFileName + " is missing", created);
         }
 
         return new LibraryEntry(
