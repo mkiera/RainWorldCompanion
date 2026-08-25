@@ -1,0 +1,414 @@
+// Usings sit above the namespace declaration on purpose. RainWorldSaveManager.Core.System
+// exists elsewhere in this assembly, so a using written inside the namespace body would bind
+// "System" to that namespace instead of the BCL root.
+using System.Text;
+
+using RainWorldSaveManager.Core.Saves;
+
+namespace RainWorldSaveManager.Core.Editing;
+
+/// <summary>What to do about the file length when an edit changes how much text the container holds.</summary>
+public enum SizePolicy
+{
+    /// <summary>
+    /// Emit the file at exactly the length it was read at. Refuses when the new text no longer
+    /// fits, so a caller that cares about the size on disk is told rather than surprised.
+    /// </summary>
+    PreserveLength,
+
+    /// <summary>
+    /// Keep the original length while the text fits, and grow past it when it does not. Growth
+    /// keeps the padding the file already carried, so a file that had slack still has slack.
+    /// </summary>
+    GrowIfNeeded,
+}
+
+/// <summary>
+/// One save container held as the bytes it was read as, with one value replaceable in place.
+///
+/// <see cref="SaveContainer"/> decodes a container into values and throws the document away, which
+/// is all a reader needs. Writing one back needs the opposite: the file kept intact and a single
+/// value's characters swapped out. Re-serialising through an XML writer is not an option, because
+/// the game's serializer stamps <c>z:Id</c> bookkeeping on every element and the numbering,
+/// attribute order and namespace placement would all have to be reproduced exactly to land on the
+/// same bytes. Editing the text directly reproduces them by not touching them.
+///
+/// The one rule that makes locating a value cheap and exact: XML text content can never hold a raw
+/// <c>&lt;</c>, because the writer escapes it. A value therefore runs from the end of its opening
+/// tag to the very next <c>&lt;</c> in the file, with no parsing in between.
+/// </summary>
+public sealed class ContainerText
+{
+    private const string ClosingTag = "</ArrayOfKeyValueOfanyTypeanyType>";
+
+    /// <summary>
+    /// A container far larger than any save the game writes. The biggest real one measured is a
+    /// 6 MB sav; this is a tripwire for an edit that has gone wrong in a way that produces text
+    /// rather than an exception, not a limit anyone should meet.
+    /// </summary>
+    public const int MaximumLength = 32 * 1024 * 1024;
+
+    // Decoding throws rather than substituting U+FFFD. A container that is not valid UTF-8 cannot
+    // be re-encoded to the bytes it came from, so the honest move is to refuse to load it at all
+    // instead of writing replacement characters over someone's save.
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    private readonly byte[] _preamble;
+    private readonly string _xml;
+    private readonly int _paddingByteCount;
+    private readonly List<string> _keys;
+    private readonly List<TextSpan> _valueSpans;
+
+    private ContainerText(byte[] preamble, string xml, int paddingByteCount, int originalLength)
+    {
+        _preamble = preamble;
+        _xml = xml;
+        _paddingByteCount = paddingByteCount;
+        OriginalLength = originalLength;
+
+        _keys = new List<string>();
+        _valueSpans = new List<TextSpan>();
+        ScanEntries(xml, _keys, _valueSpans);
+    }
+
+    /// <summary>Length in bytes of the file this was loaded from.</summary>
+    public int OriginalLength { get; }
+
+    /// <summary>Count of NUL padding bytes that followed the closing tag.</summary>
+    public int PaddingByteCount => _paddingByteCount;
+
+    /// <summary>
+    /// Hashtable keys in the order the file stores them. That order is not alphabetical and is not
+    /// stable between files: a real sav2 stores save__Backup before save.
+    /// </summary>
+    public IReadOnlyList<string> Keys => _keys;
+
+    /// <exception cref="SaveContainerException">The bytes are not a container this can edit.</exception>
+    public static ContainerText Load(byte[] fileBytes)
+    {
+        if (fileBytes is null)
+        {
+            throw new SaveContainerException("No save bytes were given.");
+        }
+
+        byte[] preamble = HasUtf8Preamble(fileBytes) ? fileBytes[..3] : Array.Empty<byte>();
+
+        // The closing tag is ASCII and the padding after it is NUL bytes, so the cut is made in the
+        // byte array, the same way SaveContainer makes it. Decoding first and slicing afterwards
+        // would decode megabytes of padding to find out it was padding.
+        int tagIndex = LastIndexOf(fileBytes, ClosingTag);
+        if (tagIndex < 0)
+        {
+            throw new SaveContainerException("These bytes are not a save container: closing tag missing.");
+        }
+
+        int xmlEnd = tagIndex + ClosingTag.Length;
+        int padding = fileBytes.Length - xmlEnd;
+
+        string xml;
+        try
+        {
+            xml = StrictUtf8.GetString(fileBytes, preamble.Length, xmlEnd - preamble.Length);
+        }
+        catch (Exception ex) when (ex is DecoderFallbackException or ArgumentException)
+        {
+            throw new SaveContainerException($"The save container is not valid UTF-8, so it cannot be rewritten: {ex.Message}", ex);
+        }
+
+        return new ContainerText(preamble, xml, padding, fileBytes.Length);
+    }
+
+    /// <summary>The value exactly as the file stores it, escaping included.</summary>
+    public string GetValueRaw(string key)
+    {
+        TextSpan span = SpanFor(key);
+        return _xml.Substring(span.Start, span.Length);
+    }
+
+    /// <summary>The value as text, with the file's escaping decoded.</summary>
+    public string GetValue(string key) => XmlValueText.Unescape(GetValueRaw(key));
+
+    public bool ContainsKey(string key) => IndexOfKey(key) >= 0;
+
+    /// <summary>
+    /// A copy of this container with one value replaced and every other character of the file
+    /// left exactly as it was.
+    /// </summary>
+    /// <exception cref="SaveContainerException">The key is not in this container.</exception>
+    public ContainerText WithValue(string key, string newValue)
+    {
+        TextSpan span = SpanFor(key);
+        string escaped = XmlValueText.Escape(newValue ?? "");
+
+        var builder = new StringBuilder(_xml.Length - span.Length + escaped.Length);
+        builder.Append(_xml, 0, span.Start);
+        builder.Append(escaped);
+        builder.Append(_xml, span.Start + span.Length, _xml.Length - span.Start - span.Length);
+
+        return new ContainerText(_preamble, builder.ToString(), _paddingByteCount, OriginalLength);
+    }
+
+    /// <summary>
+    /// The file as bytes: the preamble it had, the XML, then NUL padding.
+    ///
+    /// Padding is slack left by an earlier longer write, not content, so how much of it there is
+    /// carries no meaning to the game, which stops reading at the closing tag. It is reproduced
+    /// anyway because a file that keeps its length is one Steam Cloud sees the same size as before.
+    /// </summary>
+    /// <exception cref="SaveContainerException">The text no longer fits the policy.</exception>
+    public byte[] ToBytes(SizePolicy policy = SizePolicy.GrowIfNeeded)
+    {
+        byte[] body = StrictUtf8.GetBytes(_xml);
+        int contentLength = _preamble.Length + body.Length;
+
+        if (contentLength > MaximumLength)
+        {
+            throw new SaveContainerException(
+                $"The edited save would be {contentLength} bytes, past the {MaximumLength} byte limit this app will write. Nothing was written.");
+        }
+
+        int totalLength;
+        if (contentLength <= OriginalLength)
+        {
+            totalLength = OriginalLength;
+        }
+        else if (policy == SizePolicy.PreserveLength)
+        {
+            throw new SaveContainerException(
+                $"The edited save is {contentLength} bytes and the file it came from is {OriginalLength}, so it cannot be written at the original length.");
+        }
+        else
+        {
+            totalLength = contentLength + _paddingByteCount;
+        }
+
+        var result = new byte[totalLength];
+        Buffer.BlockCopy(_preamble, 0, result, 0, _preamble.Length);
+        Buffer.BlockCopy(body, 0, result, _preamble.Length, body.Length);
+        return result;
+    }
+
+    private TextSpan SpanFor(string key)
+    {
+        int index = IndexOfKey(key);
+        if (index < 0)
+        {
+            throw new SaveContainerException($"The save container has no '{key}' entry.");
+        }
+
+        if (index >= _valueSpans.Count)
+        {
+            throw new SaveContainerException($"The save container has a '{key}' key with no value beside it.");
+        }
+
+        return _valueSpans[index];
+    }
+
+    private int IndexOfKey(string key)
+    {
+        for (int i = 0; i < _keys.Count; i++)
+        {
+            if (string.Equals(_keys[i], key, StringComparison.Ordinal))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void ScanEntries(string xml, List<string> keys, List<TextSpan> valueSpans)
+    {
+        foreach (TextSpan span in ChildSpans(xml, "Keys"))
+        {
+            keys.Add(XmlValueText.Unescape(xml.Substring(span.Start, span.Length)));
+        }
+
+        // An empty hashtable is legitimate: exp1 holds no keys at all. A file missing the elements
+        // entirely reads as empty here too, and is reported when a key is asked for.
+        valueSpans.AddRange(ChildSpans(xml, "Values"));
+    }
+
+    /// <summary>Content spans of the anyType children of a named array element.</summary>
+    private static List<TextSpan> ChildSpans(string xml, string arrayName)
+    {
+        var spans = new List<TextSpan>();
+
+        if (!TryFindElement(xml, 0, arrayName, out ElementSpan array) || array.SelfClosing)
+        {
+            return spans;
+        }
+
+        int cursor = array.ContentStart;
+        while (TryFindElement(xml, cursor, "anyType", out ElementSpan child) && child.TagStart < array.ContentEnd)
+        {
+            spans.Add(child.SelfClosing
+                ? new TextSpan(child.ContentStart, 0)
+                : new TextSpan(child.ContentStart, child.ContentEnd - child.ContentStart));
+
+            cursor = child.SelfClosing ? child.ContentStart : child.ContentEnd;
+        }
+
+        return spans;
+    }
+
+    /// <summary>
+    /// Finds the next element with the given local name at or after <paramref name="from"/>.
+    ///
+    /// The name is matched against a tag opening rather than searched for as text, so a value
+    /// holding the characters "&lt;Values" cannot be mistaken for the element. Attribute values are
+    /// scanned with their quoting respected, because an attribute is the one place a &gt; can sit
+    /// inside a tag without ending it.
+    /// </summary>
+    private static bool TryFindElement(string xml, int from, string localName, out ElementSpan element)
+    {
+        int cursor = from;
+
+        while (cursor < xml.Length)
+        {
+            int open = xml.IndexOf('<', cursor);
+            if (open < 0 || open + 1 >= xml.Length)
+            {
+                break;
+            }
+
+            if (!MatchesName(xml, open + 1, localName))
+            {
+                cursor = open + 1;
+                continue;
+            }
+
+            int tagEnd = EndOfTag(xml, open);
+            if (tagEnd < 0)
+            {
+                break;
+            }
+
+            bool selfClosing = xml[tagEnd - 1] == '/';
+            int contentStart = tagEnd + 1;
+
+            if (selfClosing)
+            {
+                element = new ElementSpan(open, contentStart, contentStart, true);
+                return true;
+            }
+
+            // Text content cannot hold a raw <, so the first one after the opening tag begins the
+            // closing tag of this element unless a child element begins there. Children are found
+            // by their own opening tags, so the close is located by name to stay right either way.
+            int close = IndexOfCloseTag(xml, contentStart, localName);
+            if (close < 0)
+            {
+                break;
+            }
+
+            element = new ElementSpan(open, contentStart, close, false);
+            return true;
+        }
+
+        element = default;
+        return false;
+    }
+
+    private static bool MatchesName(string xml, int start, string localName)
+    {
+        if (start + localName.Length > xml.Length
+            || string.CompareOrdinal(xml, start, localName, 0, localName.Length) != 0)
+        {
+            return false;
+        }
+
+        // The name has to end here. Without this, "Keys" would match the opening of a "KeysExtra".
+        int after = start + localName.Length;
+        if (after >= xml.Length)
+        {
+            return false;
+        }
+
+        char c = xml[after];
+        return c is '>' or '/' || char.IsWhiteSpace(c);
+    }
+
+    /// <summary>Index of the '&gt;' that ends the tag opening at <paramref name="tagStart"/>, or -1.</summary>
+    private static int EndOfTag(string xml, int tagStart)
+    {
+        char quote = '\0';
+
+        for (int i = tagStart + 1; i < xml.Length; i++)
+        {
+            char c = xml[i];
+
+            if (quote != '\0')
+            {
+                if (c == quote)
+                {
+                    quote = '\0';
+                }
+
+                continue;
+            }
+
+            if (c is '"' or '\'')
+            {
+                quote = c;
+                continue;
+            }
+
+            if (c == '>')
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int IndexOfCloseTag(string xml, int from, string localName)
+    {
+        int cursor = from;
+
+        while (cursor < xml.Length)
+        {
+            int candidate = xml.IndexOf("</", cursor, StringComparison.Ordinal);
+            if (candidate < 0)
+            {
+                return -1;
+            }
+
+            if (MatchesName(xml, candidate + 2, localName))
+            {
+                return candidate;
+            }
+
+            cursor = candidate + 2;
+        }
+
+        return -1;
+    }
+
+    private static bool HasUtf8Preamble(byte[] bytes)
+        => bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF;
+
+    private static int LastIndexOf(byte[] haystack, string asciiNeedle)
+    {
+        for (int start = haystack.Length - asciiNeedle.Length; start >= 0; start--)
+        {
+            int i = 0;
+            while (i < asciiNeedle.Length && haystack[start + i] == (byte)asciiNeedle[i])
+            {
+                i++;
+            }
+
+            if (i == asciiNeedle.Length)
+            {
+                return start;
+            }
+        }
+
+        return -1;
+    }
+
+    private readonly record struct TextSpan(int Start, int Length);
+
+    private readonly record struct ElementSpan(int TagStart, int ContentStart, int ContentEnd, bool SelfClosing);
+}
