@@ -164,6 +164,61 @@ Type: filesandordirs; Name: "{app}\app.old"
 // Comments in here are // rather than { }, because a brace comment ends at the first closing
 // brace and half the things worth naming below are constants like {app}. One of those in a
 // comment would silently truncate it.
+
+// Refuse to uninstall while the app is running.
+//
+// This is not politeness, it is repairing a real failure. Uninstalling with the app open removed
+// unins000.exe, the Start Menu shortcut and the Add/Remove Programs entry, and then could not
+// touch {app}\app because the running process holds its own exe and every loaded assembly mapped.
+// Measured: 395 files went down to 71. CloseApplications is meant to catch that, but the prompt it
+// relies on is suppressed by /SUPPRESSMSGBOXES and the fallback is to carry on regardless, so the
+// uninstall reports success and leaves a stranded folder with no uninstaller left to retry with.
+//
+// Checked here rather than later because InitializeUninstall runs before anything is removed, so
+// returning False leaves the install exactly as it was.
+//
+// Nothing here kills the process. The app refuses to close itself during a backup or a restore for
+// good reason, and an uninstaller that terminated it anyway could interrupt a restore halfway
+// through overwriting the live save folder. Asking the user to close it is the whole of what is
+// safe to do.
+
+const
+  SYNCHRONIZE = $00100000;
+
+function OpenMutex(DesiredAccess: LongWord; InheritHandle: Boolean; Name: String): LongWord;
+  external 'OpenMutexW@kernel32.dll stdcall';
+function CloseHandle(Handle: LongWord): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
+
+// The app takes this mutex at startup and Windows destroys it when the last handle closes, which
+// happens however the process ends, including a crash. So opening it can never succeed for an app
+// that is not running: this cannot produce a false alarm that blocks an uninstall forever.
+// The name has to match SingleInstanceMutexName in App.xaml.cs.
+function AppIsRunning(): Boolean;
+var
+  Handle: LongWord;
+begin
+  Handle := OpenMutex(SYNCHRONIZE, False, 'Local\RainWorldCompanion.SingleInstance');
+  Result := Handle <> 0;
+  if Result then
+    CloseHandle(Handle);
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  Result := not AppIsRunning();
+  if Result then
+    Exit;
+
+  // SuppressibleMsgBox rather than MsgBox so a scripted uninstall does not stop on a box nobody
+  // will answer. It still refuses, and the exit code says so, which is the honest outcome when
+  // there is no one present to close the app.
+  SuppressibleMsgBox(
+    'RainWorld Companion is still running, so it cannot be uninstalled yet.'
+    + #13#10#13#10 +
+    'Close it and run the uninstaller again. Nothing has been removed.',
+    mbError, MB_OK, IDOK);
+end;
 //
 // Upgrades: move the old payload aside instead of deleting it.
 //

@@ -29,6 +29,9 @@ your save library.** Those are the only copy of those saves, and you can point e
 a folder of your own, so nothing here deletes them. Delete the folder yourself when you want it
 gone.
 
+Close the app before uninstalling. The uninstaller checks, and stops without removing anything if
+it is still open, because a running copy holds files it would otherwise have to leave behind.
+
 ## What it manages
 
 The app copies, overwrites and deletes only these files, matched by exact name, and nothing else
