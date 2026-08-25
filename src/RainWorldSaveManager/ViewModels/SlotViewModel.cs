@@ -30,11 +30,17 @@ public sealed class SlotViewModel
     /// number alone does not say which one is on screen. False for a library save, which is a single
     /// section that names the file it came from beside the title.
     /// </param>
+    /// <param name="editable">
+    /// True when these campaigns are the live ones and so can be edited. A backup and a library
+    /// save are copies taken at a moment, and editing one in place would leave it no longer a copy
+    /// of anything.
+    /// </param>
     public SlotViewModel(
         SlotMetadata slot,
         ISlugcatIconProvider icons,
         string? fileNameOverride = null,
-        bool nameRealm = false)
+        bool nameRealm = false,
+        bool editable = false)
     {
         Metadata = slot;
         SlotNumber = slot.Slot;
@@ -50,7 +56,15 @@ public sealed class SlotViewModel
             ? prefix + NumberText
             : (FileName.Length > 0 ? FileName.ToUpperInvariant() : "SLOT");
 
-        Campaigns = slot.Campaigns.Select(campaign => new CampaignViewModel(campaign, icons)).ToList();
+        // A slot number outside 1 to 3 has no file the writer will target, so those campaigns are
+        // shown without an Edit button rather than with one that refuses.
+        SaveSlotRef? editableSlot = editable && slot.Slot is >= SaveSlotRef.MinSlot and <= SaveSlotRef.MaxSlot
+            ? new SaveSlotRef(slot.Realm, slot.Slot)
+            : null;
+
+        Campaigns = slot.Campaigns
+            .Select(campaign => new CampaignViewModel(campaign, icons, editableSlot))
+            .ToList();
         Portraits = BuildPortraits(slot, icons);
 
         HasParseError = slot.ParseError is not null;

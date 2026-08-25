@@ -4,8 +4,13 @@
 
 namespace RainWorldSaveManager.Core.Saves;
 
-/// <summary>One region: the code a save stores, the name the game shows, and whether an echo lives there.</summary>
-public sealed record RegionInfo(string Code, string DisplayName, bool HasEcho);
+/// <summary>
+/// One region: the code a save stores, the name the game shows, and whether an echo lives there.
+///
+/// Named for the world rather than called RegionInfo, which is a type in System.Globalization that
+/// any file formatting a number for a culture already has in scope.
+/// </summary>
+public sealed record WorldRegion(string Code, string DisplayName, bool HasEcho);
 
 /// <summary>
 /// The regions of the game and its expansions.
@@ -22,7 +27,7 @@ public sealed record RegionInfo(string Code, string DisplayName, bool HasEcho);
 /// </summary>
 public static class RegionCatalog
 {
-    private static readonly RegionInfo[] KnownEntries =
+    private static readonly WorldRegion[] KnownEntries =
     {
         new("CC", "Chimney Canopy", true),
         new("CL", "Silent Construct", true),
@@ -78,14 +83,14 @@ public static class RegionCatalog
         new("WVWB", "Fractured Gateways", false),
     };
 
-    private static readonly Dictionary<string, RegionInfo> ByCode =
+    private static readonly Dictionary<string, WorldRegion> ByCode =
         KnownEntries.ToDictionary(r => r.Code, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Every region this app knows, ordered by code.</summary>
-    public static IReadOnlyList<RegionInfo> Known => KnownEntries;
+    public static IReadOnlyList<WorldRegion> Known => KnownEntries;
 
     /// <summary>The regions an echo can be met in, which is what an echo editor lists.</summary>
-    public static IReadOnlyList<RegionInfo> WithEchoes { get; } =
+    public static IReadOnlyList<WorldRegion> WithEchoes { get; } =
         KnownEntries.Where(r => r.HasEcho).ToArray();
 
     /// <summary>
@@ -93,21 +98,21 @@ public static class RegionCatalog
     /// comes back with the raw code as its name, because a save from a modded region is still a
     /// save worth showing.
     /// </summary>
-    public static RegionInfo ForCode(string? code)
+    public static WorldRegion ForCode(string? code)
     {
         if (string.IsNullOrWhiteSpace(code))
         {
-            return new RegionInfo("", "(unknown)", false);
+            return new WorldRegion("", "(unknown)", false);
         }
 
         string trimmed = code.Trim();
-        return ByCode.TryGetValue(trimmed, out RegionInfo? known) ? known : new RegionInfo(trimmed, trimmed, false);
+        return ByCode.TryGetValue(trimmed, out WorldRegion? known) ? known : new WorldRegion(trimmed, trimmed, false);
     }
 
     public static bool IsKnown(string? code) => !string.IsNullOrWhiteSpace(code) && ByCode.ContainsKey(code.Trim());
 
     /// <summary>Regions whose code or name contains the query. A blank query matches everything.</summary>
-    public static IEnumerable<RegionInfo> Search(string? query)
+    public static IEnumerable<WorldRegion> Search(string? query)
     {
         if (string.IsNullOrWhiteSpace(query))
         {

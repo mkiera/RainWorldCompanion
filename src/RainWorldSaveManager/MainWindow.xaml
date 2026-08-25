@@ -345,6 +345,252 @@
             </Setter>
         </Style>
 
+        <!-- ================= editing ================= -->
+
+        <!-- A labelled box. The label sits above so a row of them lines up whatever the label says. -->
+        <Style x:Key="Edit.Box" TargetType="TextBox">
+            <Setter Property="Width" Value="104" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+
+        <Style x:Key="Edit.WideBox" TargetType="TextBox" BasedOn="{StaticResource Edit.Box}">
+            <Setter Property="Width" Value="150" />
+        </Style>
+
+        <Style x:Key="Edit.FieldGroup" TargetType="StackPanel">
+            <Setter Property="Margin" Value="0,0,14,8" />
+        </Style>
+
+        <!-- A shelter the picker is offering. Clicking one puts it in the box beside it. -->
+        <DataTemplate x:Key="ShelterSuggestionTemplate">
+            <Button Content="{Binding}" Style="{StaticResource Button.Small}" Margin="0,0,4,4"
+                    Command="{Binding DataContext.UseShelterCommand,
+                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding}" />
+        </DataTemplate>
+
+        <DataTemplate x:Key="LastShelterSuggestionTemplate">
+            <Button Content="{Binding}" Style="{StaticResource Button.Small}" Margin="0,0,4,4"
+                    Command="{Binding DataContext.UseLastShelterCommand,
+                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                    CommandParameter="{Binding}" />
+        </DataTemplate>
+
+        <!-- One flag, as a checkbox. The tooltip carries what the flag actually does. -->
+        <DataTemplate x:Key="FlagEditTemplate">
+            <CheckBox Content="{Binding Label}" ToolTip="{Binding Detail}"
+                      IsChecked="{Binding IsOn, Mode=TwoWay}"
+                      Margin="0,0,16,6" VerticalContentAlignment="Center" />
+        </DataTemplate>
+
+        <!-- One echo, as three states. Never seen takes it out of the save entirely. -->
+        <DataTemplate x:Key="EchoEditTemplate">
+            <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,5">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="150" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding DisplayName}" Style="{StaticResource Text.Body}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding RegionCode}" Style="{StaticResource Text.Tiny}" />
+                    </StackPanel>
+
+                    <RadioButton Grid.Column="1" Content="Never seen" Margin="0,0,12,0"
+                                 VerticalAlignment="Center"
+                                 GroupName="{Binding RegionCode}"
+                                 IsChecked="{Binding NeverSeen, Mode=TwoWay}" />
+                    <RadioButton Grid.Column="2" Content="Sensed" Margin="0,0,12,0"
+                                 VerticalAlignment="Center"
+                                 GroupName="{Binding RegionCode}"
+                                 IsChecked="{Binding Sensed, Mode=TwoWay}" />
+                    <RadioButton Grid.Column="3" Content="Talked to"
+                                 VerticalAlignment="Center"
+                                 GroupName="{Binding RegionCode}"
+                                 IsChecked="{Binding TalkedTo, Mode=TwoWay}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+        <!-- One gate. A gate the catalog does not know still gets a row, because the save has it. -->
+        <DataTemplate x:Key="GateEditTemplate">
+            <CheckBox IsChecked="{Binding UnlockedField, Mode=TwoWay}"
+                      Margin="0,0,14,6" VerticalContentAlignment="Center"
+                      ToolTip="{Binding Name}">
+                <StackPanel>
+                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource Text.Body}" />
+                    <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Tiny}" />
+                </StackPanel>
+            </CheckBox>
+        </DataTemplate>
+
+        <DataTemplate x:Key="WarningTemplate">
+            <TextBlock Text="{Binding}" Style="{StaticResource Text.Body}" TextWrapping="Wrap"
+                       Margin="0,0,0,3" Foreground="{StaticResource Brush.Warn}" />
+        </DataTemplate>
+
+        <!--
+            The editable face of a campaign. Every box writes into the edit session as it is typed,
+            so what is on screen and what would be saved are the same thing.
+        -->
+        <DataTemplate x:Key="CampaignEditTemplate">
+            <StackPanel>
+
+                <!--
+                    Advice, not a barrier. Every value named here has already been written; these
+                    lines say what the game will make of it.
+                -->
+                <Border Style="{StaticResource Banner.Warn}" Margin="0,10,0,4"
+                        Visibility="{Binding HasWarnings, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="WORTH KNOWING" Style="{StaticResource Text.SectionLabel}" Margin="0,0,0,4" />
+                        <ItemsControl ItemsSource="{Binding Warnings}" ItemTemplate="{StaticResource WarningTemplate}" />
+                    </StackPanel>
+                </Border>
+
+                <DockPanel Margin="0,10,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="RUN" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <WrapPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Cycle" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Cycle, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Cycles this version" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding CyclesThisVersion, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Food now" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Food, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Food eaten" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding TotalFoodEaten, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Timeline" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Timeline, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Seed" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Seed, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </WrapPanel>
+
+                <!-- The shelter the player wakes up in. Typing filters the list; anything can be typed. -->
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="Shelter" Style="{StaticResource Text.Tiny}" />
+                    <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
+                             Text="{Binding DenPos, UpdateSourceTrigger=PropertyChanged}" />
+                    <ItemsControl ItemsSource="{Binding ShelterMatches}" Margin="0,4,0,0"
+                                  ItemTemplate="{StaticResource ShelterSuggestionTemplate}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                </StackPanel>
+
+                <StackPanel Margin="0,8,0,0">
+                    <TextBlock Text="Last shelter" Style="{StaticResource Text.Tiny}" />
+                    <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
+                             Text="{Binding LastDenPos, UpdateSourceTrigger=PropertyChanged}" />
+                    <ItemsControl ItemsSource="{Binding LastShelterMatches}" Margin="0,4,0,0"
+                                  ItemTemplate="{StaticResource LastShelterSuggestionTemplate}"
+                                  ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                </StackPanel>
+
+                <DockPanel Margin="0,12,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="KARMA" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <WrapPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Karma (from zero)" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Karma, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Karma cap (from zero)" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding KarmaCap, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Karma flower" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding KarmaFlower, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </WrapPanel>
+
+                <ItemsControl ItemsSource="{Binding Flags}" Margin="0,4,0,0"
+                              ItemTemplate="{StaticResource FlagEditTemplate}"
+                              ItemsPanel="{StaticResource WrapPanelTemplate}" />
+
+                <DockPanel Margin="0,12,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="PROGRESS" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <WrapPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Deaths" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Deaths, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Survives" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Survives, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                    <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                        <TextBlock Text="Quits" Style="{StaticResource Text.Tiny}" />
+                        <TextBox Style="{StaticResource Edit.Box}"
+                                 Text="{Binding Quits, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </WrapPanel>
+
+                <DockPanel Margin="0,12,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="ECHOES" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <ItemsControl ItemsSource="{Binding Echoes}" ItemTemplate="{StaticResource EchoEditTemplate}" />
+
+                <DockPanel Margin="0,12,0,7">
+                    <TextBlock DockPanel.Dock="Left" Text="GATES" Margin="0,0,8,0"
+                               Style="{StaticResource Text.SectionLabel}" />
+                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                </DockPanel>
+
+                <ItemsControl ItemsSource="{Binding Gates}" ItemTemplate="{StaticResource GateEditTemplate}"
+                              ItemsPanel="{StaticResource WrapPanelTemplate}" />
+
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <TextBox Style="{StaticResource Edit.WideBox}" VerticalAlignment="Center"
+                             Text="{Binding NewGateName, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button Content="Add gate" Style="{StaticResource Button.Small}" Margin="6,2,0,0"
+                            VerticalAlignment="Center"
+                            ToolTip="Opens a gate this app does not list, for one added by a mod."
+                            Command="{Binding AddGateCommand}" />
+                </StackPanel>
+
+            </StackPanel>
+        </DataTemplate>
+
         <!-- One campaign: a scannable line, and four groups of detail behind it -->
         <DataTemplate x:Key="CampaignCardTemplate">
             <Border CornerRadius="5" Margin="0,0,0,8"
@@ -453,6 +699,46 @@
                         <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,1,0,0"
                                 Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                             <StackPanel Margin="14,4,14,12">
+
+                                <!--
+                                    Editing is offered only on the live save folder, so a backup and
+                                    a library save show no bar at all rather than a disabled one.
+                                -->
+                                <DockPanel Margin="0,10,0,0"
+                                           Visibility="{Binding CanEdit, Converter={StaticResource BoolToVis}}">
+                                    <Button DockPanel.Dock="Left" Content="Edit"
+                                            Style="{StaticResource Button.Small}"
+                                            Visibility="{Binding IsEditing, Converter={StaticResource NotBoolToVis}}"
+                                            Command="{Binding DataContext.BeginEditCommand,
+                                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
+
+                                    <StackPanel Orientation="Horizontal"
+                                                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
+                                        <Border Style="{StaticResource Chip}" VerticalAlignment="Center"
+                                                Background="{StaticResource Brush.Selection}"
+                                                BorderBrush="{StaticResource Brush.Accent}">
+                                            <TextBlock Text="EDITING" FontSize="11" FontWeight="SemiBold"
+                                                       Foreground="{StaticResource Brush.Accent}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Edit.ChangeCountText}"
+                                                   Style="{StaticResource Text.Muted}"
+                                                   VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        <Button Content="Cancel" Style="{StaticResource Button.Small}"
+                                                Margin="10,0,0,0" VerticalAlignment="Center"
+                                                ToolTip="Closes the editor and forgets the changes."
+                                                Command="{Binding DataContext.CancelEditCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                    </StackPanel>
+                                </DockPanel>
+
+                                <ContentControl Content="{Binding Edit}"
+                                                ContentTemplate="{StaticResource CampaignEditTemplate}"
+                                                Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}" />
+
+                                <!-- The read-only groups. Hidden while editing rather than rebuilt. -->
+                                <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource NotBoolToVis}}">
 
                                 <DockPanel Margin="0,10,0,7">
                                     <TextBlock DockPanel.Dock="Left" Text="RUN" Margin="0,0,8,0"
@@ -567,6 +853,8 @@
                                 <TextBlock Text="No Devourment state recorded."
                                            Style="{StaticResource Text.Muted}"
                                            Visibility="{Binding HasNothingDevourment, Converter={StaticResource BoolToVis}}" />
+
+                                </StackPanel>
                             </StackPanel>
                         </Border>
                     </StackPanel>

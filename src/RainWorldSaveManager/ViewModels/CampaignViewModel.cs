@@ -139,9 +139,15 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     private const int TopKillCount = 8;
 
-    public CampaignViewModel(CampaignSummary campaign, ISlugcatIconProvider icons)
+    /// <param name="editableSlot">
+    /// The slot this campaign can be edited in, or null when it cannot be. Only the live save
+    /// folder passes one: a backup and a library save are snapshots, and editing one in place would
+    /// make it no longer the thing it is a copy of.
+    /// </param>
+    public CampaignViewModel(CampaignSummary campaign, ISlugcatIconProvider icons, SaveSlotRef? editableSlot = null)
     {
         Summary = campaign;
+        EditableSlot = editableSlot;
 
         var info = SlugcatCatalog.ForId(campaign.SlugcatId);
         Portrait = new PortraitViewModel(info, icons.GetIcon(campaign.SlugcatId));
@@ -240,6 +246,25 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     [ObservableProperty]
     private bool isExpanded;
+
+    /// <summary>The slot this campaign lives in, when it is one that can be edited.</summary>
+    public SaveSlotRef? EditableSlot { get; }
+
+    /// <summary>True when an Edit button belongs on this card.</summary>
+    public bool CanEdit => EditableSlot is not null;
+
+    /// <summary>
+    /// The open editor for this campaign, or null when it is only being read.
+    ///
+    /// The read-only tiles beside this are built once in the constructor and never change, which
+    /// the rest of the panel depends on. Edit state hangs off the card rather than replacing any
+    /// of them, so turning editing off puts the card back exactly as it was.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditing))]
+    private CampaignEditViewModel? edit;
+
+    public bool IsEditing => Edit is not null;
 
     public IReadOnlyList<StatTile> RunStats { get; }
 
