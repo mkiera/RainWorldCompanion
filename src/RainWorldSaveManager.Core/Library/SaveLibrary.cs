@@ -89,7 +89,9 @@ public sealed class SaveLibrary
             return entries;
         }
 
-        entries.Sort(static (a, b) => b.CreatedUtc.CompareTo(a.CreatedUtc));
+        // Newest content first, so a save that was just updated with an hour of play moves to the
+        // top rather than sitting wherever it was first stored.
+        entries.Sort(static (a, b) => b.ModifiedUtc.CompareTo(a.ModifiedUtc));
         return entries;
     }
 
@@ -240,7 +242,7 @@ public sealed class SaveLibrary
 
         if (success)
         {
-            RecordLoad(entry, manifest, plan.Target.FullPath, target);
+            RecordSlotLink(entry, manifest, plan.Target.FullPath, target);
         }
 
         return new LibraryLoadResult(
@@ -254,25 +256,86 @@ public sealed class SaveLibrary
     }
 
     /// <summary>
-    /// Notes where the load put the entry and what the slot file looked like straight afterwards,
-    /// so an update knows which slot to offer and a row can say whether that slot has been played
-    /// since.
+    /// Records that this entry and the slot file now hold the same bytes, and takes the slot away
+    /// from whichever entry claimed it before.
     ///
-    /// Best effort on purpose. The save is already in the slot by this point, and a manifest that
-    /// could not be rewritten costs a hint on a row. Turning that into a reported failure would
+    /// One slot, one claimant. Without the second half, an entry loaded into sav a week ago would
+    /// still say it is in sav after another entry replaced it there, and the row would report a
+    /// played slot rather than one holding a different save entirely.
+    ///
+    /// Best effort on purpose. The bytes are already where they belong by this point, and a manifest
+    /// that could not be rewritten costs a hint on a row. Turning that into a reported failure would
     /// tell the user their load did not work when it did.
     /// </summary>
-    private static void RecordLoad(LibraryEntry entry, LibraryManifest manifest, string targetPath, SaveSlotRef target)
+    private void RecordSlotLink(LibraryEntry entry, LibraryManifest manifest, string slotPath, SaveSlotRef slot)
     {
         try
         {
-            var info = new FileInfo(targetPath);
+            var info = new FileInfo(slotPath);
 
-            manifest.LastLoadedRealm = target.Realm;
-            manifest.LastLoadedSlot = target.Slot;
+            manifest.LastLoadedRealm = slot.Realm;
+            manifest.LastLoadedSlot = slot.Slot;
             manifest.LastLoadedUtc = DateTime.UtcNow;
             manifest.LastLoadedSizeBytes = info.Exists ? info.Length : null;
             manifest.LastLoadedWriteUtc = info.Exists ? info.LastWriteTimeUtc : null;
+
+            WriteManifest(entry.DirectoryPath, manifest);
+        }
+        catch (Exception)
+        {
+        }
+
+        ReleaseSlot(slot, exceptEntryId: entry.Id);
+    }
+
+    /// <summary>
+    /// Forgets that any entry is in this slot. Call it when something other than a library load
+    /// writes to the slot, such as a restore or a slot copy, because whatever was there is not the
+    /// entry that claimed it any more.
+    /// </summary>
+    public void ReleaseSlot(SaveSlotRef slot) => ReleaseSlot(slot, exceptEntryId: null);
+
+    /// <summary>Forgets every slot claim, which is what a whole folder restore invalidates.</summary>
+    public void ReleaseAllSlots()
+    {
+        foreach (var entry in ListEntries())
+        {
+            if (entry.Manifest is { LastLoadedRealm: not null } manifest)
+            {
+                ClearSlotLink(entry, manifest);
+            }
+        }
+    }
+
+    private void ReleaseSlot(SaveSlotRef slot, string? exceptEntryId)
+    {
+        ArgumentNullException.ThrowIfNull(slot);
+
+        foreach (var entry in ListEntries())
+        {
+            if (string.Equals(entry.Id, exceptEntryId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (entry.Manifest is { } manifest
+                && manifest.LastLoadedRealm == slot.Realm
+                && manifest.LastLoadedSlot == slot.Slot)
+            {
+                ClearSlotLink(entry, manifest);
+            }
+        }
+    }
+
+    private static void ClearSlotLink(LibraryEntry entry, LibraryManifest manifest)
+    {
+        try
+        {
+            manifest.LastLoadedRealm = null;
+            manifest.LastLoadedSlot = null;
+            manifest.LastLoadedUtc = null;
+            manifest.LastLoadedSizeBytes = null;
+            manifest.LastLoadedWriteUtc = null;
 
             WriteManifest(entry.DirectoryPath, manifest);
         }
@@ -416,8 +479,14 @@ public sealed class SaveLibrary
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
+        manifest.UpdatedUtc = DateTime.UtcNow;
 
         WriteManifest(entry.DirectoryPath, manifest);
+
+        // The entry now holds exactly what the slot holds, so the link is new again. Skipping this
+        // left a row reading "changed since" about the very slot it had just been brought level
+        // with, and no amount of updating would clear it.
+        RecordSlotLink(entry, manifest, sourcePath, source);
 
         progress?.Report("Updated");
         return LibraryEntry.Load(entry.DirectoryPath);
@@ -465,6 +534,16 @@ public sealed class SaveLibrary
         manifest.PreviousSizeBytes = null;
         manifest.PreviousReplacedUtc = null;
         manifest.PreviousMetadata = null;
+
+        manifest.UpdatedUtc = DateTime.UtcNow;
+
+        // The entry now holds the older save again, which is not what any slot holds, so it is in
+        // no slot until it is loaded somewhere.
+        manifest.LastLoadedRealm = null;
+        manifest.LastLoadedSlot = null;
+        manifest.LastLoadedUtc = null;
+        manifest.LastLoadedSizeBytes = null;
+        manifest.LastLoadedWriteUtc = null;
 
         WriteManifest(entry.DirectoryPath, manifest);
 

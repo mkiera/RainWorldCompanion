@@ -497,6 +497,45 @@ public sealed partial class MainViewModel : ObservableObject
     private string MeadowVersionText =>
         string.IsNullOrWhiteSpace(_meadow.Version) ? "" : "v" + _meadow.Version;
 
+    /// <summary>
+    /// Forgets that any library save is in this slot, after something other than a library load
+    /// wrote to it. Swallows its own failure: this keeps a hint on a row honest, and the write it
+    /// follows has already happened either way.
+    /// </summary>
+    private async Task ReleaseSlotClaimAsync(SaveSlotRef slot)
+    {
+        var library = _library;
+        if (library is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() => library.ReleaseSlot(slot));
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    private async Task ReleaseAllSlotClaimsAsync()
+    {
+        var library = _library;
+        if (library is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(library.ReleaseAllSlots);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     private MeadowProfile? FindMeadow(string id) =>
         _backupMeadow.TryGetValue(id, out var profile) ? profile : null;
 
@@ -570,6 +609,13 @@ public sealed partial class MainViewModel : ObservableObject
         finally
         {
             EndBusy();
+        }
+
+        // Whatever library save was in that slot is not in it any more. Leaving the claim would
+        // have the row report a played slot rather than one holding something else entirely.
+        if (result?.LiveFolderModified == true)
+        {
+            await ReleaseSlotClaimAsync(to);
         }
 
         await ReloadAsync();
@@ -785,16 +831,17 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        // The slot this save was last loaded into is the one the user played, so that is what an
-        // update means. Without a load on record there is nothing to guess from and the whole
-        // dialog is a better place to ask.
-        var source = item.Entry.Manifest?.LastLoadedSlotRef;
+        // The slot this save was put into is the one the user played, so that is the one to take
+        // back from. A save that has never been put anywhere still knows the slot it was taken from
+        // in the first place, which is the same slot the user would pick.
+        var manifest = item.Entry.Manifest;
+        var source = manifest?.LastLoadedSlotRef ?? manifest?.SourceSlotRef;
         if (source is null)
         {
             ShowMessage(
-                "This save has not been loaded into a slot yet, so there is nothing to update it from.\n\n" +
-                "Load it into a slot first, or use Store Slot to keep a slot as a new library save.",
-                "Update a library save",
+                "This save records no slot, so there is nothing to take it from.\n\n" +
+                "Put it in a slot first, then take it back once you have played.",
+                "Take from slot",
                 MessageBoxImage.Warning);
             return;
         }
@@ -804,8 +851,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (!side.Exists)
         {
             ShowMessage(
-                source.FileName + " is not in the save folder, so there is nothing to update from.",
-                "Update a library save",
+                source.FileName + " is not in the save folder, so there is nothing to take from it.",
+                "Take from slot",
                 MessageBoxImage.Warning);
             return;
         }
@@ -813,9 +860,9 @@ public sealed partial class MainViewModel : ObservableObject
         var confirm = AskYesNo(
             "Replace \"" + item.Name + "\" with what is in " + source.FileName + " now?\n\n" +
             source.FileName + ": " + side.Describe() + "\n" +
-            "Stored now: " + item.CampaignCountText + ", " + item.SizeText + "\n\n" +
+            "Held now: " + item.CampaignCountText + ", " + item.SizeText + "\n\n" +
             "The save being replaced is kept, so this can be undone.",
-            "Update a library save");
+            "Take from slot");
         if (!confirm)
         {
             return;
@@ -1331,6 +1378,12 @@ public sealed partial class MainViewModel : ObservableObject
         finally
         {
             EndBusy();
+        }
+
+        // A restore puts back every slot at once, so no library save is in the slot it was in.
+        if (result?.LiveFolderModified == true)
+        {
+            await ReleaseAllSlotClaimsAsync();
         }
 
         await ReloadAsync();
