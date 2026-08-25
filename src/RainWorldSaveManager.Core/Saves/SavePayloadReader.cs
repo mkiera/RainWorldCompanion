@@ -29,6 +29,22 @@ public readonly struct RecordSpan
         _bodyLength = bodyLength;
     }
 
+    /// <summary>Where the header starts in the payload this span came from.</summary>
+    public int HeaderStart => _headerStart;
+
+    /// <summary>How many characters of the payload the header occupies.</summary>
+    public int HeaderLength => _headerLength;
+
+    /// <summary>
+    /// Where the body starts in the payload this span came from. An editor splices records by
+    /// these offsets rather than by splitting the payload up and joining it back together, so the
+    /// characters it does not mean to change are never rewritten.
+    /// </summary>
+    public int BodyStart => _bodyStart;
+
+    /// <summary>How many characters of the payload the body occupies.</summary>
+    public int BodyLength => _bodyLength;
+
     /// <summary>True when the header is exactly this text. Allocates nothing.</summary>
     public bool HeaderIs(string header)
         => _payload is not null
