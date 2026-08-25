@@ -56,8 +56,6 @@ public sealed class SnapshotDetailViewModel
 
         Meadow = meadow is null ? null : new MeadowProfileViewModel(meadow);
         CampaignCountText = CampaignCount.Describe(CountCampaigns(local), CountCampaigns(online));
-
-        OpenFirstCampaign(local.Count > 0 ? local : online);
     }
 
     /// <summary>True for the save folder on disk, false for a backup.</summary>
@@ -220,22 +218,6 @@ public sealed class SnapshotDetailViewModel
         }
 
         return null;
-    }
-
-    /// <summary>
-    /// Opens the first campaign, so the panel reads as a list of slots with one worked example
-    /// already open. Everything else starts closed.
-    /// </summary>
-    private static void OpenFirstCampaign(IReadOnlyList<SlotViewModel> slots)
-    {
-        foreach (var slot in slots)
-        {
-            if (slot.Campaigns.Count > 0)
-            {
-                slot.Campaigns[0].IsExpanded = true;
-                return;
-            }
-        }
     }
 
     private static int CountCampaigns(IEnumerable<SlotViewModel> slots)
