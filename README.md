@@ -1,4 +1,4 @@
-# Rain World Save Manager
+﻿# RainWorld Companion
 
 A Windows desktop app that copies your Rain World save files into dated snapshots and restores
 them on demand. It reads the save containers well enough to show what each slot holds, from the
@@ -12,6 +12,22 @@ This version does not edit saves. Files are copied byte for byte in every direct
 UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
 reads back. It reads Rain Meadow's online saves with the same reader, pairs each one with the local
 slot it shares a number with, and can copy any whole slot onto any other.
+
+## Installing
+
+Download `RainWorldCompanion-Setup.exe` from the
+[releases page](https://github.com/mkiera/RainWorldCompanion/releases) and run it. It installs
+for you alone under `%LOCALAPPDATA%\Programs\RainWorldCompanion`, so it asks for no admin
+rights, and it starts the app when it finishes. The .NET runtime is inside the download, so
+there is nothing to install first.
+
+To update, run a newer setup over the top. It keeps your install location and your desktop
+shortcut choice.
+
+Uninstalling removes the program and its `settings.json`. **It does not touch your backups or
+your save library.** Those are the only copy of those saves, and you can point either of them at
+a folder of your own, so nothing here deletes them. Delete the folder yourself when you want it
+gone.
 
 ## What it manages
 
@@ -275,6 +291,11 @@ None of the three folders may sit inside another. The app checks this by resolvi
 through the filesystem, so a junction or a subst drive pointing one into another is refused as well.
 
 Settings live in `%LOCALAPPDATA%\RainWorldSaveManager\settings.json`.
+
+That folder is named for what this app used to be called. Only the display name and the program
+itself were renamed to RainWorld Companion, because moving the data folder would leave every
+existing backup and library save behind with nothing pointing at them. Nothing is wrong if you
+see the old name there.
 
 ## Close the game first
 

@@ -8,10 +8,25 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Which CI run produced this exe, so the list of branch builds can mark the row the user is
+         actually running. Set only by the branch-build workflow: a release is built from a tag,
+         and stamping a tag name into a field called BuildBranch would be a lie in every release.
+         Both degrade to absent, which the app reads back as blank. -->
+    <AssemblyMetadata Include="BuildBranch" Value="$(BuildBranch)" Condition="'$(BuildBranch)' != ''" />
+    <AssemblyMetadata Include="BuildRunId" Value="$(BuildRunId)" Condition="'$(BuildRunId)' != ''" />
+  </ItemGroup>
+
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+
+    <!-- The exe the user launches, and what the installer puts on the Start menu.
+         RootNamespace is deliberately left to default to the project name, so every namespace
+         stays RainWorldSaveManager: the assembly is what the product is called, the namespaces are
+         what the code is called, and only the first of those is worth churning to rename. -->
+    <AssemblyName>RainWorldCompanion</AssemblyName>
   </PropertyGroup>
 
 </Project>

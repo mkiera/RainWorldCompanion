@@ -33,6 +33,53 @@ public sealed class AppSettings
     public string? GameInstallPath { get; set; }
 
     /// <summary>
+    /// Which releases the app is willing to show: "stable", "prerelease" or "alpha".
+    ///
+    /// Text rather than the enum, because System.Text.Json writes an enum as its ordinal, and a
+    /// number would silently mean a different channel the moment one is inserted between two
+    /// existing ones. Anything unrecognised reads as stable, which is also the right landing place
+    /// for a file written by a later version naming a channel this one has never heard of.
+    ///
+    /// Additive, like <see cref="LibraryRootPath"/>, so the schema version does not move: a file
+    /// written before this existed has no such property, and the initialiser here is what it gets.
+    /// </summary>
+    public string UpdateChannel { get; set; } = "stable";
+
+    /// <summary>
+    /// Whether the app checks for a new version on its own.
+    ///
+    /// Read by the timer that checks unprompted, and deliberately not by the check itself, so
+    /// turning this off still leaves the Check button in the updates window working. The other way
+    /// round, the button reports "this is the newest build" without having looked.
+    /// </summary>
+    public bool AutoCheckUpdates { get; set; } = true;
+
+    /// <summary>
+    /// When the last check was made, or null before the first one. Kept so a restart does not
+    /// reset the hourly interval and turn every launch into another request.
+    /// </summary>
+    public DateTimeOffset? LastUpdateCheckUtc { get; set; }
+
+    /// <summary>
+    /// A copy, so a dialog can edit the fields it owns without touching the object the rest of the
+    /// app is still reading, and without resetting the fields it does not show.
+    ///
+    /// Every field belongs here. A new one left out is not a compile error: it silently becomes a
+    /// field that reverts to its default whenever anything saves a modified copy.
+    /// </summary>
+    public AppSettings Clone() => new()
+    {
+        SchemaVersion = SchemaVersion,
+        GameSavePath = GameSavePath,
+        BackupRootPath = BackupRootPath,
+        LibraryRootPath = LibraryRootPath,
+        GameInstallPath = GameInstallPath,
+        UpdateChannel = UpdateChannel,
+        AutoCheckUpdates = AutoCheckUpdates,
+        LastUpdateCheckUtc = LastUpdateCheckUtc,
+    };
+
+    /// <summary>
     /// %LOCALAPPDATA%\RainWorldSaveManager\backups
     /// </summary>
     public static string DefaultBackupRootPath => Path.Combine(

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -2919,7 +2919,7 @@ public sealed partial class MainViewModel : ObservableObject
         // headline already says what happened.
         string text = ex is null ? headline : headline + "\n\n" + ex.Message;
 
-        ShowMessage(text, "Rain World Save Manager", MessageBoxImage.Error);
+        ShowMessage(text, AppInfo.DisplayName, MessageBoxImage.Error);
     }
 
     private static string FormatList(IReadOnlyList<string> items)

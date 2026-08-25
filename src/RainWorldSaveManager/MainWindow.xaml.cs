@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using RainWorldSaveManager.ViewModels;
 
 namespace RainWorldSaveManager;
@@ -35,7 +35,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(this, "The app could not finish starting.\n\n" + ex.Message,
-                "Rain World Save Manager", MessageBoxButton.OK, MessageBoxImage.Error);
+                AppInfo.DisplayName, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

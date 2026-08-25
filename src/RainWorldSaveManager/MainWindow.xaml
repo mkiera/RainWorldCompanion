@@ -7,7 +7,7 @@
         xmlns:vm="clr-namespace:RainWorldSaveManager.ViewModels"
         xmlns:behaviors="clr-namespace:RainWorldSaveManager.Views.Behaviors"
         mc:Ignorable="d"
-        Title="Rain World Save Manager"
+        Title="{x:Static local:AppInfo.DisplayName}"
         Height="720" Width="1150" MinHeight="560" MinWidth="900"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource Brush.Window}"

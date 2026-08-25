@@ -1,0 +1,146 @@
+﻿name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SourceLink stamps the commit into the exe's informational version, and a shallow
+          # checkout still has HEAD, so depth 1 would do. Full history costs seconds and keeps
+          # `git describe` and anything else added later working.
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Read the version out of the tag
+        id: version
+        shell: bash
+        run: |
+          # The tag is the authority for what this build IS. It reaches the exe's version
+          # resource, the informational version the updater compares against every release, and
+          # the installer's AppVersion. Tagging v1.1.0 while the build called itself something
+          # else would ship a copy that keeps being offered its own release as an update.
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "RELEASE_NAME=v$VERSION" >> $GITHUB_OUTPUT
+
+          # A hyphen is a semver pre-release tail, which is exactly what GitHub's pre-release
+          # flag means, so the two can never disagree.
+          if [[ "$VERSION" == *"-"* ]]; then
+            echo "IS_PRERELEASE=true" >> $GITHUB_OUTPUT
+          else
+            echo "IS_PRERELEASE=false" >> $GITHUB_OUTPUT
+          fi
+
+          # A Windows version resource needs four plain numbers, and Inno Setup knows nothing
+          # about MSBuild, so the numeric form has to be handed to it. The tag is the only input
+          # here, so there is no second file for a second parser to disagree with.
+          NUMERIC=${VERSION%%-*}; NUMERIC=${NUMERIC%%+*}
+          IFS=. read -r MAJOR MINOR PATCH _ <<< "$NUMERIC"
+          echo "VERNUM=${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}.0" >> $GITHUB_OUTPUT
+
+      # Before the publish, so a red suite cannot cut a release.
+      - name: Test
+        run: dotnet test RainWorldSaveManager.sln -c Release
+
+      # -p:Version is an MSBuild global property: it beats the assignment in Directory.Build.props
+      # outright rather than merging with it, and reaches every project at once, so nothing in the
+      # checkout has to be rewritten. The SDK splits it for us: InformationalVersion keeps the
+      # whole string including any -beta.1 tail, while AssemblyVersion and FileVersion get the
+      # numeric part.
+      #
+      # PublishSingleFile is off on purpose. A single-file WPF publish extracts its native
+      # libraries to a temp folder at run time, which both hides the real layout from the
+      # installer and hides those copies from the Restart Manager scan that CloseApplications
+      # depends on. Inno Setup is the packaging here.
+      #
+      # PublishTrimmed is absent because WPF does not support trimming. That, plus the runtime
+      # being in the box, is why the result is 252 files and around 136 MB, compressing to a
+      # roughly 43 MB setup exe.
+      - name: Publish
+        run: >
+          dotnet publish src/RainWorldSaveManager/RainWorldSaveManager.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          -p:PublishSingleFile=false
+          -p:DebugType=none
+          -o publish
+
+      # windows-latest is expected to ship Inno Setup, but "expected to" is not a build guarantee,
+      # so install it rather than fail. The resolved path is exported instead of relying on PATH,
+      # because a fresh choco shim is not visible to a step that already started.
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            $onPath = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+            if ($onPath) { return $onPath }
+            # Version-agnostic glob: choco installs into "Inno Setup 6" today and a later major
+            # would be "Inno Setup 7". winget installs it per-user into %LOCALAPPDATA%\Programs,
+            # which is not either Program Files root, and is the path a dev machine hits.
+            $globs = @("${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe",
+                       "$env:ProgramFiles\Inno Setup *\ISCC.exe",
+                       "$env:LOCALAPPDATA\Programs\Inno Setup *\ISCC.exe")
+            return (Get-ChildItem -Path $globs -ErrorAction SilentlyContinue |
+                    Select-Object -First 1 -ExpandProperty FullName)
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            Write-Host "Inno Setup not found on this runner - installing it."
+            choco install innosetup -y --no-progress
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) { throw "ISCC.exe still not found after installing Inno Setup" }
+          Write-Host "Using $iscc"
+          Add-Content -Path $env:GITHUB_ENV -Value "ISCC=$iscc"
+
+      # Packages publish\ whole into dist_installer\RainWorldSaveManager-Setup.exe.
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "$env:ISCC" "/DAppVersion=${{ steps.version.outputs.VERSION }}" `
+                        "/DVersionNumeric=${{ steps.version.outputs.VERNUM }}" installer.iss
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.version.outputs.RELEASE_NAME }}
+          body: |
+            Back up your Rain World saves before the game overwrites them, keep a named library
+            of the ones worth returning to, and put any of them back into any slot.
+
+            ### Installation
+            **`RainWorldCompanion-Setup.exe`** is the one you want. It installs for you alone,
+            asks for no admin rights, needs no .NET runtime, and starts the app when it's done.
+
+            ### Already have it?
+            Run the setup over the top. It keeps your install location and your shortcut choice,
+            and it never touches your backups or your save library.
+
+            ### Uninstalling
+            Removing the program leaves your backups and your library exactly where they are.
+            They are the only copy of those saves, so nothing here deletes them, and you can
+            delete the folder yourself if you want it gone.
+          files: dist_installer/RainWorldCompanion-Setup.exe
+          # Without this, a missing installer publishes a green release with no assets on it,
+          # which the in-app updater then silently skips over.
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: ${{ steps.version.outputs.IS_PRERELEASE == 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

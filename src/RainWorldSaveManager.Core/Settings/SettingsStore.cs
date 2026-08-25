@@ -110,7 +110,13 @@ public sealed class SettingsStore
                 return null;
             }
 
-            return JsonSerializer.Deserialize<AppSettings>(json, SerializerOptions);
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            return FromJson(document.RootElement);
         }
         catch (JsonException)
         {
@@ -133,4 +139,91 @@ public sealed class SettingsStore
             return null;
         }
     }
+
+    /// <summary>
+    /// Folds a settings object field by field, never all at once.
+    ///
+    /// A single Deserialize call is all or nothing: one property whose type does not match throws,
+    /// and the whole file is discarded for it. That was survivable while every field was years
+    /// old, and it stops being survivable once an older build can be installed over a newer one,
+    /// because the older build then reads a file written by the newer one. Losing
+    /// <see cref="AppSettings.BackupRootPath"/> to an unrelated bad field leaves the backups on
+    /// disk with nothing pointing at them, which to the person looking is indistinguishable from
+    /// having lost them.
+    ///
+    /// A document that is not an object still falls back wholesale, because there is nothing in
+    /// one to salvage. Only a bad field is survivable, and it costs only itself.
+    /// </summary>
+    private static AppSettings FromJson(JsonElement root)
+    {
+        var settings = new AppSettings();
+
+        settings.SchemaVersion = ReadInt(root, "schemaVersion", settings.SchemaVersion);
+        settings.GameSavePath = ReadString(root, "gameSavePath", settings.GameSavePath);
+        settings.BackupRootPath = ReadString(root, "backupRootPath", settings.BackupRootPath);
+        settings.LibraryRootPath = ReadString(root, "libraryRootPath", settings.LibraryRootPath);
+        settings.GameInstallPath = ReadStringOrNull(root, "gameInstallPath");
+        settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
+        settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
+        settings.LastUpdateCheckUtc = ReadTimestamp(root, "lastUpdateCheckUtc");
+
+        return settings;
+    }
+
+    /// <summary>
+    /// One property, matched without regard to case.
+    ///
+    /// JsonElement.TryGetProperty is case-sensitive, and this file has been written with both
+    /// PascalCase and camelCase names over its life, which is why the serializer options set
+    /// PropertyNameCaseInsensitive. Reading properties by hand has to keep that promise, or every
+    /// file written before the naming policy was set silently loads as blank.
+    /// </summary>
+    private static bool TryFind(JsonElement root, string name, out JsonElement value)
+    {
+        foreach (var property in root.EnumerateObject())
+        {
+            if (string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static string ReadString(JsonElement root, string name, string fallback)
+        => TryFind(root, name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? fallback
+            : fallback;
+
+    private static string? ReadStringOrNull(JsonElement root, string name)
+        => TryFind(root, name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static int ReadInt(JsonElement root, string name, int fallback)
+        => TryFind(root, name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetInt32(out var number)
+            ? number
+            : fallback;
+
+    private static bool ReadBool(JsonElement root, string name, bool fallback)
+        => TryFind(root, name, out var value)
+            ? value.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => fallback,
+            }
+            : fallback;
+
+    private static DateTimeOffset? ReadTimestamp(JsonElement root, string name)
+        => TryFind(root, name, out var value)
+            && value.ValueKind == JsonValueKind.String
+            && value.TryGetDateTimeOffset(out var stamp)
+            ? stamp
+            : null;
 }

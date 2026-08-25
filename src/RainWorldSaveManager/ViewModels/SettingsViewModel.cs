@@ -315,14 +315,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         var installPath = GameInstallPath.Trim();
 
-        var settings = new AppSettings
-        {
-            SchemaVersion = _current.SchemaVersion,
-            GameSavePath = GameSavePath.Trim(),
-            BackupRootPath = BackupRootPath.Trim(),
-            LibraryRootPath = LibraryRootPath.Trim(),
-            GameInstallPath = installPath.Length == 0 ? null : installPath,
-        };
+        // Built from what was loaded rather than from scratch, and only the four fields this
+        // dialog owns are overwritten. A fresh object would carry the initialiser value for every
+        // field the dialog does not show, so saving here would quietly reset the update channel,
+        // the automatic-check choice and the last-check stamp every time.
+        var settings = _current.Clone();
+        settings.GameSavePath = GameSavePath.Trim();
+        settings.BackupRootPath = BackupRootPath.Trim();
+        settings.LibraryRootPath = LibraryRootPath.Trim();
+        settings.GameInstallPath = installPath.Length == 0 ? null : installPath;
 
         IsBusy = true;
         try
