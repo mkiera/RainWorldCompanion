@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
+using RainWorldSaveManager.Core.System;
 
 namespace RainWorldSaveManager.ViewModels;
 
@@ -200,7 +201,16 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     private bool _loading = true;
     private string? _splitNote;
 
-    public CampaignEditViewModel(SaveEditSession session, CampaignRecordRef campaign, CampaignSummary original)
+    /// <param name="expansions">
+    /// Which expansions the game folder has, for advice about a creature from one of them. Optional:
+    /// the game path is optional throughout this app, and without it the panel says less rather
+    /// than nothing.
+    /// </param>
+    public CampaignEditViewModel(
+        SaveEditSession session,
+        CampaignRecordRef campaign,
+        CampaignSummary original,
+        ExpansionPresence? expansions = null)
     {
         _session = session;
         _campaign = campaign;
@@ -237,7 +247,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         BuildRawFields();
 
-        Devourment = new DevourmentEditViewModel(session, campaign, denPos, AfterChange);
+        Devourment = new DevourmentEditViewModel(session, campaign, denPos, AfterChange, expansions);
 
         _loading = false;
 

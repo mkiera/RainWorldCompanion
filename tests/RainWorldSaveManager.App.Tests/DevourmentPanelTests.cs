@@ -2,6 +2,7 @@ using System.IO;
 using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
 using RainWorldSaveManager.Core.Saves.Models;
+using RainWorldSaveManager.Core.System;
 using RainWorldSaveManager.ViewModels;
 
 namespace RainWorldSaveManager.App.Tests;
@@ -50,6 +51,13 @@ public class DevourmentPanelTests : IDisposable
         new CampaignSummary { SlugcatId = _campaign.SlugcatId });
 
     private DevourmentEditViewModel Panel() => Editor().Devourment;
+
+    /// <summary>An editor built as though the game folder said this about the expansions.</summary>
+    private DevourmentEditViewModel PanelWith(ExpansionPresence expansions) => new CampaignEditViewModel(
+        _session,
+        _campaign,
+        new CampaignSummary { SlugcatId = _campaign.SlugcatId },
+        expansions).Devourment;
 
     private DevourmentEditState Stored()
         => DevourmentEditState.Read(_session.GetRecordBody(_campaign));
@@ -433,7 +441,7 @@ public class DevourmentPanelTests : IDisposable
         Assert.True(Stored().IsTamed(added.EntityId));
     }
 
-    // ---- searching ----
+    // ---- searching every creature ----
 
     [Fact]
     public void The_creature_box_offers_what_matches_what_is_typed()
@@ -441,8 +449,187 @@ public class DevourmentPanelTests : IDisposable
         var panel = Panel();
         panel.NewCreatureSearch = "vult";
 
-        Assert.Contains(panel.CreatureMatches, kind => kind.Name == "KingVulture");
-        Assert.DoesNotContain(panel.CreatureMatches, kind => kind.Name == "PinkLizard");
+        Assert.Contains(panel.CreatureMatches, c => c.Name == "KingVulture");
+        Assert.DoesNotContain(panel.CreatureMatches, c => c.Name == "PinkLizard");
+    }
+
+    /// <summary>
+    /// The picker used to offer the first fourteen of the list, which is the base game's lizards
+    /// and nothing else. Every creature the game registers is reachable by typing.
+    /// </summary>
+    [Fact]
+    public void An_empty_box_offers_every_creature_the_game_has()
+    {
+        var panel = Panel();
+
+        Assert.Equal(CreatureCatalog.Known.Count, panel.CreatureMatches.Count);
+        Assert.Contains(panel.CreatureMatches, c => c.Kind.Source == CreatureSource.Vanilla);
+        Assert.Contains(panel.CreatureMatches, c => c.Kind.Source == CreatureSource.Downpour);
+        Assert.Contains(panel.CreatureMatches, c => c.Kind.Source == CreatureSource.Watcher);
+    }
+
+    [Fact]
+    public void Creatures_from_the_expansions_can_be_searched_for_by_name()
+    {
+        var panel = Panel();
+
+        panel.NewCreatureSearch = "Eel";
+        Assert.Contains(panel.CreatureMatches, c => c.Name == "EelLizard");
+
+        panel.NewCreatureSearch = "Drill";
+        Assert.Contains(panel.CreatureMatches, c => c.Name == "DrillCrab");
+    }
+
+    [Fact]
+    public void The_count_says_how_much_of_the_list_the_search_is_showing()
+    {
+        var panel = Panel();
+
+        Assert.Equal($"{CreatureCatalog.Known.Count} creatures", panel.CreatureMatchCountText);
+
+        panel.NewCreatureSearch = "DrillCrab";
+
+        Assert.Equal($"1 of {CreatureCatalog.Known.Count}", panel.CreatureMatchCountText);
+    }
+
+    // ---- whether the game has the creature ----
+
+    [Fact]
+    public void A_base_game_creature_is_always_available()
+        => Assert.True(Panel().CreatureMatches.Single(c => c.Name == "PinkLizard").Available);
+
+    [Fact]
+    public void An_expansion_creature_is_available_when_the_expansion_is_installed()
+    {
+        var panel = PanelWith(new ExpansionPresence(Downpour: true, Watcher: false, CheckedTheInstall: true));
+
+        Assert.True(panel.CreatureMatches.Single(c => c.Name == "EelLizard").Available);
+        Assert.False(panel.CreatureMatches.Single(c => c.Name == "DrillCrab").Available);
+    }
+
+    [Fact]
+    public void An_uninstalled_expansion_says_so_rather_than_hiding_its_creatures()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+
+        CreatureChoice drill = panel.CreatureMatches.Single(c => c.Name == "DrillCrab");
+
+        Assert.False(drill.Available);
+        Assert.Contains("not installed", drill.Detail);
+        Assert.Contains(panel.CreatureMatches, c => c.Name == "DrillCrab");
+    }
+
+    /// <summary>
+    /// The save is its own evidence. A campaign that was already carrying a Downpour creature has
+    /// been played with Downpour, whatever this machine currently has installed.
+    /// </summary>
+    [Fact]
+    public void A_creature_the_campaign_arrived_carrying_counts_as_available()
+    {
+        var expansions = new ExpansionPresence(false, false, CheckedTheInstall: true);
+
+        PanelWith(expansions).AddCreatureCommand.Execute("EelLizard");
+
+        // A fresh editor over the same session, so the campaign now arrives carrying it.
+        var reopened = PanelWith(expansions);
+
+        Assert.True(reopened.CreatureMatches.Single(c => c.Name == "SpitLizard").Available);
+        Assert.False(reopened.CreatureMatches.Single(c => c.Name == "DrillCrab").Available);
+    }
+
+    /// <summary>
+    /// Adding one is not evidence that the expansion is there. Reading it live would let the first
+    /// creature vouch for the second, which is the question answering itself.
+    /// </summary>
+    [Fact]
+    public void Adding_one_does_not_vouch_for_the_next()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+        panel.AddCreatureCommand.Execute("EelLizard");
+
+        Assert.False(panel.CreatureMatches.Single(c => c.Name == "SpitLizard").Available);
+    }
+
+    [Fact]
+    public void Without_a_game_folder_the_advice_says_it_did_not_look()
+    {
+        var panel = PanelWith(ExpansionPresence.Unknown);
+
+        Assert.Contains("was not checked", panel.CreatureMatches.Single(c => c.Name == "DrillCrab").Detail);
+    }
+
+    [Fact]
+    public void Adding_a_creature_the_game_will_not_know_is_written_and_warned_about()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+
+        panel.AddCreatureCommand.Execute("DrillCrab");
+
+        Assert.Equal("DrillCrab", Stored().Entries[^1].PreyType);
+        Assert.Contains(panel.Warnings, w => w.Contains("The Watcher") && w.Contains("not installed"));
+    }
+
+    [Fact]
+    public void Adding_a_creature_from_an_installed_expansion_says_nothing()
+    {
+        var panel = PanelWith(new ExpansionPresence(Downpour: true, Watcher: true, CheckedTheInstall: true));
+
+        panel.AddCreatureCommand.Execute("DrillCrab");
+
+        Assert.Equal("DrillCrab", Stored().Entries[^1].PreyType);
+        Assert.DoesNotContain(panel.Warnings, w => w.Contains("The Watcher"));
+    }
+
+    [Fact]
+    public void A_base_game_creature_never_draws_that_advice()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+
+        panel.AddCreatureCommand.Execute("PinkLizard");
+
+        Assert.DoesNotContain(panel.Warnings, w => w.Contains("Downpour") || w.Contains("The Watcher"));
+    }
+
+    /// <summary>
+    /// The advice is about what was just chosen. A campaign that arrived carrying an expansion's
+    /// creatures would otherwise draw a line about every one of them, which is noise.
+    /// </summary>
+    [Fact]
+    public void What_the_save_already_carried_draws_no_advice()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+
+        Assert.DoesNotContain(panel.Warnings, w => w.Contains("Downpour") || w.Contains("The Watcher"));
+    }
+
+    /// <summary>
+    /// One line per expansion, not one per creature. What is worth knowing is that the expansion
+    /// may not be there, and repeating it for every crab put in a stomach is noise.
+    /// </summary>
+    [Fact]
+    public void Several_creatures_from_one_expansion_draw_one_line_naming_them_all()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+
+        panel.AddCreatureCommand.Execute("DrillCrab");
+        panel.AddCreatureCommand.Execute("TowerCrab");
+
+        string line = panel.Warnings.Single(w => w.Contains("The Watcher"));
+
+        Assert.Contains("Drill Crab", line);
+        Assert.Contains("Tower Crab", line);
+    }
+
+    [Fact]
+    public void Each_expansion_gets_its_own_line()
+    {
+        var panel = PanelWith(new ExpansionPresence(false, false, CheckedTheInstall: true));
+
+        panel.AddCreatureCommand.Execute("DrillCrab");
+        panel.AddCreatureCommand.Execute("EelLizard");
+
+        Assert.Single(panel.Warnings, w => w.Contains("The Watcher"));
+        Assert.Single(panel.Warnings, w => w.Contains("Downpour"));
     }
 
     // ---- advice ----

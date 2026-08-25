@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RainWorldSaveManager.Core.Editing;
 using RainWorldSaveManager.Core.Saves;
+using RainWorldSaveManager.Core.System;
 using RainWorldSaveManager.Views.Behaviors;
 
 namespace RainWorldSaveManager.ViewModels;
@@ -16,6 +17,21 @@ namespace RainWorldSaveManager.ViewModels;
 public sealed record PredatorChoice(string Blob, string EntityId, string DisplayName)
 {
     public override string ToString() => DisplayName;
+}
+
+/// <summary>
+/// One creature the picker is offering, and whether this install can be expected to have it.
+/// </summary>
+/// <param name="Available">
+/// False for a creature from an expansion that is not installed and that this campaign has never
+/// carried. Nothing is stopped by it: the button still adds the creature, and the panel says what
+/// the game will make of it.
+/// </param>
+public sealed record CreatureChoice(CreatureKind Kind, bool Available, string Detail)
+{
+    public string Name => Kind.Name;
+
+    public string DisplayName => Kind.DisplayName;
 }
 
 /// <summary>
@@ -35,25 +51,61 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     private readonly CampaignRecordRef _campaign;
     private readonly string _denPos;
     private readonly Action _changed;
+    private readonly ExpansionPresence _expansions;
+
+    /// <summary>
+    /// Ids of creatures put in since the editor opened, so advice about an expansion is given about
+    /// what was just chosen rather than about what the save arrived carrying.
+    /// </summary>
+    private readonly HashSet<string> _added = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Which expansions the campaign was already carrying creatures from when the editor opened.
+    ///
+    /// Read once, and not again. A save that arrived with a Downpour creature has been played with
+    /// Downpour whatever this machine has installed, and that stays true. Reading it live would let
+    /// adding one creature make the next one look fine, which is the question answering itself.
+    /// </summary>
+    private readonly HashSet<CreatureSource> _arrivedWith = new();
 
     public DevourmentEditViewModel(
         SaveEditSession session,
         CampaignRecordRef campaign,
         string denPos,
-        Action changed)
+        Action changed,
+        ExpansionPresence? expansions = null)
     {
         _session = session;
         _campaign = campaign;
         _denPos = denPos.Trim();
         _changed = changed;
+        _expansions = expansions ?? ExpansionPresence.Unknown;
 
         State = DevourmentEditState.Read(session.GetRecordBody(campaign));
+
+        foreach (DevourmentEntry entry in State.Entries)
+        {
+            Note(entry.PredatorType);
+
+            if (!entry.PreyIsItem)
+            {
+                Note(entry.PreyType);
+            }
+        }
 
         Roots = new ObservableCollection<DevourmentEditNode>();
         Predators = new ObservableCollection<PredatorChoice>();
         Warnings = new ObservableCollection<string>();
 
         Rebuild();
+
+        void Note(string type)
+        {
+            if (CreatureCatalog.IsKnown(type))
+            {
+                _arrivedWith.Add(CreatureCatalog.ForName(type).Source);
+            }
+        }
     }
 
     internal DevourmentEditState State { get; private set; }
@@ -89,10 +141,74 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     [ObservableProperty]
     private PredatorChoice? newCreaturePredator;
 
-    /// <summary>Creatures matching what has been typed. Anything can be typed, matched or not.</summary>
-    public IEnumerable<CreatureKind> CreatureMatches => CreatureCatalog.Search(NewCreatureSearch).Take(14);
+    /// <summary>
+    /// Every creature the game registers that matches what has been typed, whichever expansion it
+    /// comes from. An empty box offers all of them, because a list is only worth searching once it
+    /// is longer than the search.
+    ///
+    /// Nothing is left out for being unavailable. A creature from an expansion this install does
+    /// not have is offered with a mark on it and a line of advice, the same as every other value
+    /// this editor will write and warn about rather than refuse.
+    /// </summary>
+    public IReadOnlyList<CreatureChoice> CreatureMatches => CreatureCatalog
+        .Search(NewCreatureSearch)
+        .Select(Describe)
+        .ToArray();
 
-    partial void OnNewCreatureSearchChanged(string value) => OnPropertyChanged(nameof(CreatureMatches));
+    public string CreatureMatchCountText => CreatureMatches.Count == CreatureCatalog.Known.Count
+        ? CreatureCatalog.Known.Count.ToString(CultureInfo.InvariantCulture) + " creatures"
+        : $"{CreatureMatches.Count} of {CreatureCatalog.Known.Count}";
+
+    partial void OnNewCreatureSearchChanged(string value)
+    {
+        OnPropertyChanged(nameof(CreatureMatches));
+        OnPropertyChanged(nameof(CreatureMatchCountText));
+    }
+
+    /// <summary>
+    /// Whether a creature is one this install can be expected to have, and why.
+    ///
+    /// Two things count as yes. The expansion is installed, which is the answer when the game
+    /// folder is known. Or the campaign already carries a creature from it, which says the save has
+    /// been played with it whatever this machine currently has.
+    /// </summary>
+    private CreatureChoice Describe(CreatureKind kind)
+    {
+        if (kind.Source == CreatureSource.Vanilla)
+        {
+            return new CreatureChoice(kind, true, "In the base game.");
+        }
+
+        string expansion = kind.Source == CreatureSource.Watcher ? "The Watcher" : "Downpour";
+
+        if (Installed(kind.Source))
+        {
+            return new CreatureChoice(kind, true, $"From {expansion}, which is installed.");
+        }
+
+        if (_arrivedWith.Contains(kind.Source))
+        {
+            return new CreatureChoice(
+                kind,
+                true,
+                $"From {expansion}. This campaign was already carrying creatures from it.");
+        }
+
+        return new CreatureChoice(
+            kind,
+            false,
+            _expansions.CheckedTheInstall
+                ? $"From {expansion}, which is not installed. The game will not know this creature."
+                : $"From {expansion}. Nothing says this save has it, and the game folder was not checked.");
+    }
+
+    private bool Installed(CreatureSource source) => _expansions.CheckedTheInstall && source switch
+    {
+        CreatureSource.Downpour => _expansions.Downpour,
+        CreatureSource.Watcher => _expansions.Watcher,
+        _ => true,
+    };
+
 
     /// <summary>Puts a creature in the chosen stomach, giving it an id nothing else is using.</summary>
     [RelayCommand]
@@ -107,6 +223,7 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         }
 
         string id = State.AddCreature(name, predator.Blob);
+        _added.Add(id);
         NewCreatureSearch = "";
 
         Apply(
@@ -552,6 +669,52 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         _changed();
     }
 
+    /// <summary>
+    /// Says so when creatures have been added from an expansion this save has no sign of having.
+    ///
+    /// One line per expansion rather than one per creature. The thing worth knowing is that the
+    /// expansion may not be there, and repeating it for every crab put in a stomach turns advice
+    /// into noise.
+    ///
+    /// What the game does with a name it does not know: AbstractCreatureFromString logs "Unknown
+    /// creature" and returns null, so the save still loads and the rest of the stomach still works.
+    /// What is lost is that one creature. Worth saying, not worth stopping.
+    /// </summary>
+    private void AddExpansionWarnings()
+    {
+        foreach (CreatureSource source in new[] { CreatureSource.Downpour, CreatureSource.Watcher })
+        {
+            if (Installed(source) || _arrivedWith.Contains(source))
+            {
+                continue;
+            }
+
+            var added = AllNodes
+                .Where(node =>
+                    node.IsCreature
+                    && _added.Contains(node.EntityId)
+                    && CreatureCatalog.IsKnown(node.RawType)
+                    && CreatureCatalog.ForName(node.RawType).Source == source)
+                .Select(node => node.DisplayName)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (added.Count == 0)
+            {
+                continue;
+            }
+
+            string expansion = source == CreatureSource.Watcher ? "The Watcher" : "Downpour";
+            string names = string.Join(", ", added);
+
+            Warnings.Add(_expansions.CheckedTheInstall
+                ? $"{names} {(added.Count == 1 ? "comes" : "come")} from {expansion}, which is not installed. "
+                    + "The game will not know the name, so it logs a warning and leaves that one out of the stomach."
+                : $"{names} {(added.Count == 1 ? "comes" : "come")} from {expansion}, and nothing else in this "
+                    + "campaign is from it. If the expansion is not on, the game leaves that one out of the stomach.");
+        }
+    }
+
     private void RefreshWarnings()
     {
         Warnings.Clear();
@@ -598,6 +761,8 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
                     + "holding itself. The chain is not followed round the loop.");
             }
         }
+
+        AddExpansionWarnings();
 
         if (_refusedMove is not null)
         {

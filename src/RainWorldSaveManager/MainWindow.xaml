@@ -491,13 +491,35 @@
             </Border>
         </DataTemplate>
 
-        <!-- One creature the picker is offering. Clicking one puts it in the chosen stomach. -->
+        <!--
+            One creature the picker is offering. Clicking one puts it in the chosen stomach.
+
+            A creature from an expansion this install does not have is still offered, marked rather
+            than hidden: the button writes it and the panel says what the game will make of it,
+            which is what everything else in this editor does with a value it doubts.
+        -->
         <DataTemplate x:Key="CreatureSuggestionTemplate">
-            <Button Content="{Binding DisplayName}" Style="{StaticResource Button.Small}" Margin="0,0,4,4"
-                    ToolTip="{Binding Name}"
+            <Button Margin="0,0,4,4" ToolTip="{Binding Detail}"
                     Command="{Binding DataContext.AddCreatureCommand,
                               RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                    CommandParameter="{Binding Name}" />
+                    CommandParameter="{Binding Name}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource Button.Small}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Available}" Value="False">
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Warn}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
+                    <TextBlock Text="!" Margin="4,0,0,0" FontWeight="Bold" VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Warn}"
+                               Visibility="{Binding Available, Converter={StaticResource NotBoolToVis}}" />
+                </StackPanel>
+            </Button>
         </DataTemplate>
 
         <!--
@@ -882,9 +904,13 @@
                                       ToolTip="Anything already in this campaign can hold something, and so can you." />
                         </StackPanel>
                         <StackPanel Style="{StaticResource Edit.FieldGroup}">
-                            <TextBlock Text="Creature" Style="{StaticResource Text.Tiny}" />
-                            <TextBox Width="180" Margin="0,2,0,0"
-                                     ToolTip="Type a name. Anything can be typed, matched or not."
+                            <DockPanel Width="240">
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding CreatureMatchCountText}"
+                                           Style="{StaticResource Text.Tiny}" Margin="6,0,0,0" />
+                                <TextBlock Text="Search every creature" Style="{StaticResource Text.Tiny}" />
+                            </DockPanel>
+                            <TextBox Width="240" Margin="0,2,0,0"
+                                     ToolTip="Matches the base game, Downpour and The Watcher. Anything can be typed, matched or not."
                                      Text="{Binding NewCreatureSearch, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
                         <Button Content="Add creature" Style="{StaticResource Button.Small}"
@@ -892,9 +918,14 @@
                                 Command="{Binding AddCreatureCommand}" />
                     </WrapPanel>
 
-                    <ItemsControl ItemsSource="{Binding CreatureMatches}" Margin="0,2,0,0"
-                                  ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
-                                  ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                    <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                            Padding="8,8,8,4">
+                        <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding CreatureMatches}"
+                                          ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
+                                          ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                        </ScrollViewer>
+                    </Border>
                 </StackPanel>
 
                 <DockPanel Margin="0,14,0,7">

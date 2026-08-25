@@ -716,7 +716,11 @@ public sealed partial class MainViewModel : ObservableObject
 
         CloseOpenEditor();
 
-        campaign.Edit = new CampaignEditViewModel(session, record, campaign.Summary);
+        campaign.Edit = new CampaignEditViewModel(
+            session,
+            record,
+            campaign.Summary,
+            ExpansionDetector.Detect(_settings.GameInstallPath));
         _openEditor = campaign;
     }
 
