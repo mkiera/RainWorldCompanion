@@ -1,0 +1,200 @@
+using RainWorldCompanion.Core.Saves;
+
+namespace RainWorldCompanion.Tests;
+
+/// <summary>
+/// The catalogs decide what an editor offers, so a wrong entry is a shelter the player can be sent
+/// to that does not exist. They were generated from the game's own world files rather than written
+/// out by hand, and these hold the result to facts about the game and to shapes a mangled
+/// generation would break.
+/// </summary>
+public class WorldCatalogTests
+{
+    [Fact]
+    public void The_shelter_a_real_save_is_sitting_in_is_one_the_catalog_knows()
+    {
+        var campaign = SaveMetadataExtractor.Extract(FixtureFiles.PathTo(FixtureFiles.Sav2), 2).Campaigns[0];
+
+        Assert.Equal("SU_S04", campaign.DenPos);
+        Assert.True(ShelterCatalog.IsKnown(campaign.DenPos));
+        Assert.True(ShelterCatalog.IsKnown(campaign.LastDenPos));
+    }
+
+    // ---- regions ----
+
+    [Theory]
+    [InlineData("SU", "Outskirts")]
+    [InlineData("HI", "Industrial Complex")]
+    [InlineData("SH", "Shaded Citadel")]
+    [InlineData("LC", "Metropolis")]
+    [InlineData("SS", "Five Pebbles")]
+    public void Regions_carry_the_name_the_game_shows(string code, string expected)
+        => Assert.Equal(expected, RegionCatalog.ForCode(code).DisplayName);
+
+    [Fact]
+    public void A_region_code_is_matched_whatever_its_case()
+        => Assert.Equal("Outskirts", RegionCatalog.ForCode("su").DisplayName);
+
+    [Fact]
+    public void A_region_from_a_mod_still_answers_rather_than_failing()
+    {
+        var region = RegionCatalog.ForCode("ZZZ");
+
+        Assert.Equal("ZZZ", region.Code);
+        Assert.Equal("ZZZ", region.DisplayName);
+        Assert.False(RegionCatalog.IsKnown("ZZZ"));
+    }
+
+    [Fact]
+    public void A_blank_region_code_reads_as_unknown()
+        => Assert.Equal("(unknown)", RegionCatalog.ForCode(null).DisplayName);
+
+    /// <summary>
+    /// The six echoes of the base game, plus the ones Downpour adds. This is the list an echo
+    /// editor shows, so it has to include regions the save has never mentioned.
+    /// </summary>
+    [Theory]
+    [InlineData("CC")]
+    [InlineData("SI")]
+    [InlineData("LF")]
+    [InlineData("SB")]
+    [InlineData("SH")]
+    [InlineData("UW")]
+    public void Every_base_game_echo_region_is_listed(string code)
+    {
+        Assert.True(RegionCatalog.ForCode(code).HasEcho);
+        Assert.Contains(RegionCatalog.WithEchoes, r => r.Code == code);
+    }
+
+    [Fact]
+    public void The_echo_regions_are_regions()
+        => Assert.All(RegionCatalog.WithEchoes, r => Assert.True(RegionCatalog.IsKnown(r.Code)));
+
+    [Fact]
+    public void Regions_without_an_echo_are_not_offered_as_having_one()
+    {
+        // Outskirts has no echo in any campaign, and an editor that offered one there would be
+        // offering a value the game never writes.
+        Assert.False(RegionCatalog.ForCode("SU").HasEcho);
+        Assert.DoesNotContain(RegionCatalog.WithEchoes, r => r.Code == "SU");
+    }
+
+    // ---- shelters ----
+
+    [Fact]
+    public void Outskirts_holds_the_three_shelters_it_has()
+        => Assert.Equal(new[] { "SU_S01", "SU_S03", "SU_S04" }, ShelterCatalog.ForRegion("SU"));
+
+    /// <summary>
+    /// The reason the catalog was read out of the world files instead of generated from a naming
+    /// rule. Nearly every shelter is named REGION_S then a number, and this one is not.
+    /// </summary>
+    [Fact]
+    public void A_shelter_that_breaks_the_usual_naming_is_still_listed()
+    {
+        Assert.True(ShelterCatalog.IsKnown("LC_A05"));
+        Assert.Contains("LC_A05", ShelterCatalog.ForRegion("LC"));
+    }
+
+    [Fact]
+    public void Every_shelter_belongs_to_a_region_the_catalog_knows()
+        => Assert.All(ShelterCatalog.All, room => Assert.True(
+            RegionCatalog.IsKnown(ShelterCatalog.RegionOf(room)),
+            $"{room} is in region {ShelterCatalog.RegionOf(room)}, which is not a known region."));
+
+    [Fact]
+    public void Shelters_are_listed_once_each()
+        => Assert.Equal(ShelterCatalog.All.Count, ShelterCatalog.All.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+    [Fact]
+    public void A_room_from_a_mod_still_reports_the_region_it_is_in()
+    {
+        Assert.Equal("ZZZ", ShelterCatalog.RegionOf("ZZZ_S01"));
+        Assert.False(ShelterCatalog.IsKnown("ZZZ_S01"));
+    }
+
+    [Fact]
+    public void A_name_with_no_region_prefix_has_no_region()
+        => Assert.Null(ShelterCatalog.RegionOf("nonsense"));
+
+    [Fact]
+    public void Shelters_can_be_searched_by_the_name_of_their_region()
+    {
+        var found = ShelterCatalog.Search("Outskirts").ToList();
+
+        Assert.Equal(new[] { "SU_S01", "SU_S03", "SU_S04" }, found);
+    }
+
+    [Fact]
+    public void Searching_shelters_by_room_name_finds_the_room()
+        => Assert.Contains("HI_S01", ShelterCatalog.Search("hi_s0"));
+
+    [Fact]
+    public void A_blank_shelter_search_offers_everything()
+        => Assert.Equal(ShelterCatalog.All.Count, ShelterCatalog.Search("  ").Count());
+
+    // ---- gates ----
+
+    [Fact]
+    public void A_gate_names_the_two_regions_it_joins()
+    {
+        var gate = GateCatalog.ForName("GATE_SU_HI");
+
+        Assert.Equal("SU", gate.FromRegion);
+        Assert.Equal("HI", gate.ToRegion);
+        Assert.Equal("Outskirts to Industrial Complex", gate.DisplayName);
+    }
+
+    [Fact]
+    public void Every_gate_joins_regions_the_catalog_knows()
+        => Assert.All(GateCatalog.Known, gate =>
+        {
+            Assert.True(RegionCatalog.IsKnown(gate.FromRegion), $"{gate.Name} starts in unknown region {gate.FromRegion}.");
+            Assert.True(RegionCatalog.IsKnown(gate.ToRegion), $"{gate.Name} ends in unknown region {gate.ToRegion}.");
+        });
+
+    [Fact]
+    public void Every_gate_is_named_the_way_the_game_names_them()
+        => Assert.All(GateCatalog.Known, gate => Assert.Equal($"GATE_{gate.FromRegion}_{gate.ToRegion}", gate.Name));
+
+    [Fact]
+    public void Gates_are_listed_once_each()
+        => Assert.Equal(GateCatalog.Known.Count, GateCatalog.Known.Select(g => g.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+
+    [Fact]
+    public void A_gate_from_a_mod_still_reads_as_a_gate()
+    {
+        var gate = GateCatalog.ForName("GATE_ZZ_YY");
+
+        Assert.Equal("ZZ", gate.FromRegion);
+        Assert.Equal("YY", gate.ToRegion);
+        Assert.False(GateCatalog.IsKnown("GATE_ZZ_YY"));
+    }
+
+    [Fact]
+    public void Something_that_is_not_a_gate_name_reads_as_a_gate_with_no_regions()
+    {
+        var gate = GateCatalog.ForName("not a gate");
+
+        Assert.Equal("not a gate", gate.Name);
+        Assert.Equal("", gate.FromRegion);
+    }
+
+    [Fact]
+    public void Gates_can_be_searched_by_the_name_of_a_region_they_touch()
+    {
+        var found = GateCatalog.Search("Shoreline").ToList();
+
+        Assert.NotEmpty(found);
+        Assert.All(found, g => Assert.True(
+            g.FromRegion == "SL" || g.ToRegion == "SL",
+            $"{g.Name} does not touch Shoreline."));
+    }
+
+    [Fact]
+    public void A_gate_that_a_real_campaign_could_have_opened_is_in_the_list()
+    {
+        // The first gate out of Outskirts, which every campaign but Saint's passes through.
+        Assert.True(GateCatalog.IsKnown("GATE_SU_HI"));
+    }
+}

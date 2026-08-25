@@ -1,12 +1,68 @@
-# Rain World Save Manager
+<p align="center">
+  <img src="docs/icon.png" width="140" alt="" />
+</p>
+
+<h1 align="center">RainWorld Companion</h1>
+
+<p align="center">
+  Back up your Rain World saves, read what is in them, and put any of them back.
+</p>
 
 A Windows desktop app that copies your Rain World save files into dated snapshots and restores
-them on demand. It reads the save containers well enough to show which slugcat and which cycle
-each slot holds, so you can tell one snapshot from another before you restore it.
+them on demand. It reads the save containers well enough to show what each slot holds, from the
+slugcat and the cycle down to karma, passages and kills, so you can tell one snapshot from
+another before you restore it.
 
-This version does not edit saves. Files are copied byte for byte in both directions, because the
-UTF-8 byte order mark and the trailing NUL padding the game writes are part of what the game
-reads back.
+It also keeps a library of named saves outside the game's three slots, so twenty runs can sit
+ready to load into any slot. It can copy one slot onto another, lift a single campaign out, and
+it reads Rain Meadow's online saves beside the local ones.
+
+![The main window](docs/screenshots/01-main.png)
+
+The list on the left is the live save folder and every backup under it. Selecting either fills
+the panel on the right, in the same layout for both, so a backup can be read against the live
+save without switching views.
+
+![A campaign opened out](docs/screenshots/02-campaign.png)
+
+Opening a campaign shows what the save records: the cycle, food, playtime and shelter,
+the karma and the flags that go with it, deaths and quits, the echoes met, the gates unlocked and
+the creatures killed.
+
+![The save library](docs/screenshots/03-library.png)
+
+The library holds saves outside the game's three slots. An entry can be a whole slot or a single
+campaign lifted out of one, and any of them can be put back into any slot.
+
+The slugcat art is read from your own Rain World install at runtime. None of it is copied into
+this repo or shipped with the app.
+
+---
+
+## Installing
+
+Download `RainWorldCompanion-Setup.exe` from the
+[releases page](https://github.com/mkiera/RainWorldCompanion/releases) and run it. It installs
+for you alone, asks for no admin rights, and the .NET runtime is inside the download. To update,
+run a newer setup over the top.
+
+Uninstalling removes the program and its settings. **It does not touch your backups or your save
+library.** Delete those folders yourself when you want them gone.
+
+---
+
+## Contents
+
+- [What it manages](#what-it-manages)
+- [Supported mods](#supported-mods)
+- [Copying a slot](#copying-a-slot)
+- [The library](#the-library)
+- [Backups and restores](#backups-and-restores)
+- [Steam Cloud](#steam-cloud)
+- [Where things are stored](#where-things-are-stored)
+- [Building](#building)
+
+---
 
 ## What it manages
 
@@ -14,127 +70,177 @@ The app copies, overwrites and deletes only these files, matched by exact name, 
 in the save folder:
 
 - `sav`, `sav2`, `sav3` (story slots 1 to 3)
-- `exp<n>` and `expCore<n>` (expedition state, for example `exp1` and `expCore1`)
-- `online_sav`, `online_sav2`, `online_sav3`
-- `ModConfigs\devourment.txt`
-- `dvrmentSaveStates\` and everything inside it, at any depth
-- `ModConfigs\DvrmentConfs\` and everything inside it, at any depth
+- `exp<n>` and `expCore<n>` (expedition state)
+- `online_sav`, `online_sav2`, `online_sav3` (Rain Meadow), the `online_sav-<n>` names a lobby
+  joined from an Expedition slot writes, and `meadow.json`
+- `buffMain<n>` and `buffsave<n>` (RandomBuff), and every `.txt` sitting directly in `ModConfigs\`
+- the `dvrmentSaveStates\`, `ModConfigs\DvrmentConfs\`, `dressmyslugcat\`, `RandomBuff\` and
+  `Warp\` folders, with everything inside them
 
-Everything else is left alone, including `options`, the game's own `backup\` and `cloud\` folders,
-`steam_autocloud.vdf`, and other mods' config files.
+Anything the game or Steam rewrites on its own stays out of scope: `options` and
+`localoptions.txt`, the `SJ_<n>` karma screenshots, `steam_autocloud.vdf`, Steam's `cloud\` and
+the game's own `backup\`. The name match is exact, so files like `sav - Copy` and `sav.bak` are
+not touched, and nothing is copied through a junction or symlink.
 
-The name match is exact and anchored. A live save folder often holds files such as `sav - Copy`,
-`sav - Copy (2)` and `sav.bak` sitting next to `sav`, and a pattern such as `sav*` would pull
-those in as files the app is allowed to overwrite and delete. They are out of scope.
+---
 
-Junctions and symlinks are out of scope too. If one of the folders above is a junction, or a file
-inside it is a symlink, the app copies nothing through it and names what it skipped, in the backup
-progress and again when you restore.
+## Supported mods
 
-## Where things are stored
+Everything here is optional: a mod that is not installed leaves no trace, and the app shows
+nothing about it. Mod settings are covered for all of them, because every `.txt` sitting directly
+in `ModConfigs\` is backed up.
 
-The save folder is detected at
-`%USERPROFILE%\AppData\LocalLow\Videocult\Rain World`, and you can point the app somewhere else in
-Settings.
+<details>
+<summary><b>Rain Meadow</b>: online saves read and shown beside the local ones</summary>
+<br>
 
-Backups go to `%LOCALAPPDATA%\RainWorldSaveManager\backups` unless you change it. Each backup is
-one folder named for the moment it was taken, for example `2026-08-24_19-31-07`, holding the
-copied files in the same layout they have in the save folder plus a `manifest.json` listing every
-file with its size and SHA-256.
+Rain Meadow keeps a second save per slot, `online_sav2` beside `sav2`, in the same format, so one
+reader handles both. A toggle above the slot sections switches them between the three local saves
+and the three online ones, and a paired section lower down shows both halves of each slot side by
+side. The panel also reads `meadow.json`, the mod's own progression file.
 
-The manifest is written last, so a folder without one is a backup that did not finish. The app
-lists those as incomplete and refuses to restore them, and you can delete them from the list.
+The toggle and the paired section appear only when Rain Meadow is on the machine, so a player
+without the mod sees one set of saves and no toggle over them.
 
-The backup folder must not be inside the save folder, and the save folder must not be inside
-the backup folder. The app checks this by resolving both paths through the filesystem, so a
-junction or a subst drive pointing one into the other is refused as well.
+</details>
 
-Settings live in `%LOCALAPPDATA%\RainWorldSaveManager\settings.json`.
+<br>
 
-## Close the game first
+<details>
+<summary><b>Devourment</b>: what a campaign is carrying, drawn as a tree</summary>
+<br>
 
-Backups and restores are refused while Rain World is running, because the game holds its
-progression in memory and writes it back at its own save points. The header of the window tells
-you whether the game is open, and the Backup and Restore buttons are disabled while it is.
+The mod records one predator and prey pair per line. The panel follows the entity ids and draws
+the chain, so a spear sits inside the lizard inside whatever ate the lizard. Each row shows what
+the save knows about that entity: a pearl's type and colour, a creature's feeling towards you and
+whether it is tamed, a spear's properties.
 
-The check is repeated during a restore. If the game starts while the restore is running, the
-restore stops rather than writing more files under a process that is reading them, and tells you
-the save folder is part restored.
+Backups taken before this version recorded no entity ids, so their contents are drawn flat, and a
+line under the tree counts anything written in a shape the app does not read.
 
-## What a restore does
+</details>
 
-Restoring a backup makes the in-scope part of your save folder match that backup exactly. Before
-you confirm, the app shows you which files will be added, which overwritten, which are already
-identical, and which will be deleted.
+<br>
 
-**In-scope files that the backup does not contain are deleted.** If you started an expedition
-after taking the backup, `exp1` and `expCore1` are not in it, and restoring removes them. That
-is what makes a restore a return to one moment rather than a merge. Files outside the scope list
-are left as they are.
+<details>
+<summary><b>RandomBuff</b>: save data backed up and restored</summary>
+<br>
 
-The order is fixed:
+`buffMain<n>`, `buffsave<n>` and the `RandomBuff\` folder are carried whole, so a restore puts
+the run back the way the mod left it.
 
-1. Refuse if Rain World is running.
-2. Refuse a backup that did not finish.
-3. Re-hash every file inside the backup against its manifest, and refuse if anything has changed
-   since it was taken.
-4. Take a safety snapshot of the save folder as it is right now, and abandon the restore if that
-   snapshot does not complete.
-5. Check again that the game is closed, then copy the backup's files over the live ones.
-6. Delete the in-scope live files the backup does not have, then remove folders inside
-   `dvrmentSaveStates\` and `ModConfigs\DvrmentConfs\` that this left empty.
-7. Re-hash the restored files and confirm they match the backup.
+</details>
 
-Step 6 only runs when every file in step 5 was copied, so a restore that failed to write your
-saves back does not reach the step that deletes what is there now.
+<br>
 
-If a restore stops part way, the message says so and names the safety snapshot, which is the way
-back. Restore that snapshot to return the save folder to how it was before you started.
+<details>
+<summary><b>Dress My Slugcat</b>: appearance data backed up and restored</summary>
+<br>
 
-## The safety snapshot
+The `dressmyslugcat\` folder is copied whole.
 
-Every restore takes one automatically, just before it overwrites anything, and it is kept in the
-backup list like any other backup, marked as an automatic pre-restore copy. It holds the save
-folder exactly as it was at that moment, including files the backup you are restoring does not
-have. Nothing is overwritten until that snapshot is on disk and complete.
+</details>
 
-Safety snapshots are not deleted automatically. They accumulate, and you can remove the ones you
-no longer want from the list.
+<br>
 
-## Backup integrity
+<details>
+<summary><b>Warp</b>: save data backed up and restored</summary>
+<br>
 
-Every file copied into a backup is checked against the file it came from: same length, same
-timestamp, and the same SHA-256 read back from both sides. A save that changes during the copy is
-copied a second time, and if it changes again the backup stops without writing a manifest.
+The `Warp\` folder is copied whole.
 
-Recording only what arrived in the backup folder would produce a snapshot that agrees with
-itself whatever happened to it. A save truncated by a cloud sync during the copy would be
-recorded at its truncated length, with the hash of its truncated bytes, and every later check
-would compare those bytes against themselves and pass.
+</details>
 
-Verify re-hashes a backup against its manifest whenever you ask, and a restore always does it
-before touching anything.
+---
+
+## Copying a slot
+
+Copy Slot in the top bar picks a source and a target from the three local slots and, with Rain
+Meadow installed, the three online ones. Any slot can be copied onto any other. The confirmation
+names both files, their sizes and what is in each, and it re-describes the copy whenever you
+change a picker, so what it names is what will run.
+
+A copy replaces the whole target file byte for byte and takes a safety snapshot of the save
+folder first, so the file it overwrote can be put back by restoring that snapshot.
+
+---
+
+## The library
+
+Rain World gives you three slots. The library is a folder of named saves outside them, so a run
+you want to come back to does not have to hold a slot open. The LIBRARY tab lists what you have
+stored, with the same faces and check state the backup rows carry, and selecting one fills the
+same detail panel.
+
+- **Store Slot** keeps a copy of one slot under a name of your choosing. The copy is proved
+  against the file it came from before it is recorded, and nothing in the save folder is written.
+- **Put in slot** writes a library save into whichever slot you pick, local or online.
+- **Take from slot** replaces a library save with what is in that slot now, which is how an hour
+  of play gets back into the save it came from. The replaced save is kept, and **Undo take** puts
+  it back.
+- **Export** writes a save out as a single `.rwsave` file. **Import** reads one back, and also
+  accepts a bare save file copied straight out of somebody's save folder.
+
+A row says which slot holds it and whether that slot has been played since. Putting a save into a
+slot is the only library operation that writes into the save folder, and it runs the same steps a
+slot copy runs: safety snapshot first, then one byte for byte copy, verified on both sides. A
+library save or a `.rwsave` bundle that no longer matches its recorded checksum is refused rather
+than written over a live slot.
+
+---
+
+## Backups and restores
+
+Close Rain World first. Anything that reads or writes a save file is refused while the game is
+running, and the window header shows whether it is open. The check repeats during a restore or a
+copy, so a game launched mid-operation stops it rather than racing it.
+
+Every file copied into a backup is verified against the file it came from: same length, same
+timestamp, same SHA-256 on both sides. A save that changes during the copy is copied again, and
+every backup is re-hashed against its manifest in the background after the list loads.
+
+Restoring makes the in-scope part of the save folder match the backup exactly. In-scope files the
+backup does not have are deleted, which is what makes a restore a return to one moment rather
+than a merge, and the confirmation lists every add, overwrite and delete before anything runs.
+
+Every restore and slot copy takes a safety snapshot of the save folder first and keeps it in the
+backup list, so the state before the operation can always be put back. Backups taken before this
+version covered fewer files, and a restore deletes a file only when the backup's own rules
+covered it too, so restoring an old backup does not delete files added to the list since.
+
+---
 
 ## Steam Cloud
 
 Rain World syncs its saves through Steam Cloud, which reads and writes the same files this app
-does. Two habits keep them out of each other's way.
-
-Close the game before backing up or restoring, and give Steam a moment to finish syncing before
-you start. A backup that fails with a message about a file changing while it was copied usually
-means a sync was still running. Wait for it and take the backup again.
+does. Close the game and give Steam a moment to finish syncing before backing up. A backup that
+fails with a message about a file changing while it was copied usually means a sync was still
+running.
 
 After a restore, launch Rain World through Steam before you restart Steam. If a Steam Cloud
-Conflict dialog appears, choose the option that keeps the local files, which is worded as uploading
-to Steam Cloud. Choosing the cloud copy replaces the saves you just restored with the ones Steam
-still has.
+Conflict dialog appears, choose the option that keeps the local files, which is worded as
+uploading to Steam Cloud. Choosing the cloud copy replaces the saves you just restored.
 
-## Running two copies
+---
 
-Only one window can run at a time, and one backup or restore at a time can hold the backup folder.
-A second one is refused with a message rather than being allowed to interleave, because two
-operations writing the same save folder in the same second produce a snapshot that belongs to
-neither of them.
+## Where things are stored
+
+The save folder is detected at `%USERPROFILE%\AppData\LocalLow\Videocult\Rain World`. Backups go
+to `%LOCALAPPDATA%\RainWorldCompanion\backups`, library saves to
+`%LOCALAPPDATA%\RainWorldCompanion\library`, and settings to
+`%LOCALAPPDATA%\RainWorldCompanion\settings.json`. All three folders can be pointed elsewhere in
+Settings, and none of them may sit inside another.
+
+Each backup is one folder named for the moment it was taken, for example `2026-08-24_19-31-07`,
+holding the copied files in the same layout they have in the save folder plus a `manifest.json`
+listing every file with its size and SHA-256. The manifest is written last, so a folder without
+one is a backup that did not finish, and the app refuses to restore it.
+
+This app was called Rain World Save Manager until August 2026. On first launch after the rename
+it renames the old `%LOCALAPPDATA%\RainWorldSaveManager` folder and updates stored paths to
+match. A folder you pointed somewhere else yourself is left exactly where you put it.
+
+---
 
 ## Building
 
@@ -142,8 +248,8 @@ Requires the .NET 9 SDK. The library and the tests target `net9.0`. The app targ
 `net9.0-windows` and uses WPF, so it builds and runs on Windows only.
 
 ```
-dotnet build RainWorldSaveManager.sln
-dotnet test RainWorldSaveManager.sln
+dotnet build RainWorldCompanion.sln
+dotnet test RainWorldCompanion.sln
 ```
 
 The tests read byte-exact save fixtures captured from a real installation and write only to

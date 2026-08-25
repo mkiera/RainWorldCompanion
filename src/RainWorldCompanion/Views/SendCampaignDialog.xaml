@@ -1,0 +1,83 @@
+<Window x:Class="RainWorldCompanion.Views.SendCampaignDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Send a campaign to a slot"
+        Width="560"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Brush.Window}"
+        Foreground="{StaticResource Brush.Text}"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI"
+        FontSize="13">
+
+    <StackPanel Margin="20">
+        <TextBlock Text="{Binding HeadlineText}" Style="{StaticResource Text.Title}" TextWrapping="Wrap" />
+
+        <TextBlock Text="WHICH SLOT" Style="{StaticResource Text.SectionLabel}" Margin="0,16,0,6" />
+        <ComboBox ItemsSource="{Binding Slots}"
+                  SelectedItem="{Binding SelectedTarget, Mode=TwoWay}"
+                  DisplayMemberPath="Label"
+                  AutomationProperties.Name="Slot to send the campaign to" />
+
+        <CheckBox Content="Take it out of the slot it came from"
+                  IsChecked="{Binding TakeItOut, Mode=TwoWay}"
+                  Visibility="{Binding TakeItOutVisibility}"
+                  Margin="0,14,0,0" />
+
+        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="10,8">
+            <StackPanel>
+                <TextBlock Text="{Binding EffectText}" Style="{StaticResource Text.Body}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SourceEffectText}"
+                           Style="{StaticResource Text.Muted}"
+                           TextWrapping="Wrap"
+                           Margin="0,5,0,0" />
+            </StackPanel>
+        </Border>
+
+        <!-- Advice about what the game will make of the campaign. None of it stops the write. -->
+        <Border Style="{StaticResource Banner.Warn}" Margin="0,12,0,0"
+                Visibility="{Binding WarningsVisibility}">
+            <StackPanel>
+                <TextBlock Text="WORTH KNOWING" Style="{StaticResource Text.SectionLabel}" Margin="0,0,0,4" />
+                <ItemsControl ItemsSource="{Binding Warnings}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Style="{StaticResource Text.Body}"
+                                       TextWrapping="Wrap" Margin="0,0,0,3" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="10,8"
+                Background="{StaticResource Brush.PanelAlt}">
+            <StackPanel>
+                <TextBlock Text="A backup is taken first" Style="{StaticResource Text.Value}" />
+                <TextBlock Text="{Binding SafetyText}"
+                           Style="{StaticResource Text.Muted}"
+                           TextWrapping="Wrap"
+                           Margin="0,3,0,0" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding BlockedReason}"
+                   Style="{StaticResource Text.Muted}"
+                   Foreground="{StaticResource Brush.Warn}"
+                   TextWrapping="Wrap"
+                   Margin="0,12,0,0"
+                   Visibility="{Binding BlockedVisibility}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Send it" Style="{StaticResource Button.Accent}" Margin="0,0,8,0"
+                    IsEnabled="{Binding CanSend}" Click="OnSend" />
+            <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

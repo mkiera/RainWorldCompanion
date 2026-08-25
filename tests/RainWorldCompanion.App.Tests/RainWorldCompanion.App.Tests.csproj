@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- The view models carry ImageSource and Brush, so these tests need the WPF assemblies and
+         the Windows target the app itself is built for. -->
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The editor tests open a real save. Sharing the byte-exact fixtures with the Core tests
+         keeps one copy of them, so the panel is exercised against the same files the parser is. -->
+    <None Include="..\RainWorldCompanion.Core.Tests\Fixtures\*.bin"
+          Link="Fixtures\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\RainWorldCompanion\RainWorldCompanion.csproj" />
+  </ItemGroup>
+
+</Project>

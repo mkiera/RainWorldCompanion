@@ -7,9 +7,23 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!-- The one place a version is written by hand, and only for a local build. A release passes
+         -p:Version= taken from the git tag, which is an MSBuild global property and beats an
+         assignment in this file outright, so the tag is always what a released build reports.
+
+         AssemblyVersion and FileVersion are deliberately absent. The SDK infers both from Version
+         only while they are empty, so setting either here would pin the exe's version resource at
+         whatever was last typed in this file. A build whose version disagrees with its tag keeps
+         being offered its own release as an update, forever. -->
     <Version>1.0.0</Version>
-    <AssemblyVersion>1.0.0</AssemblyVersion>
-    <FileVersion>1.0.0</FileVersion>
+
+    <!-- Stamped into the exe's Win32 version resource. An executable carrying no company or
+         product name reads as suspicious to antivirus heuristics, which is the same reason the
+         installer script fills in its own VersionInfo fields. -->
+    <Product>RainWorld Companion</Product>
+    <Company>mkiera</Company>
+    <Authors>mkiera</Authors>
+    <Copyright>Copyright (C) 2026 mkiera</Copyright>
   </PropertyGroup>
 
 </Project>

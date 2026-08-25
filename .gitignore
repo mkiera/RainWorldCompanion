@@ -2,3 +2,8 @@ bin/
 obj/
 .vs/
 *.user
+
+# Where `dotnet publish -o publish` and Inno Setup put their output. Both are build products of
+# the release workflow and neither is small.
+publish/
+dist_installer/

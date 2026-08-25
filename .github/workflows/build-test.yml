@@ -1,0 +1,118 @@
+﻿# Rename with care. The app finds these runs by asking the API for
+# actions/workflows/build-test.yml/runs, so this file's name is part of a URL that shipped
+# copies already hold. The display name below is matched as well.
+
+name: Build Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - beta
+      - 'feature/**'
+      - 'bugfix/**'
+
+# Read-only. This workflow publishes nothing; the artifact upload needs no extra grant.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Work out a version for this branch build
+        id: version
+        shell: pwsh
+        run: |
+          # There is no tag to take a version from, so the props file's value gets an -alpha tail.
+          # That places the build where it belongs: above the release it was branched from and
+          # below the one it is heading toward, because a pre-release ranks under the release of
+          # the same version. The run number keeps consecutive builds of a branch in order.
+          $props = [xml](Get-Content Directory.Build.props)
+          $base = @($props.Project.PropertyGroup.Version | Where-Object { $_ })[0].Trim()
+          $version = "$base-alpha.${{ github.run_number }}"
+
+          # Inno Setup needs four plain numbers, and $base may already carry a tail of its own.
+          $core = ($base -split '[-+]')[0] -split '\.'
+          $vernum = '{0}.{1}.{2}.0' -f
+            $(if ($core.Count -gt 0 -and $core[0]) { $core[0] } else { '0' }),
+            $(if ($core.Count -gt 1 -and $core[1]) { $core[1] } else { '0' }),
+            $(if ($core.Count -gt 2 -and $core[2]) { $core[2] } else { '0' })
+
+          Write-Host "version: $version  numeric: $vernum"
+          "VERSION=$version" | Add-Content $env:GITHUB_OUTPUT
+          "VERNUM=$vernum" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: dotnet test RainWorldCompanion.sln -c Release
+
+      # BuildBranch and BuildRunId become AssemblyMetadata attributes, which is how the list of
+      # branch builds can mark the row the user is actually running. github.ref_name needs no
+      # guard here the way a shared script would: this workflow only ever triggers on a branch,
+      # so it can never be a tag name.
+      - name: Publish
+        run: >
+          dotnet publish src/RainWorldCompanion/RainWorldCompanion.csproj
+          -c Release
+          -r win-x64
+          --self-contained true
+          -p:Version=${{ steps.version.outputs.VERSION }}
+          -p:BuildBranch=${{ github.ref_name }}
+          -p:BuildRunId=${{ github.run_id }}
+          -p:PublishSingleFile=false
+          -p:DebugType=none
+          -o publish
+
+      - name: Ensure Inno Setup is available
+        shell: pwsh
+        run: |
+          function Find-Iscc {
+            $onPath = (Get-Command iscc.exe -ErrorAction SilentlyContinue).Source
+            if ($onPath) { return $onPath }
+            $globs = @("${env:ProgramFiles(x86)}\Inno Setup *\ISCC.exe",
+                       "$env:ProgramFiles\Inno Setup *\ISCC.exe",
+                       "$env:LOCALAPPDATA\Programs\Inno Setup *\ISCC.exe")
+            return (Get-ChildItem -Path $globs -ErrorAction SilentlyContinue |
+                    Select-Object -First 1 -ExpandProperty FullName)
+          }
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            Write-Host "Inno Setup not found on this runner - installing it."
+            choco install innosetup -y --no-progress
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) { throw "ISCC.exe still not found after installing Inno Setup" }
+          Write-Host "Using $iscc"
+          Add-Content -Path $env:GITHUB_ENV -Value "ISCC=$iscc"
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "$env:ISCC" "/DAppVersion=${{ steps.version.outputs.VERSION }}" `
+                        "/DVersionNumeric=${{ steps.version.outputs.VERNUM }}" installer.iss
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          # A constant, on purpose. The app downloads a branch build from
+          # nightly.link/<owner>/<repo>/actions/runs/<run id>/<this name>.zip, so the name lands
+          # in a URL path and is refused unless it is plain. A branch name would not be: half of
+          # them hold a slash. The run id already identifies the build, and the row shown to the
+          # user carries the branch, the commit and the run number from the API, so this name has
+          # nothing left to carry.
+          name: RainWorldCompanion-Setup
+          path: dist_installer/RainWorldCompanion-Setup.exe
+          # Long enough to test a branch, short enough that these never become an archive anyone
+          # relies on. A branch build is not a release.
+          retention-days: 30
+          if-no-files-found: error
