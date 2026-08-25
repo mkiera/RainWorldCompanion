@@ -2,4 +2,4 @@
 
 # Save fixtures are byte-exact copies of real containers. The parser tests assert
 # their exact length and NUL padding, so no filter may rewrite a byte.
-tests/RainWorldSaveManager.Core.Tests/Fixtures/*.bin binary
+tests/RainWorldCompanion.Core.Tests/Fixtures/*.bin binary

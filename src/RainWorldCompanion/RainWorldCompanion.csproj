@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\RainWorldCompanion.Core\RainWorldCompanion.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Which CI run produced this exe, so the list of branch builds can mark the row the user is
+         actually running. Set only by the branch-build workflow: a release is built from a tag,
+         and stamping a tag name into a field called BuildBranch would be a lie in every release.
+         Both degrade to absent, which the app reads back as blank. -->
+    <AssemblyMetadata Include="BuildBranch" Value="$(BuildBranch)" Condition="'$(BuildBranch)' != ''" />
+    <AssemblyMetadata Include="BuildRunId" Value="$(BuildRunId)" Condition="'$(BuildRunId)' != ''" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>

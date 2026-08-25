@@ -1,0 +1,155 @@
+<Window x:Class="RainWorldCompanion.Views.RestoreConfirmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Restore backup"
+        Width="760" Height="620" MinWidth="640" MinHeight="520"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{StaticResource Brush.Window}"
+        Foreground="{StaticResource Brush.Text}"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI"
+        FontSize="13">
+
+    <Window.Resources>
+        <DataTemplate x:Key="FileLine">
+            <TextBlock Text="{Binding}" Style="{StaticResource Text.Muted}" TextTrimming="CharacterEllipsis"
+                       ToolTip="{Binding}" Margin="0,1" />
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="1.15*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Restore this backup?" Style="{StaticResource Text.Title}" />
+            <TextBlock Text="{Binding SnapshotName}" Style="{StaticResource Text.Muted}" Margin="0,4,0,0"
+                       TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+
+        <Border Grid.Row="1" Style="{StaticResource Banner.Danger}" Margin="0,14,0,0">
+            <!-- The rule is stated as the snapshot's own rules, not as today's. A backup taken
+                 before the app covered a kind of file does not reconcile that file either way,
+                 and the panel below this lists exactly which ones. -->
+            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.Danger}"
+                       Text="Restoring makes the files this backup's own rules covered exactly match the snapshot. Files those rules covered that are not in the snapshot are removed from the save folder." />
+        </Border>
+
+        <!-- The dangerous group comes first and stays visually loud -->
+        <Border Grid.Row="2" Margin="0,14,0,0" CornerRadius="4" Padding="12,10"
+                Background="{StaticResource Brush.DangerSoft}"
+                BorderBrush="{StaticResource Brush.Danger}"
+                BorderThickness="2">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <TextBlock Grid.Row="0" Text="{Binding DeletedHeader}" FontWeight="Bold"
+                           Foreground="{StaticResource Brush.Danger}" />
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0"
+                              Visibility="{Binding DeletionListVisibility}">
+                    <ItemsControl ItemsSource="{Binding Deleted}" ItemTemplate="{StaticResource FileLine}" />
+                </ScrollViewer>
+                <TextBlock Grid.Row="1" Margin="0,6,0,0" VerticalAlignment="Top"
+                           Style="{StaticResource Text.Muted}"
+                           Text="Nothing in the save folder will be deleted by this restore."
+                           Visibility="{Binding NoDeletionVisibility}" />
+            </Grid>
+        </Border>
+
+        <!-- Where this restore stops short of an exact match. Hidden entirely when it does not,
+             so an ordinary restore reads as it always did. -->
+        <Border Grid.Row="3" Margin="0,12,0,0" CornerRadius="4" Padding="12,10"
+                Background="{StaticResource Brush.PanelAlt}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="1"
+                Visibility="{Binding ExceptionsVisibility}">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
+                           Text="The save folder will not match this backup exactly." />
+
+                <StackPanel Margin="0,8,0,0" Visibility="{Binding LeftAloneVisibility}">
+                    <TextBlock Text="{Binding LeftAloneHeader}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="110" Margin="0,4,0,0">
+                        <ItemsControl ItemsSource="{Binding LeftAlone}" ItemTemplate="{StaticResource FileLine}" />
+                    </ScrollViewer>
+                </StackPanel>
+
+                <StackPanel Margin="0,8,0,0" Visibility="{Binding NotRestoredVisibility}">
+                    <TextBlock Text="{Binding NotRestoredHeader}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="110" Margin="0,4,0,0">
+                        <ItemsControl ItemsSource="{Binding NotRestored}" ItemTemplate="{StaticResource FileLine}" />
+                    </ScrollViewer>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Row="4" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}" Padding="12,10" Margin="0,0,6,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding AddedHeader}" FontWeight="SemiBold" />
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                        <ItemsControl ItemsSource="{Binding Added}" ItemTemplate="{StaticResource FileLine}" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource Card}" Padding="12,10" Margin="6,0,6,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding OverwrittenHeader}" FontWeight="SemiBold" />
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                        <ItemsControl ItemsSource="{Binding Overwritten}" ItemTemplate="{StaticResource FileLine}" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource Card}" Padding="12,10" Margin="6,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Text="{Binding UnchangedHeader}" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.TextMuted}" />
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
+                        <ItemsControl ItemsSource="{Binding Unchanged}" ItemTemplate="{StaticResource FileLine}" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="5" Margin="0,14,0,0" TextWrapping="Wrap"
+                   Text="A safety snapshot of the current save folder is taken first, so this restore can be undone by restoring that snapshot." />
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Restore" Style="{StaticResource Button.Danger}" Margin="0,0,8,0" Click="OnRestore" />
+            <Button x:Name="CancelButton" Content="Cancel" IsDefault="True" IsCancel="True" />
+        </StackPanel>
+    </Grid>
+</Window>

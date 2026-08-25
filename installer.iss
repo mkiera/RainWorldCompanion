@@ -12,11 +12,6 @@
 ; Compile with (both defines optional, see the fallbacks below):
 ;   iscc /DAppVersion=1.1.0-beta.1 /DVersionNumeric=1.1.0.0 installer.iss
 ; The output is dist_installer\RainWorldCompanion-Setup.exe.
-;
-; Paths under src\RainWorldSaveManager and %LOCALAPPDATA%\RainWorldSaveManager below are not
-; oversights. The app was renamed from Rain World Save Manager, and only the display name and the
-; exe moved: the project folder still holds the source, and the settings folder still holds
-; backups and a save library that a rename would strand.
 
 #define AppName "RainWorld Companion"
 #define AppPublisher "mkiera"
@@ -95,8 +90,8 @@ WizardStyle=modern
 ; No icon exists in the repo yet. Named conditionally rather than left out, so dropping the file
 ; in is the whole of adding one: a setup exe with the generic icon is one more thing for an
 ; antivirus heuristic to notice on top of being unsigned.
-#if FileExists("src\RainWorldSaveManager\app.ico")
-SetupIconFile=src\RainWorldSaveManager\app.ico
+#if FileExists("src\RainWorldCompanion\app.ico")
+SetupIconFile=src\RainWorldCompanion\app.ico
 #endif
 
 ; The setup exe is the file people download, so it carries a version resource of its own for the
@@ -145,7 +140,7 @@ Filename: "{app}\app\{#AppExeName}"; StatusMsg: "Starting {#AppName}..."; Flags:
 [UninstallDelete]
 ; Files, named one at a time, and never the folder holding them.
 ;
-; %LOCALAPPDATA%\RainWorldSaveManager is where the backups and the save library live by default,
+; %LOCALAPPDATA%\RainWorldCompanion is where the backups and the save library live by default,
 ; and those are the reason this program exists. They are also irreplaceable: a Rain World save
 ; that has been overwritten is gone, and a backup of one is the only copy left. So nothing here
 ; names that folder, and nothing here asks the user whether to delete it either, because a
@@ -158,9 +153,9 @@ Filename: "{app}\app\{#AppExeName}"; StatusMsg: "Starting {#AppName}..."; Flags:
 ; What goes is what this program made for itself and nothing else: its own settings, the
 ; half-written temp file a crash during a save can leave beside them, and the cache of downloaded
 ; installers. An empty folder left behind is the safe direction to be wrong in.
-Type: filesandordirs; Name: "{localappdata}\RainWorldSaveManager\updates"
-Type: files; Name: "{localappdata}\RainWorldSaveManager\settings.json"
-Type: files; Name: "{localappdata}\RainWorldSaveManager\settings.json.tmp"
+Type: filesandordirs; Name: "{localappdata}\RainWorldCompanion\updates"
+Type: files; Name: "{localappdata}\RainWorldCompanion\settings.json"
+Type: files; Name: "{localappdata}\RainWorldCompanion\settings.json.tmp"
 ; Exists only when an upgrade died midway and [Code] could not put it back. It is ours, we named
 ; it, and removing it is also what lets {app} itself disappear.
 Type: filesandordirs; Name: "{app}\app.old"

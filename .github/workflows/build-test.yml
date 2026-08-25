@@ -53,7 +53,7 @@ jobs:
           "VERNUM=$vernum" | Add-Content $env:GITHUB_OUTPUT
 
       - name: Test
-        run: dotnet test RainWorldSaveManager.sln -c Release
+        run: dotnet test RainWorldCompanion.sln -c Release
 
       # BuildBranch and BuildRunId become AssemblyMetadata attributes, which is how the list of
       # branch builds can mark the row the user is actually running. github.ref_name needs no
@@ -61,7 +61,7 @@ jobs:
       # so it can never be a tag name.
       - name: Publish
         run: >
-          dotnet publish src/RainWorldSaveManager/RainWorldSaveManager.csproj
+          dotnet publish src/RainWorldCompanion/RainWorldCompanion.csproj
           -c Release
           -r win-x64
           --self-contained true

@@ -275,7 +275,7 @@ The save folder is detected at
 `%USERPROFILE%\AppData\LocalLow\Videocult\Rain World`, and you can point the app somewhere else in
 Settings.
 
-Backups go to `%LOCALAPPDATA%\RainWorldSaveManager\backups` unless you change it. Each backup is
+Backups go to `%LOCALAPPDATA%\RainWorldCompanion\backups` unless you change it. Each backup is
 one folder named for the moment it was taken, for example `2026-08-24_19-31-07`, holding the
 copied files in the same layout they have in the save folder plus a `manifest.json` listing every
 file with its size and SHA-256.
@@ -283,19 +283,23 @@ file with its size and SHA-256.
 The manifest is written last, so a folder without one is a backup that did not finish. The app
 lists those as incomplete and refuses to restore them, and you can delete them from the list.
 
-Library saves go to `%LOCALAPPDATA%\RainWorldSaveManager\library` unless you change it. Each one is
+Library saves go to `%LOCALAPPDATA%\RainWorldCompanion\library` unless you change it. Each one is
 a folder named the same way, holding `save.bin`, an `entry.json` written last for the same reason,
 and a `save.previous.bin` once an update has replaced something.
 
 None of the three folders may sit inside another. The app checks this by resolving every path
 through the filesystem, so a junction or a subst drive pointing one into another is refused as well.
 
-Settings live in `%LOCALAPPDATA%\RainWorldSaveManager\settings.json`.
+Settings live in `%LOCALAPPDATA%\RainWorldCompanion\settings.json`.
 
-That folder is named for what this app used to be called. Only the display name and the program
-itself were renamed to RainWorld Companion, because moving the data folder would leave every
-existing backup and library save behind with nothing pointing at them. Nothing is wrong if you
-see the old name there.
+This app was called Rain World Save Manager until August 2026, and kept the same three things in
+`%LOCALAPPDATA%\RainWorldSaveManager`. On first launch after the rename it renames that folder,
+which is a rename within one drive rather than a copy, so it takes the same moment whatever is
+inside. Stored paths that pointed into the old folder are updated to match, and a backup or
+library folder you pointed somewhere else yourself is left exactly where you put it.
+
+If the rename cannot happen, because a file inside is open in another program, the app keeps
+working from the old folder and tries again next time. Nothing is deleted either way.
 
 ## Close the game first
 
@@ -417,8 +421,8 @@ Requires the .NET 9 SDK. The library and the tests target `net9.0`. The app targ
 `net9.0-windows` and uses WPF, so it builds and runs on Windows only.
 
 ```
-dotnet build RainWorldSaveManager.sln
-dotnet test RainWorldSaveManager.sln
+dotnet build RainWorldCompanion.sln
+dotnet test RainWorldCompanion.sln
 ```
 
 The tests read byte-exact save fixtures captured from a real installation and write only to

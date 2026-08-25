@@ -54,7 +54,7 @@ jobs:
 
       # Before the publish, so a red suite cannot cut a release.
       - name: Test
-        run: dotnet test RainWorldSaveManager.sln -c Release
+        run: dotnet test RainWorldCompanion.sln -c Release
 
       # -p:Version is an MSBuild global property: it beats the assignment in Directory.Build.props
       # outright rather than merging with it, and reaches every project at once, so nothing in the
@@ -72,7 +72,7 @@ jobs:
       # roughly 43 MB setup exe.
       - name: Publish
         run: >
-          dotnet publish src/RainWorldSaveManager/RainWorldSaveManager.csproj
+          dotnet publish src/RainWorldCompanion/RainWorldCompanion.csproj
           -c Release
           -r win-x64
           --self-contained true
@@ -109,7 +109,7 @@ jobs:
           Write-Host "Using $iscc"
           Add-Content -Path $env:GITHUB_ENV -Value "ISCC=$iscc"
 
-      # Packages publish\ whole into dist_installer\RainWorldSaveManager-Setup.exe.
+      # Packages publish\ whole into dist_installer\RainWorldCompanion-Setup.exe.
       - name: Build installer
         shell: pwsh
         run: |
