@@ -19,158 +19,12 @@ public sealed record PredatorChoice(string Blob, string EntityId, string Display
 }
 
 /// <summary>
-/// One swallowed thing, as a row that can be edited.
+/// What a campaign has swallowed, as the same nested chains the read-only panel draws.
 ///
-/// A row stands for one DEVOURMENTSTATE field, so a creature swallowed twice over has a row each
-/// time. What it feels about the player belongs to the creature rather than to the row, though, so
-/// setting it goes through the edit state, which writes every copy.
-/// </summary>
-public sealed partial class DevourmentRowViewModel : ObservableObject
-{
-    private readonly DevourmentEditViewModel _owner;
-
-    private bool _loading = true;
-
-    public DevourmentRowViewModel(DevourmentEditViewModel owner, DevourmentEntry entry, int index)
-    {
-        _owner = owner;
-        Entry = entry;
-        Index = index;
-
-        IsItem = entry.PreyIsItem;
-        IsWellFormed = entry.IsWellFormed;
-        EntityId = entry.PreyId ?? "";
-
-        DisplayName = IsWellFormed
-            ? CreatureCatalog.ForName(entry.PreyType).DisplayName
-            : "A field this app cannot read";
-
-        PredatorName = IsWellFormed
-            ? CreatureCatalog.ForName(entry.PredatorType).DisplayName
-            : "";
-
-        PredatorId = entry.PredatorId ?? "";
-        KnownToTheGame = IsItem || CreatureCatalog.IsKnown(entry.PreyType);
-
-        status = entry.Status;
-        food = entry.Food;
-
-        CreatureBlobBuilder.Relation? toward = IsItem ? null : owner.State.FeelingTowardPlayer(EntityId);
-        likes = Text(toward?.Like);
-        knows = Text(toward?.Know);
-
-        isTamed = !IsItem && EntityId.Length > 0 && owner.State.IsTamed(EntityId);
-
-        _loading = false;
-    }
-
-    public DevourmentEntry Entry { get; }
-
-    /// <summary>Where the row sits in the list, which is the order the record stores it in.</summary>
-    public int Index { get; }
-
-    /// <summary>The number a person counts from, shown at the front of the row.</summary>
-    public string Position => (Index + 1).ToString(CultureInfo.InvariantCulture);
-
-    public string DisplayName { get; }
-
-    public string EntityId { get; }
-
-    public string PredatorId { get; }
-
-    /// <summary>What is holding it, for the line under the name.</summary>
-    public string PredatorName { get; }
-
-    public bool IsItem { get; }
-
-    /// <summary>False for a field this app could not split into the four parts the mod writes.</summary>
-    public bool IsWellFormed { get; }
-
-    /// <summary>False for a creature name the catalog does not carry, which a mod can add.</summary>
-    public bool KnownToTheGame { get; }
-
-    /// <summary>Items have no opinion of anybody and cannot be tamed.</summary>
-    public bool IsCreature => !IsItem && IsWellFormed;
-
-    public IReadOnlyList<string> StatusChoices => DevourmentStatus.All;
-
-    [ObservableProperty]
-    private string status;
-
-    [ObservableProperty]
-    private string food;
-
-    /// <summary>How much it likes the player, as text so it can be cleared.</summary>
-    [ObservableProperty]
-    private string likes;
-
-    /// <summary>How well it knows the player.</summary>
-    [ObservableProperty]
-    private string knows;
-
-    [ObservableProperty]
-    private bool isTamed;
-
-    partial void OnStatusChanged(string value)
-    {
-        if (!_loading)
-        {
-            _owner.SetStatus(this, value);
-        }
-    }
-
-    partial void OnFoodChanged(string value)
-    {
-        if (!_loading)
-        {
-            _owner.SetFood(this, value);
-        }
-    }
-
-    partial void OnLikesChanged(string value)
-    {
-        if (!_loading)
-        {
-            _owner.SetFeeling(this);
-        }
-    }
-
-    partial void OnKnowsChanged(string value)
-    {
-        if (!_loading)
-        {
-            _owner.SetFeeling(this);
-        }
-    }
-
-    partial void OnIsTamedChanged(bool value)
-    {
-        if (!_loading)
-        {
-            _owner.SetTamed(this, value);
-        }
-    }
-
-    /// <summary>The value as a number, or null when the box is empty or holds something else.</summary>
-    public float? LikesValue => Number(Likes);
-
-    public float? KnowsValue => Number(Knows);
-
-    internal static float? Number(string text)
-        => float.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out float value)
-            ? value
-            : null;
-
-    private static string Text(float? value)
-        => value?.ToString(CultureInfo.InvariantCulture) ?? "";
-}
-
-/// <summary>
-/// The Devourment state of one campaign, as a flat list in the order the record stores it.
-///
-/// The read-only panel beside this one draws the same data as a tree, because what a person wants
-/// to see is what is inside what. Editing wants the opposite: stored order is the order, dragging a
-/// row moves it there, and a row is one field rather than one place in a chain.
+/// The nesting is the thing worth seeing, so editing keeps it rather than flattening it out. What
+/// a save actually stores is a flat list of predator and prey pairs, and the chains are implied by
+/// one entity id being prey in one pair and predator in another. That makes moving something into
+/// something else an edit to one field's predator, which is what a drop does.
 ///
 /// Every edit goes into the campaign's <see cref="SaveEditSession"/> as it is made, the same way
 /// the boxes above do, so cancelling the editor is still a matter of dropping the object.
@@ -195,7 +49,7 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
 
         State = DevourmentEditState.Read(session.GetRecordBody(campaign));
 
-        Rows = new ObservableCollection<DevourmentRowViewModel>();
+        Roots = new ObservableCollection<DevourmentEditNode>();
         Predators = new ObservableCollection<PredatorChoice>();
         Warnings = new ObservableCollection<string>();
 
@@ -204,7 +58,8 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
 
     internal DevourmentEditState State { get; private set; }
 
-    public ObservableCollection<DevourmentRowViewModel> Rows { get; }
+    /// <summary>The outermost things, each holding whatever is inside it.</summary>
+    public ObservableCollection<DevourmentEditNode> Roots { get; }
 
     /// <summary>Every creature in the campaign that something could be put inside.</summary>
     public ObservableCollection<PredatorChoice> Predators { get; }
@@ -214,9 +69,12 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
 
     public bool HasWarnings => Warnings.Count > 0;
 
-    public bool HasRows => Rows.Count > 0;
+    public bool HasRows => State.Entries.Count > 0;
 
-    public string CountText => Rows.Count switch
+    /// <summary>Every node in every chain, for the checks that do not care about shape.</summary>
+    public IEnumerable<DevourmentEditNode> AllNodes => Roots.SelectMany(root => root.Flatten());
+
+    public string CountText => State.Entries.Count switch
     {
         0 => "Nothing swallowed",
         1 => "1 thing swallowed",
@@ -256,75 +114,154 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
             $"put a {CreatureCatalog.ForName(name).DisplayName} inside {predator.DisplayName}");
     }
 
+    /// <summary>
+    /// Takes one thing out of the chain. Whatever it was holding moves up to whatever was holding
+    /// it, because the alternative is quietly removing everything below as well.
+    /// </summary>
     [RelayCommand]
-    private void RemoveRow(DevourmentRowViewModel? row)
+    private void RemoveNode(DevourmentEditNode? node)
     {
-        if (row is null)
+        if (node is null || node.EntryIndex < 0)
         {
             return;
         }
 
-        State.RemoveAt(row.Index);
+        string? holder = State.Entries[node.EntryIndex].PredatorId;
+        string predatorBlob = State.Entries[node.EntryIndex].Predator;
+
+        foreach (DevourmentEditNode child in node.Children)
+        {
+            if (child.EntryIndex >= 0 && holder is not null)
+            {
+                State.SetPredator(child.EntryIndex, predatorBlob);
+            }
+        }
+
+        State.RemoveAt(node.EntryIndex);
 
         Apply(
-            "devourment|removed|" + row.EntityId + "|" + row.Index.ToString(CultureInfo.InvariantCulture),
-            $"took the {row.DisplayName} out");
+            "devourment|removed|" + node.EntityId,
+            $"took the {node.DisplayName} out");
     }
 
-    // ---- order ----
+    // ---- order and nesting ----
 
-    [RelayCommand]
-    private void MoveUp(DevourmentRowViewModel? row) => Move(row, -1);
-
-    [RelayCommand]
-    private void MoveDown(DevourmentRowViewModel? row) => Move(row, 1);
-
-    private void Move(DevourmentRowViewModel? row, int by)
+    /// <summary>What a drop means here: the thing dragged goes inside the thing it was dropped on.</summary>
+    public void MoveOnto(object moved, object target)
     {
-        if (row is null)
+        if (moved is DevourmentEditNode from && target is DevourmentEditNode to)
+        {
+            MoveInto(from, to);
+        }
+    }
+
+    /// <summary>Puts one thing inside another, refusing a move that would close a loop.</summary>
+    public void MoveInto(DevourmentEditNode moved, DevourmentEditNode target)
+    {
+        if (moved.EntryIndex < 0 || !target.CanHoldThings)
         {
             return;
         }
 
-        MoveTo(row.Index, row.Index + by);
+        if (!State.SetPredator(moved.EntryIndex, target.Blob))
+        {
+            // The only way this fails on a real gesture is a loop, which is worth saying rather
+            // than letting the row snap back with no reason given.
+            NoteRefusedMove(moved, target);
+            return;
+        }
+
+        _refusedMove = null;
+
+        Apply(
+            "devourment|moved|" + moved.EntityId,
+            $"moved the {moved.DisplayName} inside {target.DisplayName}");
     }
+
+    [RelayCommand]
+    private void MoveUp(DevourmentEditNode? node) => Shuffle(node, -1);
+
+    [RelayCommand]
+    private void MoveDown(DevourmentEditNode? node) => Shuffle(node, 1);
 
     /// <summary>
-    /// Moves a row, which is what dropping one somewhere comes to. Out of range does nothing rather
-    /// than clamping, so a drag that ends off the end of the list leaves it alone.
+    /// Moves a row past the one beside it, among the things sharing its stomach. The arrows change
+    /// order without changing what holds what, which is the half of the job a drag does not do.
     /// </summary>
-    public void MoveTo(int from, int to)
+    private void Shuffle(DevourmentEditNode? node, int by)
     {
-        if (from == to || to < 0 || to >= Rows.Count)
+        if (node is null || node.EntryIndex < 0)
         {
             return;
         }
 
-        State.Move(from, to);
+        string predator = State.Entries[node.EntryIndex].PredatorId ?? "";
+        IReadOnlyList<int> siblings = State.SiblingsOf(predator);
 
-        // One line however many times rows are dragged about, because the order is one thing.
+        int at = -1;
+
+        for (int i = 0; i < siblings.Count; i++)
+        {
+            if (siblings[i] == node.EntryIndex)
+            {
+                at = i;
+                break;
+            }
+        }
+
+        int to = at + by;
+
+        if (at < 0 || to < 0 || to >= siblings.Count)
+        {
+            return;
+        }
+
+        State.Move(node.EntryIndex, siblings[to]);
+
         Apply("devourment|order", "changed the order of what is swallowed");
     }
 
     // ---- one row ----
 
-    internal void SetStatus(DevourmentRowViewModel row, string status)
+    /// <summary>Closes every other row's editors, so one is open at a time.</summary>
+    internal void OnlyThisRowIsEditing(DevourmentEditNode opened)
     {
-        State.SetStatus(row.Index, status);
+        foreach (DevourmentEditNode node in AllNodes)
+        {
+            if (!ReferenceEquals(node, opened))
+            {
+                node.IsEditing = false;
+            }
+        }
+    }
+
+    internal void SetStatus(DevourmentEditNode node, string status)
+    {
+        if (node.EntryIndex < 0)
+        {
+            return;
+        }
+
+        State.SetStatus(node.EntryIndex, status);
 
         Apply(
-            "devourment|status|" + row.EntityId,
-            $"set the {row.DisplayName} to {status}",
+            "devourment|status|" + node.EntityId,
+            $"set the {node.DisplayName} to {status}",
             rebuild: false);
     }
 
-    internal void SetFood(DevourmentRowViewModel row, string food)
+    internal void SetFood(DevourmentEditNode node, string food)
     {
-        State.SetFood(row.Index, food);
+        if (node.EntryIndex < 0)
+        {
+            return;
+        }
+
+        State.SetFood(node.EntryIndex, food);
 
         Apply(
-            "devourment|food|" + row.EntityId,
-            $"set the {row.DisplayName} to {food} food",
+            "devourment|food|" + node.EntityId,
+            $"set the {node.DisplayName} to {food} food",
             rebuild: false);
     }
 
@@ -335,35 +272,35 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     /// liking to zero, or clearing it, takes the whole relationship out and what the creature knew
     /// of the player with it, because that is what the game's own writer does. The warning says so.
     /// </summary>
-    internal void SetFeeling(DevourmentRowViewModel row)
+    internal void SetFeeling(DevourmentEditNode node)
     {
-        if (!row.IsCreature || row.EntityId.Length == 0)
+        if (!node.IsCreature || node.EntityId.Length == 0)
         {
             return;
         }
 
-        State.SetFeelingTowardPlayer(row.EntityId, row.LikesValue, row.KnowsValue);
+        State.SetFeelingTowardPlayer(node.EntityId, node.LikesValue, node.KnowsValue);
 
         Apply(
-            "devourment|feeling|" + row.EntityId,
-            row.LikesValue is null or 0f
-                ? $"made the {row.DisplayName} forget you"
-                : $"set the {row.DisplayName} to like you {row.LikesValue.Value.ToString("0.##", CultureInfo.InvariantCulture)}",
+            "devourment|feeling|" + node.EntityId,
+            node.LikesValue is null or 0f
+                ? $"made the {node.DisplayName} forget you"
+                : $"set the {node.DisplayName} to like you {node.LikesValue.Value.ToString("0.##", CultureInfo.InvariantCulture)}",
             rebuild: false);
     }
 
-    internal void SetTamed(DevourmentRowViewModel row, bool tamed)
+    internal void SetTamed(DevourmentEditNode node, bool tamed)
     {
-        if (!row.IsCreature || row.EntityId.Length == 0)
+        if (!node.IsCreature || node.EntityId.Length == 0)
         {
             return;
         }
 
-        State.SetTamed(row.EntityId, tamed);
+        State.SetTamed(node.EntityId, tamed);
 
         Apply(
-            "devourment|tamed|" + row.EntityId,
-            tamed ? $"tamed the {row.DisplayName}" : $"untamed the {row.DisplayName}",
+            "devourment|tamed|" + node.EntityId,
+            tamed ? $"tamed the {node.DisplayName}" : $"untamed the {node.DisplayName}",
             rebuild: false);
     }
 
@@ -382,7 +319,7 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         _session.ReplaceRecordBody(_campaign, body, changeKey, note);
 
         // The state was read from the record before this edit, so it is read again from what the
-        // record holds now. Otherwise a row's index and the field it addresses drift apart.
+        // record holds now. Otherwise a node's index and the field it addresses drift apart.
         State = DevourmentEditState.Read(_session.GetRecordBody(_campaign));
 
         if (rebuild)
@@ -397,13 +334,76 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         _changed();
     }
 
+    // ---- building the tree ----
+
+    /// <summary>
+    /// Builds the chains from the flat list, the same way the read-only panel does, keeping which
+    /// row is open so an edit does not close the thing being edited.
+    /// </summary>
     private void Rebuild()
     {
-        Rows.Clear();
+        string? wasEditing = AllNodes.FirstOrDefault(node => node.IsEditing)?.EntityId;
+
+        Roots.Clear();
+
+        var byPredator = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        var order = new List<string>();
+        var preyIds = new HashSet<string>(StringComparer.Ordinal);
 
         for (int i = 0; i < State.Entries.Count; i++)
         {
-            Rows.Add(new DevourmentRowViewModel(this, State.Entries[i], i));
+            DevourmentEntry entry = State.Entries[i];
+
+            // A field with no predator id cannot be linked to anything, so it gets a key of its
+            // own and comes out as a chain of one rather than being dropped.
+            string key = entry.PredatorId is { Length: > 0 } id
+                ? id
+                : " unlinked:" + i.ToString(CultureInfo.InvariantCulture);
+
+            if (!byPredator.TryGetValue(key, out List<int>? carried))
+            {
+                carried = new List<int>();
+                byPredator[key] = carried;
+                order.Add(key);
+            }
+
+            carried.Add(i);
+
+            if (entry.PreyId is { Length: > 0 } prey)
+            {
+                preyIds.Add(prey);
+            }
+        }
+
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+
+        // A root is a predator nothing else is holding.
+        foreach (string key in order)
+        {
+            if (!preyIds.Contains(key) && placed.Add(key))
+            {
+                Roots.Add(BuildRoot(key, byPredator, placed));
+            }
+        }
+
+        // Anything left was only reachable through a loop, so it has no root to hang from. Promote
+        // it rather than letting a malformed save hide rows.
+        foreach (string key in order)
+        {
+            if (placed.Add(key))
+            {
+                Roots.Add(BuildRoot(key, byPredator, placed));
+            }
+        }
+
+        if (wasEditing is not null)
+        {
+            DevourmentEditNode? again = AllNodes.FirstOrDefault(node => node.EntityId == wasEditing);
+
+            if (again is not null)
+            {
+                again.IsEditing = true;
+            }
         }
 
         RebuildPredators();
@@ -411,6 +411,72 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
 
         OnPropertyChanged(nameof(HasRows));
         OnPropertyChanged(nameof(CountText));
+    }
+
+    private DevourmentEditNode BuildRoot(
+        string key,
+        Dictionary<string, List<int>> byPredator,
+        HashSet<string> placed)
+    {
+        List<int> carried = byPredator[key];
+        DevourmentEntry first = State.Entries[carried[0]];
+        var ancestors = new HashSet<string>(StringComparer.Ordinal) { key };
+
+        return new DevourmentEditNode(
+            this,
+            entryIndex: -1,
+            first.Predator,
+            first.PredatorId ?? "",
+            first.PredatorType,
+            isItem: false,
+            isRoot: true,
+            repeatsAncestor: false,
+            depth: 0,
+            BuildContents(carried, byPredator, placed, ancestors, depth: 1),
+            entry: null);
+    }
+
+    private IReadOnlyList<DevourmentEditNode> BuildContents(
+        List<int> carried,
+        Dictionary<string, List<int>> byPredator,
+        HashSet<string> placed,
+        HashSet<string> ancestors,
+        int depth)
+    {
+        var contents = new List<DevourmentEditNode>(carried.Count);
+
+        foreach (int index in carried)
+        {
+            DevourmentEntry entry = State.Entries[index];
+            string preyId = entry.PreyId ?? "";
+            bool repeats = preyId.Length > 0 && ancestors.Contains(preyId);
+            IReadOnlyList<DevourmentEditNode> inner = Array.Empty<DevourmentEditNode>();
+
+            if (!repeats
+                && preyId.Length > 0
+                && byPredator.TryGetValue(preyId, out List<int>? nested)
+                && placed.Add(preyId))
+            {
+                ancestors.Add(preyId);
+                inner = BuildContents(nested, byPredator, placed, ancestors, depth + 1);
+                ancestors.Remove(preyId);
+            }
+
+            contents.Add(new DevourmentEditNode(
+                this,
+                index,
+                entry.Prey,
+                preyId,
+                entry.PreyType,
+                entry.PreyIsItem,
+                isRoot: false,
+                repeats,
+                depth,
+                inner,
+                entry));
+        }
+
+        return contents;
     }
 
     /// <summary>
@@ -472,44 +538,70 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         }
     }
 
+    // ---- advice ----
+
+    private string? _refusedMove;
+
+    private void NoteRefusedMove(DevourmentEditNode moved, DevourmentEditNode target)
+    {
+        _refusedMove =
+            $"The {target.DisplayName} is inside the {moved.DisplayName}, so putting one inside the other "
+            + "would make a loop with no way out of it. Nothing was moved.";
+
+        RefreshWarnings();
+        _changed();
+    }
+
     private void RefreshWarnings()
     {
         Warnings.Clear();
 
-        foreach (DevourmentRowViewModel row in Rows)
+        foreach (DevourmentEditNode node in AllNodes)
         {
-            if (row.IsWellFormed && !DevourmentStatus.IsKnown(row.Status))
+            if (node.IsSwallowed && !DevourmentStatus.IsKnown(node.Status))
             {
                 Warnings.Add(
-                    $"{row.DisplayName} is set to \"{row.Status}\", which the mod does not know. It reads that "
+                    $"{node.DisplayName} is set to \"{node.Status}\", which the mod does not know. It reads that "
                     + "back with Enum.Parse, so the save will not load until the name is one of the six.");
             }
 
-            if (row.IsWellFormed && row.Food.Trim().Length > 0 && !int.TryParse(
-                    row.Food.Trim(),
+            if (node.IsSwallowed && node.Food.Trim().Length > 0 && !int.TryParse(
+                    node.Food.Trim(),
                     NumberStyles.Integer,
                     CultureInfo.InvariantCulture,
                     out _))
             {
-                Warnings.Add($"{row.DisplayName} has food \"{row.Food}\", which the mod reads as a number.");
+                Warnings.Add($"{node.DisplayName} has food \"{node.Food}\", which the mod reads as a number.");
             }
 
-            if (row.IsCreature && row.Likes.Trim().Length > 0 && row.LikesValue is null)
+            if (node.IsCreature && node.Likes.Trim().Length > 0 && node.LikesValue is null)
             {
-                Warnings.Add($"{row.DisplayName} has a liking of \"{row.Likes}\", which is not a number, so it was left alone.");
+                Warnings.Add($"{node.DisplayName} has a liking of \"{node.Likes}\", which is not a number, so it was left alone.");
             }
 
-            if (row.IsCreature && row.LikesValue is 0f && row.KnowsValue is > 0f)
+            if (node.IsCreature && node.LikesValue is 0f && node.KnowsValue is > 0f)
             {
                 Warnings.Add(
-                    $"{row.DisplayName} likes you zero, so the game writes no relationship at all and what it "
+                    $"{node.DisplayName} likes you zero, so the game writes no relationship at all and what it "
                     + "knows of you goes with it.");
             }
 
-            if (!row.KnownToTheGame && row.IsWellFormed)
+            if (!node.KnownToTheGame && node.IsWellFormed)
             {
-                Warnings.Add($"{row.DisplayName} is not a creature this app knows of. If it came from a mod this is fine.");
+                Warnings.Add($"{node.DisplayName} is not a creature this app knows of. If it came from a mod this is fine.");
             }
+
+            if (node.RepeatsAncestor)
+            {
+                Warnings.Add(
+                    $"{node.DisplayName} is already further up its own chain, so this save describes something "
+                    + "holding itself. The chain is not followed round the loop.");
+            }
+        }
+
+        if (_refusedMove is not null)
+        {
+            Warnings.Add(_refusedMove);
         }
 
         if (State.IdCounterWasMissing && State.Entries.Count > 0)

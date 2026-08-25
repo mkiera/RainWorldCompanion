@@ -10,42 +10,50 @@ using System.Windows.Media;
 namespace RainWorldSaveManager.Views.Behaviors;
 
 /// <summary>
-/// A list whose order can be changed by dragging a row onto another one.
+/// Somewhere a dragged row can be dropped.
 ///
-/// The view model decides what a move means, because the order on screen is a view of an order in
-/// the save and the two have to be changed together.
+/// The view model decides what a drop means, because what is on screen is a view of something in
+/// the save and the two have to change together. For a flat list that is a reorder; for a tree it
+/// is one thing moving inside another.
 /// </summary>
 public interface IReorderable
 {
-    /// <summary>Moves the row at one position to another. Out of range does nothing.</summary>
-    void MoveTo(int from, int to);
+    /// <summary>The row dragged, and the row it was dropped on.</summary>
+    void MoveOnto(object moved, object target);
 }
 
 /// <summary>
-/// Reordering a list by dragging a row onto another one.
+/// Dragging a row onto another one.
 ///
-/// Attached to the ItemsControl rather than written into the rows, so the rows stay a template over
-/// a view model with no drag code in them. The behaviour reports the move as two positions and
-/// leaves the list itself alone: what a drop means is the view model's to decide, and doing it here
-/// as well would mean the list on screen and the list in the save could disagree.
+/// Rows are found by a flag on the template rather than by asking the list which item is where, so
+/// a tree works the same as a flat list: a row nested four levels down inside four ItemsControls is
+/// still just the nearest element marked as a row. Nothing here touches the collection. It reports
+/// the two rows and lets the view model decide.
 ///
-/// Dragging is not the only way to move a row. Every list this is attached to also carries buttons,
-/// because a drag cannot be done from the keyboard and a row that can only be moved with a mouse is
-/// a row some people cannot move.
+/// Dragging is never the only way to move something. Every list this is attached to also carries
+/// buttons, because a drag cannot be done from the keyboard and a row that can only be moved with a
+/// mouse is a row some people cannot move.
 /// </summary>
 public static class ListDragDropBehavior
 {
-    /// <summary>
-    /// Where a drop is reported. Bind this to the view model behind the list and the ItemsControl
-    /// becomes reorderable.
-    /// </summary>
+    /// <summary>Where a drop is reported. Bind this on the control holding the rows.</summary>
     public static readonly DependencyProperty MoveProperty = DependencyProperty.RegisterAttached(
         "Move",
         typeof(IReorderable),
         typeof(ListDragDropBehavior),
         new PropertyMetadata(null, OnMoveChanged));
 
-    /// <summary>The row the pointer is over during a drag, so the template can show where it lands.</summary>
+    /// <summary>
+    /// Set on the root element of a row's template. That element is what a press, a drag and a drop
+    /// all resolve to, and its DataContext is the row.
+    /// </summary>
+    public static readonly DependencyProperty IsRowProperty = DependencyProperty.RegisterAttached(
+        "IsRow",
+        typeof(bool),
+        typeof(ListDragDropBehavior),
+        new PropertyMetadata(false));
+
+    /// <summary>True on the row the pointer is over during a drag, so the template can show it.</summary>
     private static readonly DependencyPropertyKey IsDropTargetKey = DependencyProperty.RegisterAttachedReadOnly(
         "IsDropTarget",
         typeof(bool),
@@ -57,10 +65,11 @@ public static class ListDragDropBehavior
     /// <summary>How far the pointer moves before a press counts as a drag rather than a click.</summary>
     private static readonly double Threshold = SystemParameters.MinimumHorizontalDragDistance;
 
-    private const string Format = "RainWorldSaveManager.ListRow";
+    private const string Format = "RainWorldSaveManager.Row";
 
     private static Point _pressedAt;
-    private static object? _pressedItem;
+    private static object? _pressedRow;
+    private static DependencyObject? _highlighted;
 
     public static void SetMove(DependencyObject element, IReorderable? value)
         => element.SetValue(MoveProperty, value);
@@ -68,45 +77,51 @@ public static class ListDragDropBehavior
     public static IReorderable? GetMove(DependencyObject element)
         => (IReorderable?)element.GetValue(MoveProperty);
 
+    public static void SetIsRow(DependencyObject element, bool value)
+        => element.SetValue(IsRowProperty, value);
+
+    public static bool GetIsRow(DependencyObject element)
+        => (bool)element.GetValue(IsRowProperty);
+
     public static bool GetIsDropTarget(DependencyObject element)
         => (bool)element.GetValue(IsDropTargetProperty);
 
     private static void OnMoveChanged(DependencyObject element, DependencyPropertyChangedEventArgs args)
     {
-        if (element is not ItemsControl list)
+        if (element is not UIElement host)
         {
             return;
         }
 
-        list.PreviewMouseLeftButtonDown -= OnPressed;
-        list.PreviewMouseMove -= OnMoved;
-        list.Drop -= OnDropped;
-        list.DragOver -= OnDragOver;
-        list.DragLeave -= OnDragLeave;
+        host.PreviewMouseLeftButtonDown -= OnPressed;
+        host.PreviewMouseMove -= OnMoved;
+        host.Drop -= OnDropped;
+        host.DragOver -= OnDragOver;
+        host.DragLeave -= OnDragLeave;
 
         if (args.NewValue is null)
         {
-            list.AllowDrop = false;
+            host.AllowDrop = false;
             return;
         }
 
-        list.AllowDrop = true;
-        list.PreviewMouseLeftButtonDown += OnPressed;
-        list.PreviewMouseMove += OnMoved;
-        list.Drop += OnDropped;
-        list.DragOver += OnDragOver;
-        list.DragLeave += OnDragLeave;
+        host.AllowDrop = true;
+        host.PreviewMouseLeftButtonDown += OnPressed;
+        host.PreviewMouseMove += OnMoved;
+        host.Drop += OnDropped;
+        host.DragOver += OnDragOver;
+        host.DragLeave += OnDragLeave;
     }
 
     private static void OnPressed(object sender, MouseButtonEventArgs args)
     {
         _pressedAt = args.GetPosition(null);
-        _pressedItem = ItemUnder(args.OriginalSource as DependencyObject, (ItemsControl)sender);
+        _pressedRow = RowUnder(args.OriginalSource as DependencyObject);
     }
 
     private static void OnMoved(object sender, MouseEventArgs args)
     {
-        if (args.LeftButton != MouseButtonState.Pressed || _pressedItem is null)
+        if (args.LeftButton != MouseButtonState.Pressed || _pressedRow is null)
         {
             return;
         }
@@ -118,103 +133,95 @@ public static class ListDragDropBehavior
             return;
         }
 
-        var list = (ItemsControl)sender;
-        object item = _pressedItem;
-        _pressedItem = null;
+        object row = _pressedRow;
+        _pressedRow = null;
 
-        // A drag that starts inside a text box or a slider is that control's, not the list's.
-        if (args.OriginalSource is DependencyObject source && WantsTheMouse(source, list))
+        // A drag that starts inside a text box or a slider belongs to that control, not to the row.
+        if (args.OriginalSource is DependencyObject source && WantsTheMouse(source))
         {
             return;
         }
 
         try
         {
-            DragDrop.DoDragDrop(list, new DataObject(Format, item), DragDropEffects.Move);
+            DragDrop.DoDragDrop((DependencyObject)sender, new DataObject(Format, row), DragDropEffects.Move);
         }
         finally
         {
-            ClearDropTarget(list);
+            ClearHighlight();
         }
     }
 
     private static void OnDragOver(object sender, DragEventArgs args)
     {
-        var list = (ItemsControl)sender;
+        args.Handled = true;
 
         if (!args.Data.GetDataPresent(Format))
         {
             args.Effects = DragDropEffects.None;
-            args.Handled = true;
             return;
         }
 
-        object? over = ItemUnder(args.OriginalSource as DependencyObject, list);
+        DependencyObject? over = RowElementUnder(args.OriginalSource as DependencyObject);
+        object dragged = args.Data.GetData(Format)!;
 
-        ClearDropTarget(list);
+        ClearHighlight();
 
-        if (over is not null && list.ItemContainerGenerator.ContainerFromItem(over) is DependencyObject container)
+        // Dropping something on itself is not a move, so it does not light up as one.
+        if (over is null || ReferenceEquals(DataOf(over), dragged))
         {
-            container.SetValue(IsDropTargetKey, true);
+            args.Effects = DragDropEffects.None;
+            return;
         }
 
+        over.SetValue(IsDropTargetKey, true);
+        _highlighted = over;
         args.Effects = DragDropEffects.Move;
-        args.Handled = true;
     }
 
-    private static void OnDragLeave(object sender, DragEventArgs args) => ClearDropTarget((ItemsControl)sender);
+    private static void OnDragLeave(object sender, DragEventArgs args) => ClearHighlight();
 
     private static void OnDropped(object sender, DragEventArgs args)
     {
-        var list = (ItemsControl)sender;
-        ClearDropTarget(list);
+        ClearHighlight();
+        args.Handled = true;
 
-        if (GetMove(list) is not { } target || !args.Data.GetDataPresent(Format))
+        if (GetMove((DependencyObject)sender) is not { } target || !args.Data.GetDataPresent(Format))
         {
             return;
         }
 
         object dragged = args.Data.GetData(Format)!;
-        object? onto = ItemUnder(args.OriginalSource as DependencyObject, list);
+        object? onto = RowUnder(args.OriginalSource as DependencyObject);
 
-        int from = list.Items.IndexOf(dragged);
-
-        // Dropping past the last row means the end of the list, which is what the pointer being
-        // below every row looks like.
-        int to = onto is null ? list.Items.Count - 1 : list.Items.IndexOf(onto);
-
-        if (from >= 0 && to >= 0 && from != to)
+        if (onto is not null && !ReferenceEquals(onto, dragged))
         {
-            target.MoveTo(from, to);
+            target.MoveOnto(dragged, onto);
         }
-
-        args.Handled = true;
     }
 
-    private static void ClearDropTarget(ItemsControl list)
+    private static void ClearHighlight()
     {
-        foreach (object item in list.Items)
-        {
-            if (list.ItemContainerGenerator.ContainerFromItem(item) is { } container)
-            {
-                container.SetValue(IsDropTargetKey, false);
-            }
-        }
+        _highlighted?.SetValue(IsDropTargetKey, false);
+        _highlighted = null;
     }
+
+    private static object? RowUnder(DependencyObject? source) => DataOf(RowElementUnder(source));
+
+    private static object? DataOf(DependencyObject? element)
+        => element is FrameworkElement { DataContext: { } data } ? data : null;
 
     /// <summary>
-    /// Walks up from whatever was clicked to the item of the list it sits in. Returns null for a
-    /// click on the list's own background rather than on a row.
+    /// The nearest element above this one that a template marked as a row. Null for a press on
+    /// something that is not inside a row at all.
     /// </summary>
-    private static object? ItemUnder(DependencyObject? source, ItemsControl list)
+    private static DependencyObject? RowElementUnder(DependencyObject? source)
     {
-        while (source is not null && source != list)
+        while (source is not null)
         {
-            object item = list.ItemContainerGenerator.ItemFromContainer(source);
-
-            if (item != DependencyProperty.UnsetValue)
+            if (GetIsRow(source))
             {
-                return item;
+                return source;
             }
 
             source = Parent(source);
@@ -225,14 +232,14 @@ public static class ListDragDropBehavior
 
     /// <summary>
     /// Whether the thing under the pointer handles dragging itself. Dragging inside a text box
-    /// selects text and dragging a slider moves it, and taking that away to reorder a row would
-    /// break the controls the row is made of.
+    /// selects text and dragging a slider moves it, and taking that away to move a row would break
+    /// the controls the row is made of.
     /// </summary>
-    private static bool WantsTheMouse(DependencyObject source, ItemsControl list)
+    private static bool WantsTheMouse(DependencyObject source)
     {
         DependencyObject? walk = source;
 
-        while (walk is not null && walk != list)
+        while (walk is not null)
         {
             if (walk is TextBoxBase or Slider or ComboBox or ToggleButton or ButtonBase)
             {

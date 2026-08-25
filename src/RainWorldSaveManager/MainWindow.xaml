@@ -1,4 +1,4 @@
-<Window x:Class="RainWorldSaveManager.MainWindow"
+﻿<Window x:Class="RainWorldSaveManager.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -501,120 +501,178 @@
         </DataTemplate>
 
         <!--
-            One swallowed thing, editable. The read-only panel draws these as a tree, because what
-            a person wants to see is what is inside what. Editing wants the stored order instead:
-            that is the order the record keeps, and it is what dragging a row changes.
+            One thing in a stomach chain, editable, drawn as the same tree the read-only panel
+            draws. What is inside what is the thing worth seeing, so editing keeps that shape
+            rather than flattening it into stored order.
+
+            A row stays one line until its Edit button is pressed. The buttons appear on hover, so
+            nothing sits on the row until it is wanted and the spacing stays what it was.
+
+            No key on this one: it is picked up by DataType, so the nesting recurses on its own.
         -->
-        <DataTemplate x:Key="DevourmentEditTemplate">
-            <Border x:Name="Row" BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1"
-                    Padding="0,6" Background="Transparent">
-                <StackPanel>
+        <DataTemplate DataType="{x:Type vm:DevourmentEditNode}">
+            <StackPanel>
+                <Border x:Name="Row" Padding="2,3" CornerRadius="3" Background="Transparent"
+                        BorderThickness="1" BorderBrush="Transparent"
+                        behaviors:ListDragDropBehavior.IsRow="True"
+                        ToolTip="Drag onto a creature to put this inside it.">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="58" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- The grip says the row can be dragged. The buttons beside it do the same
-                             job from the keyboard, which a drag cannot. -->
-                        <TextBlock Grid.Column="0" Text="⠿" VerticalAlignment="Center" Margin="0,0,8,0"
-                                   Foreground="{StaticResource Brush.TextMuted}" FontSize="14"
-                                   ToolTip="Drag to move this, or use the arrows." />
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="{Binding Indent}">
+                            <ToggleButton Style="{StaticResource TreeToggle}"
+                                          IsChecked="{Binding IsExpanded, Mode=TwoWay}"
+                                          Visibility="{Binding HasChildren, Converter={StaticResource BoolToVis}}" />
+                            <!-- Keeps a leaf's name aligned with the names of its siblings that
+                                 have a chevron. -->
+                            <Border Width="14"
+                                    Visibility="{Binding HasChildren, Converter={StaticResource NotBoolToVis}}" />
 
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="0,0,8,0">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Position}" Style="{StaticResource Text.Tiny}"
-                                           MinWidth="18" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding DisplayName}" Margin="4,0,0,0"
-                                           VerticalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsItem}" Value="True">
-                                                    <Setter Property="FontStyle" Value="Italic" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
-                            <TextBlock Style="{StaticResource Text.Tiny}" Margin="22,1,0,0"
-                                       TextTrimming="CharacterEllipsis">
-                                <Run Text="inside " /><Run Text="{Binding PredatorName, Mode=OneWay}" />
+                            <TextBlock Text="{Binding DisplayName}" Margin="4,0,0,0"
+                                       TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                                       ToolTip="{Binding RawType}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                        <Setter Property="FontSize" Value="12" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsItem}" Value="True">
+                                                <Setter Property="FontStyle" Value="Italic" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsRoot}" Value="True">
+                                                <Setter Property="FontWeight" Value="SemiBold" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
                             </TextBlock>
+
+                            <Border CornerRadius="2" Padding="4,0" Margin="6,0,0,0" BorderThickness="1"
+                                    VerticalAlignment="Center"
+                                    Background="{StaticResource Brush.Selection}"
+                                    BorderBrush="{StaticResource Brush.Accent}"
+                                    Visibility="{Binding IsTamed, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="tamed" Style="{StaticResource Text.Tiny}" FontSize="10"
+                                           Foreground="{StaticResource Brush.Accent}" />
+                            </Border>
+
+                            <TextBlock Text="{Binding ContentsSummary}" Style="{StaticResource Text.Tiny}"
+                                       Margin="8,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
 
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center"
-                                    Visibility="{Binding IsWellFormed, Converter={StaticResource BoolToVis}}">
-                            <StackPanel Margin="0,0,8,0">
+                        <!-- Only on hover, or while this row is open, so a still list stays still. -->
+                        <StackPanel x:Name="Tools" Grid.Column="1" Orientation="Horizontal"
+                                    VerticalAlignment="Center" Margin="6,0,6,0" Visibility="Hidden">
+                            <Button Content="↑" Style="{StaticResource Button.Tiny}" Margin="0,0,3,0"
+                                    ToolTip="Move up, among the things sharing this stomach"
+                                    Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}"
+                                    Command="{Binding DataContext.MoveUpCommand,
+                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                            <Button Content="↓" Style="{StaticResource Button.Tiny}" Margin="0,0,3,0"
+                                    ToolTip="Move down, among the things sharing this stomach"
+                                    Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}"
+                                    Command="{Binding DataContext.MoveDownCommand,
+                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                    CommandParameter="{Binding}" />
+                            <ToggleButton Content="Edit" Style="{StaticResource Button.SmallToggle}"
+                                          IsChecked="{Binding IsEditing, Mode=TwoWay}"
+                                          ToolTip="Open the values for this one" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Grid.Column="3" Text="{Binding Food}" FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Brush.TextMuted}"
+                                   Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+                </Border>
+
+                <!-- The deeper edits, for the one row that asked for them. -->
+                <Border Margin="{Binding Indent}" Padding="10,8,10,2" CornerRadius="4"
+                        Background="{StaticResource Brush.PanelAlt}"
+                        BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
+                        Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Margin="18,0,0,0">
+                        <WrapPanel>
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}"
+                                        Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="State" Style="{StaticResource Text.Tiny}" />
-                                <ComboBox Width="118" Margin="0,2,0,0" IsEditable="True"
+                                <ComboBox Width="130" Margin="0,2,0,0" IsEditable="True"
                                           ItemsSource="{Binding StatusChoices}"
                                           Text="{Binding Status, UpdateSourceTrigger=PropertyChanged}"
                                           ToolTip="One of the six the mod knows. Anything else stops the save loading." />
                             </StackPanel>
-                            <StackPanel Margin="0,0,8,0">
-                                <TextBlock Text="Food" Style="{StaticResource Text.Tiny}" />
-                                <TextBox Width="52" Margin="0,2,0,0"
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}"
+                                        Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Food left" Style="{StaticResource Text.Tiny}" />
+                                <TextBox Width="60" Margin="0,2,0,0"
                                          Text="{Binding Food, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="3" Orientation="Horizontal" VerticalAlignment="Center"
-                                    Visibility="{Binding IsCreature, Converter={StaticResource BoolToVis}}">
-                            <StackPanel Margin="0,0,8,0">
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}"
+                                        Visibility="{Binding IsCreature, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="Likes you" Style="{StaticResource Text.Tiny}" />
-                                <TextBox Width="60" Margin="0,2,0,0"
+                                <TextBox Width="70" Margin="0,2,0,0"
                                          ToolTip="-1 to 1. Zero takes the whole memory of you away."
                                          Text="{Binding Likes, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
-                            <StackPanel Margin="0,0,8,0">
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}"
+                                        Visibility="{Binding IsCreature, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="Knows you" Style="{StaticResource Text.Tiny}" />
-                                <TextBox Width="60" Margin="0,2,0,0"
+                                <TextBox Width="70" Margin="0,2,0,0"
                                          Text="{Binding Knows, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
-                            <CheckBox Content="Tamed" VerticalAlignment="Bottom" Margin="0,0,8,4"
+                            <CheckBox Content="Tamed" VerticalAlignment="Bottom" Margin="0,0,14,8"
                                       ToolTip="On the campaign's friends list, so it stays with you between cycles."
+                                      Visibility="{Binding IsCreature, Converter={StaticResource BoolToVis}}"
                                       IsChecked="{Binding IsTamed, Mode=TwoWay}" />
-                        </StackPanel>
-
-                        <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
-                            <Button Content="↑" Style="{StaticResource Button.Small}" Margin="0,0,3,0"
-                                    ToolTip="Move up"
-                                    Command="{Binding DataContext.MoveUpCommand,
-                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" />
-                            <Button Content="↓" Style="{StaticResource Button.Small}" Margin="0,0,3,0"
-                                    ToolTip="Move down"
-                                    Command="{Binding DataContext.MoveDownCommand,
-                                              RelativeSource={RelativeSource AncestorType=ItemsControl}}"
-                                    CommandParameter="{Binding}" />
                             <Button Content="Remove" Style="{StaticResource Button.Small}"
-                                    ToolTip="Takes this out of the stomach. It stays tamed if it was tamed."
-                                    Command="{Binding DataContext.RemoveRowCommand,
+                                    VerticalAlignment="Bottom" Margin="0,0,0,8"
+                                    ToolTip="Takes this out. Anything inside it moves up to whatever was holding this."
+                                    Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}"
+                                    Command="{Binding DataContext.RemoveNodeCommand,
                                               RelativeSource={RelativeSource AncestorType=ItemsControl}}"
                                     CommandParameter="{Binding}" />
-                        </StackPanel>
-                    </Grid>
+                        </WrapPanel>
 
-                    <TextBlock Style="{StaticResource Text.Tiny}" Margin="22,3,0,0" TextWrapping="Wrap"
-                               Foreground="{StaticResource Brush.Warn}"
-                               Text="This field is not in a shape this app can read, so it is left exactly as it is."
-                               Visibility="{Binding IsWellFormed, Converter={StaticResource NotBoolToVis}}" />
-                </StackPanel>
-            </Border>
+                        <TextBlock Style="{StaticResource Text.Tiny}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Text="Nothing in this campaign is holding this one, so it has no state and no food of its own."
+                                   Visibility="{Binding IsRoot, Converter={StaticResource BoolToVis}}" />
+
+                        <TextBlock Style="{StaticResource Text.Tiny}" TextWrapping="Wrap" Margin="0,0,0,8"
+                                   Foreground="{StaticResource Brush.Warn}"
+                                   Text="This field is not in a shape this app can read, so it is left exactly as it is."
+                                   Visibility="{Binding IsWellFormed, Converter={StaticResource NotBoolToVis}}" />
+                    </StackPanel>
+                </Border>
+
+                <ItemsControl ItemsSource="{Binding Children}"
+                              Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" />
+            </StackPanel>
+
             <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding (behaviors:ListDragDropBehavior.IsDropTarget),
-                             RelativeSource={RelativeSource AncestorType=ContentPresenter}}" Value="True">
+                <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Tools" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Row" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                </Trigger>
+                <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                    <Setter TargetName="Tools" Property="Visibility" Value="Visible" />
+                    <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding (behaviors:ListDragDropBehavior.IsDropTarget), ElementName=Row}"
+                             Value="True">
                     <Setter TargetName="Row" Property="Background" Value="{StaticResource Brush.Selection}" />
                     <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
 
         <DataTemplate x:Key="WarningTemplate">
             <TextBlock Text="{Binding}" Style="{StaticResource Text.Body}" TextWrapping="Wrap"
@@ -786,17 +844,28 @@
                 </DockPanel>
 
                 <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
-                           Text="In the order the record stores them, which is what the mod reads back. Drag a row, or use the arrows, to change it." />
+                           Text="What is inside what. Drag a row onto a creature to put it inside that one, use the arrows to reorder it where it is, and press Edit on a row for its values." />
 
                 <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
-                        Padding="9,0,9,0"
+                        Padding="9,4,9,6"
                         Visibility="{Binding Devourment.HasRows, Converter={StaticResource BoolToVis}}">
-                    <ScrollViewer MaxHeight="360" VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Devourment.Rows}"
-                                      DataContext="{Binding Devourment}"
-                                      behaviors:ListDragDropBehavior.Move="{Binding}"
-                                      ItemTemplate="{StaticResource DevourmentEditTemplate}" />
-                    </ScrollViewer>
+                    <StackPanel DataContext="{Binding Devourment}">
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="96" />
+                                <ColumnDefinition Width="58" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="CONTENTS" Style="{StaticResource Text.SectionLabel}" />
+                            <TextBlock Grid.Column="1" Text="STATE" Style="{StaticResource Text.SectionLabel}" />
+                            <TextBlock Grid.Column="2" Text="FOOD" Style="{StaticResource Text.SectionLabel}" />
+                        </Grid>
+
+                        <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
+                            <ItemsControl ItemsSource="{Binding Roots}"
+                                          behaviors:ListDragDropBehavior.Move="{Binding}" />
+                        </ScrollViewer>
+                    </StackPanel>
                 </Border>
 
                 <TextBlock Text="This campaign has swallowed nothing. Adding a creature below puts one in."

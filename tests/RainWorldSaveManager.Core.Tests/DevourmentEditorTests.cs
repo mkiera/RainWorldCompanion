@@ -224,6 +224,126 @@ public class DevourmentEditorTests : IDisposable
             new[] { "Held", "Digesting", "EnergyTheft", "Healing", "Sedating", "Regurgitating" },
             DevourmentStatus.All);
 
+    // ---- what holds what ----
+
+    /// <summary>
+    /// The nesting is not stored anywhere. It is implied by one entity id being prey in one field
+    /// and predator in another, so moving something into something else is one field's predator
+    /// being rewritten.
+    /// </summary>
+    [Fact]
+    public void Moving_something_into_another_stomach_rewrites_one_predator()
+    {
+        var state = Open();
+        string outer = state.Entries.Single(e => e.PreyId == OuterLizard).Prey;
+        int index = state.Entries.ToList().FindIndex(e => e.PreyId == TamedLizard);
+
+        Assert.True(state.SetPredator(index, outer));
+
+        var reread = DevourmentEditState.Read(state.Apply(Body));
+
+        Assert.Equal(OuterLizard, reread.Entries.Single(e => e.PreyId == TamedLizard).PredatorId);
+        Assert.Equal(4, reread.Entries.Count);
+    }
+
+    [Fact]
+    public void Something_moved_follows_its_new_predator_into_its_room()
+    {
+        var state = Open();
+        string outer = state.Entries.Single(e => e.PreyId == OuterLizard).Prey;
+        string room = CreatureBlobBuilder.Parse(outer)!.Room;
+        int index = state.Entries.ToList().FindIndex(e => e.PreyId == TamedLizard);
+
+        state.SetPredator(index, outer);
+
+        var reread = DevourmentEditState.Read(state.Apply(Body));
+        string moved = reread.Entries.Single(e => e.PreyId == TamedLizard).Prey;
+
+        Assert.Equal(room, CreatureBlobBuilder.Parse(moved)!.Room);
+    }
+
+    [Fact]
+    public void A_move_that_would_close_a_loop_is_refused_and_changes_nothing()
+    {
+        var state = Open();
+        string inner = state.Entries.Single(e => e.PreyId == PinkInside).Prey;
+        int index = state.Entries.ToList().FindIndex(e => e.PreyId == OuterLizard);
+
+        Assert.False(state.SetPredator(index, inner));
+        Assert.False(state.IsDirty);
+        Assert.Equal(Body, state.Apply(Body));
+    }
+
+    [Fact]
+    public void Something_cannot_be_put_inside_itself()
+    {
+        var state = Open();
+        int index = state.Entries.ToList().FindIndex(e => e.PreyId == OuterLizard);
+
+        Assert.False(state.SetPredator(index, state.Entries[index].Prey));
+        Assert.False(state.IsDirty);
+    }
+
+    [Fact]
+    public void Moving_something_where_it_already_is_changes_nothing()
+    {
+        var state = Open();
+        int index = state.Entries.ToList().FindIndex(e => e.PreyId == PinkInside);
+
+        Assert.False(state.SetPredator(index, state.Entries.Single(e => e.PreyId == OuterLizard).Prey));
+        Assert.False(state.IsDirty);
+    }
+
+    [Fact]
+    public void A_loop_is_seen_however_deep_it_is()
+    {
+        var state = Open();
+
+        Assert.True(state.WouldLoop(OuterLizard, PinkInside));
+        Assert.True(state.WouldLoop(CreatureBlobBuilder.PlayerEntityId, PinkInside));
+        Assert.False(state.WouldLoop(PinkInside, OuterLizard));
+    }
+
+    [Fact]
+    public void What_is_holding_something_is_read_off_the_entries()
+    {
+        var state = Open();
+
+        Assert.Equal(OuterLizard, state.HolderOf(PinkInside));
+        Assert.Equal(CreatureBlobBuilder.PlayerEntityId, state.HolderOf(OuterLizard));
+        Assert.Null(state.HolderOf(CreatureBlobBuilder.PlayerEntityId));
+    }
+
+    [Fact]
+    public void The_things_sharing_one_stomach_are_found_in_stored_order()
+    {
+        var state = Open();
+
+        IReadOnlyList<int> inThePlayer = state.SiblingsOf(CreatureBlobBuilder.PlayerEntityId);
+
+        Assert.Equal(3, inThePlayer.Count);
+        Assert.Single(state.SiblingsOf(OuterLizard));
+        Assert.Empty(state.SiblingsOf(PinkInside));
+    }
+
+    [Fact]
+    public void Moving_one_thing_out_of_a_stomach_leaves_its_siblings_where_they_were()
+    {
+        var state = Open();
+        var before = state.SiblingsOf(CreatureBlobBuilder.PlayerEntityId)
+            .Select(i => state.Entries[i].PreyId)
+            .ToList();
+
+        int index = state.Entries.ToList().FindIndex(e => e.PreyId == TamedLizard);
+        state.SetPredator(index, state.Entries.Single(e => e.PreyId == OuterLizard).Prey);
+
+        var reread = DevourmentEditState.Read(state.Apply(Body));
+
+        Assert.Equal(
+            before.Where(id => id != TamedLizard),
+            reread.SiblingsOf(CreatureBlobBuilder.PlayerEntityId).Select(i => reread.Entries[i].PreyId));
+    }
+
     // ---- adding ----
 
     [Fact]

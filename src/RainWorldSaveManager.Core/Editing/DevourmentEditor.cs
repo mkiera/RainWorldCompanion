@@ -255,6 +255,121 @@ public sealed class DevourmentEditState
     }
 
     /// <summary>
+    /// Moves one swallowed thing into a different stomach, which is what dragging a row onto
+    /// another one comes to.
+    ///
+    /// The nesting a save describes is not stored anywhere: it is implied by the same entity id
+    /// being prey in one field and predator in another. So moving something inside something else
+    /// is a matter of rewriting one field's predator, and the tree follows.
+    ///
+    /// A move that would put something inside itself is refused. Every other edit here is written
+    /// and warned about, but this one is not a value a person chose, it is a gesture, and the thing
+    /// it describes cannot exist: the reader would have to follow the loop forever.
+    /// </summary>
+    /// <returns>False when the move would make a loop, or the entry is not one to move.</returns>
+    public bool SetPredator(int index, string predatorBlob)
+    {
+        if (!InRange(index) || !_entries[index].IsWellFormed)
+        {
+            return false;
+        }
+
+        DevourmentEntry entry = _entries[index];
+        string? newPredatorId = DevourmentReader.CreatureIdOf(predatorBlob);
+
+        if (newPredatorId is null || string.Equals(entry.PredatorId, newPredatorId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (entry.PreyId is { Length: > 0 } preyId && WouldLoop(preyId, newPredatorId))
+        {
+            return false;
+        }
+
+        entry.Predator = predatorBlob;
+
+        // The mod puts a swallowed thing in the room its predator is in, so it follows the move.
+        if (CreatureBlobBuilder.Parse(predatorBlob) is { } predator && !entry.PreyIsItem)
+        {
+            entry.Prey = CreatureBlobBuilder.WithRoom(entry.Prey, predator.Room, predator.Node);
+        }
+
+        _entriesChanged = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Whether making <paramref name="predatorId"/> the holder of <paramref name="preyId"/> would
+    /// close a loop, which it does when the prey already holds the predator at any depth.
+    /// </summary>
+    public bool WouldLoop(string preyId, string predatorId)
+    {
+        if (string.Equals(preyId, predatorId, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        string? walk = predatorId;
+
+        while (walk is not null && seen.Add(walk))
+        {
+            if (string.Equals(walk, preyId, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            walk = HolderOf(walk);
+        }
+
+        return false;
+    }
+
+    /// <summary>The id of whatever is holding this one, or null when nothing is.</summary>
+    public string? HolderOf(string entityId) => _entries
+        .FirstOrDefault(entry => string.Equals(entry.PreyId, entityId, StringComparison.Ordinal))
+        ?.PredatorId;
+
+    /// <summary>Where an entry sits among the things sharing its predator, counting from zero.</summary>
+    public int SiblingIndexOf(int index)
+    {
+        if (!InRange(index))
+        {
+            return -1;
+        }
+
+        string predator = _entries[index].PredatorId ?? "";
+        int seen = 0;
+
+        for (int i = 0; i < index; i++)
+        {
+            if (string.Equals(_entries[i].PredatorId ?? "", predator, StringComparison.Ordinal))
+            {
+                seen++;
+            }
+        }
+
+        return seen;
+    }
+
+    /// <summary>Every entry sharing a predator, by position in the list, in stored order.</summary>
+    public IReadOnlyList<int> SiblingsOf(string predatorId)
+    {
+        var siblings = new List<int>();
+
+        for (int i = 0; i < _entries.Count; i++)
+        {
+            if (string.Equals(_entries[i].PredatorId ?? "", predatorId, StringComparison.Ordinal))
+            {
+                siblings.Add(i);
+            }
+        }
+
+        return siblings;
+    }
+
+    /// <summary>
     /// Puts a creature in a predator's stomach, giving it an id nothing else in the campaign holds.
     /// It is placed in the same room as the predator, which is where the mod puts one.
     /// </summary>
