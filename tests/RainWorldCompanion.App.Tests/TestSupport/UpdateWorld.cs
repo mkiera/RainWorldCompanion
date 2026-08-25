@@ -68,6 +68,29 @@ internal sealed class FakeInstallerDownloader : IInstallerDownloader
         progress?.Report(1.0);
         return Task.FromResult(Result);
     }
+
+    /// <summary>The run ids asked for, so a test can prove which row was pressed.</summary>
+    public List<long> BranchRuns { get; } = [];
+
+    public Task<string> DownloadBranchBuildAsync(
+        string zipUrl,
+        long runId,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        Calls++;
+        BranchRuns.Add(runId);
+        progress?.Report(0.5);
+        WhileDownloading?.Invoke();
+
+        if (Throws is not null)
+        {
+            return Task.FromException<string>(Throws);
+        }
+
+        progress?.Report(1.0);
+        return Task.FromResult(Result);
+    }
 }
 
 internal sealed class RecordingInstallerLauncher : IInstallerLauncher

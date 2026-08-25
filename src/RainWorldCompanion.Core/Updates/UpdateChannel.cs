@@ -52,4 +52,29 @@ public static class UpdateChannels
     /// </summary>
     public static bool CanBeOfferedAutomatically(this UpdateChannel channel)
         => channel is UpdateChannel.Stable or UpdateChannel.Prerelease;
+
+    /// <summary>The three channels in the order the window lists them, steadiest first.</summary>
+    public static IReadOnlyList<UpdateChannel> All { get; } =
+        [UpdateChannel.Stable, UpdateChannel.Prerelease, UpdateChannel.Alpha];
+
+    /// <summary>The name on the row.</summary>
+    public static string Title(this UpdateChannel channel) => channel switch
+    {
+        UpdateChannel.Prerelease => "Pre-release",
+        UpdateChannel.Alpha => "Branch builds",
+        _ => "Stable",
+    };
+
+    /// <summary>
+    /// What picking it means, said in terms of where the build came from rather than how risky it
+    /// is. Where a build comes from is checkable, and how good it is is not.
+    /// </summary>
+    public static string Description(this UpdateChannel channel) => channel switch
+    {
+        UpdateChannel.Prerelease =>
+            "Tagged pre-releases, plus everything on stable. Offered automatically.",
+        UpdateChannel.Alpha =>
+            "The latest build of each branch, straight from CI. Never offered, install by hand.",
+        _ => "Finished releases only. Offered automatically.",
+    };
 }

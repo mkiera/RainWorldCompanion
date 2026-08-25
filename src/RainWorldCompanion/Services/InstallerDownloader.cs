@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Net.Http;
 using RainWorldCompanion.Core.Updates;
 
@@ -15,6 +16,20 @@ public interface IInstallerDownloader
         string downloadUrl,
         string assetName,
         long expectedBytes,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Fetches a branch build and returns the installer taken out of it.
+    ///
+    /// Separate from <see cref="DownloadAsync"/> because a branch build arrives as a zip and its
+    /// size is not known beforehand. GitHub's actions API always zips an artifact, one file or
+    /// not, and the runs endpoint does not carry the artifact's length, so neither the wrapper
+    /// nor the length check that guards a release download applies here.
+    /// </summary>
+    Task<string> DownloadBranchBuildAsync(
+        string zipUrl,
+        long runId,
         IProgress<double>? progress,
         CancellationToken cancellationToken);
 }
@@ -99,6 +114,138 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         return destination;
     }
 
+    /// <summary>
+    /// The largest installer this will write out of a zip.
+    ///
+    /// The real one is around 43 MB. The cap is here because the entry header states its own
+    /// uncompressed length and a zip can claim far less than it expands to, so extraction is
+    /// counted as it goes rather than trusted up front.
+    /// </summary>
+    private const long MaxInstallerBytes = 300L * 1024 * 1024;
+
+    public async Task<string> DownloadBranchBuildAsync(
+        string zipUrl,
+        long runId,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (!UpdateUrls.IsAllowedDownload(zipUrl))
+        {
+            throw new UpdateCheckException("That download is not hosted anywhere this app will fetch from.");
+        }
+
+        UpdatesFolder.Ensure();
+
+        // Named for the run, so two branch builds downloaded in one session cannot collide, and so
+        // a file left behind says which run it came from.
+        var archive = Path.Combine(UpdatesFolder.Location, $"branch-{runId}.zip");
+        var destination = Path.Combine(UpdatesFolder.Location, $"branch-{runId}-setup.exe");
+
+        try
+        {
+            // Length unknown: the runs endpoint does not carry it, so the response header is all
+            // there is, and it only drives the bar.
+            await StreamToFileAsync(zipUrl, archive, expectedBytes: 0, progress, cancellationToken);
+            ExtractInstaller(archive, destination);
+        }
+        catch
+        {
+            Delete(archive);
+            Delete(destination);
+            throw;
+        }
+        finally
+        {
+            // The zip has served its purpose either way, and it is the larger of the two.
+            Delete(archive);
+        }
+
+        progress?.Report(1.0);
+        return destination;
+    }
+
+    /// <summary>
+    /// Writes the one installer inside the archive to <paramref name="destination"/>.
+    ///
+    /// Entry names are treated as data. Every one is held to the same rule a release asset is,
+    /// which admits letters, digits, dot, underscore and dash and nothing else, so a name carrying
+    /// a directory separator or a drive letter never reaches a path at all. The entry's own name
+    /// is never joined to a directory: the destination is decided here from the run id.
+    /// </summary>
+    private static void ExtractInstaller(string archivePath, string destination)
+    {
+        using var archive = OpenArchive(archivePath);
+
+        ZipArchiveEntry? found = null;
+        foreach (var entry in archive.Entries)
+        {
+            if (UpdateUrls.IsInstallerAsset(entry.Name) && entry.FullName == entry.Name)
+            {
+                found = entry;
+                break;
+            }
+        }
+
+        if (found is null)
+        {
+            throw new UpdateCheckException(
+                "That branch build does not contain an installer. It may have been built before "
+                + "the workflow published one, or its artifact may have expired.");
+        }
+
+        using var source = found.Open();
+        using var file = new FileStream(
+            destination, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024);
+
+        var buffer = new byte[64 * 1024];
+        long written = 0;
+
+        while (true)
+        {
+            var read = source.Read(buffer, 0, buffer.Length);
+            if (read == 0)
+            {
+                break;
+            }
+
+            written += read;
+            if (written > MaxInstallerBytes)
+            {
+                throw new UpdateCheckException(
+                    "The installer inside that branch build is larger than this app will write.");
+            }
+
+            file.Write(buffer, 0, read);
+        }
+
+        if (written == 0)
+        {
+            throw new UpdateCheckException("The installer inside that branch build is empty.");
+        }
+    }
+
+    private static ZipArchive OpenArchive(string path)
+    {
+        try
+        {
+            return ZipFile.OpenRead(path);
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException)
+        {
+            throw new UpdateCheckException(
+                "That branch build could not be read as a zip. Its artifact may have expired.", e);
+        }
+    }
+
+    /// <summary>
+    /// Streams a body to a file.
+    /// </summary>
+    /// <param name="expectedBytes">
+    /// The length the caller was promised, or zero when nobody stated one. A positive value is
+    /// checked against the bytes written and a short file is a failure, because a truncated
+    /// installer that still runs is the worst outcome available. Zero leaves the response header
+    /// to drive the bar and nothing to check, which is the branch-build case.
+    /// </param>
     private async Task StreamToFileAsync(
         string downloadUrl,
         string destination,
@@ -131,6 +278,13 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
                     $"The download answered with HTTP {(int)response.StatusCode}.");
             }
 
+            // With nothing stated up front, the response header is the only length there is. It
+            // can be absent, in which case the bar simply does not move and the download still
+            // finishes: a missing header is not a reason to refuse the file.
+            var total = expectedBytes > 0
+                ? expectedBytes
+                : response.Content.Headers.ContentLength ?? 0;
+
             await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
             await using var file = new FileStream(
                 destination, FileMode.Create, FileAccess.Write, FileShare.None, 64 * 1024, useAsync: true);
@@ -160,9 +314,9 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
                 await file.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
                 written += read;
 
-                var fraction = Math.Min(1.0, (double)written / expectedBytes);
+                var fraction = total > 0 ? Math.Min(1.0, (double)written / total) : 0.0;
                 var now = DateTime.UtcNow;
-                if (progress is not null
+                if (progress is not null && total > 0
                     && (fraction - lastFraction >= ProgressStep || now - lastReport >= ProgressInterval))
                 {
                     lastFraction = fraction;
@@ -173,7 +327,12 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
 
             await file.FlushAsync(cancellationToken);
 
-            if (written != expectedBytes)
+            if (written == 0)
+            {
+                throw new UpdateCheckException("The download arrived empty. Please try again.");
+            }
+
+            if (expectedBytes > 0 && written != expectedBytes)
             {
                 throw new UpdateCheckException(
                     $"The download stopped early. It got {written:N0} bytes of the "

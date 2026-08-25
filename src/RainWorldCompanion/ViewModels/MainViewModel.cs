@@ -2354,6 +2354,45 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanOpenSettings() => !IsBusy;
 
+    /// <summary>
+    /// Opens the updates window.
+    ///
+    /// Shown rather than shown as a dialog, so a download can carry on while the user goes back to
+    /// the main window. It carries the same UpdateViewModel the banner does, which is what keeps
+    /// one download in flight at a time and one answer to whether closing the app is safe.
+    /// </summary>
+    [RelayCommand]
+    private void OpenUpdates()
+    {
+        if (Updates is not { } updates)
+        {
+            return;
+        }
+
+        if (_updatesWindow is { } already)
+        {
+            already.Activate();
+            return;
+        }
+
+        var window = new UpdatesDialog(new UpdatesViewModel(updates));
+        _updatesWindow = window;
+        window.Closed += (_, _) => _updatesWindow = null;
+
+        if (OwnerWindow is { } owner && !ReferenceEquals(owner, window))
+        {
+            window.Owner = owner;
+        }
+
+        window.Show();
+    }
+
+    /// <summary>
+    /// The open updates window, so a second press brings it forward instead of opening another.
+    /// Two would each hold their own cached list and their own armed downgrade.
+    /// </summary>
+    private UpdatesDialog? _updatesWindow;
+
     private async Task ShowSettingsAsync(string? reason)
     {
         var viewModel = new SettingsViewModel(_settingsStore, _settings, reason);

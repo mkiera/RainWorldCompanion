@@ -1901,6 +1901,9 @@
 
                 <Button DockPanel.Dock="Right" Content="Settings" Style="{StaticResource Button.Small}"
                         Command="{Binding OpenSettingsCommand}" />
+                <Button DockPanel.Dock="Right" Content="Updates" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0"
+                        Command="{Binding OpenUpdatesCommand}" />
                 <Button DockPanel.Dock="Right" Content="Delete" Style="{StaticResource Button.Danger}"
                         Margin="0,0,8,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
                         Command="{Binding DeleteCommand}" />
@@ -1989,6 +1992,10 @@
                                 Style="{StaticResource Button.Accent}"
                                 MinWidth="86" MinHeight="26" Padding="10,4" FontSize="12"
                                 Command="{Binding Updates.InstallOfferCommand}" />
+                        <Button Content="Details"
+                                Style="{StaticResource Button.Small}"
+                                Margin="8,0,0,0"
+                                Command="{Binding OpenUpdatesCommand}" />
                         <Button Content="Not now"
                                 Style="{StaticResource Button.Small}"
                                 Margin="8,0,0,0"

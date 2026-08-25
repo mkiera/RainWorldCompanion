@@ -175,6 +175,16 @@ public sealed partial class UpdateViewModel : ObservableObject
             return;
         }
 
+        // Branch builds are never offered, so there is no offer to go looking for. Returning here
+        // rather than running the check keeps it from reporting "this is the newest version" on a
+        // channel where the picker is empty by design and the sentence would be a lie.
+        if (!Channel.CanBeOfferedAutomatically())
+        {
+            Offer = null;
+            Say("", problem: false);
+            return;
+        }
+
         IsChecking = true;
 
         // Stamped before the request, not after. A machine that is offline at every launch would
@@ -287,6 +297,88 @@ public sealed partial class UpdateViewModel : ObservableObject
         {
             IsDownloading = false;
         }
+    }
+
+    /// <summary>
+    /// Downloads a branch build and hands it to the installer.
+    ///
+    /// The same shape as <see cref="InstallAsync"/>, and deliberately in this class rather than in
+    /// the window: the guard, the progress and the handoff are the parts that must not be written
+    /// twice, because a second copy is a second chance to forget to ask whether a save is being
+    /// written.
+    /// </summary>
+    public async Task InstallBranchBuildAsync(AlphaBuild? build, CancellationToken cancellationToken)
+    {
+        if (build is null || IsDownloading)
+        {
+            return;
+        }
+
+        if (_busy.WhyNotNow() is { } reason)
+        {
+            Say(reason, problem: true);
+            return;
+        }
+
+        IsDownloading = true;
+        DownloadPercent = 0;
+        Say($"Downloading {build.Label}...", problem: false);
+
+        try
+        {
+            var progress = new Progress<double>(fraction => DownloadPercent = fraction * 100);
+            var installer = await _downloader.DownloadBranchBuildAsync(
+                build.DownloadUrl, build.RunId, progress, cancellationToken);
+
+            if (_busy.WhyNotNow() is { } startedSince)
+            {
+                Say(startedSince, problem: true);
+                return;
+            }
+
+            Say("Starting the installer...", problem: false);
+            var outcome = _launcher.Start(installer);
+            Say(outcome.Message, problem: !outcome.ShouldExit);
+
+            if (outcome.ShouldExit)
+            {
+                _requestShutdown();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Say("The download was cancelled.", problem: false);
+        }
+        catch (Exception e)
+        {
+            Say(Describe(e), problem: true);
+        }
+        finally
+        {
+            IsDownloading = false;
+        }
+    }
+
+    /// <summary>
+    /// Every installable release, newest first, pre-releases included.
+    ///
+    /// Deliberately the widest list rather than the current channel's. Stable is a subset of
+    /// pre-release, so one fetch backs both and moving between them spends no request. Narrowing
+    /// it is the window's job, and it has to be: a list fetched as stable has the pre-releases
+    /// already dropped, so reusing one after a switch would show a pre-release channel with no
+    /// pre-releases on it.
+    /// </summary>
+    public async Task<IReadOnlyList<UpdateOffer>> ListReleasesAsync(CancellationToken cancellationToken)
+    {
+        var releases = await _source.GetReleasesAsync(cancellationToken);
+        return UpdatePicker.ForChannel(releases, UpdateChannel.Prerelease);
+    }
+
+    /// <summary>The latest build of each branch, for the branch-builds list.</summary>
+    public async Task<IReadOnlyList<AlphaBuild>> ListBranchBuildsAsync(CancellationToken cancellationToken)
+    {
+        var runs = await _source.GetBranchBuildRunsAsync(cancellationToken);
+        return AlphaBuilds.FromRuns(runs, Build);
     }
 
     /// <summary>Changes the channel, saves it, and looks again on the new one.</summary>
