@@ -19,6 +19,10 @@ public partial class App : Application
 
     private Mutex? _singleInstance;
 
+    // Both hold an HttpClient, so they live as long as the app rather than being made per check.
+    private GitHubReleaseSource? _releases;
+    private InstallerDownloader? _downloader;
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -61,6 +65,23 @@ public partial class App : Application
         var build = ResolveBuildStamp();
         var viewModel = new MainViewModel(settingsStore, gameDetector, icons, build.Version);
 
+        // Last launch's installer, if there is one. It cannot be cleared any earlier than this:
+        // the app hands a file to Setup and then exits, so it is gone before Setup has finished
+        // reading it and can never delete the one it just ran.
+        UpdatesFolder.Clear();
+
+        _releases = new GitHubReleaseSource(build.Version);
+        _downloader = new InstallerDownloader(build.Version);
+        viewModel.AttachUpdates(viewModel.CreateUpdates(
+            build,
+            _releases,
+            _downloader,
+            new InstallerLauncher(),
+            // Shutdown rather than Environment.Exit, so OnExit runs and releases the mutex, and
+            // the window's own teardown cancels the verify sweep. Queued rather than called
+            // outright: this runs from inside the update, which still has a line or two left.
+            () => Dispatcher.BeginInvoke(Shutdown)));
+
         var window = new MainWindow { DataContext = viewModel };
         MainWindow = window;
         window.Show();
@@ -68,6 +89,11 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _releases?.Dispose();
+        _releases = null;
+        _downloader?.Dispose();
+        _downloader = null;
+
         if (_singleInstance is not null)
         {
             try

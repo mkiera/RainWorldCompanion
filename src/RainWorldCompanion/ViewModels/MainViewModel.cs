@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -15,6 +15,7 @@ using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
+using RainWorldCompanion.Core.Updates;
 using RainWorldCompanion.Services;
 using RainWorldCompanion.Views;
 
@@ -23,7 +24,7 @@ namespace RainWorldCompanion.ViewModels;
 /// <summary>
 /// State and commands for the main window. Every call that touches disk runs on a background thread.
 /// </summary>
-public sealed partial class MainViewModel : ObservableObject
+public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 {
     private const string SteamGuidance =
         "Launch Rain World through Steam before you restart Steam.\n" +
@@ -34,6 +35,16 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly SlugcatIconProvider _icons;
     private readonly string _appVersion;
     private readonly DispatcherTimer _gameTimer;
+
+    /// <summary>
+    /// Drives the automatic update check. Lives here rather than on UpdateViewModel, which
+    /// owns no dispatcher so that the view model tests can build one on any thread.
+    ///
+    /// First tick a few seconds after launch, then hourly for as long as the window is open.
+    /// A check only at startup reaches almost nobody: this app gets left open across an
+    /// evening of playing and is rarely restarted.
+    /// </summary>
+    private DispatcherTimer? _updateTimer;
 
     /// <summary>Cancelled by <see cref="Shutdown"/>, so nothing started before the window closed
     /// tries to write to the view model afterwards.</summary>
@@ -105,6 +116,111 @@ public sealed partial class MainViewModel : ObservableObject
         _gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _gameTimer.Tick += OnGameTimerTick;
     }
+
+    /// <summary>
+    /// The update offer, the download and the handoff to the installer.
+    ///
+    /// Null until <see cref="AttachUpdates"/> is called, which App does after constructing the
+    /// services that reach the network. Leaving it out entirely is a supported state: the tests
+    /// build this view model without it and the banner simply never appears.
+    /// </summary>
+    [ObservableProperty]
+    private UpdateViewModel? updates;
+
+    /// <summary>
+    /// Gives the window an updater and starts the clock that drives it.
+    ///
+    /// The first check waits a few seconds. Reading the settings, listing the backups and drawing
+    /// the window all matter more than an update does, and none of them should be competing with a
+    /// network request for the first moment of a launch.
+    /// </summary>
+    public void AttachUpdates(UpdateViewModel updates)
+    {
+        Updates = updates;
+        updates.Adopt(_settings);
+
+        _updateTimer = new DispatcherTimer { Interval = UpdateCooldown.StartupDelay };
+        _updateTimer.Tick += OnUpdateTimerTick;
+        _updateTimer.Start();
+    }
+
+    private async void OnUpdateTimerTick(object? sender, EventArgs e)
+    {
+        // The first tick is the short startup delay. Every one after it is the hourly beat.
+        if (_updateTimer is { } timer && timer.Interval != UpdateCooldown.Interval)
+        {
+            timer.Interval = UpdateCooldown.Interval;
+        }
+
+        if (Updates is not { } updates || !updates.IsAutomaticCheckDue())
+        {
+            return;
+        }
+
+        try
+        {
+            await updates.CheckAsync(userAsked: false, _shutdown.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The window closed while the check was in flight.
+        }
+    }
+
+    /// <summary>
+    /// Why the app must not close itself right now, or null when it may.
+    ///
+    /// Every path that writes a save file wraps itself in BeginBusy and EndBusy, so IsBusy covers
+    /// all of them: backups, restores, slot copies, library stores and loads, and every edit that
+    /// gets written back. It also covers two read-only paths that set it, which is the right
+    /// direction to be wrong in for a question about whether it is safe to stop.
+    ///
+    /// The stake is higher here than the wording suggests. An update ends the process, and a
+    /// restore that is ended halfway through has already overwritten part of the live save folder.
+    /// </summary>
+    public string? WhyNotNow() => IsBusy
+        ? "RainWorld Companion is in the middle of something that writes to your saves. "
+          + "Let it finish, then update."
+        : null;
+
+    /// <summary>
+    /// Applies one of the updater's settings and writes the file.
+    ///
+    /// The updater is given this rather than the store, so there is one writer to settings.json.
+    /// Two would clobber each other, because the store serialises the whole object and neither
+    /// would know what the other had changed. Written on a worker because it touches disk, from a
+    /// copy taken on the dispatcher so the write cannot see a half-applied change.
+    /// </summary>
+    private void PersistUpdateSetting(Action<AppSettings> change)
+    {
+        change(_settings);
+        var snapshot = _settings.Clone();
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                _settingsStore.Save(snapshot);
+            }
+            catch (Exception)
+            {
+                // An update channel that does not survive a restart is not worth interrupting
+                // anyone over, and the next successful save writes it anyway.
+            }
+        });
+    }
+
+    /// <summary>
+    /// Builds the updater for this window. Called by App, which owns the services that reach the
+    /// network and the process that ends the app.
+    /// </summary>
+    public UpdateViewModel CreateUpdates(
+        BuildStamp build,
+        IReleaseSource source,
+        IInstallerDownloader downloader,
+        IInstallerLauncher launcher,
+        Action requestShutdown) =>
+        new(build, source, downloader, launcher, this, PersistUpdateSetting, requestShutdown);
 
     /// <summary>The three save files as they are on disk, shown as the top card in the list column.</summary>
     public ObservableCollection<SlotViewModel> LiveSlots { get; } = new();
@@ -335,6 +451,11 @@ public sealed partial class MainViewModel : ObservableObject
         await FillInMissingPathsAsync();
         await ApplySettingsAsync();
 
+        // Again, now that the real settings are here. AttachUpdates runs from App.OnStartup, where
+        // _settings is still the blank object the constructor made, so the channel and the
+        // automatic-check choice only become known at this point.
+        Updates?.Adopt(_settings);
+
         _gameTimer.Start();
         await PollGameAsync();
 
@@ -355,6 +476,13 @@ public sealed partial class MainViewModel : ObservableObject
     {
         _gameTimer.Stop();
         _gameTimer.Tick -= OnGameTimerTick;
+
+        if (_updateTimer is { } updateTimer)
+        {
+            updateTimer.Stop();
+            updateTimer.Tick -= OnUpdateTimerTick;
+            _updateTimer = null;
+        }
 
         // Stopping the timer cannot cancel a poll that is already inside the process
         // enumeration. This is what tells that poll to drop its result instead of writing it to a

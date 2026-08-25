@@ -217,6 +217,17 @@
         <Setter Property="Padding" Value="12,9" />
     </Style>
 
+    <!-- For news rather than faults. An available update is a good thing, and putting it in the
+         same amber as a misconfigured save folder would say "problem" about it, especially when
+         both are on screen at once. -->
+    <Style x:Key="Banner.Info" TargetType="Border">
+        <Setter Property="Background" Value="{StaticResource Brush.Selection}" />
+        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="12,9" />
+    </Style>
+
     <Style x:Key="Banner.Danger" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
         <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />

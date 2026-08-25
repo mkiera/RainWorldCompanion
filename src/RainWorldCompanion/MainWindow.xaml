@@ -1922,28 +1922,93 @@
             </DockPanel>
         </Border>
 
-        <!-- Configuration problem banner -->
-        <Border Grid.Row="1"
-                Style="{StaticResource Banner.Warn}"
-                Margin="16,12,16,0"
-                Visibility="{Binding HasConfigProblem, Converter={StaticResource BoolToVis}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0"
-                           Text="{Binding ConfigProblem}"
+        <!-- Banners. Row 1 is Auto, so a StackPanel here grows to fit whichever of these are up
+             and nothing below has to renumber. Both can be showing at once, and sometimes should:
+             an update being available while the save folder is misconfigured is a real state, and
+             hiding one behind the other helps nobody. -->
+        <StackPanel Grid.Row="1">
+
+            <!-- Configuration problem banner -->
+            <Border Style="{StaticResource Banner.Warn}"
+                    Margin="16,12,16,0"
+                    Visibility="{Binding HasConfigProblem, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="{Binding ConfigProblem}"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Warn}" />
+                    <Button Grid.Column="1"
+                            Content="Open Settings"
+                            Style="{StaticResource Button.Small}"
+                            Margin="12,0,0,0"
+                            Command="{Binding OpenSettingsCommand}" />
+                </Grid>
+            </Border>
+
+            <!-- Update banner. Progress is a determinate bar here rather than the busy overlay:
+                 that overlay is indeterminate and covers the whole window, and a 43 MB download on
+                 a slow line is minutes of having the app blanked out. It also must not set IsBusy,
+                 because IsBusy is what the updater's own guard reads to decide whether it is safe
+                 to close the app, and a download that set it would be refusing itself. -->
+            <Border Style="{StaticResource Banner.Info}"
+                    Margin="16,12,16,0"
+                    Visibility="{Binding Updates.HasOffer, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Updates.BannerText}"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource Brush.Text}" />
+                        <TextBlock Text="{Binding Updates.StatusMessage}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,0,0"
+                                   Style="{StaticResource Text.Muted}"
+                                   Visibility="{Binding Updates.HasStatus, Converter={StaticResource BoolToVis}}" />
+                        <ProgressBar Height="6"
+                                     Margin="0,6,12,0"
+                                     Minimum="0" Maximum="100"
+                                     Value="{Binding Updates.DownloadPercent, Mode=OneWay}"
+                                     Visibility="{Binding Updates.IsDownloading, Converter={StaticResource BoolToVis}}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Margin="12,0,0,0"
+                                Visibility="{Binding Updates.IsIdle, Converter={StaticResource BoolToVis}}">
+                        <Button Content="Update"
+                                Style="{StaticResource Button.Accent}"
+                                MinWidth="86" MinHeight="26" Padding="10,4" FontSize="12"
+                                Command="{Binding Updates.InstallOfferCommand}" />
+                        <Button Content="Not now"
+                                Style="{StaticResource Button.Small}"
+                                Margin="8,0,0,0"
+                                Command="{Binding Updates.DismissOfferCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- A failure with no offer attached still has to reach the user, which is the case
+                 after a check the user asked for could not reach GitHub. -->
+            <Border Style="{StaticResource Banner.Warn}"
+                    Margin="16,12,16,0"
+                    Visibility="{Binding Updates.HasStandaloneProblem, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding Updates.StatusMessage}"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"
                            Foreground="{StaticResource Brush.Warn}" />
-                <Button Grid.Column="1"
-                        Content="Open Settings"
-                        Style="{StaticResource Button.Small}"
-                        Margin="12,0,0,0"
-                        Command="{Binding OpenSettingsCommand}" />
-            </Grid>
-        </Border>
+            </Border>
+
+        </StackPanel>
 
         <Grid Grid.Row="2" Margin="16,12,16,14">
             <Grid.ColumnDefinitions>
