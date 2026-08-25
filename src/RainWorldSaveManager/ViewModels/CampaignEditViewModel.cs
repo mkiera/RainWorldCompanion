@@ -385,7 +385,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         {
             GateInfo info = GateCatalog.ForName(name);
             Gates.Add(new GateEditRow(name, GateDisplay(info), true, GateCatalog.IsKnown(name), GateChanged));
-            ApplyGates();
+            ApplyGates("Gate " + name, "closed", "open");
         }
 
         NewGateName = "";
@@ -457,43 +457,84 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         string trimmed = value.Trim();
         string blob = DeathPersistentBlob;
+        string? before = DeathPersistentEditor.GetValue(blob, key);
 
-        string updated = trimmed.Length == 0
-            ? DeathPersistentEditor.Remove(blob, key)
-            : int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
-                ? DeathPersistentEditor.SetInt(blob, key, parsed)
-                : blob;
-
-        WriteDeathPersistent(updated);
-    }
-
-    private void WriteDeathPersistent(string blob)
-    {
-        if (!string.Equals(blob, DeathPersistentBlob, StringComparison.Ordinal))
+        if (trimmed.Length == 0)
         {
-            _session.SetField(_campaign, SaveFields.DeathPersistent, blob);
+            WriteDeathPersistent(DeathPersistentEditor.Remove(blob, key), key, before, null);
+            return;
         }
 
+        if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+        {
+            // Not a number, so there is nothing to write. The warning list says so.
+            AfterChange();
+            return;
+        }
+
+        string after = parsed.ToString(CultureInfo.InvariantCulture);
+        WriteDeathPersistent(DeathPersistentEditor.SetInt(blob, key, parsed), key, before, after);
+    }
+
+    /// <summary>
+    /// Writes the death persistent blob, naming the part of it that moved.
+    ///
+    /// The blob is one field holding karma, every echo and every gate, so the session is told which
+    /// of them changed. Without that, opening one echo and raising karma would read as two edits of
+    /// the same unpronounceable field.
+    /// </summary>
+    private void WriteDeathPersistent(string blob, string partName, string? before, string? after)
+    {
+        _session.SetFieldPart(_campaign, SaveFields.DeathPersistent, blob, partName, before, after);
         AfterChange();
     }
 
     private void EchoChanged(EchoEditRow row)
-    {
-        WriteDeathPersistent(DeathPersistentEditor.SetEcho(DeathPersistentBlob, row.RegionCode, row.State));
-    }
-
-    private void GateChanged(GateEditRow row) => ApplyGates();
-
-    private void ApplyGates()
     {
         if (_loading)
         {
             return;
         }
 
-        WriteDeathPersistent(DeathPersistentEditor.SetGates(
-            DeathPersistentBlob,
-            Gates.Where(g => g.UnlockedField).Select(g => g.Name).ToList()));
+        string blob = DeathPersistentBlob;
+        int before = DeathPersistentReader.Read(blob).Echoes
+            .FirstOrDefault(e => string.Equals(e.RegionCode, row.RegionCode, StringComparison.OrdinalIgnoreCase))
+            ?.State ?? DeathPersistentEditor.EchoNeverSeen;
+
+        WriteDeathPersistent(
+            DeathPersistentEditor.SetEcho(blob, row.RegionCode, row.State),
+            "Echo " + row.RegionCode,
+            EchoStateText(before),
+            EchoStateText(row.State));
+    }
+
+    private static string EchoStateText(int state) => state switch
+    {
+        DeathPersistentEditor.EchoSensed => "sensed",
+        DeathPersistentEditor.EchoTalkedTo => "talked to",
+        DeathPersistentEditor.EchoNeverSeen => "never seen",
+        _ => state.ToString(CultureInfo.InvariantCulture),
+    };
+
+    private void GateChanged(GateEditRow row)
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        ApplyGates("Gate " + row.Name, row.UnlockedField ? "closed" : "open", row.UnlockedField ? "open" : "closed");
+    }
+
+    private void ApplyGates(string partName, string? before, string? after)
+    {
+        WriteDeathPersistent(
+            DeathPersistentEditor.SetGates(
+                DeathPersistentBlob,
+                Gates.Where(g => g.UnlockedField).Select(g => g.Name).ToList()),
+            partName,
+            before,
+            after);
     }
 
     private void AfterChange()
@@ -573,7 +614,29 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     }
 
     private void SetDeathPersistentFlag(string key, bool on)
-        => WriteDeathPersistent(DeathPersistentEditor.SetFlag(DeathPersistentBlob, key, on));
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        string blob = DeathPersistentBlob;
+        bool before = DeathPersistentEditor.GetValue(blob, key) is not null
+            || DelimitedFlagIsSet(blob, key);
+
+        WriteDeathPersistent(
+            DeathPersistentEditor.SetFlag(blob, key, on),
+            key,
+            before ? "on" : "off",
+            on ? "on" : "off");
+    }
+
+    /// <summary>
+    /// Whether the blob carries a bare flag. GetValue answers null for a flag as well as for a
+    /// field that is not there, so presence is asked separately.
+    /// </summary>
+    private static bool DelimitedFlagIsSet(string blob, string key)
+        => !string.Equals(DeathPersistentEditor.SetFlag(blob, key, false), blob, StringComparison.Ordinal);
 
     /// <summary>
     /// REDEXTRACYCLES is written in two places and SaveState.RedExtraCycles is true when either is
@@ -591,10 +654,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         if (!on)
         {
-            WriteDeathPersistent(DeathPersistentEditor.SetFlag(
-                DeathPersistentBlob,
-                DeathPersistentEditor.RedExtraCyclesField,
-                false));
+            SetDeathPersistentFlag(DeathPersistentEditor.RedExtraCyclesField, false);
             return;
         }
 

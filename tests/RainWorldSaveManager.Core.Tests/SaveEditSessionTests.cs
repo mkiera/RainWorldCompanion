@@ -303,6 +303,114 @@ public class SaveEditSessionTests
         }
     }
 
+    /// <summary>
+    /// A box bound to a field writes it again on every keystroke. All of those writes are the same
+    /// field going from where it started to where it ended up, and the log says so once.
+    /// </summary>
+    [Fact]
+    public void A_field_written_over_and_over_is_one_change()
+    {
+        var (directory, path) = LiveSlot();
+        using (directory)
+        {
+            var session = SaveEditSession.Open(path);
+            var campaign = session.Campaigns[0];
+            var before = session.GetFieldValue(campaign, Cycle);
+
+            foreach (var typed in new[] { "1", "12", "123", "1234" })
+            {
+                session.SetField(campaign, Cycle, typed);
+            }
+
+            Assert.Equal($"Survivor: CYCLENUM {before} to 1234", Assert.Single(session.Changes));
+        }
+    }
+
+    [Fact]
+    public void A_field_typed_back_to_where_it_started_is_no_longer_a_change()
+    {
+        var (directory, path) = LiveSlot();
+        using (directory)
+        {
+            var session = SaveEditSession.Open(path);
+            var campaign = session.Campaigns[0];
+            var before = session.GetFieldValue(campaign, Cycle)!;
+
+            session.SetField(campaign, Cycle, "99");
+            Assert.Single(session.Changes);
+
+            session.SetField(campaign, Cycle, before);
+
+            Assert.Empty(session.Changes);
+            Assert.False(session.IsDirty);
+        }
+    }
+
+    [Fact]
+    public void Two_fields_are_two_changes_in_the_order_they_were_touched()
+    {
+        var (directory, path) = LiveSlot();
+        using (directory)
+        {
+            var session = SaveEditSession.Open(path);
+            var campaign = session.Campaigns[0];
+
+            session.SetField(campaign, DenPos, "HI_S01");
+            session.SetField(campaign, Cycle, "5");
+            session.SetField(campaign, DenPos, "HI_S02");
+
+            Assert.Equal(2, session.Changes.Count);
+            Assert.StartsWith("Survivor: DENPOS", session.Changes[0], StringComparison.Ordinal);
+            Assert.EndsWith("to HI_S02", session.Changes[0], StringComparison.Ordinal);
+            Assert.Contains("CYCLENUM", session.Changes[1], StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// DEATHPERSISTENTSAVEDATA is one field carrying karma, the echoes and every gate. Written as
+    /// one field it would read as one unpronounceable change however many of them moved.
+    /// </summary>
+    [Fact]
+    public void Parts_of_one_composite_field_are_counted_separately()
+    {
+        var (directory, path) = LiveSlot();
+        using (directory)
+        {
+            var session = SaveEditSession.Open(path);
+            var campaign = session.Campaigns[0];
+
+            var blob = session.GetFieldValue(campaign, DeathPersistent) ?? "";
+
+            blob = DeathPersistentEditor.SetInt(blob, DeathPersistentEditor.KarmaField, 3);
+            session.SetFieldPart(campaign, DeathPersistent, blob, "KARMA", "9", "3");
+
+            blob = DeathPersistentEditor.SetEcho(blob, "SH", DeathPersistentEditor.EchoTalkedTo);
+            session.SetFieldPart(campaign, DeathPersistent, blob, "Echo SH", "never seen", "talked to");
+
+            Assert.Equal(
+                new[] { "Survivor: KARMA 9 to 3", "Survivor: Echo SH never seen to talked to" },
+                session.Changes);
+        }
+    }
+
+    [Fact]
+    public void Adding_a_field_reads_as_setting_it_and_removing_one_reads_as_removing_it()
+    {
+        var (directory, path) = LiveSlot();
+        using (directory)
+        {
+            var session = SaveEditSession.Open(path);
+            var campaign = session.Campaigns[0];
+
+            // A key the record does not carry, so it reads as being set rather than moved.
+            session.SetField(campaign, "SOMEMODFIELD", "42");
+            session.RemoveField(campaign, Cycle);
+
+            Assert.Equal("Survivor: set SOMEMODFIELD to 42", session.Changes[0]);
+            Assert.Equal("Survivor: removed CYCLENUM", session.Changes[1]);
+        }
+    }
+
     [Fact]
     public void Setting_a_value_it_already_holds_is_not_an_edit()
     {

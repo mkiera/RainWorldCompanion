@@ -1,6 +1,8 @@
 // Usings sit above the namespace declaration on purpose. RainWorldSaveManager.Core.System
 // exists elsewhere in this assembly, so a using written inside the namespace body would bind
 // "System" to that namespace instead of the BCL root.
+using System.Globalization;
+
 using RainWorldSaveManager.Core.Backups;
 using RainWorldSaveManager.Core.Saves;
 
@@ -45,10 +47,11 @@ public sealed class SaveEditSession
 
     private readonly ContainerText _container;
     private readonly string _originalPayload;
-    private readonly List<string> _changes = new();
+    private readonly Dictionary<string, TrackedChange> _changes = new(StringComparer.Ordinal);
     private readonly HashSet<int> _touchedRecords = new();
 
     private string _payload;
+    private int _changeOrder;
 
     private SaveEditSession(string filePath, string fileSha256, ContainerText container, string payload)
     {
@@ -77,8 +80,14 @@ public sealed class SaveEditSession
 
     public bool IsDirty => !string.Equals(_payload, _originalPayload, StringComparison.Ordinal);
 
-    /// <summary>One line per edit, in the order they were made, for a confirmation and a backup note.</summary>
-    public IReadOnlyList<string> Changes => _changes;
+    /// <summary>
+    /// One line per thing changed, in the order it was first touched. A field edited over and over,
+    /// which is what typing into a box does, reads as the one move it made.
+    /// </summary>
+    public IReadOnlyList<string> Changes => _changes.Values
+        .OrderBy(change => change.Order)
+        .Select(change => change.Describe())
+        .ToArray();
 
     /// <summary>Raised after every edit, so a curated editor and the raw field list stay in step.</summary>
     public event EventHandler? Changed;
@@ -191,7 +200,35 @@ public sealed class SaveEditSession
             return;
         }
 
-        Apply(campaign, Fields.SetValue(body, key, value, occurrence), Describe(campaign, key, before, value));
+        Record(campaign, PartKey(campaign, key, occurrence), key, before, value);
+        Apply(campaign, Fields.SetValue(body, key, value, occurrence));
+    }
+
+    /// <summary>
+    /// Writes a field that holds values of its own, recording what moved inside it rather than the
+    /// field as a whole.
+    ///
+    /// DEATHPERSISTENTSAVEDATA is one field carrying karma, the echoes and every gate, so a log
+    /// keyed on the field name would collapse all of them into one line reading as an unbroken wall
+    /// of delimiters. The caller names the part it changed and how it reads.
+    /// </summary>
+    public void SetFieldPart(
+        CampaignRecordRef campaign,
+        string key,
+        string value,
+        string partName,
+        string before,
+        string after)
+    {
+        string body = GetRecordBody(campaign);
+
+        if (string.Equals(Fields.GetValue(body, key), value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Record(campaign, PartKey(campaign, key, 0) + "|" + partName, partName, before, after);
+        Apply(campaign, Fields.SetValue(body, key, value));
     }
 
     /// <summary>Adds or removes a bare flag such as HASTHEGLOW.</summary>
@@ -205,21 +242,22 @@ public sealed class SaveEditSession
             return;
         }
 
-        Apply(
-            campaign,
-            Fields.SetFlag(body, key, present),
-            $"{Name(campaign)}: {(present ? "set" : "cleared")} {key}");
+        Record(campaign, PartKey(campaign, key, 0), key, before ? "on" : "off", present ? "on" : "off");
+        Apply(campaign, Fields.SetFlag(body, key, present));
     }
 
     public void RemoveField(CampaignRecordRef campaign, string key, int occurrence = 0)
     {
         string body = GetRecordBody(campaign);
-        if (Fields.Find(body, key, occurrence) is null)
+        if (Fields.Find(body, key, occurrence) is not { } found)
         {
             return;
         }
 
-        Apply(campaign, Fields.Remove(body, key, occurrence), $"{Name(campaign)}: removed {key}");
+        string before = found.IsFlag ? "on" : Fields.GetValue(body, key, occurrence) ?? "";
+
+        Record(campaign, PartKey(campaign, key, occurrence), key, before, null);
+        Apply(campaign, Fields.Remove(body, key, occurrence));
     }
 
     /// <summary>
@@ -230,23 +268,28 @@ public sealed class SaveEditSession
         => SetField(campaign, key, value, occurrence);
 
     public void InsertFieldAfter(CampaignRecordRef campaign, string key, int occurrence, string newField)
-        => Apply(
-            campaign,
-            Fields.InsertAfter(GetRecordBody(campaign), key, occurrence, newField),
-            $"{Name(campaign)}: added {Fields.KeyOf(newField)}");
+    {
+        string added = Fields.KeyOf(newField);
+
+        Record(campaign, PartKey(campaign, added, occurrence) + "|added", added, null, "added");
+        Apply(campaign, Fields.InsertAfter(GetRecordBody(campaign), key, occurrence, newField));
+    }
 
     /// <summary>Replaces a whole campaign record body, for an edit too large to express field by field.</summary>
     public void ReplaceRecordBody(CampaignRecordRef campaign, string newBody, string description)
-        => Apply(campaign, newBody, description);
+    {
+        Record(campaign, PartKey(campaign, description, 0) + "|body", description, "", "changed");
+        Apply(campaign, newBody);
+    }
 
     /// <summary>
     /// Everything needed to write this session to disk, with the result checked before anything
     /// is written. A plan with problems is one to report, not one to write.
     /// </summary>
     public SaveWritePlan BuildWritePlan(SizePolicy policy = SizePolicy.GrowIfNeeded)
-        => SaveWritePlan.Build(this, _container, _originalPayload, _payload, _touchedRecords, _changes, policy);
+        => SaveWritePlan.Build(this, _container, _originalPayload, _payload, _touchedRecords, Changes, policy);
 
-    private void Apply(CampaignRecordRef campaign, string newBody, string description)
+    private void Apply(CampaignRecordRef campaign, string newBody)
     {
         RecordSpan record = RecordAt(campaign);
 
@@ -256,8 +299,81 @@ public sealed class SaveEditSession
             _payload.AsSpan(record.BodyStart + record.BodyLength));
 
         _touchedRecords.Add(campaign.RecordIndex);
-        _changes.Add(description);
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Notes that one thing moved, folding a repeat of the same thing into the entry already there.
+    ///
+    /// This is what keeps a typed number from reading as one change per keystroke. Every character
+    /// typed into a box writes the field again, and each of those writes is a real edit to the
+    /// payload, but they are all the same field going from where it started to where it ended up.
+    /// The first write records where it started and every later one only moves the end.
+    ///
+    /// A value typed back to where it began stops being a change at all, which is the same answer
+    /// <see cref="IsDirty"/> gives for the payload as a whole.
+    /// </summary>
+    /// <param name="before">What the record held, or null when it held nothing.</param>
+    /// <param name="after">What it holds now, or null when the field has gone.</param>
+    private void Record(CampaignRecordRef campaign, string changeKey, string label, string? before, string? after)
+    {
+        if (_changes.TryGetValue(changeKey, out TrackedChange? existing))
+        {
+            if (string.Equals(existing.Before, after, StringComparison.Ordinal))
+            {
+                _changes.Remove(changeKey);
+                return;
+            }
+
+            existing.After = after;
+            return;
+        }
+
+        if (string.Equals(before, after, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _changes[changeKey] = new TrackedChange(_changeOrder++, Name(campaign), label, before, after);
+    }
+
+    private static string PartKey(CampaignRecordRef campaign, string key, int occurrence)
+        => campaign.RecordIndex.ToString(CultureInfo.InvariantCulture) + "|" + key + "|"
+            + occurrence.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// One thing that moved, and where it started, however many writes it took to get there.
+    ///
+    /// A null on either side means the record did not carry the field then. That is a state of its
+    /// own rather than a value, so it is a null and not a chosen word: any word picked to stand for
+    /// it is one a real field could also hold.
+    /// </summary>
+    private sealed class TrackedChange
+    {
+        public TrackedChange(int order, string campaign, string label, string? before, string? after)
+        {
+            Order = order;
+            Campaign = campaign;
+            Label = label;
+            Before = before;
+            After = after;
+        }
+
+        public int Order { get; }
+
+        public string Campaign { get; }
+
+        public string Label { get; }
+
+        public string? Before { get; }
+
+        public string? After { get; set; }
+
+        public string Describe() => Before is null
+            ? $"{Campaign}: set {Label} to {After}"
+            : After is null
+                ? $"{Campaign}: removed {Label}"
+                : $"{Campaign}: {Label} {Before} to {After}";
     }
 
     private RecordSpan RecordAt(CampaignRecordRef campaign)

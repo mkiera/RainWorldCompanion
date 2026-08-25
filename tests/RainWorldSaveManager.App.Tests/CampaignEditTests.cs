@@ -95,6 +95,57 @@ public class CampaignEditTests : IDisposable
         Assert.Equal("1 change", editor.ChangeCountText);
     }
 
+    /// <summary>
+    /// The boxes write on every keystroke, so the suggestions and the warnings keep up as the user
+    /// types. What they must not do is count each keystroke as an edit of its own.
+    /// </summary>
+    [Fact]
+    public void Typing_into_a_box_one_character_at_a_time_is_one_change()
+    {
+        var editor = Editor();
+
+        editor.Cycle = "1";
+        editor.Cycle = "12";
+        editor.Cycle = "123";
+
+        Assert.Equal("1 change", editor.ChangeCountText);
+        Assert.Equal("123", Field("CYCLENUM"));
+    }
+
+    [Fact]
+    public void Backspacing_a_box_back_to_where_it_started_leaves_no_change()
+    {
+        var editor = Editor();
+        var before = editor.Cycle;
+
+        editor.Cycle = before + "9";
+        Assert.Equal("1 change", editor.ChangeCountText);
+
+        editor.Cycle = before;
+
+        Assert.Equal("No changes yet", editor.ChangeCountText);
+        Assert.False(editor.IsDirty);
+    }
+
+    [Fact]
+    public void Editing_several_things_counts_each_of_them_once()
+    {
+        var editor = Editor();
+
+        editor.Cycle = "40";
+        editor.Cycle = "41";
+        editor.Karma = "7";
+        editor.Karma = "8";
+        editor.Echoes.First(e => e.RegionCode == "SH").TalkedTo = true;
+        editor.Gates.First(g => g.Name == "GATE_SU_HI").UnlockedField = true;
+
+        // One for the cycle, one for karma, one for the echo, one for the gate.
+        Assert.Equal("4 changes", editor.ChangeCountText);
+        Assert.Contains(editor.Changes, c => c.Contains("Echo SH", StringComparison.Ordinal));
+        Assert.Contains(editor.Changes, c => c.Contains("Gate GATE_SU_HI", StringComparison.Ordinal));
+        Assert.Contains(editor.Changes, c => c.Contains("KARMA", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Clearing_a_box_takes_the_field_out_of_the_save()
     {
