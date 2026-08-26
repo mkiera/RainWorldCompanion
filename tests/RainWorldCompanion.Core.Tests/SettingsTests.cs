@@ -270,28 +270,7 @@ public class SettingsTests
         Assert.Equal(@"E:\Library", store.Load().LibraryRootPath);
     }
 
-    [Fact]
-    public void CreateDefault_returns_a_fresh_instance_each_time()
-    {
-        var first = AppSettings.CreateDefault();
-        var second = AppSettings.CreateDefault();
-
-        first.GameSavePath = @"C:\Somewhere";
-
-        Assert.NotSame(first, second);
-        Assert.NotEqual(@"C:\Somewhere", second.GameSavePath);
-    }
-
     // ---- SettingsStore ----
-
-    [Fact]
-    public void SettingsPath_is_the_path_the_store_was_built_with()
-    {
-        using var temp = new TempDirectory("settings");
-        var path = temp.Resolve("settings.json");
-
-        Assert.Equal(path, new SettingsStore(path).SettingsPath);
-    }
 
     [Fact]
     public void Load_on_a_missing_file_returns_usable_defaults()

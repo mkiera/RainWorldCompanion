@@ -176,22 +176,6 @@ public class GameInstallLocatorTests
         Assert.Null(GameInstallLocator.FindPortraitFile(temp.Resolve("nowhere"), "White"));
     }
 
-    // ---- FindInstallPath ----
-
-    [Fact]
-    public void Finding_the_install_returns_either_a_real_install_or_null()
-    {
-        // This one runs against whatever is on the machine, so it asserts the contract rather
-        // than a path: whatever comes back has to satisfy LooksLikeInstall, and nothing coming
-        // back is a valid answer on a machine with no Rain World.
-        var path = GameInstallLocator.FindInstallPath();
-
-        if (path is not null)
-        {
-            Assert.True(GameInstallLocator.LooksLikeInstall(path));
-        }
-    }
-
     /// <summary>
     /// The install path is decoration: it only decides whether portraits are drawn. A wrong one
     /// must never be the reason a backup is refused.

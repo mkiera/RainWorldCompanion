@@ -338,37 +338,8 @@ public class CampaignDetailTests
 
     // ---- fail-soft ----
 
-    [Fact]
-    public void A_garbage_file_reports_a_parse_error_and_no_campaigns()
-    {
-        using var temp = new TempDirectory();
-        var path = temp.WriteBytes("sav", SyntheticSave.GarbageBytes());
-
-        var metadata = SaveMetadataExtractor.Extract(path, 1);
-
-        AssertFailedSoftly(metadata);
-    }
-
-    [Fact]
-    public void A_zero_byte_file_reports_a_parse_error_and_no_campaigns()
-    {
-        using var temp = new TempDirectory();
-        var path = temp.WriteBytes("sav", Array.Empty<byte>());
-
-        var metadata = SaveMetadataExtractor.Extract(path, 1);
-
-        AssertFailedSoftly(metadata);
-    }
-
-    [Fact]
-    public void A_missing_file_reports_a_parse_error_and_no_campaigns()
-    {
-        using var temp = new TempDirectory();
-
-        var metadata = SaveMetadataExtractor.Extract(temp.Resolve("sav"), 1);
-
-        AssertFailedSoftly(metadata);
-    }
+    // A file the reader cannot parse at all is covered by SaveMetadataExtractorTests, which
+    // asserts the slot number survives the failure as well.
 
     [Fact]
     public void A_record_with_nothing_but_a_slugcat_id_leaves_every_collection_empty()
@@ -420,13 +391,6 @@ public class CampaignDetailTests
         Assert.Empty(campaign.DevourmentStates);
         Assert.Empty(campaign.SwallowedItems);
         Assert.Empty(campaign.HeldItems);
-    }
-
-    private static void AssertFailedSoftly(SlotMetadata metadata)
-    {
-        Assert.False(string.IsNullOrWhiteSpace(metadata.ParseError));
-        Assert.NotNull(metadata.Campaigns);
-        Assert.Empty(metadata.Campaigns);
     }
 
     private static int? PassageProgress(CampaignSummary campaign, string name)

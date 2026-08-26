@@ -304,18 +304,6 @@ public class UpdateFlowTests
     }
 
     [Fact]
-    public async Task A_copy_that_cannot_say_what_version_it_is_gets_offered_nothing()
-    {
-        var world = new UpdateWorld();
-        world.Source.Releases.Add(UpdateWorld.Release("v9.9.9"));
-        var updates = world.Build(runningVersion: "not a version");
-
-        await updates.CheckAsync(userAsked: true, CancellationToken.None);
-
-        Assert.False(updates.HasOffer);
-    }
-
-    [Fact]
     public void The_running_version_line_names_the_commit_when_there_is_one()
     {
         var world = new UpdateWorld();

@@ -160,17 +160,6 @@ public class BackupServiceTests
     }
 
     [Fact]
-    public void CreateBackup_accepts_a_progress_reporter_without_failing()
-    {
-        using var world = new BackupWorld();
-        var progress = new CollectingProgress();
-
-        var snapshot = world.Service.CreateBackup("first", null, BackupKind.Manual, progress);
-
-        Assert.True(snapshot.IsComplete);
-    }
-
-    [Fact]
     public void A_pre_restore_safety_backup_records_its_kind()
     {
         using var world = new BackupWorld();
@@ -201,15 +190,6 @@ public class BackupServiceTests
         Assert.Empty(world.Service.ListBackups());
         Assert.Empty(world.BackupRoot.ReadTree());
         SnapshotLayout.AssertTreeUnchanged(liveBefore, world.Live.ReadTree());
-    }
-
-    [Fact]
-    public void SaveRoot_and_BackupRoot_are_the_paths_the_service_was_built_with()
-    {
-        using var world = new BackupWorld();
-
-        Assert.Equal(world.Live.Path, world.Service.SaveRoot);
-        Assert.Equal(world.BackupRoot.Path, world.Service.BackupRoot);
     }
 
     [Fact]

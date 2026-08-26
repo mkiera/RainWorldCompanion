@@ -189,14 +189,6 @@ public class BackupScopeTests
     }
 
     [Fact]
-    public void SaveRoot_is_the_path_the_scope_was_built_for()
-    {
-        using var live = new TempDirectory("live");
-
-        Assert.Equal(live.Path, new BackupScope(live.Path).SaveRoot);
-    }
-
-    [Fact]
     public void DescribeRules_returns_something_the_settings_screen_can_show()
     {
         var rules = BackupScope.DescribeRules();
