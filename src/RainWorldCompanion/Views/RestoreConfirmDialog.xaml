@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:RainWorldCompanion.Views"
         mc:Ignorable="d"
         Title="Restore backup"
-        Width="760" Height="620" MinWidth="640" MinHeight="520"
+        Width="760" Height="700" MinWidth="640" MinHeight="520"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource Brush.Window}"
@@ -28,6 +29,7 @@
             <RowDefinition Height="1.15*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
@@ -144,10 +146,13 @@
             </Border>
         </Grid>
 
-        <TextBlock Grid.Row="5" Margin="0,14,0,0" TextWrapping="Wrap"
+        <!-- What the save is coming back to, which the file lists above say nothing about. -->
+        <views:ModDiffSection Grid.Row="5" DataContext="{Binding ModDiff}" Margin="0,12,0,0" />
+
+        <TextBlock Grid.Row="6" Margin="0,14,0,0" TextWrapping="Wrap"
                    Text="A safety snapshot of the current save folder is taken first, so this restore can be undone by restoring that snapshot." />
 
-        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Restore" Style="{StaticResource Button.Danger}" Margin="0,0,8,0" Click="OnRestore" />
             <Button x:Name="CancelButton" Content="Cancel" IsDefault="True" IsCancel="True" />
         </StackPanel>

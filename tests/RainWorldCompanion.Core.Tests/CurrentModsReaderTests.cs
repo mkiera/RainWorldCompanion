@@ -198,6 +198,49 @@ public class CurrentModsReaderTests
         Assert.Equal("brokenjson", Assert.Single(machine.Read().Enabled.Mods).Id);
     }
 
+    /// <summary>
+    /// Taken from Push to Meow's Rain Meadow add-on as it ships: the comma after description is
+    /// missing, so a JSON parser refuses the file. The game reads it anyway, and its id is in the
+    /// enabled list to prove it, so falling back to the folder name here would report a mod that
+    /// is plainly installed as gone.
+    /// </summary>
+    [Fact]
+    public void A_modinfo_with_a_comma_missing_is_still_read()
+    {
+        using var machine = new Machine();
+        machine.WorkshopMod("3440923780", """
+            {
+                "id" : "chris_py.meadowMeow",
+                "name" : "Push to Meow - Rain Meadow Compatibility Add-on",
+                "description" : "Adds Rain Meadow compatibility for Push to Meow."
+                "version" : "1.2.2",
+                "requirements" : ["henpemaz_rainmeadow","pushtomeow"]
+            }
+            """);
+        machine.TurnOn("chris_py.meadowMeow");
+
+        ModEntry mod = Assert.Single(machine.Read().Enabled.Mods);
+
+        Assert.Equal("chris_py.meadowMeow", mod.Id);
+        Assert.Equal("Push to Meow - Rain Meadow Compatibility Add-on", mod.Name);
+        Assert.Equal("1.2.2", mod.Version);
+        Assert.Equal("3440923780", mod.WorkshopId);
+    }
+
+    /// <summary>A file with nothing usable in it still falls back rather than inventing.</summary>
+    [Fact]
+    public void A_modinfo_with_no_id_at_all_still_falls_back_to_its_folder_name()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("nameless", "{ \"description\" : \"no id here\" ");
+        machine.TurnOn("nameless");
+
+        ModEntry mod = Assert.Single(machine.Read().Enabled.Mods);
+
+        Assert.Equal("nameless", mod.Id);
+        Assert.Null(mod.Version);
+    }
+
     /// <summary>devtools ships without a version, so a null here has to survive as a null.</summary>
     [Fact]
     public void A_mod_with_no_version_keeps_a_null_version()

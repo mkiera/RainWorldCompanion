@@ -281,11 +281,57 @@ public static class CurrentModsReader
         }
         catch (JsonException)
         {
-            // A mod whose modinfo.json will not parse is still installed, and its folder name is
-            // still worth recording. The game reads it the same way and falls back the same way.
+            // The game's own reader is more forgiving than this one, and real mods rely on it:
+            // Push to Meow's Rain Meadow add-on ships a modinfo.json with a comma missing, and
+            // the game still knows its id, because that id is in the enabled list. Falling back
+            // to the folder name here would report an installed mod as missing.
+            ReadLoosely(text, folderName, mod);
         }
 
         return mod;
+    }
+
+    /// <summary>
+    /// Pulls the three fields out of a modinfo.json that is not quite JSON. Every one of them is
+    /// a plain string at the top level of a flat object, so finding the key and taking the quoted
+    /// text after it gets the same answer a parser would, and this only runs on a file a parser
+    /// has already refused.
+    /// </summary>
+    private static void ReadLoosely(string text, string folderName, ModEntry mod)
+    {
+        mod.Id = LooseString(text, "id") ?? folderName;
+        mod.Name = LooseString(text, "name") ?? mod.Id;
+        mod.Version = LooseString(text, "version");
+    }
+
+    private static string? LooseString(string text, string key)
+    {
+        int at = text.IndexOf('"' + key + '"', StringComparison.OrdinalIgnoreCase);
+        if (at < 0)
+        {
+            return null;
+        }
+
+        int colon = text.IndexOf(':', at + key.Length + 2);
+        if (colon < 0)
+        {
+            return null;
+        }
+
+        int open = text.IndexOf('"', colon + 1);
+        if (open < 0)
+        {
+            return null;
+        }
+
+        int close = text.IndexOf('"', open + 1);
+        if (close < 0)
+        {
+            return null;
+        }
+
+        string value = text[(open + 1)..close].Trim();
+        return value.Length == 0 ? null : value;
     }
 
     private static string? ReadString(JsonElement root, string name)

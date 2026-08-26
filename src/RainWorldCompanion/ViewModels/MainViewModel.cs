@@ -93,6 +93,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     // Whether Rain Meadow is on this machine. The whole online block hangs on it, so a player
     // without the mod never sees a section about it. Re-checked whenever the paths change.
+    /// <summary>The mods on this machine, read with the rest of the refresh. Null before the first one.</summary>
+    private CurrentMods? _currentMods;
+
     private RainMeadowPresence _meadow = RainMeadowPresence.Absent;
 
     // Cancels the background verify sweep when the list is rebuilt or the window closes.
@@ -622,7 +625,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 _liveSizeBytes,
                 _liveFileCount,
                 _liveMeadow,
-                _icons);
+                _icons,
+                _currentMods);
         }
 
         if (SelectedLibraryEntry is { } entry)
@@ -1155,7 +1159,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 source.LiveSlot,
                 WhereItIs(source),
                 target => writer.PlanPutCampaign(target, slice),
-                _meadow.Present);
+                _meadow.Present,
+                // Only for a campaign coming from somewhere else. Live to live is one machine
+                // against itself, and a comparison there says nothing at some length.
+                source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null);
         }
         catch (Exception ex)
         {
@@ -1454,6 +1461,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     private ModListSnapshot? RecordedModsOfSelection()
         => SelectedBackup?.Snapshot.Manifest?.Mods ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
+
+    /// <summary>
+    /// A recorded list against the mods read by the last refresh. Null before the first refresh,
+    /// which is the same "no way to look" the plans mean by it.
+    /// </summary>
+    private ModListDiff? DiffAgainstNow(ModListSnapshot? recorded)
+        => _currentMods is null ? null : ModListDiff.Compare(recorded, _currentMods);
 
     /// <summary>What to call the file a campaign is in, for example "sav2" or "backup 2026-08-24".</summary>
     private static string WhereItIs(CampaignSource source)
@@ -2739,10 +2753,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 // the worker with the rest of the disk work rather than on the dispatcher.
                 var meadow = RainMeadowDetector.Detect(service.SaveRoot, _settings.GameInstallPath);
 
-                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow);
+                // Reads the options file and walks the mods and workshop folders, so it belongs
+                // out here too. This is the "now" side of every mod comparison the app makes.
+                var mods = CurrentModsReader.Read(service.SaveRoot, _settings.GameInstallPath);
+
+                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods);
             });
 
             _meadow = data.Meadow;
+            _currentMods = data.Mods;
             _liveSlotData = data.Slots;
             _liveSizeBytes = data.Size;
             _liveFileCount = data.Count;
