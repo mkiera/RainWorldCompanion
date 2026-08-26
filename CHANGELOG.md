@@ -6,6 +6,12 @@ has not been released yet sits under Unreleased.
 
 ## Unreleased
 
+- Every backup and library save records the mods and game version it was
+  played with, and carries that record inside a `.rwsave` when it is exported.
+- The panel has a MODS section, and restoring, loading or sending a campaign
+  says how this machine has moved since those bytes were written: what is
+  missing, what is turned off, and what sits at another version. A missing
+  workshop mod gets a link to its page. None of it blocks the operation.
 - The app says what a version changed, once, the first time it runs on it.
 - The Updates window shows a release's notes in place. The button that used to
   send you to the release page in a browser now opens them under the row, and
