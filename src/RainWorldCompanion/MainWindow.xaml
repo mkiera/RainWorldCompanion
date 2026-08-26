@@ -1337,6 +1337,19 @@
                                Style="{StaticResource Text.Title}" Margin="9,0,0,0" VerticalAlignment="Center" />
                     <TextBlock DockPanel.Dock="Left" Text="{Binding CampaignCountText}"
                                Style="{StaticResource Text.Muted}" Margin="10,0,0,0" VerticalAlignment="Center" />
+
+                    <!-- Only the live save folder, and only a slot with something in it. A backup
+                         and a library save are copies taken at a moment, and a slot already empty
+                         has nothing to take. -->
+                    <Button DockPanel.Dock="Right" Content="Delete slot" Margin="10,0,0,0"
+                            Style="{StaticResource Button.Small}"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Deletes every campaign in this slot. The file stays, and so do the map and the progression record unless you ask for them."
+                            Command="{Binding DataContext.DeleteSlotCommand,
+                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}" />
+
                     <TextBlock Text="{Binding FileName}" Style="{StaticResource Text.Tiny}"
                                HorizontalAlignment="Right" VerticalAlignment="Center" />
                 </DockPanel>

@@ -78,6 +78,8 @@ public sealed class SlotViewModel
             ? new SaveSlotRef(slot.Realm, slot.Slot)
             : null;
 
+        EditableSlot = editableSlot;
+
         CampaignSource? source = BuildSource(
             slot, editableSlot, sourceDirectory, sourceLabel, sourceFileOverride);
 
@@ -116,6 +118,20 @@ public sealed class SlotViewModel
     public IReadOnlyList<PortraitViewModel> Portraits { get; }
 
     public IReadOnlyList<CampaignViewModel> Campaigns { get; }
+
+    /// <summary>
+    /// The slot these campaigns can be written to, or null when they cannot be. Only the live save
+    /// folder passes one, and only for a slot number the game itself has.
+    /// </summary>
+    public SaveSlotRef? EditableSlot { get; }
+
+    /// <summary>
+    /// True when this slot can be deleted, which means every campaign in it going at once.
+    ///
+    /// A slot with nothing in it is left off rather than offered and refused: the plan would say
+    /// there is nothing to delete, and a button that only ever reports that is one to not draw.
+    /// </summary>
+    public bool CanDelete => EditableSlot is not null && Campaigns.Count > 0;
 
     public bool HasCampaigns => Campaigns.Count > 0;
 
