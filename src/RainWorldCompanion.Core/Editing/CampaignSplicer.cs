@@ -259,15 +259,16 @@ public static class CampaignSplicer
     }
 
     /// <summary>
-    /// Takes out the map records the whole slot shares, which the game writes when modded regions
-    /// are off.
+    /// Takes out every map record in a payload, whoever it belongs to.
     ///
-    /// These belong to no campaign, so removing one campaign never touches them. Emptying a slot of
-    /// every campaign is the case where that stops being true: a map shared by nothing is not shared
-    /// at all, and leaving it is what makes a slot still report explored regions after everything
-    /// that explored them has gone.
+    /// One campaign leaving takes only its own map, because the others are still there to read
+    /// theirs. Emptying a slot is the case where that stops being true: with every campaign gone,
+    /// every map in the slot belongs to nobody. That includes the bare records the whole slot
+    /// shares, which the game writes when modded regions are off and which no campaign has ever
+    /// owned, and it includes a map left orphaned by an earlier delete that took the campaign and
+    /// left its map behind.
     /// </summary>
-    public static string RemoveSharedMaps(string? payload, out IReadOnlyList<string> removed)
+    public static string RemoveEveryMap(string? payload, out IReadOnlyList<string> removed)
     {
         if (string.IsNullOrEmpty(payload))
         {
@@ -280,7 +281,7 @@ public static class CampaignSplicer
 
         for (int i = 0; i < slots.Count; i++)
         {
-            if (IsSharedMap(slots[i]))
+            if (IsAnyMap(slots[i]))
             {
                 gone.Add(slots[i]!);
                 slots[i] = null;
@@ -290,6 +291,9 @@ public static class CampaignSplicer
         removed = gone;
         return Rebuild(slots, Array.Empty<string>());
     }
+
+    /// <summary>True for a map record of either kind, one a slugcat owns or one the slot shares.</summary>
+    public static bool IsAnyMap(string? record) => IsSharedMap(record) || MapOwnerOf(record) is not null;
 
     /// <summary>
     /// Which slugcat a campaign record belongs to, read the way the game reads it: the value of the

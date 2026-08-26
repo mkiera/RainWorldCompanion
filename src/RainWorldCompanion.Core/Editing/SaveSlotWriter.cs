@@ -161,7 +161,7 @@ public sealed record SlotDeletePlan(
 
         string what = Campaigns.Count switch
         {
-            0 => $"Takes nothing out of {TargetFileName}",
+            0 => $"Takes what is left in {TargetFileName}",
             1 => $"Takes {Campaigns[0]} out of {TargetFileName}",
             _ => string.Format(
                 CultureInfo.InvariantCulture,
@@ -179,8 +179,13 @@ public sealed record SlotDeletePlan(
                 MapsRemoved);
         }
 
-        return Depth == SlotDeleteDepth.CampaignsAndMap
-            ? what + "."
+        if (Depth == SlotDeleteDepth.CampaignsAndMap)
+        {
+            return what + ".";
+        }
+
+        return Campaigns.Count == 0
+            ? what + ", and leaves the map behind."
             : what + ", and leaves the map they explored behind.";
     }
 

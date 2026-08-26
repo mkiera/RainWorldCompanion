@@ -279,6 +279,87 @@ public class SlotDeleteTests
         Assert.Contains("the game keeps inside sav2", plan.WhatStays, StringComparison.Ordinal);
     }
 
+    // ---- a slot with data but no campaign ----
+
+    /// <summary>
+    /// What the reported case looked like: a slot played and then cleared of its campaigns, still
+    /// holding the map and the progression record. There is plainly something to delete.
+    /// </summary>
+    [Fact]
+    public void A_slot_with_no_campaign_left_can_still_be_emptied_out()
+    {
+        using var world = new DeleteWorld();
+        world.Writer.Write(world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Campaigns));
+
+        SlotMetadata between = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.Empty(between.Campaigns);
+        Assert.True(between.RecordCount > 0);
+
+        SlotDeletePlan plan = world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Everything);
+        Assert.True(plan.CanWrite);
+        Assert.Empty(plan.Campaigns);
+        Assert.Contains("Empties sav2 out entirely", plan.Describe(), StringComparison.Ordinal);
+
+        Assert.True(world.Writer.Write(plan).Success);
+
+        SlotMetadata after = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.Equal(0, after.RecordCount);
+        Assert.True(after.ChecksumValid);
+    }
+
+    [Fact]
+    public void Taking_the_map_out_of_a_slot_with_no_campaign_says_what_it_is_taking()
+    {
+        using var world = new DeleteWorld();
+        world.Writer.Write(world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Campaigns));
+
+        SlotDeletePlan plan = world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.CampaignsAndMap);
+
+        Assert.True(plan.CanWrite);
+        Assert.Contains("Takes what is left in sav2", plan.Describe(), StringComparison.Ordinal);
+        Assert.True(world.Writer.Write(plan).Success);
+
+        string payload = world.PayloadOf("sav2");
+        Assert.DoesNotContain("MAP", payload, StringComparison.Ordinal);
+        Assert.Contains("MISCPROG", payload, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// What the window leans on when it opens. It offers the least depth that would actually do
+    /// something, so at least one of the three has to be writable for a slot that still holds
+    /// anything. Opening on a depth that changes nothing is what put an error over the window
+    /// before it could be read.
+    /// </summary>
+    [Fact]
+    public void Some_depth_always_works_while_the_slot_still_holds_anything()
+    {
+        using var world = new DeleteWorld();
+        world.Writer.Write(world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Campaigns));
+
+        Dictionary<SlotDeleteDepth, SlotDeletePlan> plans = Enum
+            .GetValues<SlotDeleteDepth>()
+            .ToDictionary(depth => depth, depth => world.Writer.PlanDeleteSlot(LocalTwo, depth));
+
+        // The campaigns have already gone, so taking them again would change nothing.
+        Assert.False(plans[SlotDeleteDepth.Campaigns].CanWrite);
+
+        // The map and the progression record have not, so these still have work to do.
+        Assert.True(plans[SlotDeleteDepth.CampaignsAndMap].CanWrite);
+        Assert.True(plans[SlotDeleteDepth.Everything].CanWrite);
+    }
+
+    [Fact]
+    public void No_depth_works_once_the_slot_holds_nothing_at_all()
+    {
+        using var world = new DeleteWorld();
+        world.Writer.Write(world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Everything));
+
+        foreach (SlotDeleteDepth depth in Enum.GetValues<SlotDeleteDepth>())
+        {
+            Assert.False(world.Writer.PlanDeleteSlot(LocalTwo, depth).CanWrite, depth.ToString());
+        }
+    }
+
     // ---- the map the whole slot shares ----
 
     /// <summary>

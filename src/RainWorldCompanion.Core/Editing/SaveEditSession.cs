@@ -93,6 +93,9 @@ public sealed class SaveEditSession
     /// <summary>Change key for emptying the slot, which is one thing however much it takes.</summary>
     private const string EmptiedKey = "slot|emptied";
 
+    /// <summary>Change key for taking the map, which is one thing however many regions it covers.</summary>
+    private const string MapKey = "slot|map";
+
     private static readonly DelimitedFields Fields = DelimitedFields.Record;
 
     private readonly ContainerText _container;
@@ -472,16 +475,25 @@ public sealed class SaveEditSession
 
         if (includeMaps)
         {
-            // Nothing is left to share these with, so a slot that kept them would still report
+            // Every map left in the slot at this point belongs to nobody: the campaigns that owned
+            // them have just gone, the bare ones were never owned, and one orphaned by an earlier
+            // delete has been unowned since. A slot that kept any of them would still report
             // explored regions after everything that explored them had gone.
-            string trimmed = CampaignSplicer.RemoveSharedMaps(_payload, out IReadOnlyList<string> shared);
+            string trimmed = CampaignSplicer.RemoveEveryMap(_payload, out IReadOnlyList<string> orphaned);
 
-            if (shared.Count > 0)
+            if (orphaned.Count > 0)
             {
-                _recordsRemoved.AddRange(shared);
+                _recordsRemoved.AddRange(orphaned);
                 _splices++;
                 _payload = trimmed;
-                maps += shared.Count;
+                maps += orphaned.Count;
+
+                // The write refuses a plan that describes no change, so taking maps has to say so
+                // in its own right. A slot whose campaigns had already gone has nothing else to say.
+                Note(MapKey, "This slot", orphaned.Count == 1
+                    ? "took out the one region of map left in it"
+                    : $"took out the {orphaned.Count} regions of map left in it");
+
                 Changed?.Invoke(this, EventArgs.Empty);
             }
         }
@@ -539,18 +551,9 @@ public sealed class SaveEditSession
             _entriesToClear.Add(GameBackupKey);
         }
 
-        string note = names.Count == 0
+        Note(EmptiedKey, "This slot", names.Count == 0
             ? "emptied this slot out entirely"
-            : "emptied this slot out entirely, campaigns and all";
-
-        if (_changes.TryGetValue(EmptiedKey, out TrackedChange? existing))
-        {
-            existing.Note = note;
-        }
-        else
-        {
-            _changes[EmptiedKey] = new TrackedChange(_changeOrder++, "This slot", note);
-        }
+            : "emptied this slot out entirely, campaigns and all");
 
         Changed?.Invoke(this, EventArgs.Empty);
 
@@ -649,6 +652,21 @@ public sealed class SaveEditSession
         }
 
         _changes[changeKey] = new TrackedChange(_changeOrder++, Name(campaign), label, before, after);
+    }
+
+    /// <summary>
+    /// Records one thing in the caller words, replacing an earlier note under the same key rather
+    /// than adding a second line for the same move.
+    /// </summary>
+    private void Note(string changeKey, string subject, string note)
+    {
+        if (_changes.TryGetValue(changeKey, out TrackedChange? existing))
+        {
+            existing.Note = note;
+            return;
+        }
+
+        _changes[changeKey] = new TrackedChange(_changeOrder++, subject, note);
     }
 
     private static string PartKey(CampaignRecordRef campaign, string key, int occurrence)

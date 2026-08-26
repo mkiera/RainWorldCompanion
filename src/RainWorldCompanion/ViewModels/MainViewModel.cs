@@ -1302,12 +1302,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         SaveSlotWriter writer = backups.SlotWriter;
-        SlotDeletePlan plan;
+        Dictionary<SlotDeleteDepth, SlotDeletePlan> plans;
 
         BeginBusy("Reading " + target.FileName, "Working out what would go");
         try
         {
-            plan = await Task.Run(() => writer.PlanDeleteSlot(target, SlotDeleteDepth.Campaigns));
+            // Every depth up front, so the window can grey out a row that would change nothing
+            // rather than letting it be picked and then refuse.
+            plans = await Task.Run(() => Enum
+                .GetValues<SlotDeleteDepth>()
+                .ToDictionary(depth => depth, depth => writer.PlanDeleteSlot(target, depth)));
         }
         catch (Exception ex)
         {
@@ -1318,8 +1322,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         EndBusy();
 
-        if (!plan.CanWrite)
+        // Nothing any depth could do means the slot is already as empty as this app can make it.
+        if (!plans.Values.Any(candidate => candidate.CanWrite))
         {
+            SlotDeletePlan plan = plans[SlotDeleteDepth.Everything];
+
             Report(
                 "Nothing in " + target.FileName + " was deleted.\n\n"
                 + FormatList(plan.Problems.Count > 0 ? plan.Problems : plan.Write.Problems),
@@ -1327,9 +1334,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // Replanning on the map checkbox reads the slot again, which is what keeps the window from
-        // describing one thing and writing another.
-        var dialog = new DeleteSlotDialog(plan, depth => writer.PlanDeleteSlot(target, depth));
+        var dialog = new DeleteSlotDialog(plans);
 
         if (ShowDialog(dialog) != true)
         {

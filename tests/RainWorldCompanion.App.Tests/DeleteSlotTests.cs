@@ -22,13 +22,38 @@ public class DeleteSlotTests
         Assert.Equal(new SaveSlotRef(SaveRealm.Local, 2), slot.EditableSlot);
     }
 
+    /// <summary>
+    /// A slot the game has played and had its campaign wiped from still holds the map it explored
+    /// and its progression record. That is real data, and deleting all of it is exactly what the
+    /// button is for, so counting campaigns was the wrong test.
+    /// </summary>
     [Fact]
-    public void A_live_slot_holding_nothing_does_not()
+    public void A_live_slot_with_data_but_no_campaign_still_offers_it()
     {
-        SlotViewModel slot = Panels.Live(Panels.Slot(2, campaigns: 0)).Slots[0];
+        SlotViewModel slot = Panels.Live(Panels.Slot(2, campaigns: 0, recordCount: 4)).Slots[0];
+
+        Assert.Empty(slot.Campaigns);
+        Assert.True(slot.CanDelete);
+    }
+
+    [Fact]
+    public void A_live_slot_holding_no_records_at_all_does_not()
+    {
+        SlotViewModel slot = Panels.Live(Panels.Slot(2, campaigns: 0, recordCount: 0)).Slots[0];
 
         Assert.False(slot.CanDelete);
         Assert.NotNull(slot.EditableSlot);
+    }
+
+    /// <summary>
+    /// A manifest written before the count was recorded carries no value for it. Such a slot falls
+    /// back to what its campaigns say rather than claiming there is nothing there.
+    /// </summary>
+    [Fact]
+    public void A_slot_that_never_recorded_a_count_falls_back_to_its_campaigns()
+    {
+        Assert.True(Panels.Live(Panels.Slot(2, recordCount: null)).Slots[0].CanDelete);
+        Assert.False(Panels.Live(Panels.Slot(2, campaigns: 0, recordCount: null)).Slots[0].CanDelete);
     }
 
     [Fact]
