@@ -1307,7 +1307,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginBusy("Reading " + target.FileName, "Working out what would go");
         try
         {
-            plan = await Task.Run(() => writer.PlanDeleteSlot(target, includeMaps: false));
+            plan = await Task.Run(() => writer.PlanDeleteSlot(target, SlotDeleteDepth.Campaigns));
         }
         catch (Exception ex)
         {
@@ -1329,14 +1329,14 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         // Replanning on the map checkbox reads the slot again, which is what keeps the window from
         // describing one thing and writing another.
-        var dialog = new DeleteSlotDialog(plan, takeTheMap => writer.PlanDeleteSlot(target, takeTheMap));
+        var dialog = new DeleteSlotDialog(plan, depth => writer.PlanDeleteSlot(target, depth));
 
         if (ShowDialog(dialog) != true)
         {
             return;
         }
 
-        bool takeTheMap = dialog.TakeTheMap;
+        SlotDeleteDepth depth = dialog.ChosenDepth;
         var progress = new Progress<string>(message => BusyMessage = message);
 
         SaveWriteResult? result = null;
@@ -1346,7 +1346,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         try
         {
             result = await Task.Run(() => writer.Write(
-                writer.PlanDeleteSlot(target, takeTheMap),
+                writer.PlanDeleteSlot(target, depth),
                 progress,
                 CancellationToken.None));
         }

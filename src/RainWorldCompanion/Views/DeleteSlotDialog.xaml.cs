@@ -25,17 +25,17 @@ namespace RainWorldCompanion.Views;
 /// </summary>
 public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
 {
-    private readonly Func<bool, SlotDeletePlan> _replan;
+    private readonly Func<SlotDeleteDepth, SlotDeletePlan> _replan;
 
     private SlotDeletePlan _plan;
-    private bool _takeTheMap;
+    private SlotDeleteDepth _depth = SlotDeleteDepth.Campaigns;
 
-    /// <param name="plan">What deleting the slot would do, with the map left in place.</param>
+    /// <param name="plan">What deleting the campaigns alone would do, which is where this opens.</param>
     /// <param name="replan">
-    /// Asks Core again when the map checkbox moves. Every side of this window comes from one of
-    /// those answers, so it cannot disagree with the write.
+    /// Asks Core again when the choice moves. Every side of this window comes from one of those
+    /// answers, so it cannot disagree with the write.
     /// </param>
-    public DeleteSlotDialog(SlotDeletePlan plan, Func<bool, SlotDeletePlan> replan)
+    public DeleteSlotDialog(SlotDeletePlan plan, Func<SlotDeleteDepth, SlotDeletePlan> replan)
     {
         _plan = plan;
         _replan = replan;
@@ -49,21 +49,28 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>Whether the map discovery goes with the campaigns. Read after the dialog closes.</summary>
-    public bool TakeTheMap
-    {
-        get => _takeTheMap;
-        set
-        {
-            if (value == _takeTheMap)
-            {
-                return;
-            }
+    /// <summary>How much goes. Read after the dialog closes.</summary>
+    public SlotDeleteDepth ChosenDepth => _depth;
 
-            _takeTheMap = value;
-            _plan = _replan(value);
-            RaiseAll();
-        }
+    // The three rows bind two way rather than to a command, because a screen reader selecting a
+    // radio button sets its checked state directly and raises no click.
+
+    public bool JustTheCampaigns
+    {
+        get => _depth == SlotDeleteDepth.Campaigns;
+        set => Choose(value, SlotDeleteDepth.Campaigns);
+    }
+
+    public bool TheCampaignsAndTheMap
+    {
+        get => _depth == SlotDeleteDepth.CampaignsAndMap;
+        set => Choose(value, SlotDeleteDepth.CampaignsAndMap);
+    }
+
+    public bool AllOfIt
+    {
+        get => _depth == SlotDeleteDepth.Everything;
+        set => Choose(value, SlotDeleteDepth.Everything);
     }
 
     public string HeadlineText => _plan.Campaigns.Count == 1
@@ -82,11 +89,21 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
 
     public string StaysText => _plan.WhatStays;
 
-    public string MapChoiceText => "Take the map they explored as well";
+    public string JustTheCampaignsText => "The campaigns only, keeping the map and the progression record";
+
+    public string TheCampaignsAndTheMapText => "The campaigns and the map, keeping the progression record";
+
+    public string AllOfItText => "All of it, leaving the slot as it was before it was ever played";
+
+    public bool HasCampaigns => _plan.Campaigns.Count > 0;
+
+    public Visibility CampaignsVisibility =>
+        HasCampaigns ? Visibility.Visible : Visibility.Collapsed;
 
     public string SafetyText =>
         "The whole save folder is copied before " + _plan.TargetFileName + " is written, and the copy "
-        + "is listed under Backups. Restoring it puts every save back as it is now.";
+        + "is listed under Backups. Restoring it puts every save back as it is now, whichever of these "
+        + "you pick.";
 
     public bool CanDelete => _plan.CanWrite;
 
@@ -95,13 +112,27 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
     public Visibility BlockedVisibility =>
         BlockedReason.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
+    private void Choose(bool selected, SlotDeleteDepth depth)
+    {
+        if (!selected || _depth == depth)
+        {
+            return;
+        }
+
+        _depth = depth;
+        _plan = _replan(depth);
+        RaiseAll();
+    }
+
     private void RaiseAll()
     {
         foreach (string name in new[]
                  {
-                     nameof(TakeTheMap), nameof(HeadlineText), nameof(TargetText), nameof(ListHeader),
-                     nameof(Campaigns), nameof(EffectText), nameof(StaysText), nameof(SafetyText),
-                     nameof(CanDelete), nameof(BlockedReason), nameof(BlockedVisibility),
+                     nameof(JustTheCampaigns), nameof(TheCampaignsAndTheMap), nameof(AllOfIt),
+                     nameof(HeadlineText), nameof(TargetText), nameof(ListHeader), nameof(Campaigns),
+                     nameof(HasCampaigns), nameof(CampaignsVisibility), nameof(EffectText),
+                     nameof(StaysText), nameof(SafetyText), nameof(CanDelete), nameof(BlockedReason),
+                     nameof(BlockedVisibility),
                  })
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

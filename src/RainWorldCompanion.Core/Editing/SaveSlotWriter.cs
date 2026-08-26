@@ -135,14 +135,30 @@ public sealed record SlotDeletePlan(
     string TargetFileName,
     IReadOnlyList<string> Campaigns,
     int MapsRemoved,
-    bool TakingTheMap,
+    SlotDeleteDepth Depth,
+    int OtherRecordsRemoved,
+    bool ClearingTheGamesOwnCopy,
     IReadOnlyList<string> Problems)
 {
     public bool CanWrite => Problems.Count == 0 && Write.CanWrite;
 
-    /// <summary>One line saying what this empties out of the slot.</summary>
+    /// <summary>True when the slot is being left as empty as one never played.</summary>
+    public bool IsTotal => Depth == SlotDeleteDepth.Everything;
+
+    /// <summary>One line saying what this takes out of the slot.</summary>
     public string Describe()
     {
+        if (IsTotal)
+        {
+            return Campaigns.Count == 0
+                ? $"Empties {TargetFileName} out entirely, leaving it as it was before it was ever played."
+                : string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Empties {0} out entirely: {1}, the map, the progression record and everything else in it.",
+                    TargetFileName,
+                    Campaigns.Count == 1 ? Campaigns[0] : Campaigns.Count + " campaigns");
+        }
+
         string what = Campaigns.Count switch
         {
             0 => $"Takes nothing out of {TargetFileName}",
@@ -158,23 +174,36 @@ public sealed record SlotDeletePlan(
         {
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "{0}, and the {1} regions of map they explored.",
+                "{0}, and the {1} regions of map it holds.",
                 what,
                 MapsRemoved);
         }
 
-        return TakingTheMap
+        return Depth == SlotDeleteDepth.CampaignsAndMap
             ? what + "."
             : what + ", and leaves the map they explored behind.";
     }
 
     /// <summary>
-    /// What the slot still holds afterwards. Worth saying out loud, because a slot emptied this way
-    /// is not an untouched one and the game will not show it as new.
+    /// What the slot still holds afterwards. Worth saying out loud, because a slot cleared of its
+    /// campaigns is not an untouched one and the game will not treat it as new.
     /// </summary>
-    public string WhatStays => TakingTheMap
-        ? $"{TargetFileName} keeps its progression record, so the game still counts what it has seen."
-        : $"{TargetFileName} keeps the map and its progression record, so the game still counts what it has seen.";
+    public string WhatStays
+    {
+        get
+        {
+            if (IsTotal)
+            {
+                return ClearingTheGamesOwnCopy
+                    ? $"Nothing stays. The copy of the old save the game keeps inside {TargetFileName} goes as well."
+                    : "Nothing stays.";
+            }
+
+            return Depth == SlotDeleteDepth.CampaignsAndMap
+                ? $"{TargetFileName} keeps its progression record, so the game still counts what it has seen."
+                : $"{TargetFileName} keeps the map and its progression record, so the game still counts what it has seen.";
+        }
+    }
 
     internal static SlotDeletePlan Refused(
         string filePath,
@@ -186,6 +215,8 @@ public sealed record SlotDeletePlan(
             target,
             targetFileName,
             Array.Empty<string>(),
+            0,
+            SlotDeleteDepth.Campaigns,
             0,
             false,
             problems);
@@ -379,7 +410,7 @@ public sealed class SaveSlotWriter
     /// Whether each slugcat's map discovery goes with its campaign. The game's own wipe drops the
     /// map, so true is the closer match; false leaves the slot remembering everywhere it has been.
     /// </param>
-    public SlotDeletePlan PlanDeleteSlot(SaveSlotRef target, bool includeMaps)
+    public SlotDeletePlan PlanDeleteSlot(SaveSlotRef target, SlotDeleteDepth depth)
     {
         SlotEdit open = OpenSlot(target);
 
@@ -389,7 +420,7 @@ public sealed class SaveSlotWriter
         }
 
         SaveEditSession session = open.Session!;
-        SlotDeleteReport wipe = session.DeleteCampaigns(includeMaps);
+        SlotDeleteReport gone = session.DeleteCampaigns(depth);
 
         if (!session.IsDirty)
         {
@@ -397,16 +428,18 @@ public sealed class SaveSlotWriter
                 open.Side.FullPath,
                 target,
                 open.Name,
-                $"{open.Name} holds no campaign, so there is nothing in it to delete.");
+                $"{open.Name} is already as empty as it can be, so there is nothing in it to delete.");
         }
 
         return new SlotDeletePlan(
             session.BuildWritePlan(),
             target,
             open.Name,
-            wipe.Campaigns,
-            wipe.MapsRemoved,
-            includeMaps,
+            gone.Campaigns,
+            gone.MapsRemoved,
+            depth,
+            gone.OtherRecordsRemoved,
+            gone.ClearedTheGamesOwnCopy,
             Array.Empty<string>());
     }
 

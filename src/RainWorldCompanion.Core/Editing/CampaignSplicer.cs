@@ -259,6 +259,39 @@ public static class CampaignSplicer
     }
 
     /// <summary>
+    /// Takes out the map records the whole slot shares, which the game writes when modded regions
+    /// are off.
+    ///
+    /// These belong to no campaign, so removing one campaign never touches them. Emptying a slot of
+    /// every campaign is the case where that stops being true: a map shared by nothing is not shared
+    /// at all, and leaving it is what makes a slot still report explored regions after everything
+    /// that explored them has gone.
+    /// </summary>
+    public static string RemoveSharedMaps(string? payload, out IReadOnlyList<string> removed)
+    {
+        if (string.IsNullOrEmpty(payload))
+        {
+            removed = Array.Empty<string>();
+            return payload ?? "";
+        }
+
+        var slots = new List<string?>(Split(payload));
+        var gone = new List<string>();
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (IsSharedMap(slots[i]))
+            {
+                gone.Add(slots[i]!);
+                slots[i] = null;
+            }
+        }
+
+        removed = gone;
+        return Rebuild(slots, Array.Empty<string>());
+    }
+
+    /// <summary>
     /// Which slugcat a campaign record belongs to, read the way the game reads it: the value of the
     /// first field of the body, whatever that field is called.
     /// </summary>
