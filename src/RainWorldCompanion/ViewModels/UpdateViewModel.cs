@@ -53,6 +53,12 @@ public sealed partial class UpdateViewModel : ObservableObject
     /// </summary>
     private string? _dismissed;
 
+    /// <summary>
+    /// The version whose notes have already been shown, as last read from or written to settings.
+    /// Kept here as well as on disk so the check can answer without a file read.
+    /// </summary>
+    private string _lastSeenChangelog = "";
+
     public UpdateViewModel(
         BuildStamp build,
         IReleaseSource source,
@@ -114,6 +120,19 @@ public sealed partial class UpdateViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(LastCheckedText))]
     private DateTimeOffset? lastCheckedUtc;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasWhatsNew))]
+    private string whatsNewNotes = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WhatsNewTitle))]
+    private string whatsNewVersion = "";
+
+    /// <summary>True when this launch is the first on a version and has notes to show for it.</summary>
+    public bool HasWhatsNew => WhatsNewNotes.Length != 0;
+
+    public string WhatsNewTitle => $"What's new in {WhatsNewVersion}";
+
     /// <summary>True when an offer is on screen and has not been waved away.</summary>
     public bool HasOffer => Offer is not null;
 
@@ -146,6 +165,7 @@ public sealed partial class UpdateViewModel : ObservableObject
         Channel = UpdateChannels.Parse(settings.UpdateChannel);
         AutoCheck = settings.AutoCheckUpdates;
         LastCheckedUtc = settings.LastUpdateCheckUtc;
+        _lastSeenChangelog = settings.LastSeenChangelogVersion ?? "";
     }
 
     /// <summary>
@@ -226,6 +246,79 @@ public sealed partial class UpdateViewModel : ObservableObject
         {
             IsChecking = false;
         }
+    }
+
+    /// <summary>
+    /// Shows what changed, once, the first time the app runs on a version it has not run before.
+    ///
+    /// Backward-looking, and so nothing to do with the offer: that says a newer build exists, this
+    /// says what the build already running brought with it.
+    ///
+    /// Costs no request in the ordinary case. The version comparison is local, and only a version
+    /// that actually changed since the last launch goes on to ask GitHub anything, which happens
+    /// once per update rather than once per launch. A failure is swallowed: nobody asked for this,
+    /// so there is nothing to report, and leaving the setting alone means the next launch retries.
+    /// </summary>
+    public async Task CheckForWhatsNewAsync(CancellationToken cancellationToken)
+    {
+        var running = Build.Version;
+        if (running.Length == 0 || _lastSeenChangelog == running)
+        {
+            return;
+        }
+
+        // Nothing was recorded, so this is a first run or a copy installed before this existed.
+        // Recording it silently is what keeps a fresh install from opening on a changelog.
+        if (_lastSeenChangelog.Length == 0 || Build.ParsedVersion is not { } version)
+        {
+            RememberChangelogSeen(running);
+            return;
+        }
+
+        try
+        {
+            var releases = await _source.GetReleasesAsync(cancellationToken);
+
+            // The widest list, then an exact match, because the running build may be a
+            // pre-release and the stable list would not hold it.
+            var match = UpdatePicker
+                .ForChannel(releases, UpdateChannel.Prerelease)
+                .FirstOrDefault(offer => offer.Version == version);
+
+            if (match is null || !match.HasNotes)
+            {
+                // A branch build has no release of its own, and a release can carry no body.
+                // Both are settled rather than retried every launch.
+                RememberChangelogSeen(running);
+                return;
+            }
+
+            WhatsNewVersion = match.VersionText;
+            WhatsNewNotes = match.Notes;
+        }
+        catch (OperationCanceledException)
+        {
+            // The window closed while the check was in flight.
+        }
+        catch
+        {
+            // Offline, or GitHub is unhappy. The setting is left alone, so this comes back.
+        }
+    }
+
+    /// <summary>Puts the notes away and records the version, so they do not come back.</summary>
+    [RelayCommand]
+    private void DismissWhatsNew()
+    {
+        RememberChangelogSeen(Build.Version);
+        WhatsNewNotes = "";
+        WhatsNewVersion = "";
+    }
+
+    private void RememberChangelogSeen(string version)
+    {
+        _lastSeenChangelog = version;
+        _persist(settings => settings.LastSeenChangelogVersion = version);
     }
 
     [RelayCommand]

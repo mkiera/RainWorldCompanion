@@ -6,6 +6,7 @@ has not been released yet sits under Unreleased.
 
 ## Unreleased
 
+- The app says what a version changed, once, the first time it runs on it.
 - The Updates window shows a release's notes in place. The button that used to
   send you to the release page in a browser now opens them under the row, and
   the page is still one press away inside.

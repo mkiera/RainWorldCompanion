@@ -142,7 +142,7 @@ internal sealed class UpdateWorld
             () => Now);
 
     /// <summary>A release carrying a well-formed installer asset.</summary>
-    public static ReleaseCandidate Release(string tag, bool prerelease = false) => new(
+    public static ReleaseCandidate Release(string tag, bool prerelease = false, string notes = "") => new(
         tag,
         "https://github.com/mkiera/RainWorldCompanion/releases/tag/" + tag,
         false,
@@ -151,5 +151,14 @@ internal sealed class UpdateWorld
         [new ReleaseAsset(
             "RainWorldCompanion-Setup.exe",
             "https://objects.githubusercontent.com/rwc/setup.exe",
-            45_000_000)]);
+            45_000_000)],
+        notes);
+
+    /// <summary>
+    /// A release body shaped the way the release workflow writes one: this tag's changelog
+    /// section, the marker, then the install blurb that only matters to somebody who has not got
+    /// the app yet.
+    /// </summary>
+    public static string Body(string section) =>
+        section + "\r\n\r\n" + ReleaseNotes.EndMarker + "\r\n### Installation\r\nRun the setup.";
 }
