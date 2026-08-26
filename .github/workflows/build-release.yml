@@ -63,6 +63,80 @@ jobs:
           IFS=. read -r MAJOR MINOR PATCH _ <<< "$NUMERIC"
           echo "VERNUM=${MAJOR:-0}.${MINOR:-0}.${PATCH:-0}.0" >> $GITHUB_OUTPUT
 
+      # Ahead of the test and the publish for the same reason those sit ahead of the release: a
+      # tag nobody wrote an entry for should cost seconds, not the whole build. The notes this
+      # writes are read by the release page and by the app's own what's-new banner, so a release
+      # that shipped the boilerplate alone would leave both saying nothing.
+      - name: Read the release notes out of the changelog
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          if (-not (Test-Path 'CHANGELOG.md')) {
+            Write-Host "::error::CHANGELOG.md is missing, so there are no notes to publish for $version."
+            exit 1
+          }
+
+          $lines = @(Get-Content 'CHANGELOG.md')
+
+          # The version, then whitespace or the end of the line. Without that boundary, looking for
+          # 1.2.0 also matches the "## 1.2.0-beta.1" heading above it and a stable release ships
+          # its pre-release's notes.
+          $heading = '^##\s+' + [regex]::Escape($version) + '(\s|$)'
+
+          $start = -1
+          for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match $heading) { $start = $i; break }
+          }
+
+          if ($start -lt 0) {
+            Write-Host "::error::CHANGELOG.md has no '## $version' section. Rename the Unreleased heading to $version before tagging."
+            exit 1
+          }
+
+          $body = [System.Collections.Generic.List[string]]::new()
+          for ($i = $start + 1; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^##\s') { break }
+            $body.Add($lines[$i])
+          }
+
+          $notes = ($body -join "`n").Trim()
+          if ($notes.Length -eq 0) {
+            Write-Host "::error::The '## $version' section in CHANGELOG.md is empty."
+            exit 1
+          }
+
+          # Appended rather than kept in the release step, so the page reads as what changed first
+          # and how to install it second. Single-quoted, so the markdown backticks stay literal.
+          #
+          # The marker is where the app cuts. It reads this same body for its what's-new banner,
+          # and somebody who is already running the build does not need telling how to install it.
+          # An HTML comment renders as nothing on the release page, so the cut costs the reader
+          # there nothing either.
+          $blurb = @(
+            ''
+            '<!-- app-notes-end -->'
+            '### Installation'
+            '**`RainWorldCompanion-Setup.exe`** is the one you want. It installs for you alone,'
+            'asks for no admin rights, needs no .NET runtime, and starts the app when it''s done.'
+            ''
+            '### Already have it?'
+            'Run the setup over the top. It keeps your install location and your shortcut choice,'
+            'and it never touches your backups or your save library.'
+            ''
+            '### Uninstalling'
+            'Removing the program leaves your backups and your library exactly where they are.'
+            'They are the only copy of those saves, so nothing here deletes them, and you can'
+            'delete the folder yourself if you want it gone.'
+          )
+
+          Set-Content -Path 'release-notes.md' -Value (@($notes) + $blurb) -Encoding utf8
+          Write-Host "Release notes for ${version}:"
+          Get-Content 'release-notes.md' | Write-Host
+
+          # Said outright because the runner ends a pwsh step on $LASTEXITCODE when one is set,
+          # and every path above that succeeds leaves it holding whatever ran last.
+          exit 0
+
       # Before the publish, so a red suite cannot cut a release.
       - name: Test
         run: dotnet test RainWorldCompanion.sln -c Release
@@ -131,22 +205,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ steps.version.outputs.RELEASE_NAME }}
-          body: |
-            Back up your Rain World saves before the game overwrites them, keep a named library
-            of the ones worth returning to, and put any of them back into any slot.
-
-            ### Installation
-            **`RainWorldCompanion-Setup.exe`** is the one you want. It installs for you alone,
-            asks for no admin rights, needs no .NET runtime, and starts the app when it's done.
-
-            ### Already have it?
-            Run the setup over the top. It keeps your install location and your shortcut choice,
-            and it never touches your backups or your save library.
-
-            ### Uninstalling
-            Removing the program leaves your backups and your library exactly where they are.
-            They are the only copy of those saves, so nothing here deletes them, and you can
-            delete the folder yourself if you want it gone.
+          # Written by the changelog step above: this tag's own section, then the install blurb.
+          body_path: release-notes.md
           files: dist_installer/RainWorldCompanion-Setup.exe
           # Without this, a missing installer publishes a green release with no assets on it,
           # which the in-app updater then silently skips over.
