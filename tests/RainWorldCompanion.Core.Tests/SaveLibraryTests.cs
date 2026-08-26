@@ -1,6 +1,7 @@
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Library;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
@@ -513,7 +514,7 @@ internal sealed class LibraryWorld : IDisposable
 {
     public const string AppVersion = "1.0.0-test";
 
-    public LibraryWorld(FakeGameDetector? detector = null)
+    public LibraryWorld(FakeGameDetector? detector = null, Func<CurrentMods>? modListSource = null)
     {
         Live = new TempDirectory("live");
         BackupRoot = new TempDirectory("backups");
@@ -521,7 +522,7 @@ internal sealed class LibraryWorld : IDisposable
         SaveTree.Populate(Live);
         Detector = detector ?? FakeGameDetector.NotRunning();
 
-        Backups = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion);
+        Backups = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion, modListSource);
         Library = new SaveLibrary(Backups, LibraryRoot.Path, Detector, AppVersion);
     }
 

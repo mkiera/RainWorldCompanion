@@ -3,6 +3,7 @@
 // "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Core.Library;
 
@@ -25,6 +26,13 @@ public sealed record LibraryLoadPlan(
     string Summary = "")
 {
     public bool CanLoad => Problems.Count == 0;
+
+    /// <summary>
+    /// How the mods recorded with this entry differ from the machine as it stands, or null when
+    /// there was no way to look. Informational: it never lands in <see cref="Problems"/> and never
+    /// stops a load.
+    /// </summary>
+    public ModListDiff? Mods { get; init; }
 }
 
 /// <summary>

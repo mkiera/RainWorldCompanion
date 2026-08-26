@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Tests;
 
@@ -417,13 +418,13 @@ internal sealed class BackupWorld : IDisposable
 {
     public const string AppVersion = "1.0.0-test";
 
-    public BackupWorld(FakeGameDetector? detector = null)
+    public BackupWorld(FakeGameDetector? detector = null, Func<CurrentMods>? modListSource = null)
     {
         Live = new TempDirectory("live");
         BackupRoot = new TempDirectory("backups");
         SaveTree.Populate(Live);
         Detector = detector ?? FakeGameDetector.NotRunning();
-        Service = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion);
+        Service = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion, modListSource);
     }
 
     public TempDirectory Live { get; }

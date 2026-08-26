@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.Settings;
@@ -418,6 +419,7 @@ public sealed class SaveLibrary
             SizeBytes = copied.SizeBytes,
             Sha256 = copied.Sha256,
             Metadata = metadata,
+            Mods = _backups.TryReadMods(),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
@@ -472,7 +474,8 @@ public sealed class SaveLibrary
             ?? throw new InvalidOperationException(
                 $"{source.FileName} holds no {SlugcatCatalog.ForId(slugcatId).DisplayName} campaign, so there is nothing to store.");
 
-        var entry = StoreCampaignFrom(slice, source.FileName, source.Realm, source.Slot, trimmedName, note);
+        var entry = StoreCampaignFrom(
+            slice, source.FileName, source.Realm, source.Slot, trimmedName, note, _backups.TryReadMods());
 
         progress?.Report("Stored");
         return entry;
@@ -487,13 +490,18 @@ public sealed class SaveLibrary
     /// running.
     /// </summary>
     /// <param name="sourceFileName">What the campaign came out of, for the row to show.</param>
+    /// <param name="mods">
+    /// The mods that were on when the campaign was taken. Passed in rather than read here because
+    /// a campaign pulled out of a backup carries that backup's record, not what is on right now.
+    /// </param>
     public LibraryEntry StoreCampaignFrom(
         CampaignSlice slice,
         string sourceFileName,
         SaveRealm sourceRealm,
         int sourceSlot,
         string name,
-        string? note)
+        string? note,
+        ModListSnapshot? mods = null)
     {
         ArgumentNullException.ThrowIfNull(slice);
 
@@ -525,6 +533,7 @@ public sealed class SaveLibrary
             Sha256 = Hashing.ComputeFileSha256(campaignPath),
             Metadata = SaveMetadataExtractor.FromPayload(
                 payload, LibraryEntry.CampaignFileName, sourceSlot, sourceRealm),
+            Mods = mods,
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
@@ -640,9 +649,13 @@ public sealed class SaveLibrary
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
 
+        // Both kinds of load are compared the same way, so the diff is attached here rather than
+        // in each branch. This is the one method the dialogs go through.
+        var mods = _backups.TryDiffMods(entry.Manifest?.Mods);
+
         if (!entry.IsCampaign)
         {
-            return PlanLoad(entry, target);
+            return PlanLoad(entry, target) with { Mods = mods };
         }
 
         var move = PlanCampaignLoad(entry, target);
@@ -653,7 +666,10 @@ public sealed class SaveLibrary
             _backups.SlotCopies.ReadSide(target),
             problems,
             move.Warnings,
-            move.Describe());
+            move.Describe())
+        {
+            Mods = mods,
+        };
     }
 
     /// <summary>Loads this entry onto a slot, whichever kind it is.</summary>
@@ -751,10 +767,12 @@ public sealed class SaveLibrary
         manifest.PreviousSizeBytes = manifest.SizeBytes;
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
+        manifest.PreviousMods = manifest.Mods;
 
         manifest.SizeBytes = copied.SizeBytes;
         manifest.Sha256 = copied.Sha256;
         manifest.Metadata = metadata;
+        manifest.Mods = _backups.TryReadMods();
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -806,6 +824,8 @@ public sealed class SaveLibrary
         manifest.PreviousSizeBytes = manifest.SizeBytes;
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
+        manifest.PreviousMods = manifest.Mods;
+        manifest.Mods = _backups.TryReadMods();
 
         manifest.SizeBytes = new FileInfo(entry.CampaignPath).Length;
         manifest.Sha256 = Hashing.ComputeFileSha256(entry.CampaignPath);
@@ -861,10 +881,13 @@ public sealed class SaveLibrary
         manifest.Sha256 = previousHash;
         manifest.Metadata = metadata;
 
+        manifest.Mods = manifest.PreviousMods;
+
         manifest.PreviousSha256 = null;
         manifest.PreviousSizeBytes = null;
         manifest.PreviousReplacedUtc = null;
         manifest.PreviousMetadata = null;
+        manifest.PreviousMods = null;
 
         manifest.UpdatedUtc = DateTime.UtcNow;
 
@@ -1074,6 +1097,12 @@ public sealed class SaveLibrary
             manifest.PreviousSizeBytes = null;
             manifest.PreviousReplacedUtc = null;
             manifest.PreviousMetadata = null;
+            manifest.PreviousMods = null;
+
+            // manifest.Mods is deliberately left standing. It describes the machine the save was
+            // played on, which is exactly what a load onto this machine is compared against.
+            // Restamping it here would throw that away and record this machine instead, which the
+            // file already is not a record of.
 
             TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
             WriteManifest(directory, manifest);

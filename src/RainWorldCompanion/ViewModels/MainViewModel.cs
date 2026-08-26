@@ -11,6 +11,7 @@ using Microsoft.Win32;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Library;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.Settings;
@@ -1050,6 +1051,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         string? note = dialog.EntryNote;
         string slugcat = campaign.SlugcatId;
 
+        // A campaign taken out of a backup or a library save carries that snapshot's mod list
+        // rather than what is on right now. The bytes are from then, so the record has to be too.
+        ModListSnapshot? recorded = RecordedModsOfSelection();
+
         LibraryEntry? stored = null;
         Exception? failure = null;
 
@@ -1067,7 +1072,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                         ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
 
                     return library.StoreCampaignFrom(
-                        slice, source.FileName, source.Realm, source.SlotNumber, name, note);
+                        slice, source.FileName, source.Realm, source.SlotNumber, name, note, recorded);
                 });
         }
         catch (Exception ex)
@@ -1441,6 +1446,14 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     private static CampaignSlice? ReadCampaignFrom(CampaignSource source, string slugcatId)
         => CampaignFile.ReadFrom(source.FilePath, slugcatId);
+
+    /// <summary>
+    /// The mod list recorded by whichever snapshot is selected, or null when the selection is the
+    /// live save or carries no record. The selection is what built the panel the campaign card
+    /// sits in, so it is the snapshot the campaign was read out of.
+    /// </summary>
+    private ModListSnapshot? RecordedModsOfSelection()
+        => SelectedBackup?.Snapshot.Manifest?.Mods ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
 
     /// <summary>What to call the file a campaign is in, for example "sav2" or "backup 2026-08-24".</summary>
     private static string WhereItIs(CampaignSource source)
@@ -2595,7 +2608,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             {
                 try
                 {
-                    return (new BackupService(savePath, backupRoot, _gameDetector, _appVersion), null);
+                    // The mod list is read through a closure rather than handed over as a value,
+                    // because it has to be current at the moment a snapshot is taken and not at the
+                    // moment the service was built. The game folder is read the same way, and the
+                    // service is rebuilt whenever settings are applied, so neither can go stale.
+                    return (new BackupService(
+                        savePath,
+                        backupRoot,
+                        _gameDetector,
+                        _appVersion,
+                        () => CurrentModsReader.Read(savePath, _settings.GameInstallPath)), null);
                 }
                 catch (Exception ex)
                 {
