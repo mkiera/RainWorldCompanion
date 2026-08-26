@@ -3,9 +3,8 @@ using RainWorldCompanion.Core.Updates;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The channel is stored as text so that inserting a channel later cannot change what an already
-/// saved settings file means, and it falls back to stable so that a file written by a build that
-/// knows more channels than this one still loads.
+/// Stored as text so inserting a channel later cannot change what a saved settings file means,
+/// and falls back to stable so a file naming a channel this build lacks still loads.
 /// </summary>
 public class UpdateChannelTests
 {

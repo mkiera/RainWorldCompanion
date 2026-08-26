@@ -9,19 +9,8 @@ using RainWorldCompanion.Core.Editing;
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// The confirmation shown before a slot is deleted.
-///
-/// It names every campaign about to go rather than saying how many, because a slot holding three
-/// runs is exactly where somebody means one of them and clicks the wrong thing. Every line comes
-/// from the plan Core built, so the slot this describes is the slot that will be written to.
-///
-/// The word is the one the game itself uses for this, even though the file stays and keeps its
-/// progression record. What actually goes is named line by line below it, so the word being the
-/// blunter of the two costs nobody anything.
-///
-/// The map is a choice and it is off by default. The game's own wipe takes it, but the map is the
-/// slowest thing in a save to earn back and keeping it costs nothing, so taking it is the half the
-/// user has to ask for.
+/// It names every campaign about to go rather than saying how many, because a slot holding
+/// three runs is exactly where somebody means one of them and clicks the wrong thing.
 /// </summary>
 public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
 {
@@ -31,9 +20,9 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
     private SlotDeleteDepth _depth;
 
     /// <param name="plans">
-    /// What each depth would do, worked out before this opened. All three come in together because
-    /// a row that cannot do anything is drawn disabled rather than left to refuse when it is picked,
-    /// and knowing that needs the answer for every row, not just the one showing.
+    /// All three come in together because a row that cannot do anything is drawn disabled rather
+    /// than left to refuse when it is picked, and knowing that needs the answer for every row,
+    /// not just the one showing.
     /// </param>
     public DeleteSlotDialog(IReadOnlyDictionary<SlotDeleteDepth, SlotDeletePlan> plans)
     {

@@ -12,13 +12,12 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// Picks one whole-slot copy and confirms it. Every line comes from the plan Core built for the
-/// pair the pickers are on, so the file this shows as being replaced is the file that will be
-/// written to and nothing here works it out a second time.
+/// Every line comes from the plan Core built for the pair the pickers are on, so the file this
+/// shows as being replaced is the file that will be written to and nothing here works it out a
+/// second time.
 /// </summary>
 public partial class CopySlotDialog : Window, INotifyPropertyChanged
 {
-    /// <summary>One entry in either picker.</summary>
     public sealed record SlotChoice(SaveSlotRef Ref, string Label)
     {
         /// <summary>
@@ -39,15 +38,9 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
     private SlotChoice _selectedTarget;
     private SlotCopyPlan _plan;
 
-    /// <param name="plan">The pair the pickers start on.</param>
-    /// <param name="replan">
-    /// Asks Core to describe a different pair. Every side of this dialog comes from a plan Core
-    /// built, so changing a picker cannot make the dialog disagree with what the copy will do.
-    /// </param>
     /// <param name="includeOnline">
-    /// Whether the online saves are offered. False when Rain Meadow is not on the machine, where
-    /// online_sav is a file nothing writes and offering it would only invite a copy into a slot
-    /// the game will never read.
+    /// False when Rain Meadow is not on the machine, where online_sav is a file nothing writes
+    /// and offering it would only invite a copy into a slot the game will never read.
     /// </param>
     public CopySlotDialog(
         SlotCopyPlan plan,
@@ -64,8 +57,7 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
         _selectedTarget = Find(plan.Target.Realm, plan.Target.Slot);
 
         // Find falls back to the first choice for a realm this dialog is not offering, so the
-        // pickers can land on a pair other than the one that was planned. This asks Core about the
-        // pair actually shown, and hits the cache when it is the same one.
+        // pickers can land on a pair other than the one that was planned.
         Replan();
 
         InitializeComponent();
@@ -77,7 +69,6 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    /// <summary>Every slot that can take part, so any one can be copied onto any other.</summary>
     public IReadOnlyList<SlotChoice> Choices { get; }
 
     public SlotChoice SelectedSource
@@ -115,10 +106,6 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
 
     public SaveSlotRef ChosenTarget => _selectedTarget.Ref;
 
-    /// <summary>
-    /// Core's own answer for the pair the pickers are on. The dialog decides nothing itself, so a
-    /// pair it lets through is a pair Core has already agreed to.
-    /// </summary>
     public bool CanCopy => _plan.CanCopy;
 
     /// <summary>Why the copy is refused, in Core's words. Empty when it is not.</summary>
@@ -198,11 +185,6 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
         return Choices[0];
     }
 
-    /// <summary>
-    /// Rebuilds every line from the plan for the pair the pickers are on, including the pair that
-    /// names one file twice: Core is what refuses that, and asking it means the refusal is worded
-    /// the same here as it would be if the copy were run.
-    /// </summary>
     private void Replan()
     {
         var key = (_selectedSource.Ref, _selectedTarget.Ref);
@@ -227,7 +209,6 @@ public partial class CopySlotDialog : Window, INotifyPropertyChanged
         }
     }
 
-    /// <summary>The size line under a file name: how big it is and how much is in it.</summary>
     private static string Summarise(SlotSide side)
     {
         if (!side.Exists)

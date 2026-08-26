@@ -2,17 +2,9 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Reading which mods the game has turned on, out of the options file in the save folder.
-/// </summary>
 public class OptionsFileTests
 {
-    // ---- the real file ----
-
-    /// <summary>
-    /// The fixture is a copy of a real options file from a modded install, so this is the whole
-    /// reader run against game output rather than against a shape invented here.
-    /// </summary>
+    /// <summary>The fixture is a real options file from a modded install, not a shape invented here.</summary>
     [Fact]
     public void Reads_the_mods_out_of_a_real_options_file()
     {
@@ -32,9 +24,8 @@ public class OptionsFileTests
     }
 
     /// <summary>
-    /// The game leaves an entry in the load order after a mod is turned off. The dictionary comes
-    /// back as written so the caller decides what to do with the leftovers, and this file has six
-    /// of them.
+    /// The game leaves a load order entry after a mod is turned off. The dictionary comes back as
+    /// written, and this fixture has six of them.
     /// </summary>
     [Fact]
     public void Keeps_load_order_entries_for_mods_that_are_no_longer_on()
@@ -48,8 +39,6 @@ public class OptionsFileTests
         Assert.True(read.LoadOrder.ContainsKey("dressmyslugcat"));
         Assert.Equal(28, read.LoadOrder.Count);
     }
-
-    // ---- the grammar ----
 
     [Fact]
     public void Reads_ids_in_the_order_they_were_written()
@@ -81,8 +70,8 @@ public class OptionsFileTests
     }
 
     /// <summary>
-    /// A vanilla install writes no EnabledMods record rather than an empty one. That has to read
-    /// as "nothing was on", which is an answer, and not as a file we failed to understand.
+    /// A vanilla install writes no EnabledMods record at all, which must read as "nothing was
+    /// on" rather than as a file this could not understand.
     /// </summary>
     [Fact]
     public void No_enabled_mods_record_reads_as_a_vanilla_install()
@@ -142,8 +131,6 @@ public class OptionsFileTests
 
         Assert.Null(OptionsFile.Read(directory.Path).LastGameVersion);
     }
-
-    // ---- when there is nothing to read ----
 
     [Fact]
     public void No_save_folder_reads_nothing_and_says_so()

@@ -4,14 +4,9 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Rain Meadow stores an online campaign in online_sav, online_sav2 and online_sav3, in the same
-/// format and under the same slot numbering as sav, sav2 and sav3. Copying between the two is
-/// therefore a whole-file copy and nothing else: the bytes are not decoded, no payload is
-/// rewritten and no MD5 is recomputed, because recomputing one wrongly is what wipes a save.
-///
-/// Every test here proves one of two things. Either the bytes came across untouched, which is
-/// checked by parsing the copy and verifying its checksum afterwards, or the copy was refused and
-/// the save folder was left exactly as it was.
+/// Copying between online and local slots is a whole-file copy and nothing else: the bytes are
+/// not decoded, no payload is rewritten, and no MD5 is recomputed, because recomputing one wrongly
+/// is what wipes a save.
 /// </summary>
 public class SlotCopyTests
 {
@@ -21,8 +16,6 @@ public class SlotCopyTests
     private static readonly SaveSlotRef OnlineOne = new(SaveRealm.Online, 1);
     private static readonly SaveSlotRef OnlineTwo = new(SaveRealm.Online, 2);
     private static readonly SaveSlotRef OnlineThree = new(SaveRealm.Online, 3);
-
-    // ---- naming ----
 
     [Theory]
     [InlineData(SaveRealm.Local, 1, "sav")]
@@ -40,10 +33,9 @@ public class SlotCopyTests
     [InlineData("online_sav3", 3)]
     public void The_online_containers_map_to_the_same_slot_numbers_as_the_local_ones(string fileName, int slot)
     {
-        // Rain Meadow hooks Options.GetSaveFileName_SavOrExp and returns "online_sav" for save
-        // slot 0 and "online_sav" + (slot + 1) above it, off the same Options.saveSlot the local
-        // file comes from. Online slot 2 and local slot 2 are the same UI slot, so the realm is
-        // what tells them apart and the number alone never does.
+        // Rain Meadow hooks Options.GetSaveFileName_SavOrExp and derives online_sav's number from
+        // the same Options.saveSlot the local file uses. Online slot 2 and local slot 2 are the
+        // same UI slot, so realm is what tells them apart, never the number alone.
         Assert.Equal(new SaveSlotRef(SaveRealm.Online, slot), SaveMetadataExtractor.SlotForFileName(fileName));
         Assert.Equal(slot, SaveMetadataExtractor.SlotNumberForFileName(fileName));
     }
@@ -83,8 +75,6 @@ public class SlotCopyTests
         Assert.Null(SaveMetadataExtractor.SlotNumberForFileName(fileName));
     }
 
-    // ---- copying ----
-
     [Fact]
     public void Copying_a_local_slot_onto_the_online_slot_of_the_same_number_produces_the_same_bytes()
     {
@@ -111,9 +101,8 @@ public class SlotCopyTests
     [Fact]
     public void The_copy_still_parses_and_its_checksum_still_verifies()
     {
-        // This is the assertion that proves nothing was rewritten. The digest covers the payload
-        // plus the game's salt, so a payload that came across even one character short would
-        // parse and then fail this check.
+        // The checksum covers the payload plus the game's salt, so a payload short by even one
+        // character would still parse but fail this check.
         using var world = new SlotWorld();
 
         world.Service.CopySlot(LocalTwo, OnlineTwo);
@@ -168,8 +157,6 @@ public class SlotCopyTests
         SnapshotLayout.AssertBytesEqual(source, world.Live.ReadBytes("online_sav3"), "online_sav3");
     }
 
-    // ---- the safety copy ----
-
     [Fact]
     public void A_safety_snapshot_is_taken_before_the_copy()
     {
@@ -206,8 +193,6 @@ public class SlotCopyTests
 
         Assert.True(verification.Ok, string.Join("; ", verification.Problems));
     }
-
-    // ---- refusals ----
 
     [Fact]
     public void Copying_refuses_while_the_game_is_running_and_touches_nothing()
@@ -278,10 +263,9 @@ public class SlotCopyTests
     [Fact]
     public void A_target_that_appears_while_the_safety_copy_runs_is_not_overwritten()
     {
-        // The target is sampled once before the safety snapshot, and the snapshot then takes
-        // seconds of scanning, copying and hashing. A file that arrives in that window, which is
-        // what Steam Cloud syncing a save down from another machine looks like, is in neither the
-        // sample nor the snapshot, so overwriting it would leave its bytes nowhere on disk.
+        // The target is sampled once, then the safety snapshot takes seconds to build. A file
+        // that arrives in that window (what a Steam Cloud sync looks like) is in neither the
+        // sample nor the snapshot, so overwriting it would lose its bytes for good.
         using var world = new SlotWorld(live =>
         {
             File.Delete(live.Resolve("online_sav3"));
@@ -297,13 +281,11 @@ public class SlotCopyTests
         Assert.False(result.LiveFolderModified);
         Assert.NotEmpty(result.Errors);
 
-        // The synced file is still the file that arrived, not the copy that was asked for.
         SnapshotLayout.AssertBytesEqual(
             FixtureFiles.Bytes(FixtureFiles.Sav3),
             world.Live.ReadBytes("online_sav3"),
             "online_sav3");
 
-        // And the reason it was refused: the safety snapshot really does not hold it.
         Assert.NotNull(result.SafetySnapshot);
         Assert.Null(SnapshotLayout.FindFile(result.SafetySnapshot!, "online_sav3"));
     }
@@ -323,8 +305,6 @@ public class SlotCopyTests
             world.Live.ReadBytes("online_sav3"),
             "online_sav3");
     }
-
-    // ---- what a slot with no campaign in it is called ----
 
     [Fact]
     public void A_container_holding_map_and_progression_records_is_not_described_as_empty()

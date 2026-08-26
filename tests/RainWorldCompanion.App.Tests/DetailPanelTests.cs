@@ -13,8 +13,6 @@ namespace RainWorldCompanion.App.Tests;
 /// </summary>
 public class DetailPanelTests
 {
-    // ---- the Rain Meadow block ----
-
     [Fact]
     public void The_live_save_shows_the_meadow_block_when_the_mod_is_installed()
     {
@@ -63,8 +61,6 @@ public class DetailPanelTests
     [Fact]
     public void A_library_save_never_shows_the_meadow_block()
     {
-        // The block pairs a slot's two halves. One stored save has no second half, so the block
-        // would draw an empty row list and a paragraph about a command that cannot reach it.
         using var root = new TempDirectory("panel");
         var panel = Panels.Entry(root, Panels.Slot(1));
         panel.MeadowInstalled = true;
@@ -83,13 +79,9 @@ public class DetailPanelTests
         Assert.Empty(panel.SlotPairs);
     }
 
-    // ---- a library save reads the same whichever slot it came from ----
-
     [Fact]
     public void A_library_save_from_an_online_slot_still_lists_its_campaigns()
     {
-        // A folder keeps its online files out of Slots and puts them in the pair rows. Doing that
-        // to a library save would leave the panel with nothing in it.
         using var root = new TempDirectory("panel");
         var panel = Panels.Entry(root, Panels.Slot(2, SaveRealm.Online, campaigns: 3));
 
@@ -117,8 +109,6 @@ public class DetailPanelTests
         var local = Panels.Entry(root, Panels.Slot(2, campaigns: 2), folderNameSuffix: "local");
         var online = Panels.Entry(root, Panels.Slot(2, SaveRealm.Online, campaigns: 2), folderNameSuffix: "online");
 
-        // "+2 online" belongs to a folder that shows its two realms in two places. One stored save
-        // has one section.
         Assert.Equal("2 campaigns", local.CampaignCountText);
         Assert.Equal("2 campaigns", online.CampaignCountText);
     }
@@ -134,8 +124,6 @@ public class DetailPanelTests
 
         Assert.Equal("online_sav2", Assert.Single(panel.Slots).FileName);
     }
-
-    // ---- the live save and a backup are unchanged ----
 
     [Fact]
     public void The_live_save_still_keeps_its_online_files_out_of_the_slot_sections()
@@ -177,8 +165,6 @@ public class DetailPanelTests
         Assert.Equal(3, panel.SlotPairs.Count);
         Assert.Equal(new[] { 1, 2, 3 }, panel.SlotPairs.Select(pair => pair.SlotNumber).ToArray());
     }
-
-    // ---- which kind of thing the panel is showing ----
 
     [Fact]
     public void Each_kind_reports_only_itself()

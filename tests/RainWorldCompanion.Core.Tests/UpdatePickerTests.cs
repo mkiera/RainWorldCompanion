@@ -3,12 +3,9 @@
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// What the app offers, and what it refuses to offer.
-///
-/// Every case here is a way of being wrong that says nothing at the time. Offering the running
-/// version back to itself looks like a permanent update badge, skipping a whole release because a
-/// later one is still uploading looks like there is nothing new, and letting an address off the
-/// allowlist through means fetching an executable from somewhere nobody chose.
+/// Every case here is a way of being wrong that says nothing at the time: a permanent update
+/// badge, a release that looks like there is nothing new, or an executable fetched from
+/// somewhere nobody chose.
 /// </summary>
 public class UpdatePickerTests
 {

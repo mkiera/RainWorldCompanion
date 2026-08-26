@@ -5,12 +5,10 @@ using RainWorldCompanion.Services;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The notice shown once, after the app has been updated.
-///
-/// Two ways of being wrong, both quiet. Showing it when nothing changed means a banner that will
-/// not go away, and consuming it without showing it means the one launch that was owed the notes
-/// is the launch that swallows them. The version recorded in settings is what separates the two,
-/// so every case here is about when that gets written.
+/// Two ways of being wrong, both quiet. Showing it when nothing changed means a banner that
+/// will not go away, and consuming it without showing it means the one launch that was owed
+/// the notes is the launch that swallows them. The version recorded in settings is what
+/// separates the two, so every case here is about when that gets written.
 /// </summary>
 public class WhatsNewTests
 {
@@ -93,7 +91,6 @@ public class WhatsNewTests
         Assert.False(updates.HasWhatsNew);
         Assert.Equal("1.1.0", world.Saved.LastSeenChangelogVersion);
 
-        // And a second look finds it settled rather than asking again.
         var callsBefore = world.Source.Calls;
         await updates.CheckForWhatsNewAsync(CancellationToken.None);
         Assert.False(updates.HasWhatsNew);

@@ -3,10 +3,7 @@ using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// The detail inside a serialized creature or object. Every blob quoted here was taken verbatim
-/// from the live save folder, so these assert against shapes the game really writes.
-/// </summary>
+/// <summary>Every blob quoted here was taken verbatim from the live save folder.</summary>
 public class EntityBlobReaderTests
 {
     private const string TamedSpitLizard =

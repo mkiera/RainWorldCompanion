@@ -5,43 +5,19 @@ using RainWorldCompanion.Core.Updates;
 
 namespace RainWorldCompanion.Services;
 
-/// <summary>
-/// What became of an attempt to start the installer.
-/// </summary>
-/// <param name="ShouldExit">
-/// Whether the app should now close. False means the installer is not going to replace anything
-/// until somebody deals with it, so closing would take away the only thing able to explain that.
-/// </param>
+/// <param name="ShouldExit">False means the installer will replace nothing until somebody deals with it.</param>
 /// <param name="Message">A whole sentence, written to be shown as it is.</param>
 public sealed record LaunchOutcome(bool ShouldExit, string Message);
 
-/// <summary>Hands a downloaded installer to Windows.</summary>
 public interface IInstallerLauncher
 {
     LaunchOutcome Start(string installerPath);
 }
 
 /// <summary>
-/// Starts the installer and watches it just long enough to tell working from stuck.
-///
-/// The switches are the whole contract with installer.iss, and each one is here for a reason:
-///
-///   /SILENT hides the wizard but keeps Setup's progress window, so the user sees something after
-///   this app's window disappears. /VERYSILENT would leave a blank screen that reads as a crash.
-///
-///   /CLOSEAPPLICATIONS covers losing the race with this app's own exit. Setup does this by default
-///   and the script asks for it too, so passing it means the update still works if either ever
-///   changes.
-///
-///   /NORESTARTAPPLICATIONS keeps the relaunch owned by exactly one thing, the [Run] entry in the
-///   script. Setup's Restart Manager putting the app back as well would open a second copy, which
-///   the single-instance check would then refuse with a message about it already running, in the
-///   middle of an update.
-///
-/// Deliberately absent: /DIR and /TASKS, because UsePreviousAppDir and UsePreviousTasks are what
-/// keep a silent update from relocating the install and clearing the desktop-shortcut choice, and
-/// passing either would override them. Also absent is /SUPPRESSMSGBOXES: once this app has exited,
-/// a message box is the only way Setup can tell the user anything.
+/// The switches are the whole contract with installer.iss. /DIR and /TASKS are deliberately absent
+/// because UsePreviousAppDir and UsePreviousTasks keep a silent update from relocating the install,
+/// and /SUPPRESSMSGBOXES because once this app exits a message box is Setup's only way to speak.
 /// </summary>
 public sealed class InstallerLauncher : IInstallerLauncher
 {
@@ -53,16 +29,13 @@ public sealed class InstallerLauncher : IInstallerLauncher
     ];
 
     /// <summary>
-    /// How long to watch before deciding. Lengthening this is self-defeating: /CLOSEAPPLICATIONS
-    /// shuts this app down during Setup's "Preparing to Install" stage, so a longer watch spends
-    /// its extra time waiting for an answer while being closed for the privilege.
+    /// Lengthening this is self-defeating: /CLOSEAPPLICATIONS shuts this app down during Setup's
+    /// "Preparing to Install" stage.
     /// </summary>
     private static readonly TimeSpan StartupWatch = TimeSpan.FromMilliseconds(1500);
 
     public LaunchOutcome Start(string installerPath)
     {
-        // Only ever a file this app downloaded, into its own folder. Resolved through the
-        // filesystem, so a junction pointing out of the updates folder does not get past it.
         if (!UpdatesFolder.Contains(installerPath))
         {
             return new LaunchOutcome(false, "That installer is not in the updates folder, so it was not run.");
@@ -89,9 +62,8 @@ public sealed class InstallerLauncher : IInstallerLauncher
             process = Process.Start(new ProcessStartInfo
             {
                 FileName = installerPath,
-                // The working directory stays in the updates folder. The default is this process's
-                // own directory, which is the install folder, and holding that open is holding
-                // open the very files Setup has to replace.
+                // The default is this process's own directory, which is the install folder, and
+                // holding that open is holding open the files Setup has to replace.
                 WorkingDirectory = UpdatesFolder.Ensure(),
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -101,8 +73,6 @@ public sealed class InstallerLauncher : IInstallerLauncher
         }
         catch (Exception e)
         {
-            // Missing, blocked by antivirus or by policy, or not an executable at all. Whatever it
-            // was, this app is still running and is the only thing able to say so.
             return new LaunchOutcome(false, "Could not start the installer. " + e.Message);
         }
 
@@ -110,12 +80,8 @@ public sealed class InstallerLauncher : IInstallerLauncher
     }
 
     /// <summary>
-    /// Reads what can be known in the first second and a half, and nothing beyond it.
-    ///
-    /// The rule underneath all four outcomes: every refusal keeps the app running. Somebody left
-    /// with neither the old version nor the new one has no way back, so the only cases that close
-    /// the app are the one where Setup has provably finished and the one where it is provably
-    /// working.
+    /// Every refusal keeps the app running: somebody left with neither the old version nor the new
+    /// one has no way back.
     /// </summary>
     private static LaunchOutcome Watch(Process process, string logPath)
     {
@@ -130,9 +96,7 @@ public sealed class InstallerLauncher : IInstallerLauncher
                 var code = process.ExitCode;
                 if (InstallerExitCodes.IsSuccess(code))
                 {
-                    // The one outcome that is not a guess. Setup ran to completion, and its [Run]
-                    // entry has already started the new version, so this process is now simply the
-                    // stale copy of an app that is running again elsewhere.
+                    // Setup's [Run] entry has already started the new version.
                     return new LaunchOutcome(
                         true, "The update is installed and the new version has already started.");
                 }
@@ -146,9 +110,6 @@ public sealed class InstallerLauncher : IInstallerLauncher
 
             if (asking is not null)
             {
-                // Setup is on screen waiting for an answer it will wait for forever. Exiting into
-                // that would leave a dialog with no application behind it, which is the case that
-                // looks identical to a crash.
                 return new LaunchOutcome(
                     false,
                     "The installer has stopped to ask something and is waiting for an answer: "
@@ -156,8 +117,6 @@ public sealed class InstallerLauncher : IInstallerLauncher
                     + "a dialog and nothing else. Deal with the installer window first.");
             }
 
-            // Running, and it has said nothing to suggest otherwise. That is the whole of what can
-            // be known from here, so it is all this claims.
             var note = messages.Count == 0 ? " but has not written to its log yet" : "";
             return new LaunchOutcome(
                 true,
@@ -189,7 +148,6 @@ public sealed class InstallerLauncher : IInstallerLauncher
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // Nothing to read is the normal case a second into an install, not a fault.
             return [];
         }
     }
@@ -205,8 +163,6 @@ public sealed class InstallerLauncher : IInstallerLauncher
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // A stale log only costs the accuracy of the message below, and the timestamps in it
-            // still tell this run's entries from the last one's.
         }
     }
 }
@@ -214,8 +170,8 @@ public sealed class InstallerLauncher : IInstallerLauncher
 file static class ProcessStartInfoExtensions
 {
     /// <summary>
-    /// Adds arguments one at a time. ArgumentList rather than a single Arguments string, so the
-    /// log path is passed as one argument whatever is in it and nothing has to be quoted by hand.
+    /// ArgumentList rather than a single Arguments string, so the log path is passed as one
+    /// argument whatever is in it.
     /// </summary>
     public static ProcessStartInfo With(this ProcessStartInfo info, string[] switches, params string[] extra)
     {

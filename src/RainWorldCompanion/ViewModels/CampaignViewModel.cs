@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,15 +9,9 @@ using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>One labelled number or word in a detail group.</summary>
-/// <param name="IsMissing">True when the save did not record the value, so it shows as a dash.</param>
-/// <param name="Detail">
-/// Extra explanation to show on hover. Blank for most tiles, which hover with the value itself so a
-/// value the tile clipped can still be read in full.
-/// </param>
 /// <param name="Footnoted">
-/// True when the tile shows a number the game derived rather than the one on disk, which draws an
-/// asterisk pointing at <paramref name="Detail"/>. The same mark the karma chip carries.
+/// The tile shows a number the game derived rather than the one on disk, which draws an asterisk
+/// pointing at <paramref name="Detail"/>.
 /// </param>
 public sealed record StatTile(
     string Label,
@@ -28,29 +20,17 @@ public sealed record StatTile(
     string Detail = "",
     bool Footnoted = false)
 {
-    /// <summary>What hovering the tile shows.</summary>
     public string HoverText => Detail.Length == 0 ? Value : Detail;
 }
 
-/// <summary>A flag that is either set or not, drawn filled when set and outlined when not.</summary>
 public sealed record BadgeTile(string Text, bool On);
 
-/// <summary>A small pill. <paramref name="Detail"/> is the trailing count, blank when there is none.</summary>
 public sealed record ChipTile(string Text, string Detail);
 
-/// <summary>
-/// One endgame passage.
-/// </summary>
 /// <param name="ProgressText">
-/// The trailing text on the chip: "5 / 5" against the passage's requirement, the stored tracker
-/// text for a passage this app has no requirement for, and blank when nothing was recorded.
+/// "5 / 5" against the passage's requirement, the stored tracker text for a passage this app has no
+/// requirement for, and blank when nothing was recorded.
 /// </param>
-/// <param name="Available">
-/// True when the run has met the requirement and has not spent the passage, which is exactly when
-/// Menu.EndgameTokens draws a token for it in game.
-/// </param>
-/// <param name="Spent">True when the passage has already been used to travel.</param>
-/// <param name="ToolTipText">The passage name, what it needs, and the tracker as stored.</param>
 public sealed record PassageTile(
     string Name,
     string ProgressText,
@@ -58,26 +38,18 @@ public sealed record PassageTile(
     bool Spent,
     string ToolTipText);
 
-/// <summary>One creature and how many of it this campaign has killed.</summary>
 public sealed record KillTile(string Name, string CountText, string CreatureId);
 
 /// <summary>
-/// Where a campaign was read from, and so what can be done with it.
-///
-/// The same card is drawn for a campaign in the live save folder, one in a backup and one in a
-/// library save. All three can be taken out and sent to a slot, because that is a read of the file
-/// they are in and a write to a different one. Only the live folder can be edited or have a campaign
-/// removed: a backup and a library save are copies taken at a moment, and changing one in place
-/// would leave it no longer a copy of anything.
+/// A campaign in a backup or a library save can be taken out and sent to a slot, but not edited or
+/// removed where it is: both are copies taken at a moment, and changing one in place would leave it
+/// no longer a copy of anything.
 /// </summary>
 /// <param name="FilePath">
-/// The file holding this campaign. Either a save container or a campaign file, which
+/// Either a save container or a campaign file, which
 /// <see cref="RainWorldCompanion.Core.Library.CampaignFile.ReadFrom"/> tells apart.
 /// </param>
 /// <param name="Label">What to call that file in a sentence, for example "backup 2026-08-24_120000".</param>
-/// <param name="LiveSlot">The slot this is in, when it is one of the game's own. Null otherwise.</param>
-/// <param name="Realm">Which set the campaign came from, recorded when it is stored.</param>
-/// <param name="SlotNumber">The slot number it came from, or 0 when it came from no numbered slot.</param>
 public sealed record CampaignSource(
     string FilePath,
     string Label,
@@ -86,20 +58,11 @@ public sealed record CampaignSource(
     int SlotNumber = 0,
     string FileName = "")
 {
-    /// <summary>True when this is a live slot, the only place an edit can be written.</summary>
     public bool IsLive => LiveSlot is not null;
 
-    /// <summary>True when the campaign can be read back out of the file it is in.</summary>
     public bool CanBeTaken => FilePath.Length > 0;
 }
 
-/// <summary>
-/// A slugcat's face and colours. Built once per campaign or per list row, so the icon lookup and
-/// the brush parsing happen in one place instead of in a converter on every redraw.
-///
-/// The icon comes from <see cref="ISlugcatIconProvider"/> and is never null: a slugcat with no
-/// portrait in the install, or no install at all, gets a drawn head in the same colour.
-/// </summary>
 public sealed class PortraitViewModel
 {
     private static readonly Brush FallbackAccent = Freeze(Color.FromRgb(0x9E, 0x9E, 0x9E));
@@ -124,10 +87,8 @@ public sealed class PortraitViewModel
     /// <summary>The portrait from the game install, or the drawn stand-in. Never null.</summary>
     public ImageSource Image { get; }
 
-    /// <summary>The slugcat's own colour, used for thin accents.</summary>
     public Brush Accent { get; }
 
-    /// <summary>The same colour washed out far enough to sit behind text.</summary>
     public Brush AccentSoft { get; }
 
     public string ToolTipText { get; }
@@ -146,8 +107,6 @@ public sealed class PortraitViewModel
         }
         catch (Exception)
         {
-            // A catalog entry from a mod could carry anything. A colour that will not parse is
-            // not worth reporting: the neutral grey stands in for it.
             return null;
         }
     }
@@ -166,12 +125,9 @@ public sealed class PortraitViewModel
 }
 
 /// <summary>
-/// One campaign inside a slot, as the detail panel shows it: a one line summary when collapsed
-/// and four groups of detail when open.
-///
-/// Everything is worked out in the constructor from a <see cref="CampaignSummary"/> that has
-/// already been read off disk. A value the save did not record shows as a dash rather than as a
-/// gap, so a v1 backup manifest, which recorded far less, still renders a complete card.
+/// Everything is worked out in the constructor from a <see cref="CampaignSummary"/> already read
+/// off disk. A value the save did not record shows as a dash, so a v1 backup manifest, which
+/// recorded far less, still renders a complete card.
 /// </summary>
 public sealed partial class CampaignViewModel : ObservableObject
 {
@@ -180,11 +136,7 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     private const int TopKillCount = 8;
 
-    /// <param name="source">
-    /// The file this campaign was read out of, or null when nothing can be done with it. A backup
-    /// and a library save pass one that is not live: their campaigns can be taken out and sent to a
-    /// slot, but not edited or removed where they are.
-    /// </param>
+    /// <param name="source">Null when nothing can be done with this campaign.</param>
     public CampaignViewModel(CampaignSummary campaign, ISlugcatIconProvider icons, CampaignSource? source = null)
     {
         Summary = campaign;
@@ -199,20 +151,15 @@ public sealed partial class CampaignViewModel : ObservableObject
         ShowSlugcatId = campaign.SlugcatId.Length > 0
             && !string.Equals(campaign.SlugcatId, info.DisplayName, StringComparison.OrdinalIgnoreCase);
 
-        // Karma is shown the way the game shows it: the stored number clamped to the cap, then
-        // read as a level rather than as the 0-based index the save holds. CampaignSummary does
-        // that arithmetic, the panel only formats it.
         KarmaText = campaign.KarmaText;
         HasKarma = campaign.Karma.HasValue;
         KarmaStoredOutOfRange = campaign.KarmaStoredOutOfRange;
         KarmaToolTip = BuildKarmaToolTip(campaign);
 
-        // Food is shown the same way: the pips the run will start with, not the raw field, which
-        // the game leaves negative whenever a cycle banked less than a shelter costs.
         FoodToolTip = BuildFoodToolTip(campaign);
 
-        // Hunter counts down. The game shows that campaign the cycles it has left, so the header
-        // and the Cycle tile do too, and the number on disk goes in the tooltip.
+        // Hunter counts down, so the header shows the cycles it has left and the number on disk
+        // goes in the tooltip.
         CycleText = campaign.DisplayCycleNum.HasValue
             ? "Cycle " + Number(campaign.DisplayCycleNum.Value)
             : "Cycle " + Missing;
@@ -256,13 +203,11 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     public PortraitViewModel Portrait { get; }
 
-    /// <summary>The in-game name, for example "Survivor".</summary>
     public string DisplayName { get; }
 
-    /// <summary>The raw id out of the save, for example "White".</summary>
+    /// <summary>The raw id out of the save, for example "White" where the name is "Survivor".</summary>
     public string SlugcatId { get; }
 
-    /// <summary>False when the id and the display name are the same word, so it is not shown twice.</summary>
     public bool ShowSlugcatId { get; }
 
     /// <summary>Karma as the meter reads it, for example "8 / 10", or a dash when unrecorded.</summary>
@@ -271,23 +216,18 @@ public sealed partial class CampaignViewModel : ObservableObject
     public bool HasKarma { get; }
 
     /// <summary>
-    /// True when the number on disk is not the one the game plays with, so the chip carries a mark
-    /// pointing at the tooltip. The save is still normal, the game just clamps it on load.
+    /// True when the number on disk is not the one the game plays with. The save is still normal,
+    /// the game just clamps it on load.
     /// </summary>
     public bool KarmaStoredOutOfRange { get; }
 
-    /// <summary>The stored numbers, and what the game makes of them when they need explaining.</summary>
     public string KarmaToolTip { get; }
 
-    /// <summary>
-    /// What the Food now tile shows on hover: blank unless the stored number is negative, in which
-    /// case it gives that number and what the game does with it.
-    /// </summary>
+    /// <summary>Blank unless the stored food is negative.</summary>
     public string FoodToolTip { get; }
 
     public string CycleText { get; }
 
-    /// <summary>What the save stores under CYCLENUM, and for Hunter what the game counts from it.</summary>
     public string CycleToolTip { get; }
 
     public int DevourmentCount { get; }
@@ -299,33 +239,19 @@ public sealed partial class CampaignViewModel : ObservableObject
     [ObservableProperty]
     private bool isExpanded;
 
-    /// <summary>The file this campaign was read out of, or null when nothing can be done with it.</summary>
     public CampaignSource? Source { get; }
 
-    /// <summary>The slot this campaign lives in, when it is one that can be edited.</summary>
     public SaveSlotRef? EditableSlot { get; }
 
-    /// <summary>True when an Edit button belongs on this card, which is the live save folder only.</summary>
     public bool CanEdit => EditableSlot is not null;
 
-    /// <summary>
-    /// True when this campaign can be taken out and sent somewhere, which is anywhere it can be
-    /// read from: the live folder, a backup, or a library save.
-    /// </summary>
     public bool CanBeTaken => Source?.CanBeTaken == true;
 
-    /// <summary>
-    /// True when there is a bar of buttons to draw at all. Editing needs a live slot and a live slot
-    /// is a file, so anything that can be edited can also be taken, and this is the wider of the two.
-    /// </summary>
     public bool HasActions => CanEdit || CanBeTaken;
 
     /// <summary>
-    /// The open editor for this campaign, or null when it is only being read.
-    ///
-    /// The read-only tiles beside this are built once in the constructor and never change, which
-    /// the rest of the panel depends on. Edit state hangs off the card rather than replacing any
-    /// of them, so turning editing off puts the card back exactly as it was.
+    /// Edit state hangs off the card rather than replacing the read-only tiles beside it, which are
+    /// built once in the constructor, so turning editing off puts the card back as it was.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
@@ -362,8 +288,8 @@ public sealed partial class CampaignViewModel : ObservableObject
     public string KillSummaryText { get; }
 
     /// <summary>
-    /// The stomach chains, outermost first. A root is something nothing else in this save is
-    /// holding, which is usually the player but is the predator when the player has been eaten.
+    /// A root is something nothing else in this save is holding, usually the player but the
+    /// predator when the player has been eaten.
     /// </summary>
     public IReadOnlyList<DevourmentNodeViewModel> DevourmentRoots { get; }
 
@@ -378,16 +304,15 @@ public sealed partial class CampaignViewModel : ObservableObject
     public bool HasHeldItems => HeldItems.Count > 0;
 
     /// <summary>
-    /// Set when the record held DEVOURMENTSTATE fields this app could not read, so a count that
-    /// is larger than the table is explained rather than looking like a lost row.
+    /// Set when the record held DEVOURMENTSTATE fields this app could not read, so a count larger
+    /// than the table does not look like a lost row.
     /// </summary>
     public string UnreadDevourmentText { get; }
 
     /// <summary>
     /// True only when the record held nothing at all. The unread count is part of the test: a
-    /// campaign with DEVOURMENTSTATE fields this app could not read has no rows to show, but
-    /// saying it recorded nothing would contradict both the count on the collapsed header and
-    /// <see cref="UnreadDevourmentText"/>.
+    /// campaign with unreadable fields has no rows to show, but saying it recorded nothing would
+    /// contradict the count on the collapsed header.
     /// </summary>
     public bool HasNothingDevourment =>
         Summary.DevourmentStateCount == 0
@@ -403,8 +328,7 @@ public sealed partial class CampaignViewModel : ObservableObject
     {
         Tile("Cycle", campaign.DisplayCycleNum, cycleToolTip),
         Tile("Cycles this version", campaign.CyclesThisVersion),
-        // The pips the run starts with. A campaign whose stored number the game will not use gets
-        // the asterisk, same as karma.
+        // The pips the run starts with, not the raw field.
         Tile("Food now", campaign.EffectiveFood, foodToolTip, campaign.FoodStoredNegative),
         Tile("Food eaten", campaign.TotalFoodEaten),
         Tile("Playtime", CampaignSummary.FormatPlayTime(campaign.PlayTime)),
@@ -423,9 +347,8 @@ public sealed partial class CampaignViewModel : ObservableObject
     };
 
     /// <summary>
-    /// The karma tooltip: what the save holds, and, when the game will not use that number, what
-    /// it uses instead. DeathPersistentSaveData clamps karma to 0..cap every time it loads a save,
-    /// so a stored 10 under a cap of 9 is played as 9.
+    /// DeathPersistentSaveData clamps karma to 0..cap every time it loads a save, so a stored 10
+    /// under a cap of 9 is played as 9.
     /// </summary>
     private static string BuildKarmaToolTip(CampaignSummary campaign)
     {
@@ -437,10 +360,8 @@ public sealed partial class CampaignViewModel : ObservableObject
                 : "The save did not record karma.";
         }
 
-        // The stored numbers count from zero and the numbers on the meter count from one. Saying
-        // which scale each one is on is what keeps the two sentences from reading as a comparison:
-        // Watcher stores karma 5 under cap 4 and its meter shows 5 of 5, and without the scales
-        // named that pair reads as though the clamp did nothing and the cap grew.
+        // The stored numbers count from zero and the meter counts from one, so each sentence names
+        // its scale. Watcher stores karma 5 under cap 4 and its meter shows 5 of 5.
         var storedLine = campaign.KarmaCap is { } cap
             ? "The save stores karma " + Number(stored) + " and cap " + Number(cap) + ", counting from zero."
             : "The save stores karma " + Number(stored) + " and no cap, counting from zero.";
@@ -463,14 +384,9 @@ public sealed partial class CampaignViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The food tooltip, blank for almost every campaign because the stored number is the number
-    /// the run starts with and the tile already shows it.
-    ///
-    /// A negative is the case worth explaining, and it is ordinary rather than damage.
-    /// SaveState.SessionEnded takes the shelter cost off the pips banked at the end of every cycle,
-    /// so a cycle that ended with none left stores the cost as a negative. Nothing lifts it back
-    /// up on load: the RainWorldGame constructor hands out food only while the stored number is
-    /// above zero, and the save select screen clamps it to the meter before drawing.
+    /// A negative is ordinary rather than damage. SaveState.SessionEnded takes the shelter cost off
+    /// the pips banked at the end of every cycle, so a cycle that ended with none left stores the
+    /// cost as a negative, and nothing lifts it back up on load.
     /// </summary>
     private static string BuildFoodToolTip(CampaignSummary campaign)
     {
@@ -491,10 +407,8 @@ public sealed partial class CampaignViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The cycle tooltip. Every slugcat gets the stored number, and Hunter gets the sum the game
-    /// does to it: HUD.Map.CycleLabel and the save select menu both show that campaign
-    /// RedsIllness.RedsCycles minus the stored number, so the header would otherwise disagree with
-    /// both of them.
+    /// HUD.Map.CycleLabel and the save select menu both show Hunter RedsIllness.RedsCycles minus
+    /// the stored number, so the header would otherwise disagree with both of them.
     /// </summary>
     private static string BuildCycleToolTip(CampaignSummary campaign)
     {
@@ -527,15 +441,9 @@ public sealed partial class CampaignViewModel : ObservableObject
     };
 
     /// <summary>
-    /// The flags the card draws. Two of them do not say what their save field is called.
-    ///
-    /// JUSTBEATGAME serialises SaveState.skipNextCycleFoodDrain, which is read by one method that
-    /// skips a cycle of food drain and is cleared at the end of the next session, so the badge says
-    /// that rather than claiming the campaign has beaten the game.
-    ///
-    /// REDSDEATH only means anything in Hunter's campaign, and the token is written on every death
-    /// or quit save whatever the flag holds, so the badge is only offered to Hunter and reads the
-    /// flag the way SaveState.LoadGame leaves it.
+    /// Two badges do not carry their save field's name. JUSTBEATGAME serialises
+    /// SaveState.skipNextCycleFoodDrain, which does only that and is cleared next session. REDSDEATH
+    /// is written on every death or quit save, so the badge is offered to Hunter alone.
     /// </summary>
     private static IReadOnlyList<BadgeTile> BuildBadges(CampaignSummary campaign)
     {
@@ -557,9 +465,8 @@ public sealed partial class CampaignViewModel : ObservableObject
     }
 
     /// <summary>
-    /// One echo chip. The number after a region code is a state, not a tally:
-    /// SaveState.GhostEncounter stores 2 for an echo the player has spoken to and GhostHunch.Update
-    /// stores 1 for one the player has only sensed. Nothing adds to it.
+    /// The number after a region code is a state, not a tally: SaveState.GhostEncounter stores 2
+    /// for an echo the player has spoken to and GhostHunch.Update stores 1 for one only sensed.
     /// </summary>
     private static ChipTile BuildEchoTile(EchoRecord echo) => echo.State switch
     {
@@ -593,17 +500,14 @@ public sealed partial class CampaignViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The longest progress text a passage chip carries before it is cut short. A passage this app
-    /// knows reads as "12 / 12" and fits, but one from a mod carries its raw tracker text, which
-    /// runs to more than forty characters where the mod stores a flag per slugcat. The full text
-    /// stays in the tooltip.
+    /// A passage this app knows reads as "12 / 12", but one from a mod carries its raw tracker
+    /// text, which can run past forty characters. The full text stays in the tooltip.
     /// </summary>
     private const int MaxPassageProgressLength = 12;
 
     /// <summary>
-    /// One passage chip. The save records progress and a consumed flag, and neither one on its own
-    /// is what a player sees: Menu.EndgameTokens offers a passage when the progress has reached the
-    /// requirement and the flag is not set, so that pair drives the chip.
+    /// Menu.EndgameTokens offers a passage when the progress has reached the requirement and the
+    /// consumed flag is not set, so that pair drives the chip rather than either one alone.
     /// </summary>
     private static PassageTile BuildPassageTile(PassageRecord passage)
     {

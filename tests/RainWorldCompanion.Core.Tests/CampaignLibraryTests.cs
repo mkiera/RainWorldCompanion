@@ -9,18 +9,14 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Keeping one campaign in the library rather than a whole slot.
-///
-/// A stored campaign is the game's own records and nothing else, so what is checked here is that
-/// they survive being written out, carried through a .rwcampaign file and put back into a slot that
-/// has campaigns of its own in it.
+/// A stored campaign is the game's own records and nothing else, so what is checked here is
+/// that they survive being written out, carried through a .rwcampaign file and put back into
+/// a slot that has campaigns of its own in it.
 /// </summary>
 public class CampaignLibraryTests
 {
     private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
     private static readonly SaveSlotRef LocalThree = new(SaveRealm.Local, 3);
-
-    // ---- storing ----
 
     [Fact]
     public void Storing_a_campaign_writes_the_campaign_and_leaves_the_slot_alone()
@@ -79,8 +75,6 @@ public class CampaignLibraryTests
         Assert.Throws<GameRunningException>(() => world.Library.StoreCampaign(LocalTwo, "White", "run", null));
     }
 
-    // ---- what the library makes of one ----
-
     [Fact]
     public void A_stored_campaign_verifies_against_its_own_checksum()
     {
@@ -128,8 +122,6 @@ public class CampaignLibraryTests
         Assert.Equal(1, reloaded.Manifest.SchemaVersion);
         Assert.True(world.Library.VerifyEntry(reloaded).Ok);
     }
-
-    // ---- putting one into a slot ----
 
     [Fact]
     public void A_stored_campaign_joins_the_campaigns_a_slot_already_has()
@@ -279,8 +271,6 @@ public class CampaignLibraryTests
             SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2).Campaigns.Select(c => c.SlugcatId));
     }
 
-    // ---- carrying one to another machine ----
-
     [Fact]
     public void A_campaign_goes_out_as_a_campaign_file_and_comes_back_as_one()
     {
@@ -387,8 +377,6 @@ public class CampaignLibraryTests
         Assert.Contains(imported.Errors, e => e.Contains(".rwcampaign", StringComparison.Ordinal));
     }
 
-    // ---- pulling one campaign out of something that is not a live slot ----
-
     /// <summary>
     /// A campaign can be in a live slot, in a backup, in a whole slot kept in the library, or in a
     /// campaign file on its own. Only the last is not a save container, and one call reads all four.
@@ -487,10 +475,6 @@ public class CampaignLibraryTests
         Assert.Equal(slice.SaveStateRecord, world.Library.ReadStoredCampaign(entry)!.SaveStateRecord);
     }
 
-    /// <summary>
-    /// A whole slot in the library holds several campaigns, and until now the only way to get one
-    /// out was to write the whole slot over a live one.
-    /// </summary>
     [Fact]
     public void One_campaign_is_pulled_out_of_a_whole_slot_kept_in_the_library()
     {
@@ -517,8 +501,6 @@ public class CampaignLibraryTests
         Assert.Throws<ArgumentException>(
             () => world.Library.StoreCampaignFrom(slice, "sav2", SaveRealm.Local, 2, "  ", null));
     }
-
-    // ---- putting an hour of play back into one ----
 
     [Fact]
     public void A_campaign_entry_can_be_brought_level_with_the_slot_again()
@@ -556,8 +538,6 @@ public class CampaignLibraryTests
         Assert.True(world.Library.VerifyEntry(undone).Ok);
     }
 
-    // ---- the file itself ----
-
     [Fact]
     public void A_campaign_file_is_the_records_the_game_writes_and_nothing_else()
     {
@@ -588,8 +568,6 @@ public class CampaignLibraryTests
         Assert.False(CampaignFile.LooksLikeOne(Encoding.UTF8.GetBytes("MISCPROG<progDivB>")));
         Assert.True(CampaignFile.LooksLikeOne(Encoding.UTF8.GetBytes(CampaignFile.Prefix + "SAV STATE NUMBER")));
     }
-
-    // ---- helpers ----
 
     /// <summary>Rewrites the campaign inside a bundle, which is what damage in transit looks like.</summary>
     private static void Rewrite(string bundlePath, byte[] content)

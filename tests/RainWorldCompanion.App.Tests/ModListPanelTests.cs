@@ -4,9 +4,8 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// How mods are worded in the panels and the confirmation dialogs. The wording is most of what
-/// this feature is, because an empty list has four different meanings and only one of them is
-/// "no mods".
+/// The wording is most of what this feature is, because an empty list has four different
+/// meanings and only one of them is "no mods".
 /// </summary>
 public class ModListPanelTests
 {
@@ -36,8 +35,6 @@ public class ModListPanelTests
         return new CurrentMods(enabled, enabled.Mods.ToList());
     }
 
-    // ---- the diff section ----
-
     [Fact]
     public void No_comparison_at_all_draws_no_section()
     {
@@ -61,7 +58,6 @@ public class ModListPanelTests
         Assert.Contains("2 mods on now", section.HeadlineText);
     }
 
-    /// <summary>The wording a user is most likely to meet, on a backup from before this existed.</summary>
     [Fact]
     public void A_backup_from_before_mod_lists_says_it_predates_them()
     {
@@ -165,8 +161,6 @@ public class ModListPanelTests
         Assert.Contains(section.GroupNotes, note => note.Contains("v1.10.4") && note.Contains("v1.11.8"));
     }
 
-    // ---- the panel list ----
-
     [Fact]
     public void The_live_panel_lists_the_mods_with_versions_and_where_they_came_from()
     {
@@ -252,7 +246,6 @@ public class ModListPanelTests
         Assert.Equal("game v1.9.15", section.GameVersionText);
     }
 
-    /// <summary>The live panel before the first refresh has nothing to say and says nothing.</summary>
     [Fact]
     public void A_panel_built_before_anything_was_read_draws_no_lines()
     {
@@ -263,8 +256,6 @@ public class ModListPanelTests
         Assert.False(section.HasCount);
         Assert.False(section.HasGameVersion);
     }
-
-    // ---- reaching the panel ----
 
     [Fact]
     public void The_live_panel_carries_the_mods_it_was_built_with()

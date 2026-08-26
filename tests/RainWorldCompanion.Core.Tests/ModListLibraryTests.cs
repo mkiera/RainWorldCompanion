@@ -5,17 +5,12 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// What a library entry records about mods, what an export carries, and what a load compares.
-/// </summary>
 public class ModListLibraryTests
 {
     private static readonly SaveSlotRef Slot1 = new(SaveRealm.Local, 1);
 
     private static CurrentMods Version(string version) => ModLists.Current(
         "v1.11.8", ModLists.Mod("devourment", version), ModLists.Mod("MapOptions", "2.3.3", workshopId: "2923374705"));
-
-    // ---- storing ----
 
     [Fact]
     public void A_stored_slot_records_the_mods_that_were_on()
@@ -40,8 +35,8 @@ public class ModListLibraryTests
     }
 
     /// <summary>
-    /// A campaign taken out of a backup carries that backup's record. Its bytes are from then, so
-    /// stamping today's mods onto them would describe a machine the save was never played on.
+    /// A campaign taken from a backup carries that backup's mod record. Stamping today's mods
+    /// onto old bytes would describe a machine the save was never played on.
     /// </summary>
     [Fact]
     public void A_campaign_taken_from_elsewhere_carries_the_list_it_was_given()
@@ -65,11 +60,9 @@ public class ModListLibraryTests
         Assert.Null(world.Library.StoreSlot(Slot1, "a save", null).Manifest!.Mods);
     }
 
-    // ---- updating and undoing ----
-
     /// <summary>
-    /// An update replaces the bytes and the record together, and keeps the old pair so undo can
-    /// put both back. A record that outlived the bytes it described would be worse than none.
+    /// An update replaces bytes and mod record together and keeps the old pair, so undo can put
+    /// both back. A record that outlived the bytes it described would be worse than none.
     /// </summary>
     [Fact]
     public void An_update_keeps_the_earlier_list_and_an_undo_puts_it_back()
@@ -92,12 +85,7 @@ public class ModListLibraryTests
         Assert.Null(undone.Manifest.PreviousMods);
     }
 
-    // ---- export and import ----
-
-    /// <summary>
-    /// The bundle carries the whole manifest, so the record travels with no work from the bundle
-    /// writer. That is the point of storing it on the manifest rather than beside it.
-    /// </summary>
+    /// <summary>The bundle carries the whole manifest, so the mod record travels with no extra work from the bundle writer.</summary>
     [Fact]
     public void An_export_carries_the_recorded_list_and_an_import_keeps_it()
     {
@@ -124,8 +112,6 @@ public class ModListLibraryTests
 
         Assert.Null(world.Library.ImportFile(file).Entry!.Manifest!.Mods);
     }
-
-    // ---- what a load compares ----
 
     [Fact]
     public void A_load_plan_says_how_the_machine_has_moved()
@@ -155,10 +141,7 @@ public class ModListLibraryTests
         Assert.Single(plan.Mods!.Changed);
     }
 
-    /// <summary>
-    /// The comparison informs and never refuses. A load whose mods have all gone is still a load
-    /// the user is allowed to make.
-    /// </summary>
+    /// <summary>A mod difference informs but never blocks. A load whose mods have all gone is still allowed.</summary>
     [Fact]
     public void A_mod_difference_never_stops_a_load()
     {

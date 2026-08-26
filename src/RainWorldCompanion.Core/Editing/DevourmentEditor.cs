@@ -1,18 +1,12 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>
-/// The states the Devourment mod puts a swallowed thing in.
-///
-/// Written by name and read back with Enum.Parse, which is not inside a try: a name the mod does
-/// not know throws while the save is loading. That makes an unrecognised status worth saying
-/// something about, which is why the list is here rather than left to free text alone.
-/// </summary>
+/// <summary>Written by name and read back with Enum.Parse, which is not inside a try: a name the mod
+/// does not know throws while the save is loading.</summary>
 public static class DevourmentStatus
 {
     public const string Held = "Held";
@@ -22,7 +16,6 @@ public static class DevourmentStatus
     public const string Sedating = "Sedating";
     public const string Regurgitating = "Regurgitating";
 
-    /// <summary>Every status the mod defines, in the order it declares them.</summary>
     public static IReadOnlyList<string> All { get; } = new[]
     {
         Held, Digesting, EnergyTheft, Healing, Sedating, Regurgitating,
@@ -34,12 +27,9 @@ public static class DevourmentStatus
 }
 
 /// <summary>
-/// One swallowed thing, as a DEVOURMENTSTATE field stores it.
-///
 /// The mod writes <c>{pred}&lt;dvD&gt;{prey}&lt;dvD&gt;{status}&lt;dvD&gt;{food}</c> and reads it
 /// back by splitting on the same separator and taking four parts. A field that does not split into
-/// four is one a newer version of the mod wrote, so it is carried as the text it arrived as and
-/// written back untouched rather than guessed at.
+/// four is carried as the text it arrived as and written back untouched.
 /// </summary>
 public sealed class DevourmentEntry
 {
@@ -61,10 +51,8 @@ public sealed class DevourmentEntry
     /// <summary>False when the field did not split into the four parts the mod writes.</summary>
     public bool IsWellFormed { get; }
 
-    /// <summary>The serialized creature doing the swallowing.</summary>
     public string Predator { get; internal set; }
 
-    /// <summary>The serialized creature or item that was swallowed.</summary>
     public string Prey { get; internal set; }
 
     /// <summary>One of <see cref="DevourmentStatus"/>, though anything can be stored.</summary>
@@ -75,7 +63,6 @@ public sealed class DevourmentEntry
 
     public string? PredatorId => DevourmentReader.CreatureIdOf(Predator);
 
-    /// <summary>True when the swallowed thing is an item rather than a creature.</summary>
     public bool PreyIsItem => Prey.StartsWith(DevourmentReader.ItemPrefix, StringComparison.Ordinal);
 
     public string? PreyId => PreyIsItem
@@ -113,27 +100,18 @@ public sealed class DevourmentEntry
 }
 
 /// <summary>
-/// The Devourment state of one campaign, open for editing.
-///
-/// Three fields of the record carry it and they have to agree. DEVOURMENTSTATE holds one field per
-/// swallowed thing, each with a full copy of both the predator and the prey. FRIENDS holds another
-/// full copy of every tamed creature. So a creature the player has swallowed and tamed exists three
-/// times over, and changing what it thinks of the player in one copy and not the others leaves the
-/// save saying two different things about one creature. Every mutator here works from an entity id
-/// and writes each copy of it.
-///
-/// Nothing rebuilds a field it did not change. A state read and applied without an edit gives the
-/// record back exactly as it arrived.
+/// A creature the player has swallowed and tamed is stored three times over: as a predator and as
+/// prey inside DEVOURMENTSTATE, and again in FRIENDS. The copies have to agree, so every mutator
+/// here works from an entity id and writes each copy of it. Nothing rebuilds a field it did not
+/// change.
 /// </summary>
 public sealed class DevourmentEditState
 {
-    /// <summary>The field holding one swallowed thing. The record carries one per entry.</summary>
+    /// <summary>The record carries one of these per swallowed thing.</summary>
     public const string EntryField = "DEVOURMENTSTATE";
 
-    /// <summary>The field listing tamed creatures, as whole creature blobs.</summary>
     public const string FriendsField = "FRIENDS";
 
-    /// <summary>Separates one tamed creature from the next.</summary>
     public const string FriendSeparator = "<svC>";
 
     private static readonly DelimitedFields Fields = DelimitedFields.Record;
@@ -155,27 +133,22 @@ public sealed class DevourmentEditState
         _allocator = allocator;
     }
 
-    /// <summary>The swallowed things, in the order the record stores them.</summary>
+    /// <summary>In the order the record stores them.</summary>
     public IReadOnlyList<DevourmentEntry> Entries => _entries;
 
-    /// <summary>The tamed creatures, as the whole blobs FRIENDS stores.</summary>
     public IReadOnlyList<string> Friends => _friends;
 
-    /// <summary>The ids of the tamed creatures.</summary>
     public IReadOnlyList<string> TamedIds => _friends
         .Select(blob => DevourmentReader.CreatureIdOf(blob) ?? "")
         .Where(id => id.Length > 0)
         .ToArray();
 
-    /// <summary>
-    /// True when this campaign has no id counter, so an id handed out here could be handed out
-    /// again by the game. Worth saying; not worth refusing over.
-    /// </summary>
+    /// <summary>True when this campaign has no id counter, so an id handed out here could be handed
+    /// out again by the game.</summary>
     public bool IdCounterWasMissing => _allocator.CounterWasMissing;
 
     public bool IsDirty => _entriesChanged || _friendsChanged || _allocator.Issued > 0;
 
-    /// <summary>Reads the Devourment state out of one campaign record body.</summary>
     public static DevourmentEditState Read(string? recordBody)
     {
         string body = recordBody ?? "";
@@ -197,12 +170,7 @@ public sealed class DevourmentEditState
         return new DevourmentEditState(entries, friends, EntityIdAllocator.ForRecord(body));
     }
 
-    // ---- the list ----
-
-    /// <summary>
-    /// Moves one entry to another place in the list. Stored order is the order, so this is what
-    /// dragging a row up or down comes to.
-    /// </summary>
+    /// <summary>Stored order is the order the mod reads, so this is what dragging a row comes to.</summary>
     public void Move(int from, int to)
     {
         if (from == to || !InRange(from) || !InRange(to))
@@ -216,10 +184,8 @@ public sealed class DevourmentEditState
         _entriesChanged = true;
     }
 
-    /// <summary>
-    /// Takes one swallowed thing out. What it was stays tamed if it was tamed: being in a stomach
-    /// and being a friend are two different facts, held in two different fields.
-    /// </summary>
+    /// <summary>What it was stays tamed if it was tamed: being in a stomach and being a friend are
+    /// two different facts, held in two different fields.</summary>
     public void RemoveAt(int index)
     {
         if (!InRange(index))
@@ -242,7 +208,7 @@ public sealed class DevourmentEditState
         _entriesChanged = true;
     }
 
-    /// <summary>Sets how much food is left, as text, so a value the mod would choke on still goes in.</summary>
+    /// <summary>As text, so a value the mod would choke on still goes in.</summary>
     public void SetFood(int index, string food)
     {
         if (!InRange(index) || !_entries[index].IsWellFormed || _entries[index].Food == food)
@@ -254,18 +220,9 @@ public sealed class DevourmentEditState
         _entriesChanged = true;
     }
 
-    /// <summary>
-    /// Moves one swallowed thing into a different stomach, which is what dragging a row onto
-    /// another one comes to.
-    ///
-    /// The nesting a save describes is not stored anywhere: it is implied by the same entity id
-    /// being prey in one field and predator in another. So moving something inside something else
-    /// is a matter of rewriting one field's predator, and the tree follows.
-    ///
-    /// A move that would put something inside itself is refused. Every other edit here is written
-    /// and warned about, but this one is not a value a person chose, it is a gesture, and the thing
-    /// it describes cannot exist: the reader would have to follow the loop forever.
-    /// </summary>
+    /// <summary>The nesting a save describes is not stored anywhere: it is implied by the same entity
+    /// id being prey in one field and predator in another, so rewriting one field's predator moves
+    /// the whole subtree.</summary>
     /// <returns>False when the move would make a loop, or the entry is not one to move.</returns>
     public bool SetPredator(int index, string predatorBlob)
     {
@@ -289,8 +246,8 @@ public sealed class DevourmentEditState
 
         entry.Predator = predatorBlob;
 
-        // The mod puts a swallowed thing in the room its predator is in, so it follows the move.
-        // An item keeps the rest of its coordinate, which a creature does not carry at all.
+        // The mod puts a swallowed thing in the room its predator is in, so it follows the move. An
+        // item keeps the rest of its coordinate, which a creature does not carry at all.
         if (CreatureBlobBuilder.Parse(predatorBlob) is { } predator)
         {
             entry.Prey = entry.PreyIsItem
@@ -302,10 +259,7 @@ public sealed class DevourmentEditState
         return true;
     }
 
-    /// <summary>
-    /// Whether making <paramref name="predatorId"/> the holder of <paramref name="preyId"/> would
-    /// close a loop, which it does when the prey already holds the predator at any depth.
-    /// </summary>
+    /// <summary>A loop closes when the prey already holds the predator at any depth.</summary>
     public bool WouldLoop(string preyId, string predatorId)
     {
         if (string.Equals(preyId, predatorId, StringComparison.Ordinal))
@@ -334,7 +288,6 @@ public sealed class DevourmentEditState
         .FirstOrDefault(entry => string.Equals(entry.PreyId, entityId, StringComparison.Ordinal))
         ?.PredatorId;
 
-    /// <summary>Where an entry sits among the things sharing its predator, counting from zero.</summary>
     public int SiblingIndexOf(int index)
     {
         if (!InRange(index))
@@ -356,7 +309,7 @@ public sealed class DevourmentEditState
         return seen;
     }
 
-    /// <summary>Every entry sharing a predator, by position in the list, in stored order.</summary>
+    /// <summary>Positions in the entry list, in stored order.</summary>
     public IReadOnlyList<int> SiblingsOf(string predatorId)
     {
         var siblings = new List<int>();
@@ -372,10 +325,7 @@ public sealed class DevourmentEditState
         return siblings;
     }
 
-    /// <summary>
-    /// Puts a creature in a predator's stomach, giving it an id nothing else in the campaign holds.
-    /// It is placed in the same room as the predator, which is where the mod puts one.
-    /// </summary>
+    /// <summary>The new creature gets an id nothing else in the campaign holds.</summary>
     /// <returns>The id the new creature was given.</returns>
     public string AddCreature(
         string type,
@@ -398,12 +348,8 @@ public sealed class DevourmentEditState
         return id;
     }
 
-    /// <summary>
-    /// Puts an item in a predator's stomach, giving it an id nothing else in the campaign holds.
-    ///
-    /// Its food value is written as -1, which is what the game stores for something that is not
-    /// food: an item read back as a number of meals would be a meal.
-    /// </summary>
+    /// <summary>The food value is written as -1, which is what the game stores for something that is
+    /// not food: an item read back as a number of meals would be a meal.</summary>
     /// <returns>The id the new item was given.</returns>
     public string AddItem(
         string type,
@@ -424,19 +370,12 @@ public sealed class DevourmentEditState
         return id;
     }
 
-    // ---- one creature, wherever the record keeps it ----
-
-    /// <summary>
-    /// Sets what a creature feels about the player, in every copy of that creature the record holds.
-    ///
-    /// A creature swallowed and tamed is stored three times over, and the copies have to agree.
-    /// Setting the liking to zero takes the whole relationship out, along with what the creature
-    /// knew of the player, because that is what the game's own writer does with it.
-    /// </summary>
+    /// <summary>Setting the liking to zero takes the whole relationship out, along with what the
+    /// creature knew of the player, because that is what the game's own writer does with it.</summary>
     public void SetFeelingTowardPlayer(string entityId, float? like, float? know)
         => SetFeeling(entityId, CreatureBlobBuilder.PlayerEntityId, like, null, know);
 
-    /// <summary>Sets what one creature feels about another, in every copy of it.</summary>
+    /// <summary>Writes every copy of the creature the record holds.</summary>
     public void SetFeeling(string entityId, string subjectId, float? like, float? fear, float? know)
         => UpdateEveryCopy(entityId, blob =>
         {
@@ -450,7 +389,6 @@ public sealed class DevourmentEditState
                 });
         });
 
-    /// <summary>What a creature feels about the player, read off whichever copy the record holds.</summary>
     public CreatureBlobBuilder.Relation? FeelingTowardPlayer(string entityId)
         => EveryCopy(entityId)
             .Select(blob => CreatureBlobBuilder.ReadRelations(CreatureBlobBuilder.Parse(blob)?.State)
@@ -464,13 +402,8 @@ public sealed class DevourmentEditState
     public bool IsTamed(string entityId) => _friends.Any(blob =>
         string.Equals(DevourmentReader.CreatureIdOf(blob), entityId, StringComparison.Ordinal));
 
-    /// <summary>
-    /// Adds a creature to the tamed list or takes it off it.
-    ///
-    /// Taming copies the creature as the stomach holds it, so the two copies start out agreeing.
-    /// A creature the record does not hold anywhere cannot be tamed, because there is nothing to
-    /// copy: the list stores whole creatures, not names.
-    /// </summary>
+    /// <summary>A creature the record does not hold anywhere cannot be tamed, because the list stores
+    /// whole creatures rather than names and there is nothing to copy.</summary>
     public void SetTamed(string entityId, bool tamed)
     {
         if (IsTamed(entityId) == tamed)
@@ -497,14 +430,8 @@ public sealed class DevourmentEditState
         _friendsChanged = true;
     }
 
-    // ---- writing it back ----
-
-    /// <summary>
-    /// Puts the edits into a record body, touching only the fields that changed.
-    ///
-    /// The entries are removed and written again as a block, which is where the mod puts them: it
-    /// appends them after everything the game itself wrote. Nothing else in the record moves.
-    /// </summary>
+    /// <summary>Touches only the fields that changed. The entries are removed and written again as a
+    /// block at the end, which is where the mod appends them.</summary>
     public string Apply(string recordBody)
     {
         string body = recordBody;
@@ -543,11 +470,7 @@ public sealed class DevourmentEditState
         return body;
     }
 
-    // ---- finding every copy of one creature ----
-
-    /// <summary>
-    /// Every place the record holds this creature: as a predator, as prey, and in the tamed list.
-    /// </summary>
+    /// <summary>As a predator, as prey, and in the tamed list.</summary>
     private IEnumerable<string> EveryCopy(string entityId)
     {
         foreach (DevourmentEntry entry in _entries)
@@ -621,7 +544,7 @@ public sealed class DevourmentEditState
 
     private bool InRange(int index) => index >= 0 && index < _entries.Count;
 
-    /// <summary>How much food an entry says is left, or null when it does not say a number.</summary>
+    /// <summary>Null when the entry does not say a number.</summary>
     public static int? FoodOf(DevourmentEntry entry)
         => int.TryParse(entry.Food, NumberStyles.Any, CultureInfo.InvariantCulture, out int food)
             ? food

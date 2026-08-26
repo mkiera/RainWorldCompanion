@@ -4,20 +4,12 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>One mod on a list, worded for its row.</summary>
-/// <param name="Name">Its display name, or its id when it has none.</param>
-/// <param name="VersionText">Its version, empty when none was recorded.</param>
-/// <param name="OriginText">Where it came from, empty when that was never established.</param>
 public sealed record ModRowViewModel(string Name, string VersionText, string OriginText);
 
 /// <summary>
-/// A plain list of mods for the detail panel: what is on the machine now for the live save, and
-/// what was recorded for a backup or a library save.
-///
-/// <para>The empty case is the one this exists to get right. An empty list means "no mods were
-/// on", "the game folder is not set", "this predates mod lists" and "the options file could not
-/// be read", and those four want four different sentences. Showing any of them as "no mods"
-/// would be a claim about the user's install that nobody checked.</para>
+/// An empty list means "no mods were on", "the game folder is not set", "this predates mod lists"
+/// or "the options file could not be read", and those four want four different sentences. Showing
+/// any of them as "no mods" would be a claim about the user's install that nobody checked.
 /// </summary>
 public sealed class ModListSectionViewModel
 {
@@ -36,7 +28,6 @@ public sealed class ModListSectionViewModel
     /// <summary>"14 mods on", or empty when the list was never read.</summary>
     public string CountText { get; }
 
-    /// <summary>"game v1.11.8", empty when the version is not known.</summary>
     public string GameVersionText { get; }
 
     public IReadOnlyList<ModRowViewModel> Rows { get; }
@@ -52,7 +43,6 @@ public sealed class ModListSectionViewModel
 
     public bool HasEmptyText => EmptyText.Length > 0;
 
-    /// <summary>The mods on this machine right now.</summary>
     public static ModListSectionViewModel ForCurrent(CurrentMods? mods)
     {
         if (mods is null)
@@ -85,13 +75,9 @@ public sealed class ModListSectionViewModel
     }
 
     /// <summary>
-    /// The mods recorded with a snapshot. Always returns a section, because an old snapshot
-    /// saying it recorded nothing is itself worth a line.
+    /// Always returns a section, because a snapshot saying it recorded nothing is itself a line.
     /// </summary>
-    /// <param name="fromABackup">
-    /// Only changes the wording of the nothing-recorded case, because "this backup" and "this
-    /// save" are the two things it can be and neither reads right for the other.
-    /// </param>
+    /// <param name="fromABackup">Only changes the wording of the nothing-recorded case.</param>
     public static ModListSectionViewModel ForRecorded(ModListSnapshot? mods, bool fromABackup)
     {
         if (mods is null)
@@ -148,8 +134,7 @@ public sealed class ModListSectionViewModel
             return "local mod";
         }
 
-        // Nothing was found for this id. That is only worth saying when we actually looked,
-        // because otherwise every row would carry it.
+        // Only worth saying when the install was actually looked at.
         return mods.CheckedTheInstall ? "not installed" : "";
     }
 

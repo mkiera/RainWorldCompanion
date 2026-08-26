@@ -16,8 +16,6 @@ public class GameInstallLocatorTests
     private const string MoreSlugcats = StreamingAssets + @"\mods\moreslugcats\illustrations";
     private const string WatcherMod = StreamingAssets + @"\mods\watcher\illustrations";
 
-    // ---- LooksLikeInstall ----
-
     [Fact]
     public void An_empty_folder_does_not_look_like_an_install()
     {
@@ -60,8 +58,6 @@ public class GameInstallLocatorTests
 
         Assert.False(GameInstallLocator.LooksLikeInstall(temp.Resolve("nowhere")));
     }
-
-    // ---- FindPortraitFile ----
 
     [Fact]
     public void A_portrait_in_the_base_illustrations_folder_is_found()

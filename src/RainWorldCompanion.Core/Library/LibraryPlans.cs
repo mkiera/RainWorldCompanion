@@ -1,23 +1,13 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Core.Library;
 
-/// <summary>
-/// What loading one entry onto one slot would do, worked out without changing anything.
-///
-/// Kept separate from <see cref="SlotCopyPlan"/> rather than reusing it. That plan's source is a
-/// live slot and every line it builds says so, and a dialog that described a library entry as
-/// "local slot 1" would be describing something that is not there.
-/// </summary>
-/// <param name="Summary">
-/// One line saying what this would do to the slot, for a load that does not replace it wholesale.
-/// Empty for a whole slot, where the answer is always the same sentence and the dialog says it.
-/// </param>
+/// <param name="Summary">One line for a load that does not replace the slot wholesale. Empty for a
+/// whole slot, where the answer is always the same sentence and the dialog says it.</param>
 public sealed record LibraryLoadPlan(
     LibraryEntry Entry,
     SlotSide Target,
@@ -27,19 +17,13 @@ public sealed record LibraryLoadPlan(
 {
     public bool CanLoad => Problems.Count == 0;
 
-    /// <summary>
-    /// How the mods recorded with this entry differ from the machine as it stands, or null when
-    /// there was no way to look. Informational: it never lands in <see cref="Problems"/> and never
-    /// stops a load.
-    /// </summary>
+    /// <summary>How the mods recorded with this entry differ from the machine as it stands, or null
+    /// when there was no way to look. Never lands in <see cref="Problems"/> and never stops a load.</summary>
     public ModListDiff? Mods { get; init; }
 }
 
-/// <summary>
-/// The outcome of a load, in the same shape as <see cref="SlotCopyResult"/> so a caller reports
-/// both the same way. <see cref="LiveFolderModified"/> is again the field to read before wording a
-/// failure: it is false only when the slot file is provably the bytes it was before.
-/// </summary>
+/// <summary><see cref="LiveFolderModified"/> is false only when the slot file is provably the same
+/// bytes it was before.</summary>
 public sealed record LibraryLoadResult(
     bool Success,
     BackupSnapshot? SafetySnapshot,
@@ -49,10 +33,6 @@ public sealed record LibraryLoadResult(
     long BytesCopied,
     LibraryLoadPlan? Plan)
 {
-    /// <summary>
-    /// The line to lead a report with. The wording lives here rather than in the UI so "nothing was
-    /// changed" can never be printed over a save file that was in fact written to.
-    /// </summary>
     public string Headline()
     {
         var target = Plan?.Target.FileName ?? "the target slot";
@@ -80,11 +60,8 @@ public sealed record LibraryLoadResult(
     }
 }
 
-/// <summary>
-/// What an import produced. A refused import has a null entry and at least one error; an import
-/// that went through with reservations has an entry and warnings, which is how a save with a
-/// checksum the game will reject still gets into the library.
-/// </summary>
+/// <summary>A refused import has a null entry and at least one error. One that went through with
+/// reservations has an entry and warnings, which is how a save with a bad checksum still gets in.</summary>
 public sealed record LibraryImportResult(
     LibraryEntry? Entry,
     IReadOnlyList<string> Warnings,

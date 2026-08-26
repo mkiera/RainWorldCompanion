@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,12 +10,7 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// One echo, and what this campaign knows about it.
-///
-/// Every echo the game has appears, not only the ones the save mentions, because setting one to
-/// sensed is exactly the edit a player who has never met it wants to make.
-/// </summary>
+/// <summary>Every echo the game has gets a row, not only the ones the save mentions.</summary>
 public sealed class EchoEditRow : ObservableObject
 {
     private readonly Action<EchoEditRow>? _changed;
@@ -43,13 +36,7 @@ public sealed class EchoEditRow : ObservableObject
     /// <summary>What the save held when the editor opened.</summary>
     public int StoredState { get; }
 
-    /// <summary>
-    /// What the player knows about this echo, and the only thing the row stores.
-    ///
-    /// The three booleans below are views onto this rather than three fields of their own. Three
-    /// fields would only ever agree with each other while a radio group was on screen keeping them
-    /// in step, which would leave the row correct in the window and wrong everywhere else.
-    /// </summary>
+    /// <summary>The three booleans below are views onto this, not fields of their own.</summary>
     public int State
     {
         get => _state;
@@ -70,9 +57,8 @@ public sealed class EchoEditRow : ObservableObject
     }
 
     /// <summary>
-    /// Setting one of these on moves the row to that state. Setting one off does nothing: a radio
-    /// group clears the old button before it sets the new one, and acting on the clear would write
-    /// "never seen" on the way to every other value.
+    /// Setting one off does nothing: a radio group clears the old button before it sets the new
+    /// one, and acting on the clear would write "never seen" on the way to every other value.
     /// </summary>
     public bool NeverSeen
     {
@@ -101,7 +87,6 @@ public sealed class EchoEditRow : ObservableObject
     }
 }
 
-/// <summary>One gate, and whether this campaign has opened it.</summary>
 public sealed partial class GateEditRow : ObservableObject
 {
     private readonly Action<GateEditRow>? _changed;
@@ -129,7 +114,6 @@ public sealed partial class GateEditRow : ObservableObject
     partial void OnUnlockedFieldChanged(bool value) => _changed?.Invoke(this);
 }
 
-/// <summary>One flag, with where it is written hidden behind the label a person reads.</summary>
 public sealed partial class FlagEditRow : ObservableObject
 {
     private readonly Action<bool>? _changed;
@@ -154,28 +138,13 @@ public sealed partial class FlagEditRow : ObservableObject
 }
 
 /// <summary>
-/// The editable face of one campaign.
-///
-/// The read-only <see cref="CampaignViewModel"/> beside this one is left exactly as it was. It is
-/// built once from a summary and never changes, which the whole detail panel relies on, so edit
-/// state lives here instead of being threaded back through it.
-///
-/// Every change is pushed into the <see cref="SaveEditSession"/> as it is made rather than
-/// collected up and applied on save. The session is then the only place the pending edit lives,
-/// which is what makes cancelling it a matter of dropping this object.
-///
-/// Nothing here refuses an edit. A value the game would find strange produces a warning saying
-/// what it will do, and is written anyway. The one exception is text that is not a number in a
-/// field the game reads as one, which cannot be sent anywhere useful; the raw field list is where
-/// a value like that belongs.
+/// Every change is pushed into the <see cref="SaveEditSession"/> as it is made, so the session is
+/// the only place the pending edit lives and cancelling is a matter of dropping this object.
+/// Nothing here refuses an edit: a value the game would find strange warns and is written anyway.
 /// </summary>
 public sealed partial class CampaignEditViewModel : ObservableObject
 {
-    /// <summary>
-    /// The keys the named boxes and rows above the raw list are built from. An edit made to one of
-    /// these in the raw list has to be read back into them, or the two halves of the panel would be
-    /// showing different answers about the same field.
-    /// </summary>
+    /// <summary>An edit to one of these in the raw list has to be read back into the named boxes.</summary>
     private static readonly HashSet<string> CuratedKeys = new(StringComparer.Ordinal)
     {
         SaveFields.Cycle,
@@ -201,11 +170,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     private bool _loading = true;
     private string? _splitNote;
 
-    /// <param name="expansions">
-    /// Which expansions the game folder has, for advice about a creature from one of them. Optional:
-    /// the game path is optional throughout this app, and without it the panel says less rather
-    /// than nothing.
-    /// </param>
+    /// <param name="expansions">Optional. Without it the panel says less rather than nothing.</param>
     public CampaignEditViewModel(
         SaveEditSession session,
         CampaignRecordRef campaign,
@@ -255,7 +220,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         RefreshWarnings();
     }
 
-    /// <summary>The campaign being edited, for a heading that says whose save this is.</summary>
     public string DisplayName { get; }
 
     public bool IsHunter { get; }
@@ -266,51 +230,33 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     public ObservableCollection<GateEditRow> Gates { get; }
 
-    /// <summary>
-    /// Every field of the record, filtered by whatever is in the search box.
-    ///
-    /// The boxes above are the fields worth naming. This is all of them, so a field this app has
-    /// never modelled, or one a mod wrote, is still something a person can find and change.
-    /// </summary>
+    /// <summary>All of them, so a field this app never modelled is still findable and editable.</summary>
     public ObservableCollection<RawFieldRow> VisibleRawFields { get; }
 
     /// <summary>Every field, whether the search is showing it or not.</summary>
     public IReadOnlyList<RawFieldRow> RawFields => _rawFields;
 
-    /// <summary>
-    /// What this campaign has swallowed, open for editing.
-    ///
-    /// Built for every campaign, not only the ones carrying Devourment data, because a campaign
-    /// with an empty stomach is exactly the one somebody wants to put something in.
-    /// </summary>
+    /// <summary>Built for every campaign, not only the ones carrying Devourment data.</summary>
     public DevourmentEditViewModel Devourment { get; }
 
     public string RawFieldCountText => _rawFields.Count == VisibleRawFields.Count
         ? _rawFields.Count.ToString(CultureInfo.InvariantCulture) + " fields"
         : $"{VisibleRawFields.Count} of {_rawFields.Count} fields";
 
-    /// <summary>Shelters matching what has been typed into the shelter box.</summary>
     public ObservableCollection<string> ShelterMatches { get; }
 
     public ObservableCollection<string> LastShelterMatches { get; }
 
-    /// <summary>
-    /// What the edits will do that the person making them may not expect. Advice, never a refusal:
-    /// every value in this list has already been written to the session.
-    /// </summary>
+    /// <summary>Advice, never a refusal: every value here has already been written to the session.</summary>
     public ObservableCollection<string> Warnings { get; }
 
     public bool HasWarnings => Warnings.Count > 0;
 
     public bool IsDirty => _session.IsDirty;
 
-    /// <summary>One line per edit made so far, which the save confirmation will show.</summary>
     public IReadOnlyList<string> Changes => _session.Changes;
 
-    /// <summary>
-    /// The edits checked over and turned into the bytes that would be written. Touches no files, so
-    /// a problem is found while the only copy of the edit is still in memory.
-    /// </summary>
+    /// <summary>Touches no files, so a problem is found while the edit is still only in memory.</summary>
     public SaveWritePlan BuildWritePlan() => _session.BuildWritePlan();
 
     public string ChangeCountText => _session.Changes.Count switch
@@ -319,8 +265,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         1 => "1 change",
         int count => count.ToString(CultureInfo.InvariantCulture) + " changes",
     };
-
-    // ---- run ----
 
     [ObservableProperty]
     private string cycle;
@@ -346,8 +290,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     [ObservableProperty]
     private string seed;
 
-    // ---- karma and progress ----
-
     [ObservableProperty]
     private string karma;
 
@@ -366,12 +308,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     [ObservableProperty]
     private string quits;
 
-    // ---- gates ----
-
     [ObservableProperty]
     private string newGateName = "";
-
-    // ---- the raw field list ----
 
     [ObservableProperty]
     private string rawSearch = "";
@@ -382,12 +320,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     [ObservableProperty]
     private string newFieldValue = "";
 
-    /// <summary>
-    /// Whether the field being added is a bare token rather than a key and a value.
-    ///
-    /// The two are different things in the file and an empty box cannot tell them apart, so this
-    /// asks rather than guessing which one an empty value meant.
-    /// </summary>
+    /// <summary>A bare token and a key with an empty value are different things in the file.</summary>
     [ObservableProperty]
     private bool newFieldIsFlag;
 
@@ -433,7 +366,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
     partial void OnQuitsChanged(string value) => SetDeathPersistentNumber(DeathPersistentEditor.QuitsField, value);
 
-    /// <summary>Puts a shelter from the suggestion list into the shelter box.</summary>
     [RelayCommand]
     private void UseShelter(string? room)
     {
@@ -452,9 +384,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Adds a gate the catalog does not list, so a gate from a mod can be opened by typing its name.
-    /// </summary>
+    /// <summary>A gate the catalog does not list can be opened by typing its name.</summary>
     [RelayCommand]
     private void AddGate()
     {
@@ -481,16 +411,10 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         NewGateName = "";
     }
 
-    // ---- the raw field list ----
-
-    /// <summary>Puts a field back to what the file held when the editor opened.</summary>
     [RelayCommand]
     private void RevertRawField(RawFieldRow? row) => row?.Revert();
 
-    /// <summary>
-    /// Takes a field out of the record. There is no undo short of cancelling the editor, which is
-    /// why it is a button rather than a tick that can be caught by a stray click.
-    /// </summary>
+    /// <summary>There is no undo short of cancelling the editor.</summary>
     [RelayCommand]
     private void RemoveRawField(RawFieldRow? row)
     {
@@ -503,10 +427,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AfterRawChange(row.Key);
     }
 
-    /// <summary>
-    /// Adds a field the record does not carry. Typing a key it already carries adds a second one,
-    /// which is how the game itself writes the keys that repeat.
-    /// </summary>
+    /// <summary>A key the record already carries adds a second one, as the game itself does.</summary>
     [RelayCommand]
     private void AddRawField()
     {
@@ -547,12 +468,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AfterRawChange(row.Key);
     }
 
-    /// <summary>
-    /// Reads the record back into everything on screen after the raw list changed it.
-    ///
-    /// A raw edit can move a field one of the named boxes above is also showing, so those are read
-    /// again from the record rather than left saying what they said before.
-    /// </summary>
+    /// <summary>A raw edit can move a field one of the named boxes above is also showing.</summary>
     private void AfterRawChange(string key)
     {
         if (CuratedKeys.Contains(key))
@@ -582,12 +498,9 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Brings the rows back in line with the record.
-    ///
-    /// Values are pushed into the rows that are already there, so typing into one does not rebuild
-    /// the list under the cursor. A record that has gained, lost or reshuffled a field is a
-    /// different list, and that one is rebuilt: a row addresses its field by position, so a stale
-    /// row would write over a field that is not the one it is showing.
+    /// Values are pushed into the rows already there, so typing does not rebuild the list under the
+    /// cursor. A record that gained, lost or reshuffled a field is rebuilt instead: a row addresses
+    /// its field by position, so a stale row would write over a field it is not showing.
     /// </summary>
     private void SyncRawFields()
     {
@@ -663,13 +576,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         RefreshShelterMatches();
     }
 
-    /// <summary>
-    /// Builds the flag, echo and gate rows again from the record.
-    ///
-    /// Those rows are made once from what the record held, so an echo added or a gate opened by a
-    /// raw edit has no row until they are made again. Each row takes its state through its
-    /// constructor rather than through its setters, so nothing here writes back to the session.
-    /// </summary>
+    /// <summary>Each row takes its state through its constructor, so nothing here writes back.</summary>
     private void RebuildCuratedRows()
     {
         bool wasLoading = _loading;
@@ -691,8 +598,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
             }
         }
     }
-
-    // ---- applying ----
 
     private string DeathPersistentBlob
         => _session.GetFieldValue(_campaign, SaveFields.DeathPersistent) ?? "";
@@ -720,11 +625,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AfterChange();
     }
 
-    /// <summary>
-    /// Writes a number, or says why it did not. Text that is not a number is the one edit this
-    /// panel does not make: the game reads these fields as numbers, and there is nowhere useful to
-    /// put "abc". The raw field list writes anything, and the warning points at it.
-    /// </summary>
+    /// <summary>Text that is not a number is the one edit this panel does not make.</summary>
     private void SetNumber(string key, string value)
     {
         if (_loading)
@@ -768,7 +669,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         if (!int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
         {
-            // Not a number, so there is nothing to write. The warning list says so.
+            // Nothing to write. The warning list says so.
             AfterChange();
             return;
         }
@@ -778,11 +679,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Writes the death persistent blob, naming the part of it that moved.
-    ///
     /// The blob is one field holding karma, every echo and every gate, so the session is told which
-    /// of them changed. Without that, opening one echo and raising karma would read as two edits of
-    /// the same unpronounceable field.
+    /// part moved. Without that, two unrelated edits read as two edits of the same field.
     /// </summary>
     private void WriteDeathPersistent(string blob, string partName, string? before, string? after)
     {
@@ -846,8 +744,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         OnPropertyChanged(nameof(Changes));
         OnPropertyChanged(nameof(ChangeCountText));
     }
-
-    // ---- building the rows ----
 
     private IReadOnlyList<FlagEditRow> BuildFlags()
     {
@@ -933,10 +829,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
             on ? "on" : "off");
     }
 
-    /// <summary>
-    /// Whether the blob carries a bare flag. GetValue answers null for a flag as well as for a
-    /// field that is not there, so presence is asked separately.
-    /// </summary>
+    /// <summary>GetValue answers null for a bare flag as well as for an absent field.</summary>
     private static bool DelimitedFlagIsSet(string blob, string key)
         => !string.Equals(DeathPersistentEditor.SetFlag(blob, key, false), blob, StringComparison.Ordinal);
 
@@ -977,8 +870,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
             stored.Remove(region.Code);
         }
 
-        // Anything left is an echo this app does not know the region of, which a mod can add. It
-        // is still in the save, so it is still editable.
+        // Anything left is an echo whose region this app does not know, which a mod can add.
         foreach (var leftover in stored.OrderBy(e => e.Key, StringComparer.OrdinalIgnoreCase))
         {
             rows.Add(new EchoEditRow(leftover.Key, leftover.Key, leftover.Value, false, EchoChanged));
@@ -1023,8 +915,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
             target.Clear();
 
-            // A box holding exactly one shelter has nothing left to suggest, so the list gets out
-            // of the way rather than offering the value already in the box.
+            // A box holding exactly one shelter has nothing left to suggest.
             if (ShelterCatalog.IsKnown(query))
             {
                 return;
@@ -1037,10 +928,6 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Works out what to say about the edits made so far. Everything here has already been written:
-    /// these lines explain consequences, they do not stand in the way of one.
-    /// </summary>
     private void RefreshWarnings()
     {
         Warnings.Clear();
@@ -1076,12 +963,9 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Says so when a raw value was given one of the strings the file splits on.
-    ///
-    /// Nothing stops it, and this is written as something that has happened rather than something
-    /// that is: a value carrying a field separator stops being one field the moment it is written,
-    /// so by the time the list is read back there is nothing left to point at. The note stands
-    /// until the next raw edit, which is long enough to be read.
+    /// Written in the past tense on purpose: a value carrying a field separator stops being one
+    /// field the moment it is written, so by the time the list is read back there is nothing left
+    /// to point at. The note stands until the next raw edit.
     /// </summary>
     private void NoteAnySplit(string label, string value)
     {
@@ -1129,9 +1013,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Hunter's cycle number is not only a counter. SaveState.LoadGame clears the death flag while
-    /// the count is inside the limit, so moving the cycle across that line changes whether the
-    /// campaign is over. The edit still goes through; this only says what it did.
+    /// SaveState.LoadGame clears the death flag while the count is inside the limit, so moving the
+    /// cycle across that line changes whether the campaign is over.
     /// </summary>
     private void AddHunterCycleWarning()
     {
@@ -1180,10 +1063,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         => int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed);
 }
 
-/// <summary>
-/// The SAVE STATE field names the editor writes. They are the game's own spellings, kept in one
-/// place so the panel and any later editor agree about them.
-/// </summary>
+/// <summary>The game's own spellings of the SAVE STATE field names.</summary>
 internal static class SaveFields
 {
     public const string Cycle = "CYCLENUM";

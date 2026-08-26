@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 
 namespace RainWorldCompanion.Core.Saves;
 
@@ -13,18 +12,9 @@ public sealed record GateInfo(string Name, string FromRegion, string ToRegion)
 }
 
 /// <summary>
-/// The karma gates of the game and its expansions.
-///
-/// Extracted from the world files of Rain World 1.10 with Downpour and The Watcher, where a gate
-/// is a room named GATE_&lt;from&gt;_&lt;to&gt;. Every one of them was cross-checked against the gate room
-/// files shipped beside them, which found nothing missing and one file the game does not use,
-/// named GATE_LF_SU(ERROR!).
-///
-/// The Watcher regions add none: that campaign moves between regions by warping rather than
-/// through gates, so the list covers the base game and Downpour.
-///
-/// As with the other catalogs this suggests rather than decides, and a gate name from a mod is
-/// still one a player can have opened.
+/// Extracted from the world files of Rain World 1.10 with Downpour and The Watcher, where a gate is
+/// a room named GATE_&lt;from&gt;_&lt;to&gt;. The Watcher regions add none, since that campaign warps
+/// rather than passing through gates. Like the other catalogs this suggests rather than decides.
 /// </summary>
 public static class GateCatalog
 {
@@ -70,16 +60,13 @@ public static class GateCatalog
     private static readonly Dictionary<string, GateInfo> ByName =
         KnownEntries.ToDictionary(g => g.Name, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Every gate this app knows, ordered by name.</summary>
+    /// <summary>Ordered by name.</summary>
     public static IReadOnlyList<GateInfo> Known => KnownEntries;
 
     public static bool IsKnown(string? name) => !string.IsNullOrWhiteSpace(name) && ByName.ContainsKey(name.Trim());
 
-    /// <summary>
-    /// Looks up a gate by name, ignoring case. Never returns null: an unknown name still has its
-    /// two regions read off it when it is shaped like a gate name, so a modded gate reads as a
-    /// gate rather than as nothing.
-    /// </summary>
+    /// <summary>Never returns null: an unknown name still has its two regions read off it when it is
+    /// shaped like a gate name, so a modded gate reads as a gate rather than as nothing.</summary>
     public static GateInfo ForName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -105,10 +92,8 @@ public static class GateCatalog
         return new GateInfo(trimmed, "", "");
     }
 
-    /// <summary>
-    /// Gates matching the query by name or by either region name, so typing "Shoreline" finds the
-    /// gates into and out of it. A blank query matches everything.
-    /// </summary>
+    /// <summary>Matches by name or by either region name, so typing "Shoreline" finds the gates into
+    /// and out of it. A blank query matches everything.</summary>
     public static IEnumerable<GateInfo> Search(string? query)
     {
         if (string.IsNullOrWhiteSpace(query))

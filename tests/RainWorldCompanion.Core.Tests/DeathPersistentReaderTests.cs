@@ -4,10 +4,8 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// DEATHPERSISTENTSAVEDATA is one field holding a second delimiter format inside it, and it is
-/// where karma, the death counters, the echoes, the gates and the passages all live. These run
-/// synthetic blobs through the extractor so every documented key is covered, including the ones
-/// no fixture on this machine happens to carry.
+/// DEATHPERSISTENTSAVEDATA is one field holding a second delimiter format inside it. Synthetic
+/// blobs cover every documented key, including ones no fixture on this machine carries.
 /// </summary>
 public class DeathPersistentReaderTests
 {
@@ -30,9 +28,9 @@ public class DeathPersistentReaderTests
     [Fact]
     public void The_keys_with_no_place_on_the_card_do_not_disturb_the_ones_that_have_one()
     {
-        // DEATHTIME, TIPS, TIPSEED, FRIENDSAVEBONUS, TUTMESSAGES, METERSSHOWN, SONGSPLAYRECORDS,
-        // SESSIONRECORDS, CONSUMEDFLOWERS, DEATHPOSS, CHATLOGS and PREPEBCHATLOGS are all in the
-        // blob below. Nothing reads them, and nothing may be knocked out by them either.
+        // The blob below also carries DEATHTIME, TIPS, TIPSEED, FRIENDSAVEBONUS, TUTMESSAGES,
+        // METERSSHOWN, SONGSPLAYRECORDS, SESSIONRECORDS, CONSUMEDFLOWERS, DEATHPOSS, CHATLOGS and
+        // PREPEBCHATLOGS. Nothing reads them, and nothing may be knocked out by them either.
         var campaign = Read(EveryDocumentedKey);
 
         Assert.Equal(6, campaign.Echoes.Count);
@@ -71,9 +69,8 @@ public class DeathPersistentReaderTests
             new[] { "SH", "UW", "CC", "SI", "LF", "SB" },
             campaign.Echoes.Select(e => e.RegionCode).ToArray());
 
-        // 1 is a hunch and 2 is an echo the player has spoken to. GhostHunch.Update stores the
-        // one and SaveState.GhostEncounter stores the other, both as constants, so no entry can
-        // ever hold anything else and none of them is a repeat count.
+        // 1 is a hunch (GhostHunch.Update) and 2 an echo spoken to (SaveState.GhostEncounter),
+        // both stored as constants, so no entry holds anything else and none is a repeat count.
         Assert.Equal(EchoRecord.Hunch, Assert.Single(campaign.Echoes, e => e.RegionCode == "SH").State);
         Assert.Equal(EchoRecord.TalkedTo, Assert.Single(campaign.Echoes, e => e.RegionCode == "UW").State);
     }
@@ -133,9 +130,8 @@ public class DeathPersistentReaderTests
     }
 
     /// <summary>
-    /// The passage tracker is not always an int. The live sav stores a float for Rivulet's
-    /// Scholar and a dotted string for Spearmaster's. The raw text is kept whatever the shape, so
-    /// a passage with real progress is never drawn like one with none.
+    /// The passage tracker is not always an int: the live sav stores a float for Rivulet's Scholar
+    /// and a dotted string for Spearmaster's, so the raw text is kept whatever the shape.
     /// </summary>
     [Theory]
     [InlineData("30.29")]

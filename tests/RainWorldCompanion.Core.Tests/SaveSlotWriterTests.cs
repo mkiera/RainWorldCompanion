@@ -5,10 +5,8 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Writing an edit is the one operation in this app that puts bytes into the save folder that no
-/// other file holds, so the safety snapshot taken before it is the only copy of what was there.
-/// These check that the snapshot is always taken, that every refusal leaves the folder as it was,
-/// and that what lands on disk is a file the game will accept.
+/// Writing an edit is the one operation that puts bytes into the save folder no other file holds,
+/// so the safety snapshot taken before it is the only copy of what was there.
 /// </summary>
 public class SaveSlotWriterTests
 {
@@ -46,7 +44,6 @@ public class SaveSlotWriterTests
         var safety = Assert.IsType<BackupSnapshot>(result.SafetySnapshot);
         Assert.Equal(BackupKind.PreRestoreSafety, safety.Manifest!.Kind);
 
-        // The snapshot is the undo, so it has to hold the bytes that were replaced.
         var snapshotted = File.ReadAllBytes(Path.Combine(safety.DirectoryPath, "sav2"));
         SnapshotLayout.AssertBytesEqual(before, snapshotted, "sav2 in the safety snapshot");
     }
@@ -97,9 +94,8 @@ public class SaveSlotWriterTests
     }
 
     /// <summary>
-    /// The reason the session records a hash when it opens. An edit is built from the bytes that
-    /// were in the slot, so writing it over a slot the game has played since would throw those
-    /// cycles away and put back an edited copy of an older save.
+    /// The reason the session records a hash when it opens: writing an edit built from stale
+    /// bytes over a slot the game has played since would throw those cycles away.
     /// </summary>
     [Fact]
     public void A_slot_written_to_since_the_edit_began_is_refused()
@@ -170,9 +166,8 @@ public class SaveSlotWriterTests
     }
 
     /// <summary>
-    /// A write that cannot open the slot has to be told apart from one that opened it and stopped
-    /// half way. The ladder hashes the target afterwards to find out which happened, so this
-    /// failure reports the slot as untouched rather than as possibly part written.
+    /// A write that never opened the slot has to be told apart from one that opened it and
+    /// stopped half way. The ladder hashes the target afterwards to tell them apart.
     /// </summary>
     [Fact]
     public void A_write_that_cannot_open_the_slot_leaves_it_alone_and_says_so()

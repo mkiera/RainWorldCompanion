@@ -5,10 +5,6 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// A backup is the only thing standing behind a restore, so these check the copies are exact,
-/// the manifest describes what was actually written, and a running game blocks the whole thing.
-/// </summary>
 public class BackupServiceTests
 {
     private const string AppVersion = "1.0.0-test";
@@ -410,10 +406,7 @@ public class BackupServiceTests
     }
 }
 
-/// <summary>
-/// A live tree, a separate backup root, and a service wired to a fake detector. Shared by the
-/// backup and restore suites so both run against the same layout.
-/// </summary>
+/// <summary>Shared by the backup and restore suites so both run against the same layout.</summary>
 internal sealed class BackupWorld : IDisposable
 {
     public const string AppVersion = "1.0.0-test";
@@ -443,10 +436,7 @@ internal sealed class BackupWorld : IDisposable
     }
 }
 
-/// <summary>
-/// The contract does not fix where inside a snapshot directory the copies live, so tests locate
-/// them by relative path instead of assuming a layout.
-/// </summary>
+/// <summary>The contract does not fix where copies live inside a snapshot, so tests locate them by relative path.</summary>
 internal static class SnapshotLayout
 {
     public static string? FindFile(BackupSnapshot snapshot, string relativePath)

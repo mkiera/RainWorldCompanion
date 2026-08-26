@@ -9,27 +9,15 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The number stored under KARMA is not the number a player sees, and it is not always the number
-/// the game plays with either. Two rules out of the game explain the gap:
-///
-/// DeathPersistentSaveData.FromString ends with an unconditional
-/// Custom.IntClamp(this.karma, 0, this.karmaCap), so a stored value outside 0..cap is discarded on
-/// load. HUD.KarmaMeter builds sprite names as "smallKarma" + karma over smallKarma0 to
-/// smallKarma9, so the stored value is a 0-based index and the meter reads one higher.
-///
-/// The raw <see cref="CampaignSummary.Karma"/> and <see cref="CampaignSummary.KarmaCap"/> stay
-/// exactly as they sit on disk, because that is what a save editor writes back. Everything the UI
-/// shows is derived from them, and this suite pins that derivation.
+/// KARMA is stored 0-based and unclamped. DeathPersistentSaveData.FromString clamps it to 0..cap
+/// on load, and HUD.KarmaMeter displays it as karma plus one.
 /// </summary>
 public class KarmaMathTests
 {
-    // ---- The nine campaigns in the live save folder ----
-
     /// <summary>
-    /// Every campaign in the real save folder, with the karma the game loads and the karma the
-    /// meter shows for each. Two of them store a value the game throws away: Yellow and Watcher
-    /// sit exactly one above their cap, and Artificer and Saint store the -1 that
-    /// VoidSea.VoidWorm.MainWormBehavior.Update writes during the ascension sequence.
+    /// Real campaigns from the save folder. Yellow and Watcher store a value one above their cap,
+    /// and Artificer and Saint store the -1 that VoidSea.VoidWorm.MainWormBehavior.Update writes
+    /// during ascension.
     /// </summary>
     [Theory]
     [InlineData("White", 7, 9, 7, 8, 10, false)]
@@ -77,8 +65,6 @@ public class KarmaMathTests
         Assert.Equal(expectedText, Campaign(storedKarma, storedCap, slugcatId).KarmaText);
     }
 
-    // ---- The three cases the clamp exists for ----
-
     [Fact]
     public void Karma_stored_above_the_cap_loads_as_the_cap()
     {
@@ -117,8 +103,6 @@ public class KarmaMathTests
         Assert.Equal("8 / 10", campaign.KarmaText);
     }
 
-    // ---- Boundaries ----
-
     [Fact]
     public void Karma_equal_to_the_cap_is_in_range()
     {
@@ -156,8 +140,6 @@ public class KarmaMathTests
         // SSOracleBehavior.Update and MoreSlugcats.HRKarmaShrine.Update both set karmaCap 9.
         Assert.Equal(10, Campaign(0, 9).DisplayKarmaCap);
     }
-
-    // ---- Missing fields ----
 
     [Fact]
     public void A_record_with_no_karma_field_derives_nothing_from_it()
@@ -212,22 +194,10 @@ public class KarmaMathTests
         Assert.Equal("-", campaign.KarmaText);
     }
 
-    // ---- A cap below zero, which Math.Clamp cannot survive ----
-
     /// <summary>
-    /// No save has been seen with a negative cap, but a hand-edited file can hold one and the
-    /// reader takes whatever parses. Math.Clamp throws when its min is above its max, so reading
-    /// karma through it would turn a junk field into a crash. RWCustom.Custom.IntClamp does not
-    /// throw. Its IL is three tests in a fixed order:
-    ///
-    ///   if (val &lt; inclMin) return inclMin;
-    ///   if (val &gt; inclMax) return inclMax;
-    ///   return val;
-    ///
-    /// With inclMin 0 above inclMax -1 the value falls out of whichever test it fails first, so a
-    /// stored 5 comes back as -1 and a stored -1 comes back as 0. Both answers are asserted
-    /// literally: a switch to Math.Clamp throws here, and a Max(min, Min(max, val)) rewrite
-    /// answers 0 to both, so either change fails this test rather than reaching a user.
+    /// Math.Clamp throws when its min is above its max, so a negative cap would crash it. This
+    /// follows RWCustom.Custom.IntClamp instead, which checks min then max in order rather than
+    /// throwing, so cap -1 sends a stored 5 to -1 and a stored -1 to 0.
     /// </summary>
     [Theory]
     [InlineData(5, -1, -1)]
@@ -252,13 +222,10 @@ public class KarmaMathTests
         Assert.Equal("0 / 0", Campaign(5, -1).KarmaText);
     }
 
-    // ---- A cap or a karma at the top of the range, which the +1 cannot survive ----
-
     /// <summary>
-    /// The reader takes any number int.TryParse accepts, so a hand-edited KARMACAP of 2147483647
-    /// reaches this. Nothing in the assembly is compiled checked, so adding 1 to it wraps to
-    /// -2147483648 and the chip renders "8 / -2147483648" as if it were a cap. A number that
-    /// cannot be a karma level falls back to the dash the rest of the file uses for unusable input.
+    /// The assembly is not compiled checked, so adding 1 to int.MaxValue wraps to int.MinValue
+    /// instead of throwing. A cap that would wrap falls back to the dash used elsewhere for
+    /// unusable input rather than displaying a negative number.
     /// </summary>
     [Fact]
     public void A_cap_at_the_top_of_the_range_reads_as_missing_rather_than_wrapping()
@@ -275,8 +242,7 @@ public class KarmaMathTests
     [Fact]
     public void A_karma_at_the_top_of_the_range_reads_as_missing_rather_than_wrapping()
     {
-        // With no cap recorded nothing bounds the value from above, so the stored number passes
-        // through EffectiveKarma untouched and lands on the increment.
+        // With no cap, the stored value passes through untouched and the +1 still wraps.
         var campaign = Campaign(int.MaxValue, null);
 
         Assert.Equal(int.MaxValue, campaign.EffectiveKarma);
@@ -294,8 +260,6 @@ public class KarmaMathTests
         Assert.True(campaign.KarmaStoredOutOfRange);
         Assert.Equal("10 / 10", campaign.KarmaText);
     }
-
-    // ---- Serialisation ----
 
     /// <summary>The camelCase names the derived properties would take if they were serialised.</summary>
     private static readonly string[] DerivedKarmaJsonNames =

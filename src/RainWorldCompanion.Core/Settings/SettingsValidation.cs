@@ -2,24 +2,13 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Settings;
 
-/// <summary>
-/// Checks that the configured folders can safely coexist.
-///
-/// The rule behind every message here is that no folder this app writes to may sit inside another
-/// one. A store nested in the save folder would be swept into every backup and deleted by the first
-/// restore, and a save folder nested in a store would be overwritten wholesale by one.
-/// </summary>
+/// <summary>No folder this app writes to may sit inside another one.</summary>
 public static class SettingsValidation
 {
     /// <summary>
-    /// The half of <see cref="Validate"/> that reads only the text: both paths are set and both
-    /// are fully qualified. Returns null when the text is fine, which does not mean the pair is
-    /// usable, only that the rest of the check is worth running.
-    ///
-    /// It is separate because it touches no disk. The rest of <see cref="Validate"/> resolves
-    /// each path through the filesystem to catch junctions and 8.3 names, and that call blocks
-    /// for the full network timeout on a UNC path whose host does not answer, so a caller that
-    /// validates on every keystroke runs this part inline and the rest on a worker.
+    /// The half of <see cref="Validate"/> that touches no disk. The rest resolves each path
+    /// through the filesystem, which blocks for the full network timeout on a UNC path whose host
+    /// does not answer, so a caller that validates on every keystroke runs this part inline.
     /// </summary>
     public static string? ValidateText(string gameSavePath, string backupRootPath)
     {
@@ -46,11 +35,7 @@ public static class SettingsValidation
         return null;
     }
 
-    /// <summary>
-    /// Returns null when the pair is usable, otherwise a plain-English reason to show the user.
-    ///
-    /// Touches the filesystem. See <see cref="ValidateText"/> for the part that does not.
-    /// </summary>
+    /// <summary>Null when the pair is usable, otherwise a plain-English reason to show the user.</summary>
     public static string? Validate(string gameSavePath, string backupRootPath)
     {
         var text = ValidateText(gameSavePath, backupRootPath);
@@ -100,10 +85,6 @@ public static class SettingsValidation
         return null;
     }
 
-    /// <summary>
-    /// The text half of the three-folder check. See <see cref="ValidateText(string, string)"/> for
-    /// why the text and the disk halves are separate.
-    /// </summary>
     public static string? ValidateText(string gameSavePath, string backupRootPath, string libraryRootPath)
     {
         var pair = ValidateText(gameSavePath, backupRootPath);
@@ -125,12 +106,7 @@ public static class SettingsValidation
         return null;
     }
 
-    /// <summary>
-    /// Returns null when all three folders can coexist, otherwise a plain-English reason.
-    ///
-    /// Touches the filesystem. See <see cref="ValidateText(string, string, string)"/> for the part
-    /// that does not.
-    /// </summary>
+    /// <summary>Null when all three folders can coexist, otherwise a plain-English reason.</summary>
     public static string? Validate(string gameSavePath, string backupRootPath, string libraryRootPath)
     {
         var text = ValidateText(gameSavePath, backupRootPath, libraryRootPath);
@@ -194,15 +170,9 @@ public static class SettingsValidation
     private static bool IsFullPath(string path) => Path.IsPathFullyQualified(path);
 
     /// <summary>
-    /// Reduces a path to the one name Windows knows the folder by.
-    ///
-    /// Comparing the text alone is not enough. A junction, a subst drive, an 8.3 short name and
-    /// a \\?\ prefix are all second names for the same folder, and none of them shares a textual
-    /// prefix with the first name, so a backup root aliased into the save folder would pass a
-    /// string comparison and then be swept into every backup and deleted by the first restore.
-    /// Trailing separators are dropped so C:\Foo\ and C:\Foo compare equal, and a folder that
-    /// does not exist yet falls back to the textual form, which is the right answer for one that
-    /// is about to be created.
+    /// A junction, a subst drive, an 8.3 short name and a \\?\ prefix are all second names for the
+    /// same folder and none shares a textual prefix with the first, so a backup root aliased into
+    /// the save folder would pass a string comparison.
     /// </summary>
     private static string Normalise(string path) => CanonicalPath.Resolve(path);
 

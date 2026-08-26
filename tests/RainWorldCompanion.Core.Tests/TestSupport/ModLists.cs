@@ -2,16 +2,10 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Mod lists built by hand, for tests about what is recorded and compared rather than about how
-/// the machine is read. Reading a real machine is covered by CurrentModsReaderTests.
-/// </summary>
+/// <summary>Hand-built lists. Reading a real machine is covered by CurrentModsReaderTests.</summary>
 internal static class ModLists
 {
-    /// <summary>
-    /// One mod. The version and workshop id are optional the same way they are on a real one:
-    /// a mod can ship without a version, and a local mod has no workshop page.
-    /// </summary>
+    /// <summary>Version and workshop id are optional: a mod can ship without a version, and a local mod has no workshop page.</summary>
     public static ModEntry Mod(string id, string? version = null, string? workshopId = null, string? name = null)
         => new()
         {

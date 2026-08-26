@@ -1,14 +1,11 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// Which of the game's five WinState.EndgameTracker subclasses wrote a passage's stored progress.
-/// The subclass decides what the text means, and the passage name decides the subclass.
-/// </summary>
+/// <summary>Which of the game's five WinState.EndgameTracker subclasses wrote a passage's stored
+/// progress. The subclass decides what the text means, and the passage name decides the subclass.</summary>
 public enum PassageTracker
 {
     /// <summary>A passage this app has no requirement for, including anything a mod added.</summary>
@@ -30,22 +27,13 @@ public enum PassageTracker
     Fraction,
 }
 
-/// <summary>
-/// What one passage's stored tracker text amounts to.
-/// </summary>
-/// <param name="Done">
-/// Progress: the stored number for <see cref="PassageTracker.Count"/>, the number of items or set
-/// flags otherwise. Null when the text does not parse as the tracker's shape.
-/// </param>
+/// <param name="Done">The stored number for <see cref="PassageTracker.Count"/>, the number of items
+/// or set flags otherwise. Null when the text does not parse as the tracker's shape.</param>
 /// <param name="Needed">The requirement, or null when this app does not know the passage.</param>
-/// <param name="Fulfilled">
-/// Whether the passage is earned. Null rather than false when <see cref="Needed"/> is unknown, so
-/// a passage from a mod is not reported as unearned on no evidence.
-/// </param>
-/// <param name="Text">
-/// Short progress text for a chip, for example "5 / 5". Empty when the entry carried no tracker,
-/// and the raw stored text when this app cannot interpret it.
-/// </param>
+/// <param name="Fulfilled">Null rather than false when <see cref="Needed"/> is unknown, so a passage
+/// from a mod is not reported as unearned on no evidence.</param>
+/// <param name="Text">For example "5 / 5". Empty when the entry carried no tracker, and the raw
+/// stored text when this app cannot interpret it.</param>
 public sealed record PassageGoal(
     PassageTracker Tracker,
     int? Done,
@@ -54,25 +42,17 @@ public sealed record PassageGoal(
     string Text);
 
 /// <summary>
-/// Reads the third part of a WINSTATE entry, which is a tracker's progress towards its passage.
-///
 /// The requirements come from WinState.CreateAndAddTracker, which builds one tracker per passage
-/// with the maximum baked in. Whether a passage is available in game is not stored: Menu.EndgameTokens
-/// draws a token when the tracker's GoalFullfilled is true and its consumed flag is false, and
-/// GoalFullfilled is this progress against this requirement.
-///
-/// Nothing here throws. A name this app does not know, or text that does not fit the shape the name
-/// implies, comes back as <see cref="PassageTracker.Unknown"/> or with a null <see cref="PassageGoal.Done"/>.
+/// with the maximum baked in. Whether a passage is available in game is not stored: the game draws a
+/// token when GoalFullfilled is true and consumed is false, and GoalFullfilled is this progress
+/// against this requirement. Nothing here throws.
 /// </summary>
 public static class PassageGoals
 {
     /// <summary>Separates the entries of a list, flag array or feast tracker.</summary>
     private const char EntrySeparator = '.';
 
-    /// <summary>
-    /// IntegerTracker maxima. Survivor 5, Outlaw 7, and Hunter, Monk and Saint 12 each, all read
-    /// off WinState.CreateAndAddTracker.
-    /// </summary>
+    /// <summary>IntegerTracker maxima, read off WinState.CreateAndAddTracker.</summary>
     private static readonly Dictionary<string, int> CountGoals = new(StringComparer.Ordinal)
     {
         ["Survivor"] = 5,
@@ -90,10 +70,8 @@ public static class PassageGoals
         ["DragonSlayer"] = 6,
     };
 
-    /// <summary>
-    /// FloatTracker passages. Every one of them is built with a maximum of 1, so the stored
-    /// fraction is the progress itself.
-    /// </summary>
+    /// <summary>Every one of these is built with a maximum of 1, so the stored fraction is the
+    /// progress itself.</summary>
     private static readonly HashSet<string> FractionPassages = new(StringComparer.Ordinal)
     {
         "Chieftain", "Friend", "Martyr", "Mother",
@@ -104,7 +82,6 @@ public static class PassageGoals
     private const string DragonSlayerPassage = "DragonSlayer";
     private const string GourmandPassage = "Gourmand";
 
-    /// <summary>The maximum a FloatTracker passage counts up to.</summary>
     private const double FractionGoal = 1.0;
 
     /// <summary>An entry with no tracker text at all.</summary>
@@ -134,11 +111,9 @@ public static class PassageGoals
         };
     }
 
-    /// <summary>
-    /// Which subclass wrote this text. The name settles it except for DragonSlayer, which is a
-    /// ListTracker under More Slugcats or Watcher and a BoolArrayTracker without either. A flag
-    /// array and a feast both end in a separator and a list does not, so the text tells them apart.
-    /// </summary>
+    /// <summary>The name settles it except for DragonSlayer, which is a ListTracker under More
+    /// Slugcats or Watcher and a BoolArrayTracker without either. A flag array ends in a separator
+    /// and a list does not, so the text tells those apart.</summary>
     private static PassageTracker TrackerFor(string name, string stored) => name switch
     {
         GourmandPassage => PassageTracker.Feast,
@@ -150,10 +125,8 @@ public static class PassageGoals
         _ => PassageTracker.Unknown,
     };
 
-    /// <summary>
-    /// The requirement for a tracker whose progress text is missing. Flags and feasts size
-    /// themselves from the text, so those have no requirement without it.
-    /// </summary>
+    /// <summary>Flags and feasts size themselves from the text, so those have no requirement without
+    /// it.</summary>
     private static int? GoalFor(PassageTracker tracker, string name, string stored) => tracker switch
     {
         PassageTracker.Count => CountGoals.TryGetValue(name, out int max) ? max : null,
@@ -170,8 +143,7 @@ public static class PassageGoals
             return new PassageGoal(PassageTracker.Count, null, needed, null, stored);
         }
 
-        // WinState.DeathModifyTracker subtracts from progress on death, so this number is often
-        // negative. IntegerTracker.GoalFullfilled is progress >= max either way.
+        // WinState.DeathModifyTracker subtracts on death, so this number is often negative.
         return new PassageGoal(
             PassageTracker.Count,
             done,
@@ -202,8 +174,8 @@ public static class PassageGoals
             }
         }
 
-        // BoolArrayTracker.GoalFullfilled walks the array and returns false on the first entry
-        // that is not set, so an array with nothing in it is fulfilled.
+        // BoolArrayTracker.GoalFullfilled returns false on the first entry that is not set, so an
+        // array with nothing in it is fulfilled.
         return new PassageGoal(PassageTracker.Flags, set, total, set == total, Fraction(set, total));
     }
 
@@ -233,8 +205,8 @@ public static class PassageGoals
             return new PassageGoal(PassageTracker.Fraction, null, null, null, stored);
         }
 
-        // The stored text is kept rather than reformatted. It is the number the save holds, and
-        // rounding it would hide how close a run is to a passage it has almost earned.
+        // The stored text is kept rather than reformatted: rounding it would hide how close a run is
+        // to a passage it has almost earned.
         return new PassageGoal(PassageTracker.Fraction, null, null, value >= FractionGoal, stored);
     }
 
@@ -257,10 +229,8 @@ public static class PassageGoals
         return count;
     }
 
-    /// <summary>
-    /// The dot separated parts, with empties dropped. A flag array and a feast end in a separator,
-    /// which would otherwise count as one more entry than the save holds.
-    /// </summary>
+    /// <summary>Empties are dropped: a flag array and a feast end in a separator, which would
+    /// otherwise count as one more entry than the save holds.</summary>
     private static IEnumerable<string> Entries(string stored)
     {
         foreach (string entry in stored.Split(EntrySeparator))

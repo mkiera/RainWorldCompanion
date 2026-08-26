@@ -7,11 +7,8 @@ using RainWorldCompanion.Services;
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// Whether the app is free to close itself right now.
-///
-/// Implemented by <see cref="MainViewModel"/>, which knows what it is in the middle of. The
-/// updater cannot ask that question itself, and the answer decides whether an update is allowed to
-/// end the process.
+/// Whether the app is free to close itself right now. Implemented by <see cref="MainViewModel"/>,
+/// which knows what it is in the middle of.
 /// </summary>
 public interface IBusyGuard
 {
@@ -20,19 +17,10 @@ public interface IBusyGuard
 }
 
 /// <summary>
-/// The update offer, the download, and the handoff to the installer.
-///
-/// Two rules shape this class, and both are about what it must not do.
-///
-/// It shows no message box and owns no timer. App.Tests has never constructed a Window, an
-/// Application or a Dispatcher, which is what lets it run on whatever thread xunit hands it, and a
-/// modal dialog or a DispatcherTimer in here would be the first thing to break that. Failures
-/// become <see cref="StatusMessage"/> instead, rendered in the banner, which is also better than a
-/// modal: a refusal is a whole sentence and the user can go on reading it while they deal with
-/// whatever it named.
-///
-/// It does not write settings.json. A second writer would clobber the first, since the store
-/// serialises the whole object, so changes go out through a callback that MainViewModel owns.
+/// No message box and no timer, because App.Tests never constructs a Window, an Application or a
+/// Dispatcher. Failures become <see cref="StatusMessage"/> instead. Nothing here writes
+/// settings.json either: the store serialises the whole object, so a second writer would clobber
+/// the first, and changes go out through a callback MainViewModel owns.
 /// </summary>
 public sealed partial class UpdateViewModel : ObservableObject
 {
@@ -45,18 +33,12 @@ public sealed partial class UpdateViewModel : ObservableObject
     private readonly Func<DateTimeOffset> _now;
 
     /// <summary>
-    /// Set when the user waves an offer away, and never written to disk on purpose.
-    ///
-    /// FinFetcher persisted the skipped version, and that is how somebody ends up stranded on a
-    /// broken build: the one release that would have fixed it is the one they told it to stop
-    /// mentioning. Here a restart brings the offer back, and a newer release is a new offer.
+    /// Never written to disk on purpose: persisting a skipped version is how somebody ends up
+    /// stranded on a broken build. A restart brings the offer back.
     /// </summary>
     private string? _dismissed;
 
-    /// <summary>
-    /// The version whose notes have already been shown, as last read from or written to settings.
-    /// Kept here as well as on disk so the check can answer without a file read.
-    /// </summary>
+    /// <summary>Mirrors settings, so the check can answer without a file read.</summary>
     private string _lastSeenChangelog = "";
 
     public UpdateViewModel(
@@ -81,7 +63,6 @@ public sealed partial class UpdateViewModel : ObservableObject
 
     public BuildStamp Build { get; }
 
-    /// <summary>"Running 1.1.0, commit a1b2c3d", or just the version when there is no commit.</summary>
     public string RunningVersionText => Build.ShortSha.Length == 0
         ? $"Running {Build.Version}"
         : $"Running {Build.Version}, commit {Build.ShortSha}";
@@ -128,25 +109,17 @@ public sealed partial class UpdateViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(WhatsNewTitle))]
     private string whatsNewVersion = "";
 
-    /// <summary>True when this launch is the first on a version and has notes to show for it.</summary>
     public bool HasWhatsNew => WhatsNewNotes.Length != 0;
 
     public string WhatsNewTitle => $"What's new in {WhatsNewVersion}";
 
-    /// <summary>True when an offer is on screen and has not been waved away.</summary>
     public bool HasOffer => Offer is not null;
 
     public bool HasStatus => StatusMessage.Length != 0;
 
-    /// <summary>
-    /// A failure with no offer behind it, which needs a banner of its own.
-    ///
-    /// When there is an offer the message goes inside that banner, beneath the version. Showing
-    /// both would print the same sentence twice, once in each.
-    /// </summary>
+    /// <summary>A failure with an offer behind it goes inside that banner instead.</summary>
     public bool HasStandaloneProblem => IsProblem && Offer is null;
 
-    /// <summary>False while a download is in flight, which is what hides the Update button.</summary>
     public bool IsIdle => !IsDownloading;
 
     public string LastCheckedText => UpdateCooldown.Describe(LastCheckedUtc, _now());
@@ -157,9 +130,7 @@ public sealed partial class UpdateViewModel : ObservableObject
             ? $"Version {Offer.VersionText} is available as a pre-release."
             : $"Version {Offer.VersionText} is available.";
 
-    /// <summary>
-    /// Reads the settings the updater owns. Called once the real settings have been loaded.
-    /// </summary>
+    /// <summary>Called once the real settings have been loaded.</summary>
     public void Adopt(AppSettings settings)
     {
         Channel = UpdateChannels.Parse(settings.UpdateChannel);
@@ -169,24 +140,17 @@ public sealed partial class UpdateViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Whether an automatic check is due. Read by the timer that owns the clock, never in here.
-    ///
-    /// AutoCheck is deliberately part of this and not part of <see cref="CheckAsync"/>. The manual
-    /// button calls the same method, and folding the setting into the check made that button report
-    /// "this is the newest build" to anyone who had turned automatic checking off.
+    /// AutoCheck belongs here rather than in <see cref="CheckAsync"/>, which the manual button also
+    /// calls. Folded into the check, it made that button report "this is the newest build".
     /// </summary>
     public bool IsAutomaticCheckDue() => AutoCheck && UpdateCooldown.IsDue(LastCheckedUtc, _now());
 
     [RelayCommand]
     private Task CheckNowAsync() => CheckAsync(userAsked: true, CancellationToken.None);
 
-    /// <summary>
-    /// Asks GitHub what is available and puts any answer on the banner.
-    /// </summary>
     /// <param name="userAsked">
-    /// True when somebody pressed a button. That shows an offer they had already dismissed, since
-    /// going and asking is not the same as being told, and it reports "you are up to date" rather
-    /// than saying nothing.
+    /// True when somebody pressed a button, which shows an offer they had already dismissed and
+    /// reports "you are up to date" rather than saying nothing.
     /// </param>
     public async Task CheckAsync(bool userAsked, CancellationToken cancellationToken)
     {
@@ -195,9 +159,8 @@ public sealed partial class UpdateViewModel : ObservableObject
             return;
         }
 
-        // Branch builds are never offered, so there is no offer to go looking for. Returning here
-        // rather than running the check keeps it from reporting "this is the newest version" on a
-        // channel where the picker is empty by design and the sentence would be a lie.
+        // Branch builds are never offered, and running the check would report "this is the newest
+        // version" on a channel where the picker is empty by design.
         if (!Channel.CanBeOfferedAutomatically())
         {
             Offer = null;
@@ -234,8 +197,7 @@ public sealed partial class UpdateViewModel : ObservableObject
         }
         catch (Exception e)
         {
-            // A check that never reached GitHub has not used its turn. Without putting the old
-            // stamp back, one offline launch costs the whole hour before the next attempt.
+            // A check that never reached GitHub has not used its turn.
             Stamp(previous);
             if (userAsked)
             {
@@ -249,15 +211,8 @@ public sealed partial class UpdateViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Shows what changed, once, the first time the app runs on a version it has not run before.
-    ///
-    /// Backward-looking, and so nothing to do with the offer: that says a newer build exists, this
-    /// says what the build already running brought with it.
-    ///
-    /// Costs no request in the ordinary case. The version comparison is local, and only a version
-    /// that actually changed since the last launch goes on to ask GitHub anything, which happens
-    /// once per update rather than once per launch. A failure is swallowed: nobody asked for this,
-    /// so there is nothing to report, and leaving the setting alone means the next launch retries.
+    /// What the build already running brought with it, shown once. The version comparison is local,
+    /// so only a version that actually changed since the last launch asks GitHub anything.
     /// </summary>
     public async Task CheckForWhatsNewAsync(CancellationToken cancellationToken)
     {
@@ -267,8 +222,8 @@ public sealed partial class UpdateViewModel : ObservableObject
             return;
         }
 
-        // Nothing was recorded, so this is a first run or a copy installed before this existed.
-        // Recording it silently is what keeps a fresh install from opening on a changelog.
+        // Nothing recorded means a first run, and recording it silently keeps a fresh install from
+        // opening on a changelog.
         if (_lastSeenChangelog.Length == 0 || Build.ParsedVersion is not { } version)
         {
             RememberChangelogSeen(running);
@@ -288,7 +243,6 @@ public sealed partial class UpdateViewModel : ObservableObject
             if (match is null || !match.HasNotes)
             {
                 // A branch build has no release of its own, and a release can carry no body.
-                // Both are settled rather than retried every launch.
                 RememberChangelogSeen(running);
                 return;
             }
@@ -298,15 +252,13 @@ public sealed partial class UpdateViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            // The window closed while the check was in flight.
         }
         catch
         {
-            // Offline, or GitHub is unhappy. The setting is left alone, so this comes back.
+            // The setting is left alone, so the next launch tries again.
         }
     }
 
-    /// <summary>Puts the notes away and records the version, so they do not come back.</summary>
     [RelayCommand]
     private void DismissWhatsNew()
     {
@@ -362,7 +314,7 @@ public sealed partial class UpdateViewModel : ObservableObject
             var installer = await _downloader.DownloadAsync(
                 target.DownloadUrl, target.AssetName, target.SizeBytes, progress, cancellationToken);
 
-            // Asked again. Everything above took time, and the answer can have changed in it.
+            // Asked again, because the download took long enough for the answer to change.
             if (_busy.WhyNotNow() is { } startedSince)
             {
                 Say(startedSince, problem: true);
@@ -393,12 +345,8 @@ public sealed partial class UpdateViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Downloads a branch build and hands it to the installer.
-    ///
-    /// The same shape as <see cref="InstallAsync"/>, and deliberately in this class rather than in
-    /// the window: the guard, the progress and the handoff are the parts that must not be written
-    /// twice, because a second copy is a second chance to forget to ask whether a save is being
-    /// written.
+    /// In this class rather than the window: a second copy of the guard, the progress and the
+    /// handoff is a second chance to forget to ask whether a save is being written.
     /// </summary>
     public async Task InstallBranchBuildAsync(AlphaBuild? build, CancellationToken cancellationToken)
     {
@@ -453,13 +401,8 @@ public sealed partial class UpdateViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Every installable release, newest first, pre-releases included.
-    ///
-    /// Deliberately the widest list rather than the current channel's. Stable is a subset of
-    /// pre-release, so one fetch backs both and moving between them spends no request. Narrowing
-    /// it is the window's job, and it has to be: a list fetched as stable has the pre-releases
-    /// already dropped, so reusing one after a switch would show a pre-release channel with no
-    /// pre-releases on it.
+    /// The widest list rather than the current channel's, so one fetch backs both. Narrowing it is
+    /// the window's job: a list fetched as stable has the pre-releases already dropped.
     /// </summary>
     public async Task<IReadOnlyList<UpdateOffer>> ListReleasesAsync(CancellationToken cancellationToken)
     {
@@ -467,14 +410,12 @@ public sealed partial class UpdateViewModel : ObservableObject
         return UpdatePicker.ForChannel(releases, UpdateChannel.Prerelease);
     }
 
-    /// <summary>The latest build of each branch, for the branch-builds list.</summary>
     public async Task<IReadOnlyList<AlphaBuild>> ListBranchBuildsAsync(CancellationToken cancellationToken)
     {
         var runs = await _source.GetBranchBuildRunsAsync(cancellationToken);
         return AlphaBuilds.FromRuns(runs, Build);
     }
 
-    /// <summary>Changes the channel, saves it, and looks again on the new one.</summary>
     public async Task SetChannelAsync(UpdateChannel channel, CancellationToken cancellationToken)
     {
         if (Channel == channel)
@@ -488,13 +429,11 @@ public sealed partial class UpdateViewModel : ObservableObject
         // The offer on screen came from the old channel and may not exist on this one.
         Offer = null;
 
-        // Forced, because switching channel is the user asking, and the hourly cooldown is about
-        // checks nobody asked for.
+        // Forced, because the hourly cooldown is about checks nobody asked for.
         Stamp(null);
         await CheckAsync(userAsked: true, cancellationToken);
     }
 
-    /// <summary>Turns automatic checking on or off, and saves it.</summary>
     public void SetAutoCheck(bool enabled)
     {
         if (AutoCheck == enabled)
@@ -518,10 +457,7 @@ public sealed partial class UpdateViewModel : ObservableObject
         IsProblem = problem;
     }
 
-    /// <summary>
-    /// The sentence to show for a failure. UpdateCheckException already carries one written for
-    /// the purpose, so it is used as it is rather than wrapped in something vaguer.
-    /// </summary>
+    /// <summary>UpdateCheckException already carries a sentence written to be shown as it is.</summary>
     private static string Describe(Exception e) => e is UpdateCheckException
         ? e.Message
         : "The update could not be completed. " + e.Message;

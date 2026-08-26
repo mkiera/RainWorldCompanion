@@ -4,22 +4,11 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Loading is the one thing the library does that writes into the save folder, so it runs the same
-/// ladder a slot copy runs: safety snapshot first and proved to hold what is being replaced, then
-/// the operation lock, then the re-checks, then one copy.
-///
-/// Every refusal here is checked the same way: the target slot is hashed before and after, and the
-/// two have to match. A refusal that quietly wrote something is the failure this file exists to
-/// catch.
-/// </summary>
 public class LibraryLoadTests
 {
     private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
     private static readonly SaveSlotRef LocalThree = new(SaveRealm.Local, 3);
     private static readonly SaveSlotRef OnlineTwo = new(SaveRealm.Online, 2);
-
-    // ---- the load itself ----
 
     [Fact]
     public void Loading_writes_the_stored_bytes_into_the_slot()
@@ -37,8 +26,8 @@ public class LibraryLoadTests
     [Fact]
     public void The_loaded_save_still_parses_and_its_checksum_still_verifies()
     {
-        // The assertion that proves nothing was rewritten. The digest covers the payload plus the
-        // game's salt, so a payload that arrived even one character short would parse and then fail.
+        // The checksum covers the payload plus the game's salt, so a payload short by even one
+        // character would still parse but fail this check.
         using var world = new LibraryWorld();
         var entry = world.Library.StoreSlot(LocalTwo, "Ironclaw run", null);
 
@@ -68,8 +57,8 @@ public class LibraryLoadTests
     [Fact]
     public void Loading_into_a_slot_with_no_file_yet_works()
     {
-        // online_sav2 is not in the fixture folder, which is the state a Rain Meadow player is in
-        // before they have played online.
+        // online_sav2 is not in the fixture folder, the state before a Rain Meadow player has
+        // played online.
         using var world = new LibraryWorld();
         var entry = world.Library.StoreSlot(LocalTwo, "Ironclaw run", null);
         Assert.False(world.Live.FileExists("online_sav2"));
@@ -109,8 +98,6 @@ public class LibraryLoadTests
         Assert.Equal(new FileInfo(world.Live.Resolve("sav3")).Length, manifest.LastLoadedSizeBytes);
     }
 
-    // ---- the safety snapshot ----
-
     [Fact]
     public void Loading_takes_a_safety_snapshot_that_holds_the_file_it_replaced()
     {
@@ -130,7 +117,6 @@ public class LibraryLoadTests
     [Fact]
     public void Restoring_the_safety_snapshot_puts_the_slot_back()
     {
-        // The whole reason a load is allowed to overwrite a save at all.
         using var world = new LibraryWorld();
         var before = world.Live.ReadTree();
         var entry = world.Library.StoreSlot(LocalTwo, "Ironclaw run", null);
@@ -152,8 +138,6 @@ public class LibraryLoadTests
 
         Assert.Contains("Ironclaw run", result.SafetySnapshot!.Label ?? "", StringComparison.Ordinal);
     }
-
-    // ---- refusals ----
 
     [Fact]
     public void Loading_refuses_while_the_game_is_running()
@@ -274,8 +258,6 @@ public class LibraryLoadTests
         Assert.Contains("nothing", result.Headline(), StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---- planning ----
-
     [Fact]
     public void A_plan_describes_both_sides_without_changing_anything()
     {
@@ -309,8 +291,8 @@ public class LibraryLoadTests
     {
         using var world = new LibraryWorld();
 
-        // online_sav holds the explored map and the progression record with no campaign in it,
-        // which is what a Rain Meadow slot looks like before a story run is saved.
+        // online_sav holds the explored map and progression record but no campaign, which is
+        // what a Rain Meadow slot looks like before a story run is saved.
         var entry = world.Library.StoreSlot(new SaveSlotRef(SaveRealm.Online, 1), "just the map", null);
 
         var plan = world.Library.PlanLoad(entry, LocalThree);

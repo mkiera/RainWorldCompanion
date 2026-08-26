@@ -3,11 +3,9 @@ using RainWorldCompanion.Core.Updates;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// What survives of a release body on its way to the app.
-///
 /// The cut matters in one direction more than the other. Keeping too much puts install
-/// instructions in front of somebody who is already running the build, which is only noise, but
-/// cutting too much empties a banner whose whole job is to say what changed.
+/// instructions in front of somebody already running the build, but cutting too much empties a
+/// banner whose whole job is to say what changed.
 /// </summary>
 public class ReleaseNotesTests
 {
@@ -27,8 +25,7 @@ public class ReleaseNotesTests
     [Fact]
     public void A_body_with_no_marker_is_kept_whole()
     {
-        // Releases published before the changelog existed carry the blurb and nothing else. Too
-        // much text is a smaller failure than a what's-new banner with nothing in it.
+        // Releases published before the changelog existed carry the blurb and nothing else.
         var notes = ReleaseNotes.ForDisplay("### Installation\nRun the setup.");
 
         Assert.Equal("### Installation\nRun the setup.", notes);
@@ -64,8 +61,6 @@ public class ReleaseNotesTests
     [Fact]
     public void A_body_that_is_only_the_blurb_reads_as_blank()
     {
-        // The marker with nothing before it. The caller treats blank as nothing to show, which is
-        // the right answer rather than a banner containing one empty line.
         Assert.Equal("", ReleaseNotes.ForDisplay(Body("")));
     }
 }

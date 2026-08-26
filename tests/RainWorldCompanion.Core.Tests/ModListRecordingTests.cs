@@ -3,9 +3,6 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// What a snapshot records about the mods that were on when it was taken.
-/// </summary>
 public class ModListRecordingTests
 {
     private static CurrentMods TwoMods() => ModLists.Current(
@@ -50,10 +47,7 @@ public class ModListRecordingTests
         Assert.Equal(ModEntry.WorkshopOrigin, mods.Mods[1].Origin);
     }
 
-    /// <summary>
-    /// A mod list is something a snapshot carries, not something it depends on. A service with no
-    /// way to read one still backs saves up, which is the job.
-    /// </summary>
+    /// <summary>A mod list is something a snapshot carries, not something it depends on to do its job.</summary>
     [Fact]
     public void A_service_with_nowhere_to_read_mods_still_takes_backups()
     {
@@ -78,9 +72,9 @@ public class ModListRecordingTests
     }
 
     /// <summary>
-    /// A read that could not see the enabled list records what it did learn, flagged. Recording
-    /// nothing would lose the game version, and recording an empty list would claim a vanilla
-    /// install the user does not have.
+    /// A read that could not see the enabled list still records what it did learn, flagged.
+    /// Recording nothing would lose the game version, and an empty list would falsely claim a
+    /// vanilla install.
     /// </summary>
     [Fact]
     public void A_read_that_could_not_look_is_recorded_as_such()
@@ -93,8 +87,6 @@ public class ModListRecordingTests
         Assert.Empty(mods.Mods);
         Assert.NotNull(mods.Note);
     }
-
-    // ---- what a restore compares ----
 
     [Fact]
     public void A_restore_plan_says_how_the_machine_has_moved_since_the_backup()
@@ -113,10 +105,7 @@ public class ModListRecordingTests
         Assert.Equal("2.0", change.Now);
     }
 
-    /// <summary>
-    /// A backup taken before mod lists were recorded compares against nothing, which the dialog
-    /// words as such rather than claiming the machine has emptied out.
-    /// </summary>
+    /// <summary>Compares against nothing, worded as such rather than claiming the machine has emptied out.</summary>
     [Fact]
     public void A_backup_from_before_mod_lists_plans_a_restore_that_says_so()
     {

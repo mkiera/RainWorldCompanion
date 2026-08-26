@@ -1,22 +1,17 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// One Rain World save container file (sav, sav2, exp1, options, ...) decoded into its
-/// hashtable entries. Values are returned raw, with any checksum prefix still attached.
-/// </summary>
+/// <summary>One save container file decoded into its hashtable entries. Values are returned raw,
+/// with any checksum prefix still attached.</summary>
 public sealed class SaveContainer
 {
-    /// <summary>
-    /// Closing tag of the serialized hashtable. Everything after it is NUL padding, because
-    /// the game writes these files at a fixed size.
-    /// </summary>
+    /// <summary>Everything after this is NUL padding, because the game writes these files at a
+    /// fixed size.</summary>
     private const string ClosingTag = "</ArrayOfKeyValueOfanyTypeanyType>";
 
     private static readonly byte[] ClosingTagBytes = Encoding.ASCII.GetBytes(ClosingTag);
@@ -47,19 +42,14 @@ public sealed class SaveContainer
     /// <summary>Hashtable key to raw value. Empty is a legitimate result: exp1 has no keys.</summary>
     public IReadOnlyDictionary<string, string> Entries { get; }
 
-    /// <summary>Count of NUL padding bytes following the closing tag.</summary>
     public int PaddingByteCount { get; }
 
     /// <summary>Text of the &lt;Version&gt; child element, null when absent.</summary>
     public string? FormatVersion { get; }
 
-    /// <summary>
-    /// Non-null when the hashtable itself is damaged: Keys and Values hold different numbers of
-    /// children, or one of the two is missing. Keys and Values are matched by index, so a file
-    /// where they disagree has lost entries. Pairing what can be paired and saying nothing makes
-    /// a slot that lost its "save" entry to a truncated write look exactly like a slot the
-    /// player never used.
-    /// </summary>
+    /// <summary>Non-null when the hashtable is damaged: Keys and Values are matched by index, so a
+    /// file where their counts disagree has lost entries. Without saying so, a slot that lost its
+    /// "save" entry to a truncated write would look exactly like one the player never used.</summary>
     public string? StructureProblem { get; }
 
     /// <exception cref="SaveContainerException">The file cannot be read or parsed.</exception>
@@ -80,10 +70,8 @@ public sealed class SaveContainer
             throw new SaveContainerException($"Could not read '{path}': {ex.Message}", ex);
         }
 
-        // The closing tag is ASCII and the padding after it is NUL bytes, so the cut is made in
-        // the byte array. Decoding the whole file to a string first, then slicing the XML out of
-        // it, costs two more copies of a file that runs to megabytes, and the reader is on the
-        // path that refreshes the window.
+        // The cut is made in the byte array: decoding the whole file to a string first, then slicing
+        // the XML out of it, costs two more copies of a file that runs to megabytes.
         int tagIndex = LastIndexOf(bytes, ClosingTagBytes);
         if (tagIndex < 0)
         {
@@ -131,9 +119,7 @@ public sealed class SaveContainer
             List<XElement> keys = keysElement.Elements().ToList();
             List<XElement> values = valuesElement.Elements().ToList();
 
-            // A length mismatch means the tail of the longer list has no partner. Pair what
-            // can be paired rather than rejecting the whole file, and report the mismatch so a
-            // damaged slot does not read as an unused one.
+            // Pair what can be paired rather than rejecting the whole file, and report the mismatch.
             int pairs = Math.Min(keys.Count, values.Count);
             for (int i = 0; i < pairs; i++)
             {
@@ -164,7 +150,6 @@ public sealed class SaveContainer
         }
     }
 
-    /// <summary>Index of the last occurrence of a byte sequence, or -1.</summary>
     private static int LastIndexOf(byte[] haystack, byte[] needle)
     {
         for (int start = haystack.Length - needle.Length; start >= 0; start--)
@@ -197,10 +182,7 @@ public sealed class SaveContainer
         return null;
     }
 
-    /// <summary>
-    /// Opens read-only and shares read and write access so a running game holding the file
-    /// does not make the read fail.
-    /// </summary>
+    /// <summary>Shares read and write access, so a file the game is holding open still opens.</summary>
     private static byte[] ReadAllBytesShared(string path)
     {
         using var stream = new FileStream(

@@ -3,13 +3,11 @@ using RainWorldCompanion.Core.Mods;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Comparing a recorded mod list against this machine. Nothing here refuses anything: the whole
-/// job is to describe the difference so the user can decide.
+/// Comparing a recorded mod list against this machine. Nothing here refuses anything, it only
+/// describes the difference.
 /// </summary>
 public class ModListDiffTests
 {
-    // ---- the four categories ----
-
     [Fact]
     public void An_unchanged_machine_matches()
     {
@@ -27,7 +25,7 @@ public class ModListDiffTests
 
     /// <summary>
     /// Missing keeps the recorded entry whole rather than reducing it to an id, because its name
-    /// and workshop id are what a "go and get it" action is built from.
+    /// and workshop id feed a "go and get it" action.
     /// </summary>
     [Fact]
     public void A_mod_that_is_gone_is_missing_and_keeps_what_was_recorded_about_it()
@@ -80,8 +78,6 @@ public class ModListDiffTests
         Assert.Empty(diff.Missing);
     }
 
-    // ---- comparing versions ----
-
     /// <summary>
     /// devtools ships without a version. Calling that a change would invent a difference out of
     /// something nobody ever knew.
@@ -115,8 +111,6 @@ public class ModListDiffTests
         Assert.True(diff.ListsMatch);
     }
 
-    // ---- the game version ----
-
     [Fact]
     public void The_game_version_is_only_a_difference_when_both_are_known()
     {
@@ -140,12 +134,6 @@ public class ModListDiffTests
         Assert.False(diff.Matches);
     }
 
-    // ---- when there is nothing to compare ----
-
-    /// <summary>
-    /// A snapshot from before mod lists were recorded compares against nothing. It still reports
-    /// what is on now, so the panel can say what the machine looks like today.
-    /// </summary>
     [Fact]
     public void A_snapshot_with_no_recording_compares_nothing_and_still_says_what_is_on_now()
     {
@@ -161,8 +149,8 @@ public class ModListDiffTests
     }
 
     /// <summary>
-    /// The failure this guards against: a recording that could not be read is not a recording of
-    /// a machine with no mods, and comparing it as one would report every mod as removed.
+    /// A recording that could not be read is not the same as one that read zero mods, so this
+    /// must not report every current mod as removed.
     /// </summary>
     [Fact]
     public void A_recording_that_could_not_look_compares_nothing()
@@ -189,12 +177,9 @@ public class ModListDiffTests
         Assert.Equal(1, diff.RecordedCount);
     }
 
-    // ---- partial knowledge ----
-
     /// <summary>
-    /// Without the install there is no way to tell a mod that is gone from one that is merely
-    /// off. Everything lands in the harder-sounding list, and a note says so rather than the app
-    /// quietly guessing.
+    /// Without the install nothing can tell "gone" from merely "off", so this lands in Missing
+    /// (the harder-sounding list) and adds a note rather than guessing.
     /// </summary>
     [Fact]
     public void Without_the_install_a_mod_that_is_off_cannot_be_told_from_one_that_is_gone()
@@ -226,8 +211,6 @@ public class ModListDiffTests
         Assert.True(diff.ListsMatch);
         Assert.Contains(diff.Notes, note => note.Contains("No versions were recorded"));
     }
-
-    // ---- order ----
 
     /// <summary>Two openings of the same dialog have to read the same way.</summary>
     [Fact]

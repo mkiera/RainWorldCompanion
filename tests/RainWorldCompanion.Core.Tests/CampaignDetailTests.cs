@@ -4,14 +4,11 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The campaign card in the reworked UI shows karma, playtime, kills, passages and stomach
-/// contents. Every number on it comes out of one SAVE STATE record, so these run the real
-/// fixtures and assert the values that are actually stored in them.
+/// Every number on it comes out of one SAVE STATE record, so these run the real fixtures and
+/// assert the values that are actually stored in them.
 /// </summary>
 public class CampaignDetailTests
 {
-    // ---- sav2, slot 2, White ----
-
     [Fact]
     public void Sav2_reports_the_progress_counters_recorded_in_the_file()
     {
@@ -124,8 +121,6 @@ public class CampaignDetailTests
         Assert.Equal(0, campaign.DevourmentStateCount);
     }
 
-    // ---- sav3, slot 3, White ----
-
     [Fact]
     public void Sav3_reports_its_own_counters_and_karma()
     {
@@ -194,8 +189,6 @@ public class CampaignDetailTests
         Assert.Empty(campaign.SwallowedItems);
     }
 
-    // ---- display name ----
-
     [Fact]
     public void The_display_name_is_the_in_game_name_for_the_slugcat_id()
     {
@@ -210,8 +203,6 @@ public class CampaignDetailTests
         Assert.Equal("Bubbles", campaign.SlugcatId);
         Assert.Equal("Bubbles", campaign.DisplayName);
     }
-
-    // ---- synthetic fields the real fixtures do not carry ----
 
     [Fact]
     public void The_bare_flags_a_finished_run_carries_are_read_off_the_record()
@@ -336,8 +327,6 @@ public class CampaignDetailTests
         Assert.Equal(14, (int)campaign.PlayTime!.Value.TotalHours);
     }
 
-    // ---- fail-soft ----
-
     // A file the reader cannot parse at all is covered by SaveMetadataExtractorTests, which
     // asserts the slot number survives the failure as well.
 
@@ -420,7 +409,6 @@ internal static class CampaignFixture
     /// <summary>"KEY&lt;svB&gt;VALUE". Pass the key alone for a bare flag.</summary>
     public static string Field(string key, string value) => key + ValueSeparator + value;
 
-    /// <summary>Wraps death persistent entries into the field the record carries them in.</summary>
     public static string DeathData(params string[] entries)
         => Field("DEATHPERSISTENTSAVEDATA", string.Join(DeathFieldSeparator, entries) + DeathFieldSeparator);
 
@@ -438,7 +426,6 @@ internal static class CampaignFixture
     public static string Devourment(string predator, string prey, string status, string foodValue)
         => Field("DEVOURMENTSTATE", string.Join(DevourmentSeparator, predator, prey, status, foodValue));
 
-    /// <summary>Extracts a slot from a throwaway container holding one SAVE STATE record.</summary>
     public static SlotMetadata Extract(params string[] fields)
     {
         using var temp = new TempDirectory("campaign");
@@ -449,7 +436,6 @@ internal static class CampaignFixture
         return SaveMetadataExtractor.Extract(path, 1);
     }
 
-    /// <summary>The single campaign of <see cref="Extract"/>, with parsing asserted to have worked.</summary>
     public static CampaignSummary Campaign(params string[] fields)
     {
         var metadata = Extract(fields);

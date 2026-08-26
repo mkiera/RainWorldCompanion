@@ -7,15 +7,9 @@ using RainWorldCompanion.Core.Editing;
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// The confirmation shown before an edit is written.
-///
-/// It lists what changed rather than asking to trust that something did. Up to this point every
-/// edit has lived in memory and closing the editor forgot it; this is where that stops being true,
-/// so the changes are named one per line in the words the change log uses.
-///
-/// There is no choice about the backup. The write goes through the same ladder a slot copy and a
-/// library load use, and that ladder does not write without a safety copy, so this says one is
-/// coming rather than offering to skip it.
+/// The write goes through the same ladder a slot copy and a library load use, and that ladder
+/// does not write without a safety copy, so this says one is coming rather than offering to
+/// skip it.
 /// </summary>
 public partial class SaveEditsDialog : Window
 {

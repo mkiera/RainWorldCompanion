@@ -1,22 +1,13 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// One slugcat: the id stored in a save, the name the game shows, and the colour the UI tints
-/// with. <paramref name="ColorHex"/> is a "#RRGGBB" string.
-/// </summary>
+/// <param name="ColorHex">A "#RRGGBB" string.</param>
 public sealed record SlugcatInfo(string Id, string DisplayName, string ColorHex);
 
-/// <summary>
-/// The slugcats this app knows by name and colour.
-///
-/// The ids are the values a save writes in the "SAV STATE NUMBER" field. A save can carry an id
-/// from a mod this catalog has never heard of, so lookup always answers with something usable
-/// rather than failing.
-/// </summary>
+/// <summary>The ids are the values a save writes in the "SAV STATE NUMBER" field. A save can carry
+/// an id from a mod this catalog has never heard of, so lookup always answers.</summary>
 public static class SlugcatCatalog
 {
     /// <summary>Colour used for a slugcat id the catalog does not know.</summary>
@@ -41,14 +32,11 @@ public static class SlugcatCatalog
 
     private static readonly Dictionary<string, SlugcatInfo> ById = BuildIndex();
 
-    /// <summary>The ten slugcats shipped with the game and its official expansions.</summary>
+    /// <summary>The slugcats shipped with the game and its official expansions.</summary>
     public static IReadOnlyList<SlugcatInfo> Known => KnownEntries;
 
-    /// <summary>
-    /// Looks up a slugcat id, ignoring case. Never returns null: an id from a mod the catalog
-    /// does not know becomes an entry that shows the raw id in neutral grey, and a blank or
-    /// missing id becomes the "(unknown)" entry.
-    /// </summary>
+    /// <summary>Never returns null: an unknown id becomes an entry showing the raw id in neutral
+    /// grey, and a blank one becomes the "(unknown)" entry.</summary>
     public static SlugcatInfo ForId(string? slugcatId)
     {
         if (string.IsNullOrWhiteSpace(slugcatId))

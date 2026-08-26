@@ -58,9 +58,9 @@ public class SaveMetadataExtractorTests
     [Fact]
     public void A_file_with_no_save_state_record_still_counts_the_records_it_has()
     {
-        // The real online_sav holds an empty header, MAP_White, MAPUPDATE_White and MISCPROG, and
-        // no SAVE STATE. Campaigns being empty is therefore not the same question as the file
-        // being empty, and only the record count can tell them apart.
+        // online_sav holds an empty header, MAP_White, MAPUPDATE_White and MISCPROG, but no SAVE
+        // STATE. Empty campaigns is not the same as an empty file, and only the record count
+        // tells them apart.
         var metadata = SaveMetadataExtractor.Extract(FixtureFiles.PathTo(FixtureFiles.OnlineSav), 1, SaveRealm.Online);
 
         Assert.Empty(metadata.Campaigns);
@@ -272,6 +272,5 @@ public class SaveMetadataExtractorTests
         Assert.False(string.IsNullOrWhiteSpace(text));
     }
 
-    // Mapping a container file name to a slot is covered by SlotCopyTests, which asserts the
-    // realm and the number together for both realms and for every name that is not a slot.
+    // Mapping a file name to a slot is covered by SlotCopyTests, not here.
 }

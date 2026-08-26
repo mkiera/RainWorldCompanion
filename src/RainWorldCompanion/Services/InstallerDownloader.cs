@@ -5,12 +5,8 @@ using RainWorldCompanion.Core.Updates;
 
 namespace RainWorldCompanion.Services;
 
-/// <summary>Fetches an installer to disk.</summary>
 public interface IInstallerDownloader
 {
-    /// <summary>
-    /// Downloads to the updates folder and returns the path written.
-    /// </summary>
     /// <param name="progress">Fraction from 0 to 1, already throttled.</param>
     Task<string> DownloadAsync(
         string downloadUrl,
@@ -20,12 +16,9 @@ public interface IInstallerDownloader
         CancellationToken cancellationToken);
 
     /// <summary>
-    /// Fetches a branch build and returns the installer taken out of it.
-    ///
-    /// Separate from <see cref="DownloadAsync"/> because a branch build arrives as a zip and its
-    /// size is not known beforehand. GitHub's actions API always zips an artifact, one file or
-    /// not, and the runs endpoint does not carry the artifact's length, so neither the wrapper
-    /// nor the length check that guards a release download applies here.
+    /// Separate from <see cref="DownloadAsync"/> because GitHub's actions API always zips an
+    /// artifact and the runs endpoint does not carry its length, so the wrapper and the length
+    /// check that guards a release download do not apply.
     /// </summary>
     Task<string> DownloadBranchBuildAsync(
         string zipUrl,
@@ -35,19 +28,14 @@ public interface IInstallerDownloader
 }
 
 /// <summary>
-/// Streams an installer to disk, and refuses to hand back anything it cannot prove is complete.
-///
-/// The file this produces is one the app goes on to execute, which is what shapes every decision
-/// here. A stream that ends is indistinguishable from a connection that was cut, so the bytes
-/// written are counted and checked against the length the release stated, and anything short is
-/// deleted rather than reported as a finished download. A truncated installer that still runs is
-/// the worst outcome available: it would replace a working app with a partial one.
+/// The file this produces is one the app goes on to execute. A stream that ends is
+/// indistinguishable from a connection that was cut, so the bytes written are counted against the
+/// length the release stated and anything short is deleted rather than handed back.
 /// </summary>
 public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
 {
-    // Emit at most one progress report per percent or per tenth of a second, whichever comes
-    // first. Per chunk would be thousands of property changes a second to move a bar by less than
-    // a pixel, on the thread drawing it.
+    // At most one report per percent or per tenth of a second. Per chunk would be thousands of
+    // property changes a second, on the thread drawing the bar.
     private static readonly TimeSpan ProgressInterval = TimeSpan.FromMilliseconds(100);
     private const double ProgressStep = 0.01;
 
@@ -60,9 +48,8 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
             ConnectTimeout = TimeSpan.FromSeconds(15),
         })
         {
-            // No overall timeout on purpose. The body is a 43 MB installer, and a slow connection
-            // is not an error: it is somebody on a slow connection. Reaching the server at all is
-            // what has a deadline, which is the connect timeout above.
+            // No overall timeout on purpose. The body is a 43 MB installer and a slow connection is
+            // not an error. Reaching the server has the deadline, which is the connect timeout.
             Timeout = Timeout.InfiniteTimeSpan,
         };
 
@@ -76,16 +63,13 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
-        // The address came out of a JSON document fetched over the network, so it is data. Checked
-        // here as well as in the picker, because this is the last point before the bytes land on
-        // disk and this method is reachable from more than one caller.
+        // Checked here as well as in the picker, this being the last point before the bytes land
+        // on disk.
         if (!UpdateUrls.IsAllowedDownload(downloadUrl))
         {
             throw new UpdateCheckException("That download is not hosted anywhere this app will fetch from.");
         }
 
-        // Without a length there is nothing to check the finished file against, so there is no
-        // point starting.
         if (expectedBytes <= 0)
         {
             throw new UpdateCheckException(
@@ -103,9 +87,7 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         }
         catch
         {
-            // Every failure takes the partial file with it. Leaving one behind means the next
-            // attempt has to decide whether it is a resumable download or a broken one, and it
-            // cannot tell.
+            // The next attempt cannot tell a partial file from a resumable one.
             Delete(destination);
             throw;
         }
@@ -115,11 +97,8 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
     }
 
     /// <summary>
-    /// The largest installer this will write out of a zip.
-    ///
-    /// The real one is around 43 MB. The cap is here because the entry header states its own
-    /// uncompressed length and a zip can claim far less than it expands to, so extraction is
-    /// counted as it goes rather than trusted up front.
+    /// A zip entry header can claim far less than the entry expands to, so extraction is counted
+    /// as it goes rather than trusted up front. The real installer is around 43 MB.
     /// </summary>
     private const long MaxInstallerBytes = 300L * 1024 * 1024;
 
@@ -136,15 +115,12 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
 
         UpdatesFolder.Ensure();
 
-        // Named for the run, so two branch builds downloaded in one session cannot collide, and so
-        // a file left behind says which run it came from.
+        // Named for the run, so two branch builds downloaded in one session cannot collide.
         var archive = Path.Combine(UpdatesFolder.Location, $"branch-{runId}.zip");
         var destination = Path.Combine(UpdatesFolder.Location, $"branch-{runId}-setup.exe");
 
         try
         {
-            // Length unknown: the runs endpoint does not carry it, so the response header is all
-            // there is, and it only drives the bar.
             await StreamToFileAsync(zipUrl, archive, expectedBytes: 0, progress, cancellationToken);
             ExtractInstaller(archive, destination);
         }
@@ -156,7 +132,6 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         }
         finally
         {
-            // The zip has served its purpose either way, and it is the larger of the two.
             Delete(archive);
         }
 
@@ -165,12 +140,8 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
     }
 
     /// <summary>
-    /// Writes the one installer inside the archive to <paramref name="destination"/>.
-    ///
-    /// Entry names are treated as data. Every one is held to the same rule a release asset is,
-    /// which admits letters, digits, dot, underscore and dash and nothing else, so a name carrying
-    /// a directory separator or a drive letter never reaches a path at all. The entry's own name
-    /// is never joined to a directory: the destination is decided here from the run id.
+    /// Entry names are treated as data: each is held to the release-asset rule, and the entry's own
+    /// name is never joined to a directory. The destination comes from the run id instead.
     /// </summary>
     private static void ExtractInstaller(string archivePath, string destination)
     {
@@ -237,14 +208,9 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         }
     }
 
-    /// <summary>
-    /// Streams a body to a file.
-    /// </summary>
     /// <param name="expectedBytes">
-    /// The length the caller was promised, or zero when nobody stated one. A positive value is
-    /// checked against the bytes written and a short file is a failure, because a truncated
-    /// installer that still runs is the worst outcome available. Zero leaves the response header
-    /// to drive the bar and nothing to check, which is the branch-build case.
+    /// A positive value is checked against the bytes written and a short file is a failure. Zero
+    /// leaves the response header to drive the bar and nothing to check.
     /// </param>
     private async Task StreamToFileAsync(
         string downloadUrl,
@@ -256,8 +222,7 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         HttpResponseMessage response;
         try
         {
-            // ResponseHeadersRead so the body is streamed rather than buffered whole into memory
-            // before a single byte reaches the disk.
+            // ResponseHeadersRead, so the body is streamed rather than buffered whole in memory.
             response = await _client.GetAsync(
                 downloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         }
@@ -278,9 +243,8 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
                     $"The download answered with HTTP {(int)response.StatusCode}.");
             }
 
-            // With nothing stated up front, the response header is the only length there is. It
-            // can be absent, in which case the bar simply does not move and the download still
-            // finishes: a missing header is not a reason to refuse the file.
+            // An absent header leaves the bar still and the download finishing, which is not a
+            // reason to refuse the file.
             var total = expectedBytes > 0
                 ? expectedBytes
                 : response.Content.Headers.ContentLength ?? 0;
@@ -353,7 +317,6 @@ public sealed class InstallerDownloader : IInstallerDownloader, IDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            // Left behind at worst, and the next launch clears the folder anyway.
         }
     }
 

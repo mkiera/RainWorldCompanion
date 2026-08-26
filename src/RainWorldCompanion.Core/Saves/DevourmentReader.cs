@@ -1,19 +1,12 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// Reads the DEVOURMENTSTATE fields the Devourment mod writes into a SAVE STATE record.
-///
-/// One field holds one relationship, split on &lt;dvD&gt; into predator, prey, status and food
-/// value. Predator and prey are the game's own serialized forms, so their type names are read
-/// off the front of those blobs rather than parsed in full: everything after the type is
-/// position, id and social data this app has no use for.
-/// </summary>
+/// <summary>One DEVOURMENTSTATE field holds one relationship, split on &lt;dvD&gt; into predator,
+/// prey, status and food value. Predator and prey are the game's own serialized forms.</summary>
 public static class DevourmentReader
 {
     /// <summary>Separates the four parts of one relationship.</summary>
@@ -28,23 +21,16 @@ public static class DevourmentReader
     /// <summary>A prey blob starting with this is an item, not a creature.</summary>
     public const string ItemPrefix = "ID.";
 
-    /// <summary>Separates a creature's id from the rest of its id block.</summary>
     public const string CreatureIdSeparator = "<cB>";
 
-    /// <summary>Separates an item's id from the rest of its blob.</summary>
     public const string ItemIdSeparator = "<oB>";
 
-    /// <summary>Index of the type name inside a serialized item.</summary>
     private const int ItemTypeIndex = 1;
 
-    /// <summary>Index of the id inside a serialized creature, after splitting on &lt;cA&gt;.</summary>
     private const int CreatureIdIndex = 1;
 
-    /// <summary>
-    /// Turns one DEVOURMENTSTATE value into a relationship. Returns false for anything that does
-    /// not split into exactly four parts or that carries no predator, prey or status text, so a
-    /// field written by a newer mod version costs that one row and nothing else.
-    /// </summary>
+    /// <summary>False for anything that does not split into exactly four parts or that carries no
+    /// predator, prey or status text, so a field written by a newer mod version costs one row.</summary>
     public static bool TryRead(string? value, out DevourmentRelationship? relationship)
     {
         relationship = null;
@@ -104,11 +90,8 @@ public static class DevourmentReader
         return true;
     }
 
-    /// <summary>
-    /// The entity id of a serialized creature: the element at index 1 after splitting on
-    /// &lt;cA&gt;, up to the following &lt;cB&gt;. For "Slugcat&lt;cA&gt;ID.-1.0&lt;cB&gt;0..."
-    /// that is "ID.-1.0". Null when the blob has no id there.
-    /// </summary>
+    /// <summary>For "Slugcat&lt;cA&gt;ID.-1.0&lt;cB&gt;0..." that is "ID.-1.0". Null when the blob
+    /// has no id there.</summary>
     public static string? CreatureIdOf(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -133,11 +116,8 @@ public static class DevourmentReader
         return id.Length == 0 ? null : id;
     }
 
-    /// <summary>
-    /// The entity id of a serialized item: everything before the first &lt;oB&gt;, or before the
-    /// first &lt;oA&gt; when there is no &lt;oB&gt;. For "ID.-2588.11856&lt;oB&gt;0&lt;oA&gt;Rock..."
-    /// that is "ID.-2588.11856". Null when the blob has no id there.
-    /// </summary>
+    /// <summary>Everything before the first &lt;oB&gt;, or before the first &lt;oA&gt; when there is
+    /// no &lt;oB&gt;. Null when the blob has no id there.</summary>
     public static string? ItemIdOf(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -155,10 +135,7 @@ public static class DevourmentReader
         return id.Length == 0 ? null : id;
     }
 
-    /// <summary>
-    /// The type name of a serialized creature: everything before the first &lt;cA&gt;. Null when
-    /// there is no name there.
-    /// </summary>
+    /// <summary>Everything before the first &lt;cA&gt;. Null when there is no name there.</summary>
     public static string? CreatureTypeOf(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -171,11 +148,8 @@ public static class DevourmentReader
         return type.Length == 0 ? null : type;
     }
 
-    /// <summary>
-    /// The type name of a serialized item: the element at index 1 after splitting on &lt;oA&gt;.
-    /// Used for Devourment prey and for SWALLOWEDITEMS, which store the same shape.
-    /// Null when the blob has no such element.
-    /// </summary>
+    /// <summary>Also used for SWALLOWEDITEMS, which stores the same shape. Null when the blob has no
+    /// element there.</summary>
     public static string? ItemTypeOf(string? value)
     {
         if (string.IsNullOrEmpty(value))

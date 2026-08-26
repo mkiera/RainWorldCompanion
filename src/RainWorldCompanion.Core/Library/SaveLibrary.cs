@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -15,18 +14,10 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.Core.Library;
 
 /// <summary>
-/// A folder of named saves, so a player is not held to the three slots the game gives them.
-///
-/// The same three rules that shape the backup service shape this one. Save files are copied byte
-/// for byte and never decoded or rewritten, because the UTF-8 BOM and the trailing NUL padding are
-/// part of what the game reads back. Nothing destructive happens until the step before it has
-/// succeeded. And every integrity check compares two independent things, never a copy against
-/// itself.
-///
-/// Only <see cref="LoadEntry"/> writes into the live save folder, and it does so through the same
-/// ladder a slot copy runs: safety snapshot first, operation lock, re-checks, then one copy proved
-/// against the hash recorded when the entry was stored. Storing, renaming, deleting, importing and
-/// exporting never touch the save folder at all.
+/// A folder of named saves. Only <see cref="LoadEntry"/> writes into the live save folder, and it
+/// does so through the same steps a slot copy runs: safety snapshot first, operation lock, re-checks,
+/// then one copy proved against the hash recorded when the entry was stored. Storing, renaming,
+/// deleting, importing and exporting never touch the save folder at all.
 /// </summary>
 public sealed class SaveLibrary
 {
@@ -49,9 +40,6 @@ public sealed class SaveLibrary
 
         LibraryRoot = Path.GetFullPath(libraryRoot.Trim());
 
-        // The settings dialog checks this too. Repeated here for the same reason BackupService
-        // repeats its own pair check: a service handed a bad triple would go on to write into a
-        // folder that another part of the app is allowed to delete.
         var problem = SettingsValidation.Validate(_backups.SaveRoot, _backups.BackupRoot, LibraryRoot);
         if (problem is not null)
         {
@@ -61,14 +49,10 @@ public sealed class SaveLibrary
 
     public string LibraryRoot { get; }
 
-    /// <summary>Where the entries are loaded from and stored to.</summary>
     public string SaveRoot => _backups.SaveRoot;
 
-    /// <summary>
-    /// Every entry folder, newest first. A folder that cannot be read is listed with a Problem
-    /// rather than dropped, because a save that half arrived is still something the user has to be
-    /// told about.
-    /// </summary>
+    /// <summary>Newest first. A folder that cannot be read is listed with a Problem rather than
+    /// dropped.</summary>
     public IReadOnlyList<LibraryEntry> ListEntries()
     {
         var entries = new List<LibraryEntry>();
@@ -87,24 +71,16 @@ public sealed class SaveLibrary
         }
         catch (Exception)
         {
-            // A library root that cannot be listed shows as empty. The settings screen is where a
-            // broken path is reported, not here.
             return entries;
         }
 
-        // Newest content first, so a save that was just updated with an hour of play moves to the
-        // top rather than sitting wherever it was first stored.
+        // By content time, so a save just updated with an hour of play moves to the top.
         entries.Sort(static (a, b) => b.ModifiedUtc.CompareTo(a.ModifiedUtc));
         return entries;
     }
 
-    /// <summary>
-    /// What loading an entry onto a slot would do, worked out without changing anything.
-    ///
-    /// The entry's own bytes are checked here rather than only at the moment of the write, so a
-    /// damaged save is reported in the dialog instead of after the user has agreed to overwrite
-    /// something with it.
-    /// </summary>
+    /// <summary>The entry's own bytes are checked here rather than only at the moment of the write,
+    /// so a damaged save is reported in the dialog rather than after the user has agreed.</summary>
     public LibraryLoadPlan PlanLoad(LibraryEntry entry, SaveSlotRef target)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -154,9 +130,8 @@ public sealed class SaveLibrary
             problems.AddRange(verification.Problems);
         }
 
-        // The target has to be a file the backup scope covers, because the safety snapshot taken
-        // before the load is what makes overwriting it undoable. A target outside the scope would
-        // be written over with no copy of it anywhere.
+        // The target has to be in the backup scope: the safety snapshot taken before the load is
+        // what makes overwriting it undoable.
         if (!_backups.Scope.IsInScope(side.FileName))
         {
             problems.Add($"{side.FileName} is not one of the files this app manages, so it will not be written to.");
@@ -186,9 +161,8 @@ public sealed class SaveLibrary
 
         if (entryCampaigns == 0 && targetCampaigns > 0)
         {
-            // A save with records but no SAVE STATE is not an empty file. It is a Rain Meadow
-            // online save holding the explored map and the progression record, and the game will
-            // still show the slot as having no campaign in it.
+            // A save with records but no SAVE STATE is not empty: it is a Rain Meadow online save
+            // holding the explored map and the progression record.
             warnings.Add(manifest.Metadata?.RecordCount > 0
                 ? $"\"{entry.Name}\" holds no campaign, only map and progression data, so this leaves {side.FileName} with no campaign in it."
                 : $"\"{entry.Name}\" holds no campaign, so this replaces {side.FileName} with an empty slot.");
@@ -197,15 +171,8 @@ public sealed class SaveLibrary
         return new LibraryLoadPlan(entry, side, problems, warnings);
     }
 
-    /// <summary>
-    /// Writes an entry's save over a live slot.
-    ///
-    /// This is the one thing in the library that touches the save folder, and it runs the same
-    /// ladder a slot copy runs: safety snapshot first, proved to hold the file being replaced, then
-    /// the operation lock, then the re-checks, then one copy. The entry's recorded digest goes down
-    /// with it, so a save that was damaged since it was stored is refused under the lock rather
-    /// than written.
-    /// </summary>
+    /// <summary>The entry's recorded digest goes down with it, so a save damaged since it was stored
+    /// is refused under the lock rather than written.</summary>
     public LibraryLoadResult LoadEntry(
         LibraryEntry entry,
         SaveSlotRef target,
@@ -267,18 +234,9 @@ public sealed class SaveLibrary
             plan);
     }
 
-    /// <summary>
-    /// Records that this entry and the slot file now hold the same bytes, and takes the slot away
-    /// from whichever entry claimed it before.
-    ///
-    /// One slot, one claimant. Without the second half, an entry loaded into sav a week ago would
-    /// still say it is in sav after another entry replaced it there, and the row would report a
-    /// played slot rather than one holding a different save entirely.
-    ///
-    /// Best effort on purpose. The bytes are already where they belong by this point, and a manifest
-    /// that could not be rewritten costs a hint on a row. Turning that into a reported failure would
-    /// tell the user their load did not work when it did.
-    /// </summary>
+    /// <summary>One slot, one claimant: the slot is taken away from whichever entry claimed it
+    /// before. Best effort, because the bytes are already where they belong by this point and a
+    /// manifest that could not be rewritten costs only a hint on a row.</summary>
     private void RecordSlotLink(LibraryEntry entry, LibraryManifest manifest, string slotPath, SaveSlotRef slot)
     {
         try
@@ -300,11 +258,8 @@ public sealed class SaveLibrary
         ReleaseSlot(slot, exceptEntryId: entry.Id);
     }
 
-    /// <summary>
-    /// Forgets that any entry is in this slot. Call it when something other than a library load
-    /// writes to the slot, such as a restore or a slot copy, because whatever was there is not the
-    /// entry that claimed it any more.
-    /// </summary>
+    /// <summary>Call this when something other than a library load writes to the slot, such as a
+    /// restore or a slot copy.</summary>
     public void ReleaseSlot(SaveSlotRef slot) => ReleaseSlot(slot, exceptEntryId: null);
 
     /// <summary>Forgets every slot claim, which is what a whole folder restore invalidates.</summary>
@@ -356,14 +311,8 @@ public sealed class SaveLibrary
         }
     }
 
-    /// <summary>
-    /// Copies one live slot into a new entry.
-    ///
-    /// Refuses while the game is running, by throwing, which is what CreateBackup and CopySlot do
-    /// and means one handler covers a running game wherever it is met. The copy is proved against
-    /// its source before the manifest records it, so a save the game rewrote mid-copy abandons the
-    /// entry rather than being stored as though it were sound.
-    /// </summary>
+    /// <summary>Throws while the game is running, as CreateBackup and CopySlot do. The copy is proved
+    /// against its source before the manifest records it.</summary>
     public LibraryEntry StoreSlot(
         SaveSlotRef source,
         string name,
@@ -429,12 +378,7 @@ public sealed class SaveLibrary
         return LibraryEntry.Load(directory);
     }
 
-    /// <summary>
-    /// Copies one campaign out of a live slot into a new entry.
-    ///
-    /// The slot is left exactly as it was. Storing a campaign is a read, and moving one somewhere
-    /// else is this followed by a separate write that the user agrees to on its own.
-    /// </summary>
+    /// <summary>The slot is left exactly as it was: storing a campaign is a read.</summary>
     public LibraryEntry StoreCampaign(
         SaveSlotRef source,
         string slugcatId,
@@ -481,19 +425,10 @@ public sealed class SaveLibrary
         return entry;
     }
 
-    /// <summary>
-    /// Keeps a campaign already in hand, whatever it was taken out of.
-    ///
-    /// A campaign pulled out of a backup, or out of a whole slot kept in the library, is the same
-    /// thing as one pulled out of a live slot once it has been read. Neither touches the save folder,
-    /// so unlike <see cref="StoreCampaign"/> this takes no lock and does not care whether the game is
-    /// running.
-    /// </summary>
-    /// <param name="sourceFileName">What the campaign came out of, for the row to show.</param>
-    /// <param name="mods">
-    /// The mods that were on when the campaign was taken. Passed in rather than read here because
-    /// a campaign pulled out of a backup carries that backup's record, not what is on right now.
-    /// </param>
+    /// <summary>Keeps a campaign already in hand. Unlike <see cref="StoreCampaign"/> this takes no
+    /// lock and does not care whether the game is running, because it touches no save file.</summary>
+    /// <param name="mods">The mods that were on when the campaign was taken. Passed in because a
+    /// campaign pulled out of a backup carries that backup's record, not what is on right now.</param>
     public LibraryEntry StoreCampaignFrom(
         CampaignSlice slice,
         string sourceFileName,
@@ -542,12 +477,8 @@ public sealed class SaveLibrary
         return LibraryEntry.Load(directory);
     }
 
-    /// <summary>
-    /// What loading a stored campaign into a slot would do, worked out without changing anything.
-    ///
-    /// A campaign goes into whatever the slot already holds rather than over it, so the other
-    /// campaigns in that slot are untouched and the one for this slugcat is replaced.
-    /// </summary>
+    /// <summary>A campaign goes into whatever the slot already holds rather than over it, so the
+    /// other campaigns in that slot are untouched.</summary>
     public CampaignMovePlan PlanCampaignLoad(LibraryEntry entry, SaveSlotRef target)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -589,13 +520,8 @@ public sealed class SaveLibrary
         return _backups.SlotWriter.PlanPutCampaign(target, slice);
     }
 
-    /// <summary>
-    /// Puts a stored campaign into a live slot.
-    ///
-    /// The write runs the same ladder a slot copy and a whole-slot load run: safety snapshot first,
-    /// then the lock, then the re-checks. The difference is what is written, which is the slot's own
-    /// bytes with one campaign spliced in rather than a file copied over the top.
-    /// </summary>
+    /// <summary>What is written is the slot's own bytes with one campaign spliced in, rather than a
+    /// file copied over the top.</summary>
     public LibraryLoadResult LoadCampaignOntoSlot(
         LibraryEntry entry,
         SaveSlotRef target,
@@ -639,18 +565,14 @@ public sealed class SaveLibrary
             plan);
     }
 
-    /// <summary>
-    /// What loading this entry would do, whichever kind it is. A whole slot is written over the
-    /// target and a campaign is written into it, so a caller offering both goes through here rather
-    /// than having to know which it is holding.
-    /// </summary>
+    /// <summary>A whole slot is written over the target and a campaign is written into it, so a
+    /// caller offering both goes through here rather than knowing which it holds.</summary>
     public LibraryLoadPlan PlanAnyLoad(LibraryEntry entry, SaveSlotRef target)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
 
-        // Both kinds of load are compared the same way, so the diff is attached here rather than
-        // in each branch. This is the one method the dialogs go through.
+        // Attached here rather than in each branch: this is the one method the dialogs go through.
         var mods = _backups.TryDiffMods(entry.Manifest?.Mods);
 
         if (!entry.IsCampaign)
@@ -672,7 +594,6 @@ public sealed class SaveLibrary
         };
     }
 
-    /// <summary>Loads this entry onto a slot, whichever kind it is.</summary>
     public LibraryLoadResult LoadAny(
         LibraryEntry entry,
         SaveSlotRef target,
@@ -706,13 +627,8 @@ public sealed class SaveLibrary
         }
     }
 
-    /// <summary>
-    /// Replaces an entry's save with what is in a live slot now, which is how an hour of play gets
-    /// back into the entry it came from.
-    ///
-    /// The bytes being replaced are kept as save.previous.bin so the update can be undone. One
-    /// generation only: the next update replaces it.
-    /// </summary>
+    /// <summary>The bytes being replaced are kept as save.previous.bin so the update can be undone.
+    /// One generation only: the next update replaces it.</summary>
     public LibraryEntry UpdateEntry(
         LibraryEntry entry,
         SaveSlotRef source,
@@ -780,23 +696,16 @@ public sealed class SaveLibrary
 
         WriteManifest(entry.DirectoryPath, manifest);
 
-        // The entry now holds exactly what the slot holds, so the link is new again. Skipping this
-        // left a row reading "changed since" about the very slot it had just been brought level
-        // with, and no amount of updating would clear it.
+        // The entry now holds exactly what the slot holds, so the link is new again. Without this a
+        // row reads "changed since" about the very slot it was just brought level with.
         RecordSlotLink(entry, manifest, sourcePath, source);
 
         progress?.Report("Updated");
         return LibraryEntry.Load(entry.DirectoryPath);
     }
 
-    /// <summary>
-    /// Takes the campaign out of the slot again, for an entry that holds one.
-    ///
-    /// The same shape as updating a whole slot: the new bytes are written beside the old ones, the
-    /// old ones move aside as the one generation that can be undone, and only then is the manifest
-    /// rewritten. No slot link is recorded, because a slot holding this campaign and eight others
-    /// is not this entry's bytes.
-    /// </summary>
+    /// <summary>No slot link is recorded, because a slot holding this campaign and eight others is
+    /// not this entry's bytes.</summary>
     private LibraryEntry UpdateCampaign(
         LibraryEntry entry,
         LibraryManifest manifest,
@@ -843,10 +752,8 @@ public sealed class SaveLibrary
         return LibraryEntry.Load(entry.DirectoryPath);
     }
 
-    /// <summary>
-    /// Puts back the save an update replaced. Refuses when the previous bytes are not both on disk
-    /// and recorded, and proves them against the recorded hash before swapping them in.
-    /// </summary>
+    /// <summary>Refuses when the previous bytes are not both on disk and recorded, and proves them
+    /// against the recorded hash before swapping them in.</summary>
     public LibraryEntry UndoUpdate(LibraryEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -906,10 +813,7 @@ public sealed class SaveLibrary
         return LibraryEntry.Load(entry.DirectoryPath);
     }
 
-    /// <summary>
-    /// Changes the name and note. Rewrites entry.json and nothing else: the folder keeps its
-    /// timestamp name and the save bytes are not touched.
-    /// </summary>
+    /// <summary>Rewrites entry.json and nothing else: the folder keeps its timestamp name.</summary>
     public LibraryEntry RenameEntry(LibraryEntry entry, string newName, string? newNote)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -950,10 +854,6 @@ public sealed class SaveLibrary
         Directory.Delete(entry.DirectoryPath, recursive: true);
     }
 
-    /// <summary>
-    /// Re-hashes the stored save against the manifest. This is what the background sweep runs, and
-    /// what a load repeats before it writes anything.
-    /// </summary>
     public VerifyResult VerifyEntry(LibraryEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -1005,17 +905,13 @@ public sealed class SaveLibrary
         return new VerifyResult(problems.Count == 0, problems);
     }
 
-    /// <summary>The extension an export of this entry should default to.</summary>
     public static string ExportExtensionFor(LibraryEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
         return entry.IsCampaign ? SaveBundle.CampaignExtension : SaveBundle.Extension;
     }
 
-    /// <summary>
-    /// Writes an entry out as a single file, which is what gets sent to someone else or carried to
-    /// another machine. A whole slot goes out as .rwsave and one campaign as .rwcampaign.
-    /// </summary>
+    /// <summary>A whole slot goes out as .rwsave and one campaign as .rwcampaign.</summary>
     public void ExportEntry(LibraryEntry entry, string destinationPath)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -1041,13 +937,8 @@ public sealed class SaveLibrary
         SaveBundle.Write(Path.GetFullPath(destinationPath), manifest, entry.ContentPath, entry.ContentFileName);
     }
 
-    /// <summary>
-    /// Reads a .rwsave bundle, or a bare save file, into a new entry.
-    ///
-    /// An import never writes into the save folder. It lands in the library and is loaded from
-    /// there like anything else, which keeps the guarded write path the only way a file that
-    /// arrived from outside reaches a live slot.
-    /// </summary>
+    /// <summary>An import never writes into the save folder: it lands in the library and is loaded
+    /// from there like anything else.</summary>
     public LibraryImportResult ImportFile(string sourcePath)
     {
         if (string.IsNullOrWhiteSpace(sourcePath))
@@ -1099,10 +990,8 @@ public sealed class SaveLibrary
             manifest.PreviousMetadata = null;
             manifest.PreviousMods = null;
 
-            // manifest.Mods is deliberately left standing. It describes the machine the save was
-            // played on, which is exactly what a load onto this machine is compared against.
-            // Restamping it here would throw that away and record this machine instead, which the
-            // file already is not a record of.
+            // manifest.Mods is deliberately left standing: it describes the machine the save was
+            // played on, which is what a load onto this machine is compared against.
 
             TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
             WriteManifest(directory, manifest);
@@ -1128,11 +1017,8 @@ public sealed class SaveLibrary
         return manifest;
     }
 
-    /// <summary>
-    /// Takes a campaign file that arrived on its own, out of a bundle somebody unzipped or copied
-    /// straight from a library folder. Like a bare save it has no recorded hash to be held to, so
-    /// one that will not read back is imported with a warning rather than refused.
-    /// </summary>
+    /// <summary>A campaign file that arrived on its own has no recorded hash to be held to, so one
+    /// that will not read back is imported with a warning rather than refused.</summary>
     private LibraryManifest ImportBareCampaign(string sourcePath, string directory, List<string> warnings)
     {
         var campaignPath = Path.Combine(directory, LibraryEntry.CampaignFileName);
@@ -1169,11 +1055,8 @@ public sealed class SaveLibrary
         };
     }
 
-    /// <summary>
-    /// Takes a save file straight out of somebody's save folder. There is no recorded hash to check
-    /// it against, so unlike a bundle a damaged one is imported with a warning rather than refused:
-    /// getting a broken save into the library is how somebody looks at what is left of it.
-    /// </summary>
+    /// <summary>No recorded hash to check it against, so unlike a bundle a damaged one is imported
+    /// with a warning: getting a broken save in is how somebody looks at what is left of it.</summary>
     private LibraryManifest ImportBareContainer(string sourcePath, string directory, List<string> warnings)
     {
         var savePath = Path.Combine(directory, LibraryEntry.SaveFileName);
@@ -1210,11 +1093,8 @@ public sealed class SaveLibrary
         };
     }
 
-    /// <summary>
-    /// Copies a file and proves the copy against what it came from, the same discipline a backup
-    /// copy follows. A file that moves under the copy is copied again, and one that will not sit
-    /// still throws rather than being recorded as sound.
-    /// </summary>
+    /// <summary>A file that moves under the copy is copied again, and one that will not sit still
+    /// throws rather than being recorded as sound.</summary>
     private static (long SizeBytes, string Sha256) CopyProving(
         string sourcePath,
         string destinationPath,
@@ -1282,10 +1162,7 @@ public sealed class SaveLibrary
             "cannot be shown to match. Close Steam, or wait for Steam Cloud to finish syncing, and try again.");
     }
 
-    /// <summary>
-    /// Writes entry.json through a temp file. It goes last on a new entry, so its presence is what
-    /// marks the entry finished.
-    /// </summary>
+    /// <summary>Goes last on a new entry, so its presence is what marks the entry finished.</summary>
     private static void WriteManifest(string directory, LibraryManifest manifest)
     {
         var path = Path.Combine(directory, LibraryEntry.ManifestFileName);
@@ -1295,11 +1172,8 @@ public sealed class SaveLibrary
         File.Move(temp, path, overwrite: true);
     }
 
-    /// <summary>
-    /// Refuses to act on anything that is not an entry folder directly inside the library root, and
-    /// on anything inside the save folder. The same guard DeleteBackup uses, and for the same
-    /// reason: a path that arrived from somewhere else is not one to write to or delete.
-    /// </summary>
+    /// <summary>Refuses anything that is not an entry folder directly inside the library root, and
+    /// anything inside the save folder.</summary>
     private void EnsureOwnedEntry(LibraryEntry entry, string verb)
     {
         var target = TrimSeparators(Path.GetFullPath(entry.DirectoryPath));
@@ -1356,8 +1230,6 @@ public sealed class SaveLibrary
         }
         catch (Exception)
         {
-            // A folder left behind has no entry.json, so it lists as an import that did not finish
-            // rather than as a save the user can act on.
         }
     }
 
@@ -1372,8 +1244,6 @@ public sealed class SaveLibrary
         }
         catch (Exception)
         {
-            // A leftover previous save costs disk space and nothing else. The manifest no longer
-            // points at it, so it cannot be mistaken for one that can be restored.
         }
     }
 

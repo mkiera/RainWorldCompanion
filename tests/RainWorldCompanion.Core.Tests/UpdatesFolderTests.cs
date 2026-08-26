@@ -3,9 +3,7 @@ using RainWorldCompanion.Core.Updates;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The folder downloaded installers land in.
-///
-/// Its one real job is the containment check, which is the guard between "a file this app
+/// The folder's one real job is the containment check, the guard between "a file this app
 /// downloaded" and "a file this app executes". Everything else here is about not letting a name
 /// that arrived over the network decide where a byte gets written.
 /// </summary>
@@ -51,9 +49,8 @@ public class UpdatesFolderTests
     public void A_file_in_the_folder_is_recognised_as_being_in_it()
     {
         // The file is really created rather than named. Contains resolves both sides through the
-        // filesystem, and a path that does not exist falls back to the textual form, so a test
-        // that only named one would be comparing a resolved folder against an unresolved file and
-        // would answer differently depending on whether the folder happened to exist.
+        // filesystem, but falls back to text for a path that does not exist, so a merely named
+        // file would compare a resolved folder against an unresolved path and could answer wrong.
         UpdatesFolder.Ensure();
         var inside = Path.Combine(UpdatesFolder.Location, "contains-probe.tmp");
         File.WriteAllText(inside, "");

@@ -10,9 +10,9 @@ namespace RainWorldCompanion.Tests;
 public class SaveDamageTests
 {
     /// <summary>
-    /// Keys and Values are matched by index. A write truncated part way through leaves Keys with
-    /// all of its children and Values one short, so the last key loses its value. Pairing what
-    /// can be paired and reporting nothing turns lost save data into a blank slot.
+    /// Keys and Values are matched by index. A write truncated part way through leaves Values one
+    /// short, so pairing what can be paired and reporting nothing would turn lost save data into
+    /// a blank slot instead of a damage report.
     /// </summary>
     [Fact]
     public void A_container_whose_keys_outnumber_its_values_reports_the_mismatch()
@@ -80,12 +80,10 @@ public class SaveDamageTests
         }
     }
 
-    // ---- No digest is not a bad digest ----
-
     /// <summary>
-    /// A value with no 32-character hex prefix is a raw payload, which is how this format stores
-    /// the expCore "core" key and every key in options. Reporting it as a failed checksum is the
-    /// same sentence the reader shows for a save the game really would discard.
+    /// A value with no 32-character hex prefix is a raw payload, the format the expCore "core"
+    /// key and every options key use. That must not read as the same failed-checksum message a
+    /// save the game would really discard gets.
     /// </summary>
     [Fact]
     public void A_save_value_with_no_digest_is_not_described_as_a_bad_checksum()

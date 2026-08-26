@@ -9,11 +9,8 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The whole way through, the way the window goes: a campaign is opened, edited in the panel, the
-/// plan is built and checked, and the writer puts it over the slot behind a backup.
-///
-/// The panel tests beside this one stop at the session. These carry on to the file, because that is
-/// where an edit either becomes a save the game reads or does not.
+/// The panel tests beside this one stop at the session. These carry on to the file, because
+/// that is where an edit either becomes a save the game reads or does not.
 /// </summary>
 public class SaveEditsFlowTests : IDisposable
 {
@@ -105,14 +102,9 @@ public class SaveEditsFlowTests : IDisposable
         var safety = result.SafetySnapshot!;
         Assert.Equal(before, File.ReadAllBytes(Path.Combine(safety.DirectoryPath, "sav2")));
 
-        // And it is listed, so it can be found and restored from the window.
         Assert.Contains(_service.ListBackups(), b => b.Id == safety.Id);
     }
 
-    /// <summary>
-    /// The undo the backup promises has to actually work, so this puts the save back and checks it
-    /// is the file it started as.
-    /// </summary>
     [Fact]
     public void Restoring_that_backup_puts_the_edit_back()
     {

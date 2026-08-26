@@ -22,9 +22,7 @@ using RainWorldCompanion.Views;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// State and commands for the main window. Every call that touches disk runs on a background thread.
-/// </summary>
+/// <summary>Every call that touches disk runs on a background thread.</summary>
 public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 {
     private const string SteamGuidance =
@@ -38,12 +36,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private readonly DispatcherTimer _gameTimer;
 
     /// <summary>
-    /// Drives the automatic update check. Lives here rather than on UpdateViewModel, which
-    /// owns no dispatcher so that the view model tests can build one on any thread.
-    ///
-    /// First tick a few seconds after launch, then hourly for as long as the window is open.
-    /// A check only at startup reaches almost nobody: this app gets left open across an
-    /// evening of playing and is rarely restarted.
+    /// Here rather than on UpdateViewModel, which owns no dispatcher so the tests can build one on
+    /// any thread. First tick a few seconds after launch, then hourly while the window is open.
     /// </summary>
     private DispatcherTimer? _updateTimer;
 
@@ -60,9 +54,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
     private SaveLibrary? _library;
 
-    // The campaign whose editor is open, or null. One at a time: an editor holds a session over a
-    // whole slot file, so two of them would each be working from bytes the other had already
-    // changed.
+    // One editor at a time: each holds a session over a whole slot file, so two would work from
+    // bytes the other had already changed.
     private CampaignViewModel? _openEditor;
 
     // 1 while a poll is running. Interlocked because the poll's own continuation clears it on a
@@ -73,27 +66,22 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     // rebuilt once, by the outer set, instead of once per property that changes on the way.
     private bool _movingSelection;
 
-    // Which realm the detail panel's slot sections are showing. Kept here rather than read off the
-    // panel each time, because a reload clears the backup list, the list box writes null back into
-    // SelectedBackup as it empties, and the rebuild that follows leaves Detail null. Reading the
-    // realm off a null panel is how a refresh used to drop the user back to the local saves.
+    // Kept here rather than read off the panel, which a reload leaves null: the list box writes
+    // null into SelectedBackup as it empties, and reading the realm off a null panel is how a
+    // refresh used to drop the user back to the local saves.
     private bool _showOnline;
 
     private IReadOnlyList<SlotMetadata> _liveSlotData = Array.Empty<SlotMetadata>();
     private long _liveSizeBytes;
     private int _liveFileCount;
 
-    // meadow.json for the live folder and for each snapshot, read during the refresh with the rest
-    // of the disk work. Null means the folder holds no such file, which is what a save folder
-    // without Rain Meadow looks like and is why the panel leaves the section out rather than
-    // reporting a missing file. A snapshot with no entry here is the same case.
+    // Null means the folder holds no meadow.json, which is what a save folder without Rain Meadow
+    // looks like, so the panel leaves the section out rather than reporting a missing file.
     private MeadowProfile? _liveMeadow;
     private IReadOnlyDictionary<string, MeadowProfile> _backupMeadow =
         new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
 
-    // Whether Rain Meadow is on this machine. The whole online block hangs on it, so a player
-    // without the mod never sees a section about it. Re-checked whenever the paths change.
-    /// <summary>The mods on this machine, read with the rest of the refresh. Null before the first one.</summary>
+    /// <summary>The mods on this machine. Null before the first refresh.</summary>
     private CurrentMods? _currentMods;
 
     private RainMeadowPresence _meadow = RainMeadowPresence.Absent;
@@ -112,9 +100,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _icons = icons;
         _appVersion = appVersion;
 
-        // Empty on purpose. This runs on the dispatcher inside App.OnStartup, before the window
-        // is shown, and every way of guessing a path from here touches disk. InitializeAsync
-        // loads the real settings on a worker and FillInMissingPathsAsync fills the gaps.
+        // Empty on purpose. This runs on the dispatcher inside App.OnStartup, and every way of
+        // guessing a path from here touches disk. InitializeAsync loads the real settings.
         _settings = new AppSettings();
 
         _gameTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -122,22 +109,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// The update offer, the download and the handoff to the installer.
-    ///
-    /// Null until <see cref="AttachUpdates"/> is called, which App does after constructing the
-    /// services that reach the network. Leaving it out entirely is a supported state: the tests
-    /// build this view model without it and the banner simply never appears.
+    /// Null until <see cref="AttachUpdates"/> is called. Leaving it out is a supported state: the
+    /// tests build this view model without it and the banner never appears.
     /// </summary>
     [ObservableProperty]
     private UpdateViewModel? updates;
 
-    /// <summary>
-    /// Gives the window an updater and starts the clock that drives it.
-    ///
-    /// The first check waits a few seconds. Reading the settings, listing the backups and drawing
-    /// the window all matter more than an update does, and none of them should be competing with a
-    /// network request for the first moment of a launch.
-    /// </summary>
+    /// <summary>The first check waits a few seconds, so it never competes with the launch.</summary>
     public void AttachUpdates(UpdateViewModel updates)
     {
         Updates = updates;
@@ -167,20 +145,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
         catch (OperationCanceledException)
         {
-            // The window closed while the check was in flight.
         }
     }
 
     /// <summary>
-    /// Why the app must not close itself right now, or null when it may.
-    ///
     /// Every path that writes a save file wraps itself in BeginBusy and EndBusy, so IsBusy covers
-    /// all of them: backups, restores, slot copies, library stores and loads, and every edit that
-    /// gets written back. It also covers two read-only paths that set it, which is the right
-    /// direction to be wrong in for a question about whether it is safe to stop.
-    ///
-    /// The stake is higher here than the wording suggests. An update ends the process, and a
-    /// restore that is ended halfway through has already overwritten part of the live save folder.
+    /// all of them. An update ends the process, and a restore ended halfway through has already
+    /// overwritten part of the live save folder.
     /// </summary>
     public string? WhyNotNow() => IsBusy
         ? "RainWorld Companion is in the middle of something that writes to your saves. "
@@ -188,12 +159,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         : null;
 
     /// <summary>
-    /// Applies one of the updater's settings and writes the file.
-    ///
     /// The updater is given this rather than the store, so there is one writer to settings.json.
-    /// Two would clobber each other, because the store serialises the whole object and neither
-    /// would know what the other had changed. Written on a worker because it touches disk, from a
-    /// copy taken on the dispatcher so the write cannot see a half-applied change.
+    /// Written on a worker from a copy taken on the dispatcher, so the write cannot see a
+    /// half-applied change.
     /// </summary>
     private void PersistUpdateSetting(Action<AppSettings> change)
     {
@@ -208,16 +176,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             }
             catch (Exception)
             {
-                // An update channel that does not survive a restart is not worth interrupting
-                // anyone over, and the next successful save writes it anyway.
             }
         });
     }
 
-    /// <summary>
-    /// Builds the updater for this window. Called by App, which owns the services that reach the
-    /// network and the process that ends the app.
-    /// </summary>
     public UpdateViewModel CreateUpdates(
         BuildStamp build,
         IReleaseSource source,
@@ -226,17 +188,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         Action requestShutdown) =>
         new(build, source, downloader, launcher, this, PersistUpdateSetting, requestShutdown);
 
-    /// <summary>The three save files as they are on disk, shown as the top card in the list column.</summary>
     public ObservableCollection<SlotViewModel> LiveSlots { get; } = new();
 
     public ObservableCollection<BackupItemViewModel> Backups { get; } = new();
 
-    /// <summary>The named saves, newest first. The other half of the list column.</summary>
+    /// <summary>The named saves, newest first.</summary>
     public ObservableCollection<LibraryEntryViewModel> LibraryEntries { get; } = new();
 
-    // The banner is not enough on its own. Without these, Restore stays enabled while the game
-    // is open and the user is walked all the way through the destructive confirmation before
-    // Core refuses the job.
+    // Without these, Restore stays enabled while the game is open and the user is walked all the
+    // way through the destructive confirmation before Core refuses the job.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(NewBackupCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
@@ -282,7 +242,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     private BackupItemViewModel? selectedBackup;
 
-    /// <summary>The library row that is selected, or null. The third of the three selections.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(OpenFolderCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
@@ -293,9 +252,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private LibraryEntryViewModel? selectedLibraryEntry;
 
     /// <summary>
-    /// Which of the two lists the column is showing. Only a view state: switching tabs moves no
-    /// selection, so a backup stays selected while the library is on screen and the detail panel
-    /// keeps showing it.
+    /// Only a view state: switching tabs moves no selection, so a backup stays selected while the
+    /// library is on screen.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBackupsTabSelected))]
@@ -308,13 +266,12 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// True when the live save card is the selection. It and <see cref="SelectedBackup"/> are two
-    /// halves of one selection: picking either one clears the other.
+    /// This and <see cref="SelectedBackup"/> are two halves of one selection: picking either one
+    /// clears the other.
     /// </summary>
     [ObservableProperty]
     private bool isLiveSelected;
 
-    /// <summary>Whatever the detail panel is showing, or null before the first load.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDetail))]
     [NotifyPropertyChangedFor(nameof(HasNoDetail))]
@@ -356,12 +313,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     public string BackupCountText => Backups.Count == 1 ? "1 backup" : Backups.Count + " backups";
 
     /// <summary>
-    /// The one line under the LIVE SAVE heading, for example "3 slots   11 campaigns".
-    ///
-    /// The campaign count is built by the same helper the detail header and the backup rows use.
-    /// Counting the rows on this card alone made the card and the header beside it print two
-    /// different totals for the same folder, because the header counted the Rain Meadow online
-    /// saves too and the card lists only the local ones.
+    /// Counted through the same helper the detail header uses. Counting the rows on this card alone
+    /// printed a different total, because the card lists the local slots and the header does not.
     /// </summary>
     public string LiveSummaryText
     {
@@ -393,9 +346,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// The Rain Meadow line under the live save card, or empty when the folder holds no online
-    /// save. The card lists the local slots only, so without this an online save would be invisible
-    /// until the detail panel was opened.
+    /// The card lists the local slots only, so without this an online save would be invisible until
+    /// the detail panel was opened.
     /// </summary>
     public string LiveOnlineText
     {
@@ -420,8 +372,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// What a screen reader announces for the live save card. The card is a button wrapping a
-    /// panel of text blocks, which on its own gives the container no name at all.
+    /// The card is a button wrapping a panel of text blocks, which on its own gives a screen reader
+    /// no name at all.
     /// </summary>
     public string LiveAccessibleName
     {
@@ -445,8 +397,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
         catch (Exception ex)
         {
-            // Blank rather than CreateDefault, for the same reason as the constructor: this is
-            // the dispatcher. FillInMissingPathsAsync fills both paths on a worker next.
+            // Blank rather than CreateDefault, because this is the dispatcher.
+            // FillInMissingPathsAsync fills both paths on a worker next.
             _settings = new AppSettings();
             ShowMessage("The settings file could not be read, so defaults are in use.\n\n" + ex.Message,
                 "Settings", MessageBoxImage.Warning);
@@ -456,18 +408,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         await ApplySettingsAsync();
 
         // Again, now that the real settings are here. AttachUpdates runs from App.OnStartup, where
-        // _settings is still the blank object the constructor made, so the channel and the
-        // automatic-check choice only become known at this point.
+        // _settings is still the blank object the constructor made.
         Updates?.Adopt(_settings);
 
-        // Here rather than on the update timer, and immediately after the Adopt above, because the
-        // version it compares against is one of the settings that only just arrived. On the timer
-        // it would be racing this method: the tick is four seconds after launch, the load above can
-        // block for an SMB timeout, and a tick that won would read a blank version, record the
-        // running one and swallow the notes for good.
-        //
-        // Started rather than awaited, so a banner never holds up the window. It reports nothing
-        // and swallows its own failures, so there is nothing here to wait for or to catch.
+        // Immediately after the Adopt above, because the version it compares against is one of the
+        // settings that only just arrived. On the update timer it would race this method and a tick
+        // that won would read a blank version and swallow the notes for good. Started rather than
+        // awaited, so a banner never holds up the window.
         _ = Updates?.CheckForWhatsNewAsync(_shutdown.Token);
 
         _gameTimer.Start();
@@ -485,7 +432,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         await ReloadAsync();
     }
 
-    /// <summary>Called when the window closes.</summary>
     public void Shutdown()
     {
         _gameTimer.Stop();
@@ -498,9 +444,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             _updateTimer = null;
         }
 
-        // Stopping the timer cannot cancel a poll that is already inside the process
-        // enumeration. This is what tells that poll to drop its result instead of writing it to a
-        // window that has gone. The verify sweep is linked to the same token.
+        // Stopping the timer cannot cancel a poll already inside the process enumeration. This
+        // tells it to drop its result rather than write it to a window that has gone.
         _shutdown.Cancel();
 
         _verifySweep?.Cancel();
@@ -508,13 +453,12 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _verifySweep = null;
     }
 
-    /// <summary>Shows the save folder as it is on disk, so a backup can be read against it.</summary>
     [RelayCommand]
     private void SelectLive() => IsLiveSelected = true;
 
-    // The three selections are one selection wearing three hats: the live card, a backup row and a
-    // library row. Picking any of them clears the other two, and _movingSelection is what keeps the
-    // clearing from rebuilding the detail panel once per property on the way through.
+    // The live card, a backup row and a library row are one selection wearing three hats. Picking
+    // any clears the other two, and _movingSelection keeps that from rebuilding the detail panel
+    // once per property on the way through.
     partial void OnIsLiveSelectedChanged(bool value)
     {
         if (_movingSelection)
@@ -599,9 +543,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // user can no longer see or cancel.
         CloseOpenEditor();
 
-        // Taken from the panel the user was looking at, while there still is one. A rebuild driven
-        // by the list emptying arrives with Detail already null, and this is what carries the realm
-        // over that gap to the rebuild that restores the selection.
+        // Taken while there still is a panel: a rebuild driven by the list emptying arrives with
+        // Detail already null.
         if (Detail is { } current)
         {
             _showOnline = current.ShowOnline;
@@ -611,9 +554,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // the mod is on the machine.
         bool keepOnline = _showOnline && _meadow.Present;
 
-        // Stamped before the assignment, not after. MeadowInstalled raises no change notification,
-        // and ShowMeadowSection is computed from it, so a binding that read it when Detail changed
-        // would see the default and never look again, which left the whole block hidden.
+        // Stamped before the assignment. MeadowInstalled raises no change notification, so a
+        // binding that read ShowMeadowSection when Detail changed would see the default and never
+        // look again.
         SnapshotDetailViewModel? built = BuildDetail();
         if (built is not null)
         {
@@ -649,17 +592,12 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             : null;
     }
 
-    /// <summary>
-    /// "Rain Meadow 0.1.15.1" when the version was read, otherwise just the name. Shown on the
-    /// section band so it is obvious which mod the block belongs to.
-    /// </summary>
     private string MeadowVersionText =>
         string.IsNullOrWhiteSpace(_meadow.Version) ? "" : "v" + _meadow.Version;
 
     /// <summary>
-    /// Forgets that any library save is in this slot, after something other than a library load
-    /// wrote to it. Swallows its own failure: this keeps a hint on a row honest, and the write it
-    /// follows has already happened either way.
+    /// Forgets that any library save is in this slot, after something else wrote to it. Swallows
+    /// its own failure: this keeps a hint on a row honest, and the write already happened.
     /// </summary>
     private async Task ReleaseSlotClaimAsync(SaveSlotRef slot)
     {
@@ -699,11 +637,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _backupMeadow.TryGetValue(id, out var profile) ? profile : null;
 
     /// <summary>
-    /// Copies one whole slot file onto another. Both ends are picked in the dialog, so this is the
-    /// only entry point and the slot rows in the panel carry no buttons.
-    ///
-    /// Core does the work: this asks it for a plan of the pair the dialog opens on, shows that plan,
-    /// and runs the copy on a worker with the busy overlay up, the same shape as Restore.
+    /// Both ends are picked in the dialog, so this is the only entry point and the slot rows in the
+    /// panel carry no buttons.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanCopySlot))]
     private async Task CopySlotAsync()
@@ -739,16 +674,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // A plan that cannot run still opens the dialog. The pair here is only where the pickers
-        // start, and refusing to open would leave the user no way to reach a pair that does work.
+        // A plan that cannot run still opens the dialog: this pair is only where the pickers start,
+        // and refusing to open would leave no way to reach a pair that does work.
         var dialog = new CopySlotDialog(plan!, copies.PlanCopy, _meadow.Present);
         if (ShowDialog(dialog) != true)
         {
             return;
         }
 
-        // The pickers let the user change either side, so the pair that runs is the one the dialog
-        // closed on rather than the one it opened with.
+        // The pair that runs is the one the dialog closed on, not the one it opened with.
         from = dialog.ChosenSource;
         to = dialog.ChosenTarget;
 
@@ -770,8 +704,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             EndBusy();
         }
 
-        // Whatever library save was in that slot is not in it any more. Leaving the claim would
-        // have the row report a played slot rather than one holding something else entirely.
+        // Whatever library save was in that slot is not in it any more.
         if (result?.LiveFolderModified == true)
         {
             await ReleaseSlotClaimAsync(to);
@@ -791,12 +724,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanCopySlot() => !IsBusy && !IsGameRunning && _copyService is not null;
 
     /// <summary>
-    /// Opens one campaign for editing.
-    ///
-    /// Only one campaign is open at a time. Each editor holds a session over a whole slot file, so
-    /// two of them open on the same slot would each be working from bytes the other did not know
-    /// had changed, and whichever saved second would be refused for being out of date.
-    ///
     /// Nothing is written here. The session sits in memory until it is saved, and closing the
     /// editor drops it.
     /// </summary>
@@ -850,8 +777,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (record is null)
         {
-            // The panel was drawn from a reading of the file taken earlier. A campaign that is no
-            // longer in it means the file changed underneath, so a refresh is the answer.
+            // The panel was drawn from an earlier reading, so the file changed underneath.
             Report(
                 campaign.DisplayName + " is no longer in " + slot.FileName + ". Refresh and try again.",
                 null);
@@ -870,7 +796,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanBeginEdit() => !IsBusy && !IsGameRunning;
 
-    /// <summary>Closes the editor and drops its unsaved changes.</summary>
     [RelayCommand]
     private void CancelEdit(CampaignViewModel? campaign)
     {
@@ -897,12 +822,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Writes an open editor's changes to the slot it came from.
-    ///
     /// The plan is built and checked before anything is shown, so a refusal is reported instead of
-    /// a confirmation the user would agree to and then watch fail. The write itself runs the shared
-    /// ladder, which takes the backup, holds the lock and proves the result, exactly as a slot copy
-    /// and a library load do.
+    /// a confirmation the user agrees to and then watches fail.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSaveEdits))]
     private async Task SaveEditsAsync(CampaignViewModel? campaign)
@@ -987,8 +908,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             await ReleaseSlotClaimAsync(slot);
         }
 
-        // The panel is rebuilt from disk, which closes the editor along with it. The session it
-        // held describes bytes that are no longer there.
+        // Rebuilding from disk closes the editor, whose session describes bytes no longer there.
         await ReloadAsync();
 
         ReportSaveResult(result, slot.FileName);
@@ -1029,15 +949,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         ShowMessage(text.ToString(), "Save changes", MessageBoxImage.Error);
     }
 
-    // ---- one campaign at a time ----
-    //
-    // These three sit beside Edit on a campaign card and act on that one campaign. Everything they
-    // write goes through the same ladder an edit goes through, so the slot they change is in a
-    // safety snapshot first, and the slot they read is never written to at all.
-
     /// <summary>
-    /// Keeps one campaign in the library under a name. Nothing in the save folder is written, so
-    /// there is no safety snapshot and no confirmation beyond the dialog itself.
+    /// Nothing in the save folder is written, so there is no safety snapshot and no confirmation
+    /// beyond the dialog itself.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
     private async Task StoreCampaignAsync(CampaignViewModel? campaign)
@@ -1065,8 +979,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         string? note = dialog.EntryNote;
         string slugcat = campaign.SlugcatId;
 
-        // A campaign taken out of a backup or a library save carries that snapshot's mod list
-        // rather than what is on right now. The bytes are from then, so the record has to be too.
+        // A campaign taken out of a backup carries that snapshot's mod list rather than what is on
+        // right now. The bytes are from then, so the record has to be too.
         ModListSnapshot? recorded = RecordedModsOfSelection();
 
         LibraryEntry? stored = null;
@@ -1110,11 +1024,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Copies or moves one campaign into another slot, leaving that slot's other campaigns alone.
-    ///
-    /// A move is two writes, and the order matters: the campaign lands in the slot it is going to
-    /// before it leaves the one it came from. If the second write is refused, the campaign is in
-    /// both slots, which is the safe way round to fail.
+    /// A move is two writes and the order matters: the campaign lands in the slot it is going to
+    /// before it leaves the one it came from, so a refused second write leaves it in both.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
     private async Task SendCampaignAsync(CampaignViewModel? campaign)
@@ -1170,8 +1081,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 WhereItIs(source),
                 target => writer.PlanPutCampaign(target, slice),
                 _meadow.Present,
-                // Only for a campaign coming from somewhere else. Live to live is one machine
-                // against itself, and a comparison there says nothing at some length.
+                // Live to live is one machine against itself, so there is nothing to compare.
                 source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null);
         }
         catch (Exception ex)
@@ -1236,12 +1146,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         ReportCampaignMove(campaign.DisplayName, arrival!, departure, WhereItIs(source), target);
     }
 
-    /// <summary>
-    /// Takes one campaign out of the slot it is in, leaving the other campaigns there alone.
-    ///
-    /// The map discovery stays, which is what the game's own wipe does. A slot that has lost a
-    /// campaign but kept the map is a slot that has been played, and that is what it is.
-    /// </summary>
+    /// <summary>The map discovery stays, which is what the game's own wipe does.</summary>
     [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
     private async Task DeleteCampaignAsync(CampaignViewModel? campaign)
     {
@@ -1307,12 +1212,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         !IsBusy && !IsGameRunning && _library is not null && _backupService is not null;
 
     /// <summary>
-    /// Deletes one live slot, which takes every campaign in it at once.
-    ///
-    /// The game deletes a slot by writing a reset MISCPROG over everything else. This stops short of
-    /// that and takes only the campaigns, because rebuilding MISCPROG would drop every field of it
-    /// this app does not model. The dialog says what stays behind rather than letting the word
-    /// delete imply the file is gone or the slot is new again.
+    /// The game deletes a slot by writing a reset MISCPROG over everything else. This takes only
+    /// the campaigns, because rebuilding MISCPROG would drop every field this app does not model.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanDeleteSlot))]
     private async Task DeleteSlotAsync(SlotViewModel? slot)
@@ -1329,8 +1230,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginBusy("Reading " + target.FileName, "Working out what would go");
         try
         {
-            // Every depth up front, so the window can grey out a row that would change nothing
-            // rather than letting it be picked and then refuse.
+            // Every depth up front, so the window can grey out a row that would change nothing.
             plans = await Task.Run(() => Enum
                 .GetValues<SlotDeleteDepth>()
                 .ToDictionary(depth => depth, depth => writer.PlanDeleteSlot(target, depth)));
@@ -1406,8 +1306,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanDeleteSlot() => !IsBusy && !IsGameRunning && _backupService is not null;
 
     /// <summary>
-    /// Reports both halves of a send as one message, because to the user it was one thing they
-    /// asked for. A move whose second half was refused says so rather than reading as a success.
+    /// Both halves of a send as one message. A move whose second half was refused says so rather
+    /// than reading as a success.
     /// </summary>
     private void ReportCampaignMove(
         string campaignName,
@@ -1457,58 +1357,39 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             departure is { Success: false } ? MessageBoxImage.Warning : MessageBoxImage.Information);
     }
 
-    /// <summary>
-    /// Reads one campaign out of wherever it is: a live slot, a backup, or a library save. Core
-    /// tells a save container from a campaign file, so this does not have to.
-    /// </summary>
+    /// <summary>Core tells a save container from a campaign file, so this does not have to.</summary>
     private static CampaignSlice? ReadCampaignFrom(CampaignSource source, string slugcatId)
         => CampaignFile.ReadFrom(source.FilePath, slugcatId);
 
     /// <summary>
-    /// The mod list recorded by whichever snapshot is selected, or null when the selection is the
-    /// live save or carries no record. The selection is what built the panel the campaign card
-    /// sits in, so it is the snapshot the campaign was read out of.
+    /// Null when the selection is the live save or carries no record. The selection built the panel
+    /// the campaign card sits in, so it is the snapshot the campaign was read out of.
     /// </summary>
     private ModListSnapshot? RecordedModsOfSelection()
         => SelectedBackup?.Snapshot.Manifest?.Mods ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
 
-    /// <summary>
-    /// A recorded list against the mods read by the last refresh. Null before the first refresh,
-    /// which is the same "no way to look" the plans mean by it.
-    /// </summary>
+    /// <summary>Null before the first refresh, which is the "no way to look" the plans mean.</summary>
     private ModListDiff? DiffAgainstNow(ModListSnapshot? recorded)
         => _currentMods is null ? null : ModListDiff.Compare(recorded, _currentMods);
 
-    /// <summary>What to call the file a campaign is in, for example "sav2" or "backup 2026-08-24".</summary>
     private static string WhereItIs(CampaignSource source)
         => source.Label.Length > 0 ? source.Label : source.FileName;
 
     private static string NotThereAnyMore(string campaignName, CampaignSource source)
         => campaignName + " is no longer in " + WhereItIs(source) + ". Refresh and try again.";
 
-    /// <summary>
-    /// A starting name for a stored campaign, for example "Gourmand cycle 42". Something to accept
-    /// or type over beats an empty box the user has to fill before the button works.
-    /// </summary>
     private static string SuggestCampaignName(CampaignViewModel campaign)
         => campaign.Summary.DisplayCycleNum is { } cycle
             ? campaign.DisplayName + " cycle " + cycle.ToString(CultureInfo.InvariantCulture)
             : campaign.DisplayName;
 
-    /// <summary>
-    /// Where the pickers start. Slot 1 to its online half is the copy Rain Meadow players come for,
-    /// and without the mod there is no online half to offer, so it starts on the two local slots the
-    /// game itself shows first.
-    /// </summary>
+    /// <summary>Where the pickers start. Without the mod there is no online half to offer.</summary>
     private (SaveSlotRef From, SaveSlotRef To) DefaultCopyPair() =>
         _meadow.Present
             ? (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Online, 1))
             : (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Local, 2));
 
-    /// <summary>
-    /// Keeps a copy of one live slot in the library under a name. Nothing in the save folder is
-    /// written, so there is no safety snapshot and no confirmation beyond the dialog itself.
-    /// </summary>
+    /// <summary>Nothing in the save folder is written, so there is no safety snapshot.</summary>
     [RelayCommand(CanExecute = nameof(CanStoreSlot))]
     private async Task StoreSlotAsync()
     {
@@ -1589,10 +1470,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanStoreSlot() => !IsBusy && !IsGameRunning && _library is not null && _copyService is not null;
 
-    /// <summary>
-    /// Writes a library save over a live slot. Both ends are picked in the dialog, and the load runs
-    /// the same ladder a slot copy runs, so the slot it replaces is in a safety snapshot first.
-    /// </summary>
+    /// <summary>The slot it replaces is in a safety snapshot first, as with a slot copy.</summary>
     [RelayCommand(CanExecute = nameof(CanLoadSave))]
     private async Task LoadSaveAsync()
     {
@@ -1680,10 +1558,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanLoadSave() =>
         !IsBusy && !IsGameRunning && _library is not null && LibraryEntries.Any(item => item.IsComplete);
 
-    /// <summary>
-    /// Writes what is in a slot now back over the library save it came from, which is how an hour of
-    /// play gets back into the entry. The bytes being replaced are kept, so this can be undone.
-    /// </summary>
+    /// <summary>The bytes being replaced are kept, so this can be undone.</summary>
     [RelayCommand(CanExecute = nameof(CanUpdateEntry))]
     private async Task UpdateEntryAsync()
     {
@@ -1695,9 +1570,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // The slot this save was put into is the one the user played, so that is the one to take
-        // back from. A save that has never been put anywhere still knows the slot it was taken from
-        // in the first place, which is the same slot the user would pick.
+        // The slot this save was put into is the one that was played. One that has never been put
+        // anywhere still knows the slot it was taken from.
         var manifest = item.Entry.Manifest;
         var source = manifest?.LastLoadedSlotRef ?? manifest?.SourceSlotRef;
         if (source is null)
@@ -1764,7 +1638,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanUpdateEntry() =>
         !IsBusy && !IsGameRunning && _library is not null && SelectedLibraryEntry is { IsComplete: true };
 
-    /// <summary>Puts back the save the last update replaced.</summary>
     [RelayCommand(CanExecute = nameof(CanUndoUpdate))]
     private async Task UndoUpdateAsync()
     {
@@ -1815,7 +1688,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanUndoUpdate() =>
         !IsBusy && _library is not null && SelectedLibraryEntry is { CanUndoUpdate: true };
 
-    /// <summary>Changes the name and the note. The stored save is not touched.</summary>
+    /// <summary>The stored save itself is not touched.</summary>
     [RelayCommand(CanExecute = nameof(CanRenameEntry))]
     private async Task RenameEntryAsync()
     {
@@ -1860,7 +1733,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanRenameEntry() =>
         !IsBusy && _library is not null && SelectedLibraryEntry is { IsComplete: true };
 
-    /// <summary>Writes the selected save out as a single .rwsave file.</summary>
     [RelayCommand(CanExecute = nameof(CanExportSave))]
     private async Task ExportSaveAsync()
     {
@@ -1871,8 +1743,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // A campaign and a whole slot are the same format under different names, and the name is
-        // what tells somebody receiving one which of the two they were sent.
+        // A campaign and a whole slot are the same format under different names, and the extension
+        // is what tells somebody receiving one which of the two they were sent.
         var extension = SaveLibrary.ExportExtensionFor(item.Entry);
         var title = item.Entry.IsCampaign ? "Export a campaign" : "Export a library save";
 
@@ -1928,8 +1800,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         !IsBusy && _library is not null && SelectedLibraryEntry is { IsComplete: true };
 
     /// <summary>
-    /// Reads a .rwsave bundle, or a bare save file, into a new library save. An import never writes
-    /// into the save folder, so a file from somewhere else reaches a live slot only by being loaded.
+    /// An import never writes into the save folder, so a file from somewhere else reaches a live
+    /// slot only by being loaded.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanImportSave))]
     private async Task ImportSaveAsync()
@@ -2006,8 +1878,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanImportSave() => !IsBusy && _library is not null;
 
     /// <summary>
-    /// Reports a finished load. The headline is built by Core, so a load that wrote to the save
-    /// folder can never be reported with the same wording as one that refused to start.
+    /// The headline is built by Core, so a load that wrote to the save folder is never worded like
+    /// one that refused to start.
     /// </summary>
     private void ReportLoadResult(LibraryLoadResult result)
     {
@@ -2042,7 +1914,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         ShowMessage(text.ToString(), "Load a library save", MessageBoxImage.Error);
     }
 
-    /// <summary>Shows the library tab with one save selected, after storing or importing it.</summary>
     private void ShowLibrarySave(string id)
     {
         IsLibraryTabSelected = true;
@@ -2055,10 +1926,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    /// <summary>
-    /// The slots the store dialog offers. Online slots only when Rain Meadow is on the machine,
-    /// because without it those files are written by nothing.
-    /// </summary>
+    /// <summary>Online slots only with Rain Meadow, because without it nothing writes those files.</summary>
     private static IReadOnlyList<SlotSide> ReadStorableSides(SlotCopyService copies, bool includeOnline)
     {
         var sides = new List<SlotSide>(SaveSlotRef.MaxSlot * 2);
@@ -2086,8 +1954,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Turns a user's name into something a file dialog can start on. This is the one place a name
-    /// touches a path, and the user still picks the final one in the dialog.
+    /// The one place a user's name touches a path, and the user still picks the final one in the
+    /// dialog.
     /// </summary>
     private static string SafeFileName(string name)
     {
@@ -2103,8 +1971,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Reports a finished copy. The headline is built by Core, so a copy that wrote to the save
-    /// folder can never be reported with the same wording as one that refused to start.
+    /// The headline is built by Core, so a copy that wrote to the save folder is never worded like
+    /// one that refused to start.
     /// </summary>
     private void ReportCopyResult(SlotCopyResult result)
     {
@@ -2276,12 +2144,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         !IsBusy && !IsGameRunning && _backupService is not null && SelectedBackup is { CanRestore: true };
 
     /// <summary>
-    /// Re-hashes every listed snapshot and library save against its own manifest, in the background,
-    /// so the state column is answered without the user having to ask. It runs one at a time off the
-    /// UI thread and updates each row as it finishes, so a long list fills in rather than blocking.
-    ///
-    /// A restore and a load both check for themselves immediately beforehand. This is about telling
-    /// the user which of their saves is sound before they need one, not about gating anything.
+    /// Re-hashes each row against its own manifest, one at a time off the UI thread, so a long list
+    /// fills in rather than blocking. A restore and a load both check for themselves anyway.
     /// </summary>
     private async Task VerifyAllAsync(CancellationToken token)
     {
@@ -2291,8 +2155,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // Copied first: the collections are rebuilt on the UI thread by a refresh, and iterating a
-        // live one across an await would throw when that happens.
+        // Copied first: a refresh rebuilds the collections on the UI thread, and iterating a live
+        // one across an await would throw when that happens.
         var pending = Backups.Where(item => item.CanRestore && item.VerifiedOk is null).ToList();
 
         foreach (BackupItemViewModel item in pending)
@@ -2313,8 +2177,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             }
             catch (Exception)
             {
-                // A snapshot that cannot be read is already reported as incomplete by the listing.
-                // Failing to verify it is not worth a dialog the user did not ask for.
                 continue;
             }
 
@@ -2387,10 +2249,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    /// <summary>
-    /// Deletes whichever of the two lists has the selection. The wording says which kind of thing is
-    /// going, because a backup and a library save are worth very different amounts to a user.
-    /// </summary>
+    /// <summary>Deletes whichever of the two lists has the selection.</summary>
     [RelayCommand(CanExecute = nameof(CanUseSelection))]
     private async Task DeleteAsync()
     {
@@ -2491,11 +2350,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanOpenSettings() => !IsBusy;
 
     /// <summary>
-    /// Opens the updates window.
-    ///
-    /// Shown rather than shown as a dialog, so a download can carry on while the user goes back to
-    /// the main window. It carries the same UpdateViewModel the banner does, which is what keeps
-    /// one download in flight at a time and one answer to whether closing the app is safe.
+    /// Shown rather than shown as a dialog, so a download carries on while the user goes back to
+    /// the main window. It carries the same UpdateViewModel the banner does.
     /// </summary>
     [RelayCommand]
     private void OpenUpdates()
@@ -2524,8 +2380,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// The open updates window, so a second press brings it forward instead of opening another.
-    /// Two would each hold their own cached list and their own armed downgrade.
+    /// Held so a second press brings the window forward. Two would each hold their own cached list
+    /// and their own armed downgrade.
     /// </summary>
     private UpdatesDialog? _updatesWindow;
 
@@ -2574,11 +2430,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Rebuilds the backup service from the current settings. A null service means the buttons stay disabled.
-    ///
-    /// The folder probe runs on a background thread. Directory.Exists on a save path that points
-    /// at a share whose machine is off blocks for as long as SMB takes to give up, and on the
-    /// dispatcher that is an unpainted window Windows marks as not responding.
+    /// A null service means the buttons stay disabled. The folder probe runs on a worker:
+    /// Directory.Exists on a share whose machine is off blocks for as long as SMB takes to give up.
     /// </summary>
     private async Task ApplySettingsAsync()
     {
@@ -2610,8 +2463,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private async Task ApplySettingsCoreAsync(string savePath, string backupRoot, string libraryRoot)
     {
-        // The install path only feeds the portraits, so it is never validated and never blocks
-        // anything here. Probing it still touches disk, so it goes on the worker with the rest.
+        // Never validated, because the install path only feeds the portraits. Probing it still
+        // touches disk, so it goes on the worker with the rest.
         var installPath = _settings.GameInstallPath;
         await Task.Run(() => _icons.UseInstall(installPath));
 
@@ -2632,10 +2485,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             {
                 try
                 {
-                    // The mod list is read through a closure rather than handed over as a value,
-                    // because it has to be current at the moment a snapshot is taken and not at the
-                    // moment the service was built. The game folder is read the same way, and the
-                    // service is rebuilt whenever settings are applied, so neither can go stale.
+                    // A closure rather than a value, because the mod list has to be current at the
+                    // moment a snapshot is taken, not at the moment the service was built.
                     return (new BackupService(
                         savePath,
                         backupRoot,
@@ -2653,12 +2504,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             ConfigProblem = built.Error is null ? "" : "The backup service could not be started: " + built.Error;
         }
 
-        // The copy service is the backup service plus the game check, and it goes away with it, so
-        // a folder the app cannot back up is also a folder it will not copy a slot inside.
         _copyService = _backupService?.SlotCopies;
 
-        // The library borrows the backup service's safety snapshot for its loads, so it goes the
-        // same way: no backup service, no library.
+        // The library borrows the backup service's safety snapshot for its loads: no backup
+        // service, no library.
         _library = null;
         if (_backupService is { } backups)
         {
@@ -2676,8 +2525,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
             _library = built.Library;
 
-            // Reported without taking the backup service down with it. A library path that will not
-            // work costs the library tab, and backing up and restoring still matter more.
+            // Reported without taking the backup service down with it: a library path that will not
+            // work costs the library tab alone.
             if (built.Error is not null && ConfigProblem.Length == 0)
             {
                 ConfigProblem = "The library folder could not be used: " + built.Error;
@@ -2735,9 +2584,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         try
         {
-            // Reading the saves, listing the snapshots, measuring the live files and decoding the
-            // portraits all happen here, on the worker. What comes back is enough to build every
-            // view model on the dispatcher without touching disk again.
+            // Everything that touches disk happens here. What comes back is enough to build every
+            // view model on the dispatcher without reading again.
             var data = await Task.Run(() =>
             {
                 var slots = service.ReadLiveSlots();
@@ -2746,9 +2594,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 var measured = MeasureLiveFiles(service.SaveRoot, slots);
                 _icons.Preload(CollectSlugcatIds(slots, snapshots, entries));
 
-                // One small json per folder, read here with the rest of the disk work so that
-                // selecting a row still costs nothing. ListBackups has already read a manifest out
-                // of each of these folders, so this is the same order of cost again.
+                // One small json per folder, read here so that selecting a row costs nothing.
                 var liveMeadow = ReadMeadow(service.SaveRoot);
                 var backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
                 foreach (var snapshot in snapshots)
@@ -2759,12 +2605,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                     }
                 }
 
-                // Reads the game's enabled mod list and probes the save folder, so it belongs on
-                // the worker with the rest of the disk work rather than on the dispatcher.
                 var meadow = RainMeadowDetector.Detect(service.SaveRoot, _settings.GameInstallPath);
 
-                // Reads the options file and walks the mods and workshop folders, so it belongs
-                // out here too. This is the "now" side of every mod comparison the app makes.
+                // The "now" side of every mod comparison the app makes.
                 var mods = CurrentModsReader.Read(service.SaveRoot, _settings.GameInstallPath);
 
                 return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods);
@@ -2778,10 +2621,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             _liveMeadow = data.LiveMeadow;
             _backupMeadow = data.BackupMeadow;
 
-            // The card lists the local slots. The Rain Meadow online saves share these slot
-            // numbers, so listing both here would show slot 2 twice with no way to tell which is
-            // which. They are paired with their local halves in the detail panel instead, and the
-            // line under the card says how many there are.
+            // Local slots only. The online saves share these slot numbers, so listing both would
+            // show slot 2 twice with no way to tell which is which.
             LiveSlots.Clear();
             foreach (var slot in data.Slots)
             {
@@ -2831,8 +2672,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Starts re-hashing the listed snapshots in the background. Any sweep still running from an
-    /// earlier refresh is cancelled first, because its rows have already been replaced.
+    /// Any sweep still running from an earlier refresh is cancelled first, because its rows have
+    /// already been replaced.
     /// </summary>
     private void StartVerifySweep()
     {
@@ -2859,9 +2700,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Puts the selection back where it was after a refresh. Whatever was selected wins if it is
-    /// still there; otherwise the newest backup; and with nothing at all the live save card takes
-    /// the selection so the panel is never blank.
+    /// Whatever was selected wins if it is still there, then the newest backup, then the live save
+    /// card, so the panel is never blank.
     /// </summary>
     private void RestoreSelection(string? keepId, string? keepEntryId, bool keepLive)
     {
@@ -2897,10 +2737,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             ? null
             : LibraryEntries.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>
-    /// Size and count of the save files behind the live slots. Runs on the worker with the rest
-    /// of the disk work, and a file that cannot be measured is left out rather than reported.
-    /// </summary>
+    /// <summary>A file that cannot be measured is left out rather than reported.</summary>
     private static (long Size, int Count) MeasureLiveFiles(string saveRoot, IReadOnlyList<SlotMetadata> slots)
     {
         long size = 0;
@@ -2924,21 +2761,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             }
             catch (Exception)
             {
-                // The slot still lists and still restores. Only the header's size line loses it.
             }
         }
 
         return (size, count);
     }
 
-    /// <summary>
-    /// meadow.json out of one folder, which is either the save folder or a snapshot, or null when
-    /// there is no such file. Runs on the worker with the rest of the disk work.
-    ///
-    /// The absent case is deliberately separate from a read that failed. A save folder with no
-    /// Rain Meadow in it has no meadow.json, and reporting that as an unreadable file would put a
-    /// warning in front of every player who does not use the mod.
-    /// </summary>
+    /// <summary>Null when the folder holds no meadow.json, which is the ordinary case.</summary>
     private static MeadowProfile? ReadMeadow(string folder)
     {
         try
@@ -2953,8 +2782,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Every slugcat id on screen after this refresh, so the portraits are read and decoded on
-    /// the worker instead of one file at a time while the list is being built.
+    /// Every slugcat id on screen after this refresh, so the portraits are decoded on the worker
+    /// rather than one file at a time while the list is built.
     /// </summary>
     private static IEnumerable<string> CollectSlugcatIds(
         IReadOnlyList<SlotMetadata> liveSlots,
@@ -3004,13 +2833,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private async void OnGameTimerTick(object? sender, EventArgs e) => await PollGameAsync();
 
     /// <summary>
-    /// Asks whether Rain World is running and puts the answer on the banner.
-    ///
-    /// The await does not capture the dispatcher. A poll that is inside the process enumeration
-    /// when the user closes the window would otherwise resume by posting to a dispatcher that has
-    /// already shut down, which throws on the thread pool from an async void timer tick, where
-    /// App.DispatcherUnhandledException cannot reach it and the process ends in a crash report.
-    /// The result is marshalled back explicitly instead, and dropped if the window has gone.
+    /// The await does not capture the dispatcher. A poll still inside the process enumeration when
+    /// the window closes would otherwise resume by posting to a dispatcher that has shut down,
+    /// which throws on the thread pool where App.DispatcherUnhandledException cannot reach it.
     /// </summary>
     private async Task PollGameAsync()
     {
@@ -3050,10 +2875,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    /// <summary>
-    /// Writes the poll result on the dispatcher, or drops it when there is no dispatcher left to
-    /// write to. Called from a worker thread.
-    /// </summary>
+    /// <summary>Called from a worker. Drops the result when no dispatcher is left to write to.</summary>
     private void ApplyGameState(bool running, string status)
     {
         void Apply()
@@ -3083,8 +2905,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
         catch (InvalidOperationException)
         {
-            // The dispatcher finished shutting down between the check and the post. There is
-            // nothing left to update and nothing to report.
+            // The dispatcher finished shutting down between the check and the post.
         }
     }
 
@@ -3140,8 +2961,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         OnPropertyChanged(nameof(LiveOnlineText));
         OnPropertyChanged(nameof(LiveAccessibleName));
 
-        // The library list decides whether there is anything to load, and that answer is not a
-        // property any attribute can watch.
+        // Whether there is anything to load is not a property any attribute can watch.
         LoadSaveCommand.NotifyCanExecuteChanged();
     }
 
@@ -3150,8 +2970,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         var safetyName = result.SafetySnapshot?.Id ?? "none was recorded";
         var text = new StringBuilder();
 
-        // The headline is built by Core, so a restore that wrote to the save folder can never be
-        // reported with the same wording as one that refused to start.
         text.Append(result.Headline()).Append("\n\n");
 
         if (result.Success)
@@ -3187,9 +3005,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// An exception thrown out of RestoreBackup carries no result, and the restore may already
-    /// have overwritten the save folder. The safety snapshot is the only way back, so it is
-    /// found in the refreshed list and named here rather than being lost with the result.
+    /// An exception out of RestoreBackup carries no result, and the restore may already have
+    /// overwritten the save folder, so the safety snapshot is found in the refreshed list instead.
     /// </summary>
     private void ReportRestoreFailure(Exception failure)
     {
@@ -3223,7 +3040,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Every command failure lands here, so an IOException reads as a message instead of ending the app.
+    /// Every command failure lands here, so an IOException reads as a message instead of ending
+    /// the app. A refusal this app worked out itself passes a null exception.
     /// </summary>
     private void Report(string headline, Exception? ex)
     {
@@ -3233,8 +3051,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // A refusal this app worked out itself has no exception behind it and needs none: the
-        // headline already says what happened.
         string text = ex is null ? headline : headline + "\n\n" + ex.Message;
 
         ShowMessage(text, AppInfo.DisplayName, MessageBoxImage.Error);

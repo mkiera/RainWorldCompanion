@@ -3,10 +3,9 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Reading a slot pulls five scalar fields out of two records in a payload that runs to over a
-/// million characters, most of it MAP_ bodies that are thrown away unread. These tests hold the
-/// walk to the same answers as the copying split, and hold it to not copying the payload to get
-/// them, because this runs on every window refresh and inside every backup.
+/// A payload runs to over a million characters, most of it MAP_ bodies thrown away unread. These
+/// tests hold the walk to the same answers as the copying split, without copying the payload to
+/// get them, because this runs on every window refresh and inside every backup.
 /// </summary>
 public class PayloadWalkTests
 {
@@ -57,10 +56,6 @@ public class PayloadWalkTests
         Assert.False(record.HeaderIs("save state"));
     }
 
-    /// <summary>
-    /// The point of the walk. A payload carrying two megabytes of MAP_ bodies is read for its
-    /// headers without any of those bodies being copied out.
-    /// </summary>
     [Fact]
     public void Reading_headers_does_not_copy_the_bodies()
     {
@@ -90,10 +85,9 @@ public class PayloadWalkTests
     }
 
     /// <summary>
-    /// The container reader used to decode the whole file to a string, strip the BOM off that
-    /// string, and then slice the XML section out of the result, which is three copies of a file
-    /// that runs to megabytes before the XML is even parsed. The measurement is against the same
-    /// work done the old way rather than a fixed number, so it says what it means.
+    /// The old reader decoded the whole file to a string, stripped the BOM, then sliced out the
+    /// XML section: three copies of a multi-megabyte file. This measures against that same old
+    /// path rather than a fixed number, so the comparison says what it means.
     /// </summary>
     [Fact]
     public void Reading_a_container_does_not_take_several_copies_of_the_file()

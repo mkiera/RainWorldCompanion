@@ -3,8 +3,8 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Reading is the only operation that touches a player's real files without a backup behind it,
-/// so these check both that it decodes correctly and that it writes nothing.
+/// Reading is the only operation that touches real files with no backup behind it, so these
+/// check both that it decodes correctly and that it writes nothing.
 /// </summary>
 public class SaveContainerTests
 {

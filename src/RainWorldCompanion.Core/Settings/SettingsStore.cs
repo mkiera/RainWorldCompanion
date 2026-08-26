@@ -3,9 +3,6 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Settings;
 
-/// <summary>
-/// Reads and writes <see cref="AppSettings"/> as JSON.
-/// </summary>
 public sealed class SettingsStore
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -16,9 +13,7 @@ public sealed class SettingsStore
         PropertyNameCaseInsensitive = true,
     };
 
-    /// <param name="settingsPath">
-    /// Where to store the file. Null or blank uses <see cref="DefaultSettingsPath"/>.
-    /// </param>
+    /// <param name="settingsPath">Null or blank uses <see cref="DefaultSettingsPath"/>.</param>
     public SettingsStore(string? settingsPath = null)
     {
         SettingsPath = string.IsNullOrWhiteSpace(settingsPath)
@@ -28,18 +23,14 @@ public sealed class SettingsStore
 
     public string SettingsPath { get; }
 
-    /// <summary>
-    /// %LOCALAPPDATA%\RainWorldCompanion\settings.json
-    /// </summary>
     public static string DefaultSettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RainWorldCompanion",
         "settings.json");
 
     /// <summary>
-    /// Loads the settings. A missing, empty or corrupt file falls back to
-    /// <see cref="AppSettings.CreateDefault"/>. Blank fields in an otherwise valid file are
-    /// filled in, so a partial file from an older version still yields a usable configuration.
+    /// A missing, empty or corrupt file falls back to <see cref="AppSettings.CreateDefault"/>, and
+    /// blank fields in an otherwise valid file are filled in.
     /// </summary>
     public AppSettings Load()
     {
@@ -61,18 +52,11 @@ public sealed class SettingsStore
             settings.LibraryRootPath = AppSettings.DefaultLibraryRootPath;
         }
 
-        // Both roots are stored as absolute paths, so a settings file written before the app was
-        // renamed still names the old folder. Renaming that folder is what
-        // SettingsMigration.MoveFolder does at startup, and this is the other half: without it the
-        // app would come up pointing at a folder that no longer exists and report having no
-        // backups. A path the user chose somewhere else is left exactly as it is.
         settings.BackupRootPath = SettingsMigration.Repoint(settings.BackupRootPath);
         settings.LibraryRootPath = SettingsMigration.Repoint(settings.LibraryRootPath);
 
         if (string.IsNullOrWhiteSpace(settings.GameInstallPath))
         {
-            // Stays null when no install is found. The portraits are the only thing that reads
-            // it, so an absent install is a normal state and not a validation failure.
             settings.GameInstallPath = GameInstallLocator.FindInstallPath();
         }
 
@@ -84,10 +68,6 @@ public sealed class SettingsStore
         return settings;
     }
 
-    /// <summary>
-    /// Writes the settings through a .tmp file so an interrupted write cannot leave a
-    /// half-written settings.json behind.
-    /// </summary>
     public void Save(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -149,18 +129,8 @@ public sealed class SettingsStore
     }
 
     /// <summary>
-    /// Folds a settings object field by field, never all at once.
-    ///
-    /// A single Deserialize call is all or nothing: one property whose type does not match throws,
-    /// and the whole file is discarded for it. That was survivable while every field was years
-    /// old, and it stops being survivable once an older build can be installed over a newer one,
-    /// because the older build then reads a file written by the newer one. Losing
-    /// <see cref="AppSettings.BackupRootPath"/> to an unrelated bad field leaves the backups on
-    /// disk with nothing pointing at them, which to the person looking is indistinguishable from
-    /// having lost them.
-    ///
-    /// A document that is not an object still falls back wholesale, because there is nothing in
-    /// one to salvage. Only a bad field is survivable, and it costs only itself.
+    /// Field by field, never all at once: a single Deserialize call throws on one property whose
+    /// type does not match and discards the whole file for it, backup root included.
     /// </summary>
     private static AppSettings FromJson(JsonElement root)
     {
@@ -179,12 +149,8 @@ public sealed class SettingsStore
     }
 
     /// <summary>
-    /// One property, matched without regard to case.
-    ///
     /// JsonElement.TryGetProperty is case-sensitive, and this file has been written with both
-    /// PascalCase and camelCase names over its life, which is why the serializer options set
-    /// PropertyNameCaseInsensitive. Reading properties by hand has to keep that promise, or every
-    /// file written before the naming policy was set silently loads as blank.
+    /// PascalCase and camelCase names, so a hand-read property has to match without case.
     /// </summary>
     private static bool TryFind(JsonElement root, string name, out JsonElement value)
     {

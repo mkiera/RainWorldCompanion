@@ -6,19 +6,14 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Deleting a whole slot, which takes every campaign in it at once.
-///
-/// Three depths, and each is checked for what it leaves as much as for what it takes. Taking the
-/// campaigns has to leave MISCPROG character for character. Taking all of it has to leave a file the
-/// game reads as one never played, which means an empty payload and the copy the game keeps beside
-/// it gone too.
+/// Three delete depths, each checked for what it leaves as much as for what it takes. Taking only
+/// campaigns must leave MISCPROG character for character. Taking everything must leave a file the
+/// game reads as one never played: an empty payload and the game's own backup copy gone too.
 /// </summary>
 public class SlotDeleteTests
 {
     private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
     private static readonly SaveSlotRef LocalThree = new(SaveRealm.Local, 3);
-
-    // ---- what it takes out ----
 
     [Fact]
     public void Deleting_a_slot_leaves_it_holding_no_campaign()
@@ -38,8 +33,8 @@ public class SlotDeleteTests
     }
 
     /// <summary>
-    /// A slot deleted this way is not an untouched one. It still holds the map and the progression
-    /// record, which is what separates a slot played and cleared from one never played at all.
+    /// A slot deleted this way still holds the map and the progression record, which is what
+    /// separates a slot played and cleared from one never played at all.
     /// </summary>
     [Fact]
     public void The_map_and_the_progression_record_stay_unless_the_map_is_asked_for()
@@ -85,8 +80,6 @@ public class SlotDeleteTests
         Assert.Empty(SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2).Campaigns);
     }
 
-    // ---- what it says before it does it ----
-
     [Fact]
     public void A_plan_names_what_is_about_to_go()
     {
@@ -112,8 +105,6 @@ public class SlotDeleteTests
             world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Campaigns).Describe(),
             StringComparison.Ordinal);
     }
-
-    // ---- when it refuses ----
 
     [Fact]
     public void A_slot_with_no_campaign_in_it_is_refused_rather_than_rewritten()
@@ -166,8 +157,6 @@ public class SlotDeleteTests
         Assert.Contains(gone.Problems, p => p.Contains("not in the save folder", StringComparison.Ordinal));
     }
 
-    // ---- all of it ----
-
     /// <summary>
     /// The state a slot is in on a fresh install: the value is the checksum and nothing after it, so
     /// GetProgLinesFromMemory reads no records at all.
@@ -218,10 +207,7 @@ public class SlotDeleteTests
         Assert.DoesNotContain("MAP", raw, StringComparison.Ordinal);
     }
 
-    /// <summary>
-    /// The whole point of the safety snapshot. Everything this took is in the backup, so restoring
-    /// it puts the slot back exactly as it was.
-    /// </summary>
+    /// <summary>The whole point of the safety snapshot: restoring it puts the slot back exactly as it was.</summary>
     [Fact]
     public void Everything_it_took_is_in_the_backup_it_took_first()
     {
@@ -279,11 +265,9 @@ public class SlotDeleteTests
         Assert.Contains("the game keeps inside sav2", plan.WhatStays, StringComparison.Ordinal);
     }
 
-    // ---- a slot with data but no campaign ----
-
     /// <summary>
-    /// What the reported case looked like: a slot played and then cleared of its campaigns, still
-    /// holding the map and the progression record. There is plainly something to delete.
+    /// The reported case: a slot played and cleared of its campaigns, still holding the map and
+    /// progression record. There is plainly something left to delete.
     /// </summary>
     [Fact]
     public void A_slot_with_no_campaign_left_can_still_be_emptied_out()
@@ -325,10 +309,9 @@ public class SlotDeleteTests
     }
 
     /// <summary>
-    /// What the window leans on when it opens. It offers the least depth that would actually do
-    /// something, so at least one of the three has to be writable for a slot that still holds
-    /// anything. Opening on a depth that changes nothing is what put an error over the window
-    /// before it could be read.
+    /// What the window leans on when it opens: the least depth that would actually do something.
+    /// Opening on a depth that changes nothing is what put an error over the window before it
+    /// could be read.
     /// </summary>
     [Fact]
     public void Some_depth_always_works_while_the_slot_still_holds_anything()
@@ -360,12 +343,10 @@ public class SlotDeleteTests
         }
     }
 
-    // ---- the map the whole slot shares ----
-
     /// <summary>
-    /// Without Downpour or Watcher the game writes bare MAP records that belong to no campaign, so
-    /// removing one campaign never touches them. With every campaign gone there is nothing left to
-    /// share them with, which is what left a slot still reporting explored regions.
+    /// Without Downpour or Watcher the game writes bare MAP records tied to no campaign, so
+    /// removing one campaign never touches them. With every campaign gone, that left a slot still
+    /// reporting explored regions.
     /// </summary>
     [Fact]
     public void Taking_the_map_takes_the_one_the_whole_slot_shares_as_well()
@@ -392,8 +373,6 @@ public class SlotDeleteTests
 
         Assert.Contains("MAP<progDivB>SU", world.PayloadOf("sav2"), StringComparison.Ordinal);
     }
-
-    // ---- what it does not touch ----
 
     [Fact]
     public void Deleting_a_slot_takes_a_safety_snapshot_of_it_first()

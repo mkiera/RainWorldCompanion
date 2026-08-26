@@ -3,9 +3,6 @@ using System.Diagnostics;
 
 namespace RainWorldCompanion.Core.System;
 
-/// <summary>
-/// Detects Rain World by process name.
-/// </summary>
 public sealed class GameProcessDetector : IGameProcessDetector
 {
     // Steam ships the executable as RainWorld.exe, but other distributions have used a space.
@@ -37,8 +34,8 @@ public sealed class GameProcessDetector : IGameProcessDetector
         }
         catch (Win32Exception)
         {
-            // The process table can be unreadable under a restricted token. Treat that as
-            // "cannot tell", which for this caller means not running.
+            // The process table can be unreadable under a restricted token, which reads here as
+            // not running.
             return false;
         }
         catch (InvalidOperationException)
@@ -63,8 +60,7 @@ public sealed class GameProcessDetector : IGameProcessDetector
             }
             catch (InvalidOperationException)
             {
-                // The process exited between the enumeration and this read. Report the name we
-                // searched for rather than losing the hit.
+                // The process exited between the enumeration and this read.
                 processName = candidate;
             }
 

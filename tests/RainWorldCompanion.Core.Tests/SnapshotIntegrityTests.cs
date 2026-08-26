@@ -4,21 +4,17 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// A snapshot is the only thing standing behind a restore, and the pre-restore safety copy is
-/// the only thing standing behind a restore that goes wrong. These tests are about the one
-/// failure that nothing downstream can catch: a snapshot that agrees with itself while
-/// disagreeing with the saves it claims to hold.
+/// These tests are about the one failure that nothing downstream can catch: a snapshot that
+/// agrees with itself while disagreeing with the saves it claims to hold.
 /// </summary>
 public class SnapshotIntegrityTests
 {
     private const string AppVersion = "1.0.0-test";
 
     /// <summary>
-    /// Steam Cloud, or the game writing on its way out, truncates a save between the moment the
-    /// scope measures it and the moment the copy loop reaches it. Recording what landed, without
-    /// ever comparing it to the source, certifies the truncation: the manifest says two bytes,
-    /// the file in the snapshot is those two bytes, and Verify agrees because it re-derives the
-    /// same hash from the same file.
+    /// Steam Cloud, or the game exiting, can truncate a save between the scope measuring it and
+    /// the copy loop reaching it. Recording what landed without comparing it to the source would
+    /// certify the truncation, since Verify re-derives the same hash from the same short file.
     /// </summary>
     [Fact]
     public void A_file_that_changes_before_the_copy_abandons_the_snapshot_instead_of_certifying_it()
@@ -39,9 +35,9 @@ public class SnapshotIntegrityTests
     }
 
     /// <summary>
-    /// The same failure a step later: the file is torn while the copy is running, so the length
-    /// and the timestamp still match what was measured and only the bytes differ. Nothing but
-    /// hashing the source as well as the copy sees this.
+    /// A step later than the test above: the file is torn while the copy runs, so length and
+    /// timestamp still match what was measured and only the bytes differ. Only hashing the source
+    /// as well as the copy catches this.
     /// </summary>
     [Fact]
     public void A_file_torn_during_the_copy_abandons_the_snapshot_instead_of_certifying_it()
@@ -52,7 +48,6 @@ public class SnapshotIntegrityTests
 
         var hook = ProgressHook.On("Checking sav2", fired =>
         {
-            // Same length and same timestamp, different bytes. Only the source hash catches it.
             var torn = (byte[])original.Clone();
             torn[128] ^= (byte)(fired + 1);
             world.Live.WriteBytes("sav2", torn);
@@ -66,10 +61,7 @@ public class SnapshotIntegrityTests
         Assert.False(Assert.Single(world.Service.ListBackups()).IsComplete);
     }
 
-    /// <summary>
-    /// One change is copied again rather than refused outright, and what the manifest then says
-    /// is what is actually on disk, hash included.
-    /// </summary>
+    /// <summary>A settled change is copied again rather than refused, and the manifest reflects what actually landed.</summary>
     [Fact]
     public void A_file_that_settles_after_one_change_is_copied_again_and_recorded_as_it_now_is()
     {
@@ -86,10 +78,7 @@ public class SnapshotIntegrityTests
         Assert.True(world.Service.Verify(snapshot).Ok);
     }
 
-    /// <summary>
-    /// The manifest hash has to be a fact about the live file, not only about the copy. Both are
-    /// hashed, so this holds by construction rather than by luck.
-    /// </summary>
+    /// <summary>The manifest hash must be a fact about the live file, not only about the copy, so both are checked here.</summary>
     [Fact]
     public void Every_manifest_hash_matches_both_the_copy_and_the_live_file()
     {
@@ -107,13 +96,10 @@ public class SnapshotIntegrityTests
         }
     }
 
-    // ---- Two operations at once ----
-
     /// <summary>
-    /// Two operations starting in the same wall-clock second used to be handed the same folder,
-    /// because Directory.Exists followed by Directory.CreateDirectory cannot decide who owns a
-    /// name: CreateDirectory succeeds on a folder that is already there. The claim file is the
-    /// step the filesystem makes atomic.
+    /// Two operations starting in the same wall-clock second used to be handed the same folder:
+    /// Directory.Exists followed by Directory.CreateDirectory cannot decide who owns a name, since
+    /// CreateDirectory succeeds on a folder already there. A claim file makes that decision atomic.
     /// </summary>
     [Fact]
     public async Task Two_threads_claiming_a_snapshot_folder_at_once_never_get_the_same_one()
@@ -181,8 +167,6 @@ public class SnapshotIntegrityTests
         Assert.Equal(2, world.Service.ListBackups().Count);
     }
 
-    // ---- Links ----
-
     /// <summary>
     /// Moving dvrmentSaveStates onto another drive and leaving a junction behind is a common way
     /// to relocate large mod data. The scope will not walk through the junction, and it must not
@@ -231,8 +215,6 @@ public class SnapshotIntegrityTests
 
         Assert.Contains(result.Warnings, w => w.Contains("dvrmentSaveStates", StringComparison.OrdinalIgnoreCase));
     }
-
-    // ---- The service refuses a backup root it would eat ----
 
     [Fact]
     public void A_backup_root_inside_the_save_folder_is_refused_by_the_service_itself()

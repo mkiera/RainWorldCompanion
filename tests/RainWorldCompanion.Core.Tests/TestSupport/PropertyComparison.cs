@@ -1,12 +1,9 @@
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Compares two parsed models property by property instead of field by named field.
-///
-/// An edit test wants to say "this one value moved and nothing else did". Listing the other values
-/// by hand states the model twice and goes stale the day one is added, and record equality does not
-/// answer it either: both <c>CampaignSummary</c> and <c>DeathPersistentData</c> hold lists, which
-/// compare by reference, so two identical parses of the same blob are never equal.
+/// Compares two parsed models property by property. Listing values by hand goes stale the day one
+/// is added, and record equality does not work either: both models hold lists, which compare by
+/// reference, so two identical parses of the same blob are never equal.
 /// </summary>
 internal static class PropertyComparison
 {

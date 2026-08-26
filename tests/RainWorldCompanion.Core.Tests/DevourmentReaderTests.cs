@@ -4,8 +4,7 @@ namespace RainWorldCompanion.Tests;
 
 /// <summary>
 /// DEVOURMENTSTATE is the mod's own field: one per relationship, four parts split on &lt;dvD&gt;.
-/// The prey is either a serialised creature or a serialised item, and the two are told apart by
-/// the "ID." prefix, so both shapes are exercised here against the values a real save stores.
+/// The prey is a serialised creature or item, told apart by the "ID." prefix.
 /// </summary>
 public class DevourmentReaderTests
 {
@@ -84,9 +83,8 @@ public class DevourmentReaderTests
     }
 
     /// <summary>
-    /// The count and the list are two different numbers, and the case where every field fails to
-    /// parse is the one the detail panel has to word carefully: the record does hold Devourment
-    /// state, this build of the app just cannot read the shape it is in.
+    /// The count and the list are different numbers: when every field fails to parse the record
+    /// still holds Devourment state, this build just cannot read its shape.
     /// </summary>
     [Fact]
     public void Fields_that_all_fail_to_parse_still_count_towards_the_recorded_total()

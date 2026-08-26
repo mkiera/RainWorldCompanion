@@ -4,10 +4,6 @@ using System.Windows.Data;
 
 namespace RainWorldCompanion.Converters;
 
-/// <summary>
-/// Collapses an element when the bound string is null, empty or whitespace. Saves a matching
-/// "HasX" property on every view model that carries an optional line of text.
-/// </summary>
 public sealed class StringToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -20,9 +16,6 @@ public sealed class StringToVisibilityConverter : IValueConverter
         throw new NotSupportedException("StringToVisibilityConverter is one way.");
 }
 
-/// <summary>
-/// Visible when the bound boolean is false. The framework converter only handles the true case.
-/// </summary>
 public sealed class NotBooleanToVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>

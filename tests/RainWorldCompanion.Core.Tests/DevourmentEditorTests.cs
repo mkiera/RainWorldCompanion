@@ -5,12 +5,11 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Editing the Devourment state of a campaign, against the one fixture that carries any.
-///
-/// sav3.bin is a real save from a played game with the mod installed, and it happens to hold the
-/// awkward case: the player has swallowed three lizards, one of which has swallowed a lizard of its
-/// own, and three of those four creatures are in the tamed list as well. So a creature in it exists
-/// in the record several times over, which is the thing these tests are mostly about.
+/// sav3.bin is a real save from a played game with the mod installed, and it happens to hold
+/// the awkward case: the player has swallowed three lizards, one of which has swallowed a
+/// lizard of its own, and three of those four creatures are in the tamed list as well. So a
+/// creature in it exists in the record several times over, which is the thing these tests are
+/// mostly about.
 /// </summary>
 public class DevourmentEditorTests : IDisposable
 {
@@ -46,8 +45,6 @@ public class DevourmentEditorTests : IDisposable
     private string Body => _session.GetRecordBody(_campaign);
 
     private DevourmentEditState Open() => DevourmentEditState.Read(Body);
-
-    // ---- reading ----
 
     [Fact]
     public void Every_swallowed_thing_in_a_real_save_is_read()
@@ -104,8 +101,6 @@ public class DevourmentEditorTests : IDisposable
         Assert.Equal("something<dvD>newer", entry.ToFieldValue());
     }
 
-    // ---- nothing changed, nothing written ----
-
     [Fact]
     public void Reading_and_applying_without_an_edit_gives_the_record_back_exactly()
     {
@@ -125,8 +120,6 @@ public class DevourmentEditorTests : IDisposable
         Assert.False(state.IsDirty);
         Assert.Equal(Body, state.Apply(Body));
     }
-
-    // ---- the list ----
 
     [Fact]
     public void Reordering_puts_the_entries_back_in_the_order_they_were_moved_into()
@@ -223,8 +216,6 @@ public class DevourmentEditorTests : IDisposable
         => Assert.Equal(
             new[] { "Held", "Digesting", "EnergyTheft", "Healing", "Sedating", "Regurgitating" },
             DevourmentStatus.All);
-
-    // ---- what holds what ----
 
     /// <summary>
     /// The nesting is not stored anywhere. It is implied by one entity id being prey in one field
@@ -344,8 +335,6 @@ public class DevourmentEditorTests : IDisposable
             reread.SiblingsOf(CreatureBlobBuilder.PlayerEntityId).Select(i => reread.Entries[i].PreyId));
     }
 
-    // ---- adding ----
-
     [Fact]
     public void A_creature_can_be_put_in_a_stomach()
     {
@@ -417,8 +406,6 @@ public class DevourmentEditorTests : IDisposable
 
         Assert.NotEqual(first, second);
     }
-
-    // ---- one creature, every copy of it ----
 
     /// <summary>
     /// The middle lizard is written into the record five times: as prey of the player, as the
@@ -503,8 +490,6 @@ public class DevourmentEditorTests : IDisposable
         Assert.Equal(before.Select(r => r.Like), after.Select(r => r.Like));
     }
 
-    // ---- taming ----
-
     [Fact]
     public void A_creature_can_be_untamed()
     {
@@ -582,8 +567,6 @@ public class DevourmentEditorTests : IDisposable
         Assert.Null(DelimitedFields.Record.GetValue(body, DevourmentEditState.FriendsField));
         Assert.Empty(DevourmentEditState.Read(body).Friends);
     }
-
-    // ---- what it all comes to ----
 
     [Fact]
     public void An_edited_campaign_still_writes_a_save_the_game_would_accept()

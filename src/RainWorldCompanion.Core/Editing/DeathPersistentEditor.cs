@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 using RainWorldCompanion.Core.Saves;
@@ -8,16 +7,8 @@ using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>
-/// Edits the DEATHPERSISTENTSAVEDATA value of a campaign, which is where karma, the echoes the
-/// player has met and the gates they have opened are kept.
-///
-/// Every function takes the current blob and returns a new one, so the caller writes it back with
-/// a single field edit on the record. The blob has its own grammar one level below the record's,
-/// and the same rule applies to it: fields this app does not recognise are carried through
-/// untouched, because a blob rebuilt from what
-/// <see cref="DeathPersistentReader"/> understands would lose the rest.
-/// </summary>
+/// <summary>Edits the DEATHPERSISTENTSAVEDATA value of a campaign. Fields this app does not
+/// recognise are carried through untouched rather than rebuilt from what it understands.</summary>
 public static class DeathPersistentEditor
 {
     public const string KarmaField = "KARMA";
@@ -53,13 +44,8 @@ public static class DeathPersistentEditor
 
     public static string? GetValue(string? blob, string key) => Fields.GetValue(blob ?? "", key);
 
-    /// <summary>
-    /// Sets what the player knows about one echo. <see cref="EchoNeverSeen"/> takes the region out
-    /// of the list, which is what a save that has never met that echo looks like.
-    ///
-    /// The order of the entries the blob already has is kept, because it is the order the game
-    /// wrote them in and there is no reason for this app to have an opinion about it.
-    /// </summary>
+    /// <summary><see cref="EchoNeverSeen"/> takes the region out of the list, which is what a save
+    /// that has never met that echo looks like.</summary>
     public static string SetEcho(string? blob, string regionCode, int state)
     {
         string current = blob ?? "";
@@ -95,13 +81,11 @@ public static class DeathPersistentEditor
         return SetEchoes(current, entries);
     }
 
-    /// <summary>Replaces the whole echo list.</summary>
     public static string SetEchoes(string? blob, IReadOnlyList<EchoRecord> echoes)
     {
         if (echoes.Count == 0)
         {
-            // A blob with an empty GHOSTS field is not what a save that has met no echoes looks
-            // like. That save has no GHOSTS field at all.
+            // A save that has met no echoes has no GHOSTS field at all, not an empty one.
             return Fields.Remove(blob ?? "", GhostsField);
         }
 
@@ -112,7 +96,6 @@ public static class DeathPersistentEditor
         return Fields.SetValue(blob ?? "", GhostsField, value);
     }
 
-    /// <summary>Opens or closes one gate, keeping the order of the gates already listed.</summary>
     public static string SetGate(string? blob, string gateName, bool unlocked)
     {
         string current = blob ?? "";
@@ -149,7 +132,6 @@ public static class DeathPersistentEditor
         return SetGates(current, gates);
     }
 
-    /// <summary>Replaces the whole unlocked gate list.</summary>
     public static string SetGates(string? blob, IReadOnlyList<string> gates)
     {
         var kept = gates.Where(g => !string.IsNullOrWhiteSpace(g)).Select(g => g.Trim()).ToList();
