@@ -4,21 +4,21 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// Which slots offer to be emptied.
+/// Which slots offer to be deleted.
 ///
-/// Emptying rewrites the file, so it belongs to the live save folder alone: a backup and a library
+/// Deleting a slot rewrites the file, so it belongs to the live save folder alone: a backup and a library
 /// save are copies taken at a moment. A slot with nothing in it is left off rather than offered and
-/// refused, because a button that can only ever report "there is nothing to empty" is one to not
+/// refused, because a button that can only ever report that there is nothing to delete is one to not
 /// draw at all.
 /// </summary>
-public class EmptySlotTests
+public class DeleteSlotTests
 {
     [Fact]
-    public void A_live_slot_holding_a_campaign_offers_to_be_emptied()
+    public void A_live_slot_holding_a_campaign_offers_to_be_deleted()
     {
         SlotViewModel slot = Panels.Live(Panels.Slot(2)).Slots[0];
 
-        Assert.True(slot.CanEmpty);
+        Assert.True(slot.CanDelete);
         Assert.Equal(new SaveSlotRef(SaveRealm.Local, 2), slot.EditableSlot);
     }
 
@@ -27,29 +27,29 @@ public class EmptySlotTests
     {
         SlotViewModel slot = Panels.Live(Panels.Slot(2, campaigns: 0)).Slots[0];
 
-        Assert.False(slot.CanEmpty);
+        Assert.False(slot.CanDelete);
         Assert.NotNull(slot.EditableSlot);
     }
 
     [Fact]
-    public void A_backup_never_offers_to_be_emptied()
+    public void A_backup_never_offers_to_be_deleted()
     {
         using var root = new TempDirectory("panel");
 
         SlotViewModel slot = Panels.Backup(root, Panels.Slot(2)).Slots[0];
 
-        Assert.False(slot.CanEmpty);
+        Assert.False(slot.CanDelete);
         Assert.Null(slot.EditableSlot);
     }
 
     [Fact]
-    public void A_library_save_never_offers_to_be_emptied()
+    public void A_library_save_never_offers_to_be_deleted()
     {
         using var root = new TempDirectory("panel");
 
         SlotViewModel slot = Panels.Entry(root, Panels.Slot(2)).Slots[0];
 
-        Assert.False(slot.CanEmpty);
+        Assert.False(slot.CanDelete);
         Assert.Null(slot.EditableSlot);
     }
 
@@ -62,12 +62,12 @@ public class EmptySlotTests
     {
         SlotViewModel slot = Panels.Live(Panels.Slot(0, fileName: "sav - Copy")).Slots[0];
 
-        Assert.False(slot.CanEmpty);
+        Assert.False(slot.CanDelete);
         Assert.Null(slot.EditableSlot);
     }
 
     /// <summary>
-    /// The online half is a real slot the game reads, so it is emptied the same way the local half
+    /// The online half is a real slot the game reads, so it is deleted the same way the local half
     /// is rather than being a second kind of thing.
     /// </summary>
     [Fact]
@@ -78,7 +78,7 @@ public class EmptySlotTests
 
         SlotViewModel slot = panel.Slots[0];
 
-        Assert.True(slot.CanEmpty);
+        Assert.True(slot.CanDelete);
         Assert.Equal(new SaveSlotRef(SaveRealm.Online, 2), slot.EditableSlot);
     }
 }

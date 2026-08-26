@@ -126,12 +126,12 @@ public sealed class SlotViewModel
     public SaveSlotRef? EditableSlot { get; }
 
     /// <summary>
-    /// True when this slot can be emptied of its campaigns.
+    /// True when this slot can be deleted, which means every campaign in it going at once.
     ///
     /// A slot with nothing in it is left off rather than offered and refused: the plan would say
-    /// there is nothing to empty, and a button that only ever reports that is one to not draw.
+    /// there is nothing to delete, and a button that only ever reports that is one to not draw.
     /// </summary>
-    public bool CanEmpty => EditableSlot is not null && Campaigns.Count > 0;
+    public bool CanDelete => EditableSlot is not null && Campaigns.Count > 0;
 
     public bool HasCampaigns => Campaigns.Count > 0;
 

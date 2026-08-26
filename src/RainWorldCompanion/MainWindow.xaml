@@ -1341,12 +1341,12 @@
                     <!-- Only the live save folder, and only a slot with something in it. A backup
                          and a library save are copies taken at a moment, and a slot already empty
                          has nothing to take. -->
-                    <Button DockPanel.Dock="Right" Content="Empty slot" Margin="10,0,0,0"
+                    <Button DockPanel.Dock="Right" Content="Delete slot" Margin="10,0,0,0"
                             Style="{StaticResource Button.Small}"
                             VerticalAlignment="Center"
-                            Visibility="{Binding CanEmpty, Converter={StaticResource BoolToVis}}"
-                            ToolTip="Takes every campaign out of this slot. The map and the progression record stay unless you ask for them."
-                            Command="{Binding DataContext.EmptySlotCommand,
+                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Deletes every campaign in this slot. The file stays, and so do the map and the progression record unless you ask for them."
+                            Command="{Binding DataContext.DeleteSlotCommand,
                                       RelativeSource={RelativeSource AncestorType=Window}}"
                             CommandParameter="{Binding}" />
 

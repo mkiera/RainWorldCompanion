@@ -129,7 +129,7 @@ public sealed record CampaignMovePlan(
 /// <param name="Campaigns">The campaigns about to go, by the name a person reads.</param>
 /// <param name="MapsRemoved">How many map records go with them, which is none unless asked for.</param>
 /// <param name="TakingTheMap">Whether the map discovery was asked to go too.</param>
-public sealed record SlotWipePlan(
+public sealed record SlotDeletePlan(
     SaveWritePlan Write,
     SaveSlotRef Target,
     string TargetFileName,
@@ -176,7 +176,7 @@ public sealed record SlotWipePlan(
         ? $"{TargetFileName} keeps its progression record, so the game still counts what it has seen."
         : $"{TargetFileName} keeps the map and its progression record, so the game still counts what it has seen.";
 
-    internal static SlotWipePlan Refused(
+    internal static SlotDeletePlan Refused(
         string filePath,
         SaveSlotRef target,
         string targetFileName,
@@ -316,7 +316,7 @@ public sealed class SaveSlotWriter
 
     /// <summary>Empties a slot, through the same ladder an edit runs.</summary>
     public SaveWriteResult Write(
-        SlotWipePlan plan,
+        SlotDeletePlan plan,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
     {
@@ -379,28 +379,28 @@ public sealed class SaveSlotWriter
     /// Whether each slugcat's map discovery goes with its campaign. The game's own wipe drops the
     /// map, so true is the closer match; false leaves the slot remembering everywhere it has been.
     /// </param>
-    public SlotWipePlan PlanWipeSlot(SaveSlotRef target, bool includeMaps)
+    public SlotDeletePlan PlanDeleteSlot(SaveSlotRef target, bool includeMaps)
     {
         SlotEdit open = OpenSlot(target);
 
         if (open.Refusal is { } refusal)
         {
-            return SlotWipePlan.Refused(open.Side.FullPath, target, open.Name, refusal);
+            return SlotDeletePlan.Refused(open.Side.FullPath, target, open.Name, refusal);
         }
 
         SaveEditSession session = open.Session!;
-        SlotWipeReport wipe = session.WipeCampaigns(includeMaps);
+        SlotDeleteReport wipe = session.DeleteCampaigns(includeMaps);
 
         if (!session.IsDirty)
         {
-            return SlotWipePlan.Refused(
+            return SlotDeletePlan.Refused(
                 open.Side.FullPath,
                 target,
                 open.Name,
-                $"{open.Name} holds no campaign, so there is nothing to empty out of it.");
+                $"{open.Name} holds no campaign, so there is nothing in it to delete.");
         }
 
-        return new SlotWipePlan(
+        return new SlotDeletePlan(
             session.BuildWritePlan(),
             target,
             open.Name,

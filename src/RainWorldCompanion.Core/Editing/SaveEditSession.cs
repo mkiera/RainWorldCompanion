@@ -21,7 +21,7 @@ public sealed record CampaignRecordRef(int RecordIndex, string SlugcatId);
 /// What emptying a slot took out of it: the campaigns by the name a person reads, and how many map
 /// records went with them.
 /// </summary>
-public sealed record SlotWipeReport(IReadOnlyList<string> Campaigns, int MapsRemoved)
+public sealed record SlotDeleteReport(IReadOnlyList<string> Campaigns, int MapsRemoved)
 {
     public bool TookNothing => Campaigns.Count == 0 && MapsRemoved == 0;
 }
@@ -392,7 +392,7 @@ public sealed class SaveEditSession
     /// Whether each slugcat's map discovery goes with its campaign. False leaves the slot
     /// remembering everywhere it has been, which is what the per-campaign delete does.
     /// </param>
-    public SlotWipeReport WipeCampaigns(bool includeMaps)
+    public SlotDeleteReport DeleteCampaigns(bool includeMaps)
     {
         var removed = new List<string>();
         int maps = 0;
@@ -411,7 +411,7 @@ public sealed class SaveEditSession
             maps += report.MapsRemoved;
         }
 
-        return new SlotWipeReport(removed, maps);
+        return new SlotDeleteReport(removed, maps);
     }
 
     /// <summary>
