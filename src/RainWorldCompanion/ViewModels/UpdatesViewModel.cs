@@ -51,6 +51,22 @@ public sealed partial class ReleaseRowViewModel : ObservableObject
 
     public string ReleaseUrl => Offer.ReleaseUrl;
 
+    /// <summary>What changed in this release, already cut back to the part worth showing here.</summary>
+    public string Notes => Offer.Notes;
+
+    public bool HasNotes => Offer.HasNotes;
+
+    /// <summary>
+    /// Whether this row is showing its notes. Rows are independent, so two releases can be open
+    /// at once and read against each other.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NotesVerb))]
+    private bool isExpanded;
+
+    /// <summary>The word on the button, which has to say what pressing it will do.</summary>
+    public string NotesVerb => IsExpanded ? "Hide" : "Notes";
+
     /// <summary>"Pre-release, 12 March 2026, 43.1 MB", or as much of it as is known.</summary>
     public string Subtitle
     {
@@ -263,6 +279,26 @@ public sealed partial class UpdatesViewModel : ObservableObject
         Disarm();
         await _updates.InstallBranchBuildAsync(row.Build, CancellationToken.None);
         Adopt();
+    }
+
+    /// <summary>
+    /// Shows or hides one row's notes.
+    ///
+    /// Disarms for the same reason every other press does: an armed downgrade is waiting for a
+    /// second press on its own button, and anything else the user does in between is a sign they
+    /// went somewhere other than through with it.
+    /// </summary>
+    [RelayCommand]
+    private void ToggleNotes(ReleaseRowViewModel? row)
+    {
+        if (row is null)
+        {
+            return;
+        }
+
+        var wasExpanded = row.IsExpanded;
+        Disarm();
+        row.IsExpanded = !wasExpanded;
     }
 
     [RelayCommand]

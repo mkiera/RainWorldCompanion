@@ -460,6 +460,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // automatic-check choice only become known at this point.
         Updates?.Adopt(_settings);
 
+        // Here rather than on the update timer, and immediately after the Adopt above, because the
+        // version it compares against is one of the settings that only just arrived. On the timer
+        // it would be racing this method: the tick is four seconds after launch, the load above can
+        // block for an SMB timeout, and a tick that won would read a blank version, record the
+        // running one and swallow the notes for good.
+        //
+        // Started rather than awaited, so a banner never holds up the window. It reports nothing
+        // and swallows its own failures, so there is nothing here to wait for or to catch.
+        _ = Updates?.CheckForWhatsNewAsync(_shutdown.Token);
+
         _gameTimer.Start();
         await PollGameAsync();
 

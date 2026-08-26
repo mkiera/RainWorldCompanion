@@ -7,3 +7,7 @@ obj/
 # the release workflow and neither is small.
 publish/
 dist_installer/
+
+# This tag's section of CHANGELOG.md, cut out by the release workflow and handed to the release
+# page. A build product like the two above, and a dry run of that step writes one here too.
+release-notes.md

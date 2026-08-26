@@ -61,6 +61,18 @@ public sealed class AppSettings
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }
 
     /// <summary>
+    /// The version whose release notes have already been shown, so they are shown once.
+    ///
+    /// Blank in a file written before this existed and on a first run, and blank is deliberately
+    /// not treated as "show them". Somebody who has just installed the app for the first time is
+    /// not owed a list of what changed since a version they never ran, so the first launch records
+    /// what it is running and says nothing.
+    ///
+    /// Additive, like <see cref="LibraryRootPath"/>, so the schema version does not move.
+    /// </summary>
+    public string LastSeenChangelogVersion { get; set; } = "";
+
+    /// <summary>
     /// A copy, so a dialog can edit the fields it owns without touching the object the rest of the
     /// app is still reading, and without resetting the fields it does not show.
     ///
@@ -77,6 +89,7 @@ public sealed class AppSettings
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
         LastUpdateCheckUtc = LastUpdateCheckUtc,
+        LastSeenChangelogVersion = LastSeenChangelogVersion,
     };
 
     /// <summary>

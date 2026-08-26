@@ -2042,6 +2042,38 @@
                 </Grid>
             </Border>
 
+            <!-- What the build already running brought with it, shown once. The offer banner above
+                 points forward at a version to install; this points back at the one in use, so it
+                 carries no install button and only has to be read and put away. -->
+            <Border Style="{StaticResource Banner.Info}"
+                    Margin="16,12,16,0"
+                    Visibility="{Binding Updates.HasWhatsNew, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Updates.WhatsNewTitle}"
+                                   TextWrapping="Wrap"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Text}" />
+                        <TextBlock Text="{Binding Updates.WhatsNewNotes}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,12,0"
+                                   Foreground="{StaticResource Brush.Text}" />
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Content="Got it"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource Button.Small}"
+                            Margin="12,0,0,0"
+                            Command="{Binding Updates.DismissWhatsNewCommand}" />
+                </Grid>
+            </Border>
+
             <!-- A failure with no offer attached still has to reach the user, which is the case
                  after a check the user asked for could not reach GitHub. -->
             <Border Style="{StaticResource Banner.Warn}"

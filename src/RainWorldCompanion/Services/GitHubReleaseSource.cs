@@ -140,6 +140,7 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
         [JsonPropertyName("prerelease")] public bool Prerelease { get; set; }
         [JsonPropertyName("published_at")] public DateTimeOffset? PublishedAt { get; set; }
         [JsonPropertyName("assets")] public List<GhAsset>? Assets { get; set; }
+        [JsonPropertyName("body")] public string? Body { get; set; }
 
         public ReleaseCandidate ToCandidate() => new(
             TagName ?? "",
@@ -147,7 +148,8 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
             Draft,
             Prerelease,
             PublishedAt,
-            Assets?.Where(a => a is not null).Select(a => a.ToAsset()).ToList() ?? []);
+            Assets?.Where(a => a is not null).Select(a => a.ToAsset()).ToList() ?? [],
+            Body ?? "");
     }
 
     private sealed class GhRun

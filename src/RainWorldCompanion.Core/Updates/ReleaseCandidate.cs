@@ -27,13 +27,19 @@ public sealed record ReleaseAsset(string Name, string DownloadUrl, long SizeByte
 /// </param>
 /// <param name="PublishedUtc">When it went out, or null for a draft.</param>
 /// <param name="Assets">The files on it. Empty while an upload is still in progress.</param>
+/// <param name="Notes">
+/// The release body as GitHub holds it, markdown and all. Optional because nothing about a
+/// release depends on it: a body that is missing, empty or written by hand still installs, so it
+/// must not be a reason to drop the release.
+/// </param>
 public sealed record ReleaseCandidate(
     string TagName,
     string HtmlUrl,
     bool IsDraft,
     bool IsPrereleaseFlag,
     DateTimeOffset? PublishedUtc,
-    IReadOnlyList<ReleaseAsset> Assets);
+    IReadOnlyList<ReleaseAsset> Assets,
+    string Notes = "");
 
 /// <summary>
 /// A release this app is willing to install, with everything needed to go and get it.
@@ -49,8 +55,12 @@ public sealed record UpdateOffer(
     string AssetName,
     long SizeBytes,
     bool IsPrerelease,
-    DateTimeOffset? PublishedUtc)
+    DateTimeOffset? PublishedUtc,
+    string Notes = "")
 {
     /// <summary>How the version reads on screen, without a leading "v".</summary>
     public string VersionText => Version.ToString();
+
+    /// <summary>Whether there is anything to show when the notes are asked for.</summary>
+    public bool HasNotes => Notes.Length != 0;
 }
