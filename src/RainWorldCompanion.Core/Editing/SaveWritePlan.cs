@@ -52,6 +52,7 @@ public sealed record SaveWritePlan(
         IReadOnlySet<int> touchedRecords,
         IReadOnlyList<string> changes,
         RecordSetChange? spliced,
+        IReadOnlySet<string> entriesToClear,
         SizePolicy policy)
     {
         var problems = new List<string>();
@@ -75,7 +76,17 @@ public sealed record SaveWritePlan(
         byte[] newBytes;
         try
         {
-            newBytes = container.WithValue("save", SaveChecksum.Wrap(newPayload)).ToBytes(policy);
+            ContainerText edited = container.WithValue("save", SaveChecksum.Wrap(newPayload));
+
+            // Emptying a slot is the one edit that touches a second entry: the copy of the previous
+            // save the game keeps in the same file. Everything else leaves every other entry alone,
+            // and the check below holds this to exactly the entries that were asked for.
+            foreach (string key in entriesToClear)
+            {
+                edited = edited.WithValue(key, "");
+            }
+
+            newBytes = edited.ToBytes(policy);
         }
         catch (SaveContainerException ex)
         {
@@ -92,7 +103,7 @@ public sealed record SaveWritePlan(
             return Refused(session, container, changes, $"The edited save did not read back as a save container ({ex.Message}).");
         }
 
-        CheckEveryOtherEntryIsUntouched(container, written, problems);
+        CheckEveryOtherEntryIsUntouched(container, written, entriesToClear, problems);
         CheckTheGameWouldAcceptTheChecksum(written, newPayload, problems);
 
         if (spliced is null)
@@ -120,7 +131,11 @@ public sealed record SaveWritePlan(
     /// the one that matters most: it is the game's own previous revision, and leaving it alone is
     /// what gives a bad edit something to fall back to.
     /// </summary>
-    private static void CheckEveryOtherEntryIsUntouched(ContainerText before, ContainerText after, List<string> problems)
+    private static void CheckEveryOtherEntryIsUntouched(
+        ContainerText before,
+        ContainerText after,
+        IReadOnlySet<string> entriesToClear,
+        List<string> problems)
     {
         if (!before.Keys.SequenceEqual(after.Keys, StringComparer.Ordinal))
         {
@@ -132,6 +147,19 @@ public sealed record SaveWritePlan(
         {
             if (string.Equals(key, "save", StringComparison.Ordinal))
             {
+                continue;
+            }
+
+            // An entry the caller asked to clear has to come back empty, and an entry it did not
+            // has to come back exactly as it was. Both are checked against the bytes rather than
+            // against the intent, so an edit that cleared the wrong one shows up here.
+            if (entriesToClear.Contains(key))
+            {
+                if (after.GetValue(key).Length != 0)
+                {
+                    problems.Add($"The edit was meant to empty the '{key}' entry and did not.");
+                }
+
                 continue;
             }
 

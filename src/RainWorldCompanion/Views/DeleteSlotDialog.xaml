@@ -25,8 +25,10 @@
 
         <!-- Every campaign named, not counted. A slot holding three runs is where somebody means
              one of them and reaches for the wrong button. -->
-        <TextBlock Text="{Binding ListHeader}" Style="{StaticResource Text.SectionLabel}" Margin="0,0,0,6" />
-        <Border Style="{StaticResource Card}" Padding="10,8" MaxHeight="200">
+        <TextBlock Text="{Binding ListHeader}" Style="{StaticResource Text.SectionLabel}" Margin="0,0,0,6"
+                   Visibility="{Binding CampaignsVisibility}" />
+        <Border Style="{StaticResource Card}" Padding="10,8" MaxHeight="200"
+                Visibility="{Binding CampaignsVisibility}">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <ItemsControl ItemsSource="{Binding Campaigns}">
                     <ItemsControl.ItemTemplate>
@@ -39,9 +41,15 @@
             </ScrollViewer>
         </Border>
 
-        <CheckBox Content="{Binding MapChoiceText}"
-                  IsChecked="{Binding TakeTheMap, Mode=TwoWay}"
-                  Margin="0,14,0,0" />
+        <TextBlock Text="HOW MUCH GOES" Style="{StaticResource Text.SectionLabel}" Margin="0,16,0,6" />
+        <StackPanel>
+            <RadioButton Content="{Binding JustTheCampaignsText}" GroupName="Depth"
+                         IsChecked="{Binding JustTheCampaigns, Mode=TwoWay}" />
+            <RadioButton Content="{Binding TheCampaignsAndTheMapText}" GroupName="Depth"
+                         IsChecked="{Binding TheCampaignsAndTheMap, Mode=TwoWay}" Margin="0,6,0,0" />
+            <RadioButton Content="{Binding AllOfItText}" GroupName="Depth"
+                         IsChecked="{Binding AllOfIt, Mode=TwoWay}" Margin="0,6,0,0" />
+        </StackPanel>
 
         <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="10,8">
             <StackPanel>

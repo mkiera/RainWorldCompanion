@@ -464,6 +464,7 @@ public class CampaignMoveTests
                 new HashSet<int>(),
                 new[] { "a campaign moved" },
                 spliced,
+                new HashSet<string>(StringComparer.Ordinal),
                 SizePolicy.GrowIfNeeded);
 
         public void Dispose()

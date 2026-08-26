@@ -21,9 +21,40 @@ public sealed record CampaignRecordRef(int RecordIndex, string SlugcatId);
 /// What emptying a slot took out of it: the campaigns by the name a person reads, and how many map
 /// records went with them.
 /// </summary>
-public sealed record SlotDeleteReport(IReadOnlyList<string> Campaigns, int MapsRemoved)
+/// <summary>How much of a slot goes when it is deleted.</summary>
+public enum SlotDeleteDepth
 {
-    public bool TookNothing => Campaigns.Count == 0 && MapsRemoved == 0;
+    /// <summary>
+    /// The campaigns only. The map and the progression record stay, so the slot still remembers
+    /// every shelter found, every ending seen and every tutorial shown.
+    /// </summary>
+    Campaigns,
+
+    /// <summary>
+    /// The campaigns and the map, including the map records the whole slot shares. The progression
+    /// record stays.
+    /// </summary>
+    CampaignsAndMap,
+
+    /// <summary>
+    /// All of it. The slot is left as empty as one that has never been played, and the copy of the
+    /// old data the game keeps beside it inside the same file goes too.
+    /// </summary>
+    Everything,
+}
+
+/// <summary>
+/// What deleting a slot took out of it: the campaigns by the name a person reads, how many map
+/// records went, and whether anything was left at all.
+/// </summary>
+public sealed record SlotDeleteReport(
+    IReadOnlyList<string> Campaigns,
+    int MapsRemoved,
+    int OtherRecordsRemoved = 0,
+    bool ClearedTheGamesOwnCopy = false)
+{
+    public bool TookNothing =>
+        Campaigns.Count == 0 && MapsRemoved == 0 && OtherRecordsRemoved == 0 && !ClearedTheGamesOwnCopy;
 }
 
 /// <summary>One field of a record body as the file stores it.</summary>
@@ -52,6 +83,16 @@ public sealed class SaveEditSession
     private const string SaveStateHeader = "SAVE STATE";
     private const string SlugcatField = "SAV STATE NUMBER";
 
+    /// <summary>
+    /// The copy of the previous save the game keeps in the same file. PlayerProgression writes it
+    /// through BackUpSave and never reads it back, so it is a copy for a person to recover by hand
+    /// rather than anything the game falls back to on its own.
+    /// </summary>
+    private const string GameBackupKey = "save__Backup";
+
+    /// <summary>Change key for emptying the slot, which is one thing however much it takes.</summary>
+    private const string EmptiedKey = "slot|emptied";
+
     private static readonly DelimitedFields Fields = DelimitedFields.Record;
 
     private readonly ContainerText _container;
@@ -63,6 +104,13 @@ public sealed class SaveEditSession
     private readonly List<string> _recordsWritten = new();
 
     private readonly List<string> _recordsRemoved = new();
+
+    /// <summary>
+    /// Container entries other than "save" this write is meant to clear. Only emptying a slot puts
+    /// anything here, and the plan holds the write to exactly this list so no other entry can be
+    /// touched by accident.
+    /// </summary>
+    private readonly HashSet<string> _entriesToClear = new(StringComparer.Ordinal);
 
     private string _payload;
     private int _changeOrder;
@@ -93,7 +141,8 @@ public sealed class SaveEditSession
     /// <summary>The payload with every edit so far applied.</summary>
     public string Payload => _payload;
 
-    public bool IsDirty => !string.Equals(_payload, _originalPayload, StringComparison.Ordinal);
+    public bool IsDirty =>
+        !string.Equals(_payload, _originalPayload, StringComparison.Ordinal) || _entriesToClear.Count > 0;
 
     /// <summary>
     /// One line per thing changed, in the order it was first touched. A field edited over and over,
@@ -392,8 +441,18 @@ public sealed class SaveEditSession
     /// Whether each slugcat's map discovery goes with its campaign. False leaves the slot
     /// remembering everywhere it has been, which is what the per-campaign delete does.
     /// </param>
-    public SlotDeleteReport DeleteCampaigns(bool includeMaps)
+    public SlotDeleteReport DeleteCampaigns(SlotDeleteDepth depth)
     {
+        IReadOnlyList<string> names = CampaignSlugcats
+            .Select(Name)
+            .ToArray();
+
+        if (depth == SlotDeleteDepth.Everything)
+        {
+            return ClearEverything(names);
+        }
+
+        bool includeMaps = depth == SlotDeleteDepth.CampaignsAndMap;
         var removed = new List<string>();
         int maps = 0;
 
@@ -411,7 +470,91 @@ public sealed class SaveEditSession
             maps += report.MapsRemoved;
         }
 
+        if (includeMaps)
+        {
+            // Nothing is left to share these with, so a slot that kept them would still report
+            // explored regions after everything that explored them had gone.
+            string trimmed = CampaignSplicer.RemoveSharedMaps(_payload, out IReadOnlyList<string> shared);
+
+            if (shared.Count > 0)
+            {
+                _recordsRemoved.AddRange(shared);
+                _splices++;
+                _payload = trimmed;
+                maps += shared.Count;
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
         return new SlotDeleteReport(removed, maps);
+    }
+
+    /// <summary>
+    /// Leaves the slot as empty as one that has never been played.
+    ///
+    /// This writes nothing rather than rebuilding anything, which is the only reason it is allowed
+    /// at all: a slot emptied to a payload of no records is exactly what the game itself reads on a
+    /// fresh install, where the value is the checksum and nothing after it.
+    ///
+    /// The copy the game keeps beside it in the same file goes too. PlayerProgression writes that
+    /// copy and never reads it back, so leaving it would not change what the game sees, but it would
+    /// leave every campaign still sitting in the file after the user asked for all of it to go.
+    /// </summary>
+    private SlotDeleteReport ClearEverything(IReadOnlyList<string> names)
+    {
+        IReadOnlyList<string> before = _payload
+            .Split(SavePayloadReader.RecordSeparator, StringSplitOptions.None);
+
+        int maps = 0;
+        int others = 0;
+
+        foreach (string record in before)
+        {
+            if (record.Length == 0)
+            {
+                continue;
+            }
+
+            _recordsRemoved.Add(record);
+
+            if (record.StartsWith("MAP", StringComparison.Ordinal))
+            {
+                maps++;
+            }
+            else if (!record.StartsWith(SaveStateHeader, StringComparison.Ordinal))
+            {
+                others++;
+            }
+        }
+
+        _payload = "";
+        _splices++;
+
+        // Only worth clearing when it still holds something. An already empty one would otherwise
+        // make a second delete look like it had work to do.
+        bool clearedTheCopy = _container.ContainsKey(GameBackupKey)
+            && _container.GetValue(GameBackupKey).Length > 0;
+        if (clearedTheCopy)
+        {
+            _entriesToClear.Add(GameBackupKey);
+        }
+
+        string note = names.Count == 0
+            ? "emptied this slot out entirely"
+            : "emptied this slot out entirely, campaigns and all";
+
+        if (_changes.TryGetValue(EmptiedKey, out TrackedChange? existing))
+        {
+            existing.Note = note;
+        }
+        else
+        {
+            _changes[EmptiedKey] = new TrackedChange(_changeOrder++, "This slot", note);
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+
+        return new SlotDeleteReport(names, maps, others, clearedTheCopy);
     }
 
     /// <summary>
@@ -427,6 +570,7 @@ public sealed class SaveEditSession
             _touchedRecords,
             Changes,
             _splices > 0 ? new RecordSetChange(_recordsWritten, _recordsRemoved) : null,
+            _entriesToClear,
             policy);
 
     /// <summary>
