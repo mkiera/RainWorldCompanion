@@ -42,8 +42,10 @@ public class SlotCopyTests
     {
         // Rain Meadow hooks Options.GetSaveFileName_SavOrExp and returns "online_sav" for save
         // slot 0 and "online_sav" + (slot + 1) above it, off the same Options.saveSlot the local
-        // file comes from. Online slot 2 and local slot 2 are the same UI slot.
+        // file comes from. Online slot 2 and local slot 2 are the same UI slot, so the realm is
+        // what tells them apart and the number alone never does.
         Assert.Equal(new SaveSlotRef(SaveRealm.Online, slot), SaveMetadataExtractor.SlotForFileName(fileName));
+        Assert.Equal(slot, SaveMetadataExtractor.SlotNumberForFileName(fileName));
     }
 
     [Theory]
@@ -51,7 +53,10 @@ public class SlotCopyTests
     [InlineData("sav2", 2)]
     [InlineData("sav3", 3)]
     public void The_local_containers_still_map_to_the_local_realm(string fileName, int slot)
-        => Assert.Equal(new SaveSlotRef(SaveRealm.Local, slot), SaveMetadataExtractor.SlotForFileName(fileName));
+    {
+        Assert.Equal(new SaveSlotRef(SaveRealm.Local, slot), SaveMetadataExtractor.SlotForFileName(fileName));
+        Assert.Equal(slot, SaveMetadataExtractor.SlotNumberForFileName(fileName));
+    }
 
     [Theory]
     [InlineData("sav - Copy")]
@@ -62,13 +67,21 @@ public class SlotCopyTests
     [InlineData("online_sav4")]
     [InlineData("online_sav0")]
     [InlineData("online_save")]
+    [InlineData("save")]
     [InlineData("exp1")]
     [InlineData("expCore1")]
     [InlineData("meadow.json")]
     [InlineData("options")]
+    [InlineData("steam_autocloud.vdf")]
     [InlineData("")]
     public void An_unknown_name_is_not_a_slot(string fileName)
-        => Assert.Null(SaveMetadataExtractor.SlotForFileName(fileName));
+    {
+        Assert.Null(SaveMetadataExtractor.SlotForFileName(fileName));
+
+        // SlotNumberForFileName is SlotForFileName()?.Slot, and callers that only want the
+        // number read the null the same way.
+        Assert.Null(SaveMetadataExtractor.SlotNumberForFileName(fileName));
+    }
 
     // ---- copying ----
 

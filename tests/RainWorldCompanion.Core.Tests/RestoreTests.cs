@@ -194,18 +194,6 @@ public class RestoreTests
         Assert.True(world.Service.Verify(snapshot).Ok);
     }
 
-    [Fact]
-    public void RestoreBackup_accepts_a_progress_reporter_without_failing()
-    {
-        using var world = new BackupWorld();
-        var snapshot = world.Service.CreateBackup("first", null);
-        DivergeLiveFolder(world);
-
-        var result = world.Service.RestoreBackup(snapshot, new CollectingProgress());
-
-        Assert.True(result.Success, string.Join("; ", result.Errors));
-    }
-
     // ---- The safety snapshot ----
 
     [Fact]

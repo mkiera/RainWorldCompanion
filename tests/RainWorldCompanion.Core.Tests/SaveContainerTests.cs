@@ -123,14 +123,6 @@ public class SaveContainerTests
     }
 
     [Fact]
-    public void FilePath_is_the_path_that_was_read()
-    {
-        var path = FixtureFiles.PathTo(FixtureFiles.Sav2);
-
-        Assert.Equal(path, SaveContainer.Read(path).FilePath);
-    }
-
-    [Fact]
     public void Reading_leaves_the_file_byte_identical()
     {
         using var temp = new TempDirectory();

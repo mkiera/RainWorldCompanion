@@ -272,40 +272,6 @@ public class SaveMetadataExtractorTests
         Assert.False(string.IsNullOrWhiteSpace(text));
     }
 
-    [Theory]
-    [InlineData("sav", 1)]
-    [InlineData("sav2", 2)]
-    [InlineData("sav3", 3)]
-    public void SlotNumberForFileName_maps_the_three_container_names(string fileName, int expected)
-        => Assert.Equal(expected, SaveMetadataExtractor.SlotNumberForFileName(fileName));
-
-    [Theory]
-    [InlineData("online_sav", 1)]
-    [InlineData("online_sav2", 2)]
-    [InlineData("online_sav3", 3)]
-    public void SlotNumberForFileName_maps_the_online_containers_to_the_same_numbers(string fileName, int expected)
-    {
-        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp picks online_sav from the same
-        // Options.saveSlot that picks sav, so online_sav2 carries slot number 2 exactly as sav2
-        // does. SaveSlotRef.Realm is what tells the two apart, not the number.
-        Assert.Equal(expected, SaveMetadataExtractor.SlotNumberForFileName(fileName));
-        Assert.Equal(SaveRealm.Online, SaveMetadataExtractor.SlotForFileName(fileName)!.Realm);
-    }
-
-    [Theory]
-    [InlineData("sav - Copy")]
-    [InlineData("sav - Copy (2)")]
-    [InlineData("sav.bak")]
-    [InlineData("sav4")]
-    [InlineData("sav0")]
-    [InlineData("save")]
-    [InlineData("exp1")]
-    [InlineData("expCore1")]
-    [InlineData("online_sav4")]
-    [InlineData("online_sav0")]
-    [InlineData("options")]
-    [InlineData("steam_autocloud.vdf")]
-    [InlineData("")]
-    public void SlotNumberForFileName_returns_null_for_everything_else(string fileName)
-        => Assert.Null(SaveMetadataExtractor.SlotNumberForFileName(fileName));
+    // Mapping a container file name to a slot is covered by SlotCopyTests, which asserts the
+    // realm and the number together for both realms and for every name that is not a slot.
 }
