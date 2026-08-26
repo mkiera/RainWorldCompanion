@@ -17,7 +17,16 @@ namespace RainWorldCompanion.ViewModels;
 /// Extra explanation to show on hover. Blank for most tiles, which hover with the value itself so a
 /// value the tile clipped can still be read in full.
 /// </param>
-public sealed record StatTile(string Label, string Value, bool IsMissing, string Detail = "")
+/// <param name="Footnoted">
+/// True when the tile shows a number the game derived rather than the one on disk, which draws an
+/// asterisk pointing at <paramref name="Detail"/>. The same mark the karma chip carries.
+/// </param>
+public sealed record StatTile(
+    string Label,
+    string Value,
+    bool IsMissing,
+    string Detail = "",
+    bool Footnoted = false)
 {
     /// <summary>What hovering the tile shows.</summary>
     public string HoverText => Detail.Length == 0 ? Value : Detail;
@@ -198,6 +207,10 @@ public sealed partial class CampaignViewModel : ObservableObject
         KarmaStoredOutOfRange = campaign.KarmaStoredOutOfRange;
         KarmaToolTip = BuildKarmaToolTip(campaign);
 
+        // Food is shown the same way: the pips the run will start with, not the raw field, which
+        // the game leaves negative whenever a cycle banked less than a shelter costs.
+        FoodToolTip = BuildFoodToolTip(campaign);
+
         // Hunter counts down. The game shows that campaign the cycles it has left, so the header
         // and the Cycle tile do too, and the number on disk goes in the tooltip.
         CycleText = campaign.DisplayCycleNum.HasValue
@@ -209,7 +222,7 @@ public sealed partial class CampaignViewModel : ObservableObject
         HasDevourment = campaign.DevourmentStateCount > 0;
         DevourmentChipText = "Devourment " + Number(campaign.DevourmentStateCount);
 
-        RunStats = BuildRunStats(campaign, CycleToolTip);
+        RunStats = BuildRunStats(campaign, CycleToolTip, FoodToolTip);
         KarmaStats = BuildKarmaStats(campaign, KarmaToolTip);
         Badges = BuildBadges(campaign);
         ProgressStats = BuildProgressStats(campaign);
@@ -265,6 +278,12 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     /// <summary>The stored numbers, and what the game makes of them when they need explaining.</summary>
     public string KarmaToolTip { get; }
+
+    /// <summary>
+    /// What the Food now tile shows on hover: blank unless the stored number is negative, in which
+    /// case it gives that number and what the game does with it.
+    /// </summary>
+    public string FoodToolTip { get; }
 
     public string CycleText { get; }
 
@@ -379,11 +398,14 @@ public sealed partial class CampaignViewModel : ObservableObject
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;
 
-    private static IReadOnlyList<StatTile> BuildRunStats(CampaignSummary campaign, string cycleToolTip) => new[]
+    private static IReadOnlyList<StatTile> BuildRunStats(
+        CampaignSummary campaign, string cycleToolTip, string foodToolTip) => new[]
     {
         Tile("Cycle", campaign.DisplayCycleNum, cycleToolTip),
         Tile("Cycles this version", campaign.CyclesThisVersion),
-        Tile("Food now", campaign.Food),
+        // The pips the run starts with. A campaign whose stored number the game will not use gets
+        // the asterisk, same as karma.
+        Tile("Food now", campaign.EffectiveFood, foodToolTip, campaign.FoodStoredNegative),
         Tile("Food eaten", campaign.TotalFoodEaten),
         Tile("Playtime", CampaignSummary.FormatPlayTime(campaign.PlayTime)),
         Tile("Shelter", campaign.DenPos),
@@ -438,6 +460,34 @@ public sealed partial class CampaignViewModel : ObservableObject
             : "Rain World lifts karma below zero to the lowest level when it loads, so the meter shows ";
 
         return storedLine + "\n" + rule + levelText + ".";
+    }
+
+    /// <summary>
+    /// The food tooltip, blank for almost every campaign because the stored number is the number
+    /// the run starts with and the tile already shows it.
+    ///
+    /// A negative is the case worth explaining, and it is ordinary rather than damage.
+    /// SaveState.SessionEnded takes the shelter cost off the pips banked at the end of every cycle,
+    /// so a cycle that ended with none left stores the cost as a negative. Nothing lifts it back
+    /// up on load: the RainWorldGame constructor hands out food only while the stored number is
+    /// above zero, and the save select screen clamps it to the meter before drawing.
+    /// </summary>
+    private static string BuildFoodToolTip(CampaignSummary campaign)
+    {
+        if (!campaign.FoodStoredNegative || campaign.Food is not { } stored)
+        {
+            return "";
+        }
+
+        var meter = campaign.FoodMeter;
+
+        return "The save stores food " + Number(stored) + "."
+            + "\nRain World hands out food only when the stored number is above zero,"
+            + " so the run starts with 0 pips."
+            + "\n" + SlugcatCatalog.ForId(campaign.SlugcatId).DisplayName
+            + " pays " + Number(meter.PipsToHibernate)
+            + " pips to hibernate, and the game takes that off at the end of every cycle, so a"
+            + " cycle that banked less stores the shortfall.";
     }
 
     /// <summary>
@@ -611,9 +661,10 @@ public sealed partial class CampaignViewModel : ObservableObject
             : Number(unread) + " more relationships were recorded in a shape this app could not read.";
     }
 
-    private static StatTile Tile(string label, int? value, string detail = "") => value.HasValue
-        ? new StatTile(label, Number(value.Value), false, detail)
-        : new StatTile(label, Missing, true, detail);
+    private static StatTile Tile(string label, int? value, string detail = "", bool footnoted = false)
+        => value.HasValue
+            ? new StatTile(label, Number(value.Value), false, detail, footnoted)
+            : new StatTile(label, Missing, true, detail, footnoted);
 
     private static StatTile Tile(string label, string? value) => string.IsNullOrWhiteSpace(value)
         ? new StatTile(label, Missing, true)

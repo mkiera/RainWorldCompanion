@@ -36,6 +36,11 @@ public sealed class CampaignSummary
 
     public int? CycleNum { get; init; }
 
+    /// <summary>
+    /// FOOD, exactly as it sits on disk. This is routinely negative: SaveState.SessionEnded
+    /// subtracts the shelter cost at the end of every cycle, so a cycle that banked less than that
+    /// stores the shortfall. See <see cref="EffectiveFood"/>.
+    /// </summary>
     public int? Food { get; init; }
 
     /// <summary>Value of DENPOS, for example SU_S04.</summary>
@@ -110,6 +115,31 @@ public sealed class CampaignSummary
     /// </summary>
     [JsonIgnore]
     public string KarmaText => KarmaMath.FormatKarma(Karma, KarmaCap);
+
+    /// <summary>
+    /// <see cref="Food"/> as the pips a run starts with. The RainWorldGame constructor hands out
+    /// food only while the stored number is above zero, and the save select screen clamps the same
+    /// number to 0..the meter's capacity before drawing it, so a negative is 0 pips either way.
+    ///
+    /// Not serialised, for the same reason as <see cref="DisplayName"/>: it is derived from a field
+    /// the manifest already records, and it has no setter.
+    /// </summary>
+    [JsonIgnore]
+    public int? EffectiveFood => FoodMath.EffectiveFood(Food);
+
+    /// <summary>
+    /// True when <see cref="Food"/> differs from <see cref="EffectiveFood"/>, so the value on disk
+    /// is one the game will not hand to the player.
+    /// </summary>
+    [JsonIgnore]
+    public bool FoodStoredNegative => FoodMath.IsStoredNegative(Food);
+
+    /// <summary>
+    /// The food meter this campaign's slugcat has: how many pips it holds and what a shelter
+    /// costs. Read from <see cref="SlugcatId"/>, not from the save, which stores neither.
+    /// </summary>
+    [JsonIgnore]
+    public FoodMeter FoodMeter => FoodMath.MeterFor(SlugcatId);
 
     /// <summary>True when DEATHPERSISTENTSAVEDATA carries a bare HASTHEMARK flag.</summary>
     public bool HasTheMark { get; init; }
@@ -288,9 +318,11 @@ public sealed class CampaignSummary
             parts.Add("cycle " + CycleNum.Value.ToString(CultureInfo.InvariantCulture));
         }
 
-        if (Food.HasValue)
+        // The pips the run starts with, not the raw field, which is negative after a cycle that
+        // banked less than a shelter costs.
+        if (EffectiveFood is { } food)
         {
-            parts.Add("food " + Food.Value.ToString(CultureInfo.InvariantCulture));
+            parts.Add("food " + food.ToString(CultureInfo.InvariantCulture));
         }
 
         return string.Join("  ", parts);
