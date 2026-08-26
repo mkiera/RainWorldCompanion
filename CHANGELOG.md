@@ -4,6 +4,10 @@ What changed in each release, newest first. Headings are the version on its own,
 without a leading `v`, and match the tag the release was built from. Work that
 has not been released yet sits under Unreleased.
 
+A pre-release takes a heading under its whole tag, as in `1.1.0-beta.1`. The
+release build looks the heading up by the exact version it was tagged with and
+fails when it finds none, so rename Unreleased before tagging, not after.
+
 ## Unreleased
 
 - Every backup and library save records the mods and game version it was
