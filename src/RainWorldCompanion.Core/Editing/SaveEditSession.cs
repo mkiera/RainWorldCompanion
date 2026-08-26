@@ -17,6 +17,15 @@ namespace RainWorldCompanion.Core.Editing;
 /// </summary>
 public sealed record CampaignRecordRef(int RecordIndex, string SlugcatId);
 
+/// <summary>
+/// What emptying a slot took out of it: the campaigns by the name a person reads, and how many map
+/// records went with them.
+/// </summary>
+public sealed record SlotWipeReport(IReadOnlyList<string> Campaigns, int MapsRemoved)
+{
+    public bool TookNothing => Campaigns.Count == 0 && MapsRemoved == 0;
+}
+
 /// <summary>One field of a record body as the file stores it.</summary>
 /// <param name="Occurrence">Which of the fields sharing this key it is, counting from zero.</param>
 /// <param name="IsFlag">True when the field is a bare token that means true by being present.</param>
@@ -366,6 +375,43 @@ public sealed class SaveEditSession
 
         ApplySplice(newPayload, report, "campaign|" + slugcatId, Name(slugcatId), what);
         return report;
+    }
+
+    /// <summary>
+    /// Takes every campaign out of this slot, which is what emptying a slot means.
+    ///
+    /// The game's own WipeAll goes further: it throws away the map records too and resets most of
+    /// MISCPROG, clearing discovered shelters, ending ids, tutorial flags and campaign timers. This
+    /// app cannot follow it there. Writing a reset MISCPROG would mean building that record from a
+    /// model of what this app thinks belongs in it, and every field of it this app does not know
+    /// about, which on a save a mod has touched is most of them, would be dropped on the way. So
+    /// this empties the slot of campaigns and leaves MISCPROG exactly as it found it, and the caller
+    /// says whether the map goes too.
+    /// </summary>
+    /// <param name="includeMaps">
+    /// Whether each slugcat's map discovery goes with its campaign. False leaves the slot
+    /// remembering everywhere it has been, which is what the per-campaign delete does.
+    /// </param>
+    public SlotWipeReport WipeCampaigns(bool includeMaps)
+    {
+        var removed = new List<string>();
+        int maps = 0;
+
+        // Read the list up front. Each removal rewrites the payload, so walking the live list while
+        // taking things out of it would skip every second campaign.
+        foreach (string slugcatId in CampaignSlugcats.ToArray())
+        {
+            CampaignSpliceReport report = TakeCampaignOut(slugcatId, includeMaps);
+
+            if (report.Outcome == CampaignSpliceOutcome.Removed)
+            {
+                removed.Add(Name(slugcatId));
+            }
+
+            maps += report.MapsRemoved;
+        }
+
+        return new SlotWipeReport(removed, maps);
     }
 
     /// <summary>

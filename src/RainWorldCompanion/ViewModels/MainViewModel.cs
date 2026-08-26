@@ -1285,6 +1285,100 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         !IsBusy && !IsGameRunning && _library is not null && _backupService is not null;
 
     /// <summary>
+    /// Takes every campaign out of one live slot.
+    ///
+    /// The game empties a slot by writing a reset MISCPROG over everything else. This stops short of
+    /// that and takes only the campaigns, because rebuilding MISCPROG would drop every field of it
+    /// this app does not model. The dialog says what stays behind rather than letting the button
+    /// imply the slot is new again.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanEmptySlot))]
+    private async Task EmptySlotAsync(SlotViewModel? slot)
+    {
+        if (_backupService is not { } backups || slot?.EditableSlot is not { } target
+            || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        SaveSlotWriter writer = backups.SlotWriter;
+        SlotWipePlan plan;
+
+        BeginBusy("Reading " + target.FileName, "Working out what would go");
+        try
+        {
+            plan = await Task.Run(() => writer.PlanWipeSlot(target, includeMaps: false));
+        }
+        catch (Exception ex)
+        {
+            EndBusy();
+            Report(target.FileName + " could not be read.", ex);
+            return;
+        }
+
+        EndBusy();
+
+        if (!plan.CanWrite)
+        {
+            Report(
+                "Nothing was emptied out of " + target.FileName + ".\n\n"
+                + FormatList(plan.Problems.Count > 0 ? plan.Problems : plan.Write.Problems),
+                null);
+            return;
+        }
+
+        // Replanning on the map checkbox reads the slot again, which is what keeps the window from
+        // describing one thing and writing another.
+        var dialog = new EmptySlotDialog(plan, takeTheMap => writer.PlanWipeSlot(target, takeTheMap));
+
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        bool takeTheMap = dialog.TakeTheMap;
+        var progress = new Progress<string>(message => BusyMessage = message);
+
+        SaveWriteResult? result = null;
+        Exception? failure = null;
+
+        BeginBusy("Emptying " + target.FileName, "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(() => writer.Write(
+                writer.PlanWipeSlot(target, takeTheMap),
+                progress,
+                CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        // Whatever library save claimed that slot no longer matches what is in it.
+        if (result?.LiveFolderModified == true)
+        {
+            await ReleaseSlotClaimAsync(target);
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report(target.FileName + " could not be emptied.", failure);
+            return;
+        }
+
+        ReportSaveResult(result!, target.FileName);
+    }
+
+    private bool CanEmptySlot() => !IsBusy && !IsGameRunning && _backupService is not null;
+
+    /// <summary>
     /// Reports both halves of a send as one message, because to the user it was one thing they
     /// asked for. A move whose second half was refused says so rather than reading as a success.
     /// </summary>
@@ -2973,6 +3067,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         StoreCampaignCommand.NotifyCanExecuteChanged();
         SendCampaignCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
+        EmptySlotCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()
