@@ -3,9 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:RainWorldCompanion.Views"
         mc:Ignorable="d"
         Title="Load a library save"
-        Width="760" Height="560" MinWidth="680" MinHeight="460"
+        Width="760" Height="660" MinWidth="680" MinHeight="460"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Background="{StaticResource Brush.Window}"
@@ -31,6 +32,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -122,14 +124,16 @@
             <ItemsControl ItemsSource="{Binding Warnings}" ItemTemplate="{StaticResource WarningLine}" />
         </Border>
 
-        <StackPanel Grid.Row="4" Margin="0,14,0,0">
+        <views:ModDiffSection Grid.Row="4" DataContext="{Binding ModDiff}" Margin="0,12,0,0" />
+
+        <StackPanel Grid.Row="5" Margin="0,14,0,0">
             <TextBlock TextWrapping="Wrap"
                        Text="The whole file is copied byte for byte. Nothing inside it is rewritten, so the campaigns, the checksum and the padding all arrive exactly as they are now." />
             <TextBlock TextWrapping="Wrap" Margin="0,6,0,0"
                        Text="A safety snapshot of the current save folder is taken first, so this can be undone by restoring that snapshot. The library save itself is not changed." />
         </StackPanel>
 
-        <DockPanel Grid.Row="5" Margin="0,16,0,0">
+        <DockPanel Grid.Row="6" Margin="0,16,0,0">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button x:Name="LoadButton" Content="Load" Style="{StaticResource Button.Danger}"
                         Margin="0,0,8,0" Click="OnLoad"

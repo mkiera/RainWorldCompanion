@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using RainWorldCompanion.Core.Editing;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.Settings;
@@ -36,6 +37,7 @@ public sealed class BackupService
 
     private readonly IGameProcessDetector _gameDetector;
     private readonly string _appVersion;
+    private readonly Func<CurrentMods>? _modListSource;
     private readonly object _lockGate = new();
 
     private FileStream? _operationLock;
@@ -43,8 +45,19 @@ public sealed class BackupService
     private SlotCopyService? _slotCopies;
     private SaveSlotWriter? _slotWriter;
 
-    public BackupService(string saveRoot, string backupRoot, IGameProcessDetector gameDetector, string appVersion)
-        : this(saveRoot, backupRoot, gameDetector, appVersion, scope: null)
+    /// <param name="modListSource">
+    /// Where to read the mods that are on, called once per snapshot. Optional because the service
+    /// is built in places that have no game folder to offer, and a snapshot with no mod list is
+    /// still a snapshot. Passed in rather than read here so this class keeps knowing only about
+    /// the save folder and the backup folder.
+    /// </param>
+    public BackupService(
+        string saveRoot,
+        string backupRoot,
+        IGameProcessDetector gameDetector,
+        string appVersion,
+        Func<CurrentMods>? modListSource = null)
+        : this(saveRoot, backupRoot, gameDetector, appVersion, scope: null, modListSource)
     {
     }
 
@@ -58,7 +71,8 @@ public sealed class BackupService
         string backupRoot,
         IGameProcessDetector gameDetector,
         string appVersion,
-        BackupScope? scope)
+        BackupScope? scope,
+        Func<CurrentMods>? modListSource = null)
     {
         if (string.IsNullOrWhiteSpace(saveRoot))
         {
@@ -72,6 +86,7 @@ public sealed class BackupService
 
         _gameDetector = gameDetector ?? throw new ArgumentNullException(nameof(gameDetector));
         _appVersion = appVersion ?? "";
+        _modListSource = modListSource;
 
         SaveRoot = Path.GetFullPath(saveRoot);
         BackupRoot = Path.GetFullPath(backupRoot);
@@ -90,6 +105,46 @@ public sealed class BackupService
     public string SaveRoot { get; }
 
     public string BackupRoot { get; }
+
+    /// <summary>
+    /// Where the mods that are on come from, for the library and the restore plan, which record
+    /// and compare the same list this service stamps. Null when nothing was wired up.
+    /// </summary>
+    internal Func<CurrentMods>? ModListSource => _modListSource;
+
+    /// <summary>
+    /// The mods that are on, or null when there is no source or it failed. A mod list is
+    /// something a snapshot carries, not something it depends on, so a backup that cannot record
+    /// one is still a backup.
+    /// </summary>
+    internal ModListSnapshot? TryReadMods()
+    {
+        try
+        {
+            return _modListSource?.Invoke().Enabled;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How a recorded list stands against this machine, or null when there is no way to look.
+    /// Null and "nothing was recorded" are different answers and the UI words them differently,
+    /// so a failure to read the machine does not turn into a claim about the snapshot.
+    /// </summary>
+    internal ModListDiff? TryDiffMods(ModListSnapshot? recorded)
+    {
+        try
+        {
+            return _modListSource is null ? null : ModListDiff.Compare(recorded, _modListSource());
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
 
     /// <summary>The set of files this service is allowed to read, write, and delete.</summary>
     public BackupScope Scope { get; }
@@ -131,6 +186,7 @@ public sealed class BackupService
             Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             Kind = kind,
+            Mods = TryReadMods(),
         };
 
         foreach (var skipped in scan.SkippedLinks)
@@ -232,6 +288,7 @@ public sealed class BackupService
 
         if (snapshot.Manifest is not { } manifest)
         {
+            // No manifest means nothing was recorded about anything, mods included.
             return new RestorePlan(added, overwritten, unchanged, deleted);
         }
 
@@ -333,6 +390,7 @@ public sealed class BackupService
         {
             LeftAlone = leftAlone,
             NotRestored = notRestored,
+            Mods = TryDiffMods(manifest.Mods),
         };
     }
 

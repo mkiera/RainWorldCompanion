@@ -8,6 +8,7 @@ using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
@@ -281,6 +282,13 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         return null;
     }
 
+    /// <summary>
+    /// How the mods this entry was saved with stand against the machine now. Rebuilt with the
+    /// rest of the window when the pickers move, because a different entry carries a different
+    /// record. The target slot does not change it: the mods are the machine's, not the slot's.
+    /// </summary>
+    public ModListDiffViewModel ModDiff => new(_plan.Mods);
+
     /// <summary>Rebuilds every line from the plan for the pair the pickers are on.</summary>
     private void Replan()
     {
@@ -300,6 +308,7 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
                      nameof(HeadlineText), nameof(DirectionText), nameof(ReplaceWarningText),
                      nameof(SourceName), nameof(TargetName), nameof(SourceSummary), nameof(TargetSummary),
                      nameof(SourceCampaigns), nameof(TargetCampaigns), nameof(Warnings), nameof(WarningsVisibility),
+                     nameof(ModDiff),
                  })
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

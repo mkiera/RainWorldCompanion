@@ -4,6 +4,7 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RainWorldCompanion.Core.Saves;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Services;
 
@@ -34,6 +35,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     private readonly string _onlineEmptyText;
 
     private SnapshotDetailViewModel(
+        ModListSectionViewModel modsSection,
         bool isLive,
         string title,
         string subtitle,
@@ -51,6 +53,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         string sourceDirectory = "",
         string sourceLabel = "")
     {
+        Mods = modsSection;
         IsLive = isLive;
         Title = title;
         Subtitle = subtitle;
@@ -219,6 +222,13 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// <summary>"2 online saves", for the section band.</summary>
     public string OnlineCountText { get; }
 
+    /// <summary>
+    /// The mods this panel is about: what is on now for the live save, what was recorded for a
+    /// backup or a library save. Never null, because "nothing was recorded" is itself a line
+    /// worth drawing rather than a section worth hiding.
+    /// </summary>
+    public ModListSectionViewModel Mods { get; }
+
     /// <summary>meadow.json, or null when the folder holds no such file.</summary>
     public MeadowProfileViewModel? Meadow { get; }
 
@@ -231,9 +241,11 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         long sizeBytes,
         int fileCount,
         MeadowProfile? meadow,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        CurrentMods? mods = null)
     {
         return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForCurrent(mods),
             isLive: true,
             title: "Live save",
             subtitle: savePath,
@@ -273,6 +285,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             : when + "    " + item.Entry.Id;
 
         return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForRecorded(item.Entry.Manifest?.Mods, fromABackup: false),
             isLive: false,
             title: item.Name,
             subtitle: subtitle,
@@ -311,6 +324,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             : "This snapshot's manifest recorded no Rain Meadow online saves.";
 
         return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForRecorded(item.Snapshot.Manifest?.Mods, fromABackup: true),
             isLive: false,
             title: item.LabelText,
             subtitle: item.CreatedText + "    " + item.Snapshot.Id,

@@ -11,6 +11,7 @@ using Microsoft.Win32;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Library;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.Settings;
@@ -92,6 +93,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     // Whether Rain Meadow is on this machine. The whole online block hangs on it, so a player
     // without the mod never sees a section about it. Re-checked whenever the paths change.
+    /// <summary>The mods on this machine, read with the rest of the refresh. Null before the first one.</summary>
+    private CurrentMods? _currentMods;
+
     private RainMeadowPresence _meadow = RainMeadowPresence.Absent;
 
     // Cancels the background verify sweep when the list is rebuilt or the window closes.
@@ -621,7 +625,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 _liveSizeBytes,
                 _liveFileCount,
                 _liveMeadow,
-                _icons);
+                _icons,
+                _currentMods);
         }
 
         if (SelectedLibraryEntry is { } entry)
@@ -1050,6 +1055,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         string? note = dialog.EntryNote;
         string slugcat = campaign.SlugcatId;
 
+        // A campaign taken out of a backup or a library save carries that snapshot's mod list
+        // rather than what is on right now. The bytes are from then, so the record has to be too.
+        ModListSnapshot? recorded = RecordedModsOfSelection();
+
         LibraryEntry? stored = null;
         Exception? failure = null;
 
@@ -1067,7 +1076,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                         ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
 
                     return library.StoreCampaignFrom(
-                        slice, source.FileName, source.Realm, source.SlotNumber, name, note);
+                        slice, source.FileName, source.Realm, source.SlotNumber, name, note, recorded);
                 });
         }
         catch (Exception ex)
@@ -1150,7 +1159,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 source.LiveSlot,
                 WhereItIs(source),
                 target => writer.PlanPutCampaign(target, slice),
-                _meadow.Present);
+                _meadow.Present,
+                // Only for a campaign coming from somewhere else. Live to live is one machine
+                // against itself, and a comparison there says nothing at some length.
+                source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null);
         }
         catch (Exception ex)
         {
@@ -1441,6 +1453,21 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     private static CampaignSlice? ReadCampaignFrom(CampaignSource source, string slugcatId)
         => CampaignFile.ReadFrom(source.FilePath, slugcatId);
+
+    /// <summary>
+    /// The mod list recorded by whichever snapshot is selected, or null when the selection is the
+    /// live save or carries no record. The selection is what built the panel the campaign card
+    /// sits in, so it is the snapshot the campaign was read out of.
+    /// </summary>
+    private ModListSnapshot? RecordedModsOfSelection()
+        => SelectedBackup?.Snapshot.Manifest?.Mods ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
+
+    /// <summary>
+    /// A recorded list against the mods read by the last refresh. Null before the first refresh,
+    /// which is the same "no way to look" the plans mean by it.
+    /// </summary>
+    private ModListDiff? DiffAgainstNow(ModListSnapshot? recorded)
+        => _currentMods is null ? null : ModListDiff.Compare(recorded, _currentMods);
 
     /// <summary>What to call the file a campaign is in, for example "sav2" or "backup 2026-08-24".</summary>
     private static string WhereItIs(CampaignSource source)
@@ -2595,7 +2622,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             {
                 try
                 {
-                    return (new BackupService(savePath, backupRoot, _gameDetector, _appVersion), null);
+                    // The mod list is read through a closure rather than handed over as a value,
+                    // because it has to be current at the moment a snapshot is taken and not at the
+                    // moment the service was built. The game folder is read the same way, and the
+                    // service is rebuilt whenever settings are applied, so neither can go stale.
+                    return (new BackupService(
+                        savePath,
+                        backupRoot,
+                        _gameDetector,
+                        _appVersion,
+                        () => CurrentModsReader.Read(savePath, _settings.GameInstallPath)), null);
                 }
                 catch (Exception ex)
                 {
@@ -2717,10 +2753,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 // the worker with the rest of the disk work rather than on the dispatcher.
                 var meadow = RainMeadowDetector.Detect(service.SaveRoot, _settings.GameInstallPath);
 
-                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow);
+                // Reads the options file and walks the mods and workshop folders, so it belongs
+                // out here too. This is the "now" side of every mod comparison the app makes.
+                var mods = CurrentModsReader.Read(service.SaveRoot, _settings.GameInstallPath);
+
+                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods);
             });
 
             _meadow = data.Meadow;
+            _currentMods = data.Mods;
             _liveSlotData = data.Slots;
             _liveSizeBytes = data.Size;
             _liveFileCount = data.Count;

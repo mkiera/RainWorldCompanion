@@ -4,6 +4,7 @@
 using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Saves;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Library;
@@ -112,6 +113,26 @@ public sealed class LibraryManifest
     public DateTime? PreviousReplacedUtc { get; set; }
 
     public SlotMetadata? PreviousMetadata { get; set; }
+
+    /// <summary>
+    /// The mods that were on when these bytes were taken, and the game version they ran under.
+    /// A load compares this against the machine as it stands and says how the two differ.
+    ///
+    /// <para>This travels inside a .rwsave or .rwcampaign, because the bundle carries this whole
+    /// manifest, so an import keeps the exporter's record rather than stamping its own. That is
+    /// the point of it: the record describes the machine the save was played on, which is what a
+    /// load onto this machine wants to be compared against.</para>
+    ///
+    /// <para>Null when nothing was recorded, which covers entries stored before this existed and
+    /// bare files that arrived with nothing but their bytes. Null never means "no mods".</para>
+    /// </summary>
+    public ModListSnapshot? Mods { get; set; }
+
+    /// <summary>
+    /// The mod list that went with the bytes now kept as the previous generation. Follows
+    /// <see cref="PreviousMetadata"/> exactly: set on update, put back on undo, cleared on import.
+    /// </summary>
+    public ModListSnapshot? PreviousMods { get; set; }
 
     /// <summary>The slot the last load wrote to, or null when this has never been loaded.</summary>
     public SaveSlotRef? LastLoadedSlotRef =>

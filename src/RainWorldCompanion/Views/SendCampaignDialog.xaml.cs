@@ -5,7 +5,9 @@ using System.ComponentModel;
 using System.Windows;
 
 using RainWorldCompanion.Core.Editing;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
@@ -51,15 +53,22 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     /// Whether the online slots are offered. False when Rain Meadow is not on the machine, where
     /// online_sav is a file nothing reads.
     /// </param>
+    /// <param name="mods">
+    /// How the mods this campaign was saved with stand against the machine now, for a campaign
+    /// coming out of a backup or a library save. Null for a live slot, where the campaign and the
+    /// machine are the same machine and a comparison would only say so at length.
+    /// </param>
     public SendCampaignDialog(
         string campaignName,
         SaveSlotRef? source,
         string sourceName,
         Func<SaveSlotRef, CampaignMovePlan> replan,
-        bool includeOnline)
+        bool includeOnline,
+        ModListDiff? mods = null)
     {
         CampaignName = campaignName;
         SourceName = sourceName;
+        ModDiff = new ModListDiffViewModel(mods);
 
         _source = source;
         _replan = replan;
@@ -78,6 +87,12 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string CampaignName { get; }
+
+    /// <summary>
+    /// The mod comparison. It does not change with the target slot, because the mods belong to
+    /// the machine rather than to the slot, so nothing rebuilds it when the picker moves.
+    /// </summary>
+    public ModListDiffViewModel ModDiff { get; }
 
     public string SourceName { get; }
 

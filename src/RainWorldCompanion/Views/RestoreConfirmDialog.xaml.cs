@@ -1,5 +1,6 @@
 using System.Windows;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
@@ -15,6 +16,7 @@ public partial class RestoreConfirmDialog : Window
     public RestoreConfirmDialog(RestorePlan plan, string snapshotName)
     {
         SnapshotName = snapshotName;
+        ModDiff = new ModListDiffViewModel(plan.Mods, fromABackup: true);
         Added = plan.Added;
         Overwritten = plan.Overwritten;
         Unchanged = plan.Unchanged;
@@ -45,6 +47,9 @@ public partial class RestoreConfirmDialog : Window
     }
 
     public string SnapshotName { get; }
+
+    /// <summary>How the mods this backup was taken with stand against the machine now.</summary>
+    public ModListDiffViewModel ModDiff { get; }
 
     public IReadOnlyList<string> Added { get; }
 

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Backups;
@@ -93,6 +94,24 @@ public sealed class BackupManifest
         get => _skippedLinks;
         set => _skippedLinks = value ?? new List<string>();
     }
+
+    /// <summary>
+    /// The mods the game had turned on when this snapshot was taken, and the game version they
+    /// ran under. A restore compares this against the machine as it stands and says how the two
+    /// differ, which is what makes a save from months ago safe to put back.
+    ///
+    /// <para>Null on every snapshot written before this was recorded at all, and on one whose
+    /// mods could not be read. Both mean "no list to compare" and neither means "no mods were
+    /// on", so nothing may render a null here as an empty list.</para>
+    ///
+    /// <para>The schema version does not move for this. The property is additive and the
+    /// serialiser skips members it does not know, so a build from before this existed reads a
+    /// manifest carrying it and ignores this field alone. Nothing inside
+    /// <see cref="ModListSnapshot"/> is an enum, which is what keeps that true: an enum goes
+    /// through JsonStringEnumConverter, which throws on a value it has not heard of, and that
+    /// throw would cost the read of the whole manifest rather than the one field.</para>
+    /// </summary>
+    public ModListSnapshot? Mods { get; set; }
 }
 
 /// <summary>
@@ -262,6 +281,13 @@ public sealed record RestorePlan(
     /// that files it has already synced are current.
     /// </summary>
     public IReadOnlyList<string> NotRestored { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// How the mods recorded with this snapshot differ from the machine as it stands, or null when
+    /// there was no way to look at all. Never a reason to refuse a restore: it is shown so the
+    /// user knows what the save will come back to, and the restore goes ahead either way.
+    /// </summary>
+    public ModListDiff? Mods { get; init; }
 }
 
 /// <summary>
