@@ -60,8 +60,8 @@ public static class UpdateChannels
     /// <summary>The name on the row.</summary>
     public static string Title(this UpdateChannel channel) => channel switch
     {
-        UpdateChannel.Prerelease => "Pre-release",
-        UpdateChannel.Alpha => "Branch builds",
+        UpdateChannel.Prerelease => "Beta",
+        UpdateChannel.Alpha => "Alpha",
         _ => "Stable",
     };
 
