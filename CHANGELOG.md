@@ -6,6 +6,9 @@ has not been released yet sits under Unreleased.
 
 ## Unreleased
 
+- The Updates window shows a release's notes in place. The button that used to
+  send you to the release page in a browser now opens them under the row, and
+  the page is still one press away inside.
 - Delete a save slot from the app. A slot can lose its campaigns or be emptied
   down to nothing, including a slot that holds data but no campaign.
 - The food a run starts with reads correctly instead of showing a negative

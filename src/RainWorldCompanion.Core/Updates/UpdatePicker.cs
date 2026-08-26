@@ -118,7 +118,8 @@ public static class UpdatePicker
                 asset.Name,
                 asset.SizeBytes,
                 isPrerelease,
-                release.PublishedUtc);
+                release.PublishedUtc,
+                ReleaseNotes.ForDisplay(release.Notes));
         }
     }
 
