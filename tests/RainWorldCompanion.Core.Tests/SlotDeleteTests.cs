@@ -279,6 +279,51 @@ public class SlotDeleteTests
         Assert.Contains("the game keeps inside sav2", plan.WhatStays, StringComparison.Ordinal);
     }
 
+    // ---- a slot with data but no campaign ----
+
+    /// <summary>
+    /// What the reported case looked like: a slot played and then cleared of its campaigns, still
+    /// holding the map and the progression record. There is plainly something to delete.
+    /// </summary>
+    [Fact]
+    public void A_slot_with_no_campaign_left_can_still_be_emptied_out()
+    {
+        using var world = new DeleteWorld();
+        world.Writer.Write(world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Campaigns));
+
+        SlotMetadata between = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.Empty(between.Campaigns);
+        Assert.True(between.RecordCount > 0);
+
+        SlotDeletePlan plan = world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Everything);
+        Assert.True(plan.CanWrite);
+        Assert.Empty(plan.Campaigns);
+        Assert.Contains("Empties sav2 out entirely", plan.Describe(), StringComparison.Ordinal);
+
+        Assert.True(world.Writer.Write(plan).Success);
+
+        SlotMetadata after = SaveMetadataExtractor.Extract(world.Live.Resolve("sav2"), 2);
+        Assert.Equal(0, after.RecordCount);
+        Assert.True(after.ChecksumValid);
+    }
+
+    [Fact]
+    public void Taking_the_map_out_of_a_slot_with_no_campaign_says_what_it_is_taking()
+    {
+        using var world = new DeleteWorld();
+        world.Writer.Write(world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.Campaigns));
+
+        SlotDeletePlan plan = world.Writer.PlanDeleteSlot(LocalTwo, SlotDeleteDepth.CampaignsAndMap);
+
+        Assert.True(plan.CanWrite);
+        Assert.Contains("Takes what is left in sav2", plan.Describe(), StringComparison.Ordinal);
+        Assert.True(world.Writer.Write(plan).Success);
+
+        string payload = world.PayloadOf("sav2");
+        Assert.DoesNotContain("MAP", payload, StringComparison.Ordinal);
+        Assert.Contains("MISCPROG", payload, StringComparison.Ordinal);
+    }
+
     // ---- the map the whole slot shares ----
 
     /// <summary>

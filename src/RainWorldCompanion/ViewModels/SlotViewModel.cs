@@ -126,12 +126,14 @@ public sealed class SlotViewModel
     public SaveSlotRef? EditableSlot { get; }
 
     /// <summary>
-    /// True when this slot can be deleted, which means every campaign in it going at once.
+    /// True when this slot has anything in it to delete.
     ///
-    /// A slot with nothing in it is left off rather than offered and refused: the plan would say
-    /// there is nothing to delete, and a button that only ever reports that is one to not draw.
+    /// Campaigns are not the test. A slot the game has played and had its campaign wiped from still
+    /// holds the map it explored and its progression record, which is real data and is exactly what
+    /// deleting all of it is for. Only a slot holding no records at all has nothing to offer, and
+    /// that one is left off rather than offered and refused.
     /// </summary>
-    public bool CanDelete => EditableSlot is not null && Campaigns.Count > 0;
+    public bool CanDelete => EditableSlot is not null && (Campaigns.Count > 0 || Metadata.RecordCount > 0);
 
     public bool HasCampaigns => Campaigns.Count > 0;
 
