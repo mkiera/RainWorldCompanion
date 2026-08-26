@@ -218,7 +218,6 @@ public class DevourmentTreeTests
         Assert.Equal("PinkLizard", inner.Type);
         Assert.Equal("Healing", inner.Status);
 
-        // and every stored relationship is represented
         Assert.Equal(campaign.DevourmentStates.Count, root.DescendantCount);
     }
 

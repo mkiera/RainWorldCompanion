@@ -1,27 +1,14 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Mods;
 
-/// <summary>
-/// What one read of the game's options file found about mods.
-/// </summary>
-/// <param name="Read">
-/// False means the three fields below say nothing. An empty <see cref="EnabledModIds"/> with this
-/// true is a real answer: a vanilla install writes no EnabledMods key at all.
-/// </param>
-/// <param name="Problem">Plain sentence naming why not, null when the read worked.</param>
+/// <param name="Read">False means the other fields say nothing. An empty <see cref="EnabledModIds"/>
+/// with this true is a real answer: a vanilla install writes no EnabledMods key at all.</param>
 /// <param name="EnabledModIds">Mod ids in the order the game wrote them, which is not load order.</param>
-/// <param name="LoadOrder">
-/// Id to load order position, lower loading earlier. Returned as the game holds it, which means
-/// it still carries entries for mods that have since been turned off. Callers that want the load
-/// order of what is on filter this against <see cref="EnabledModIds"/>.
-/// </param>
-/// <param name="LastGameVersion">
-/// The game version the options file was last written under. Null when absent or blank.
-/// </param>
+/// <param name="LoadOrder">Id to load order position, lower loading earlier. Returned as the game
+/// holds it, so it still carries entries for mods that have since been turned off.</param>
 public sealed record OptionsRead(
     bool Read,
     string? Problem,
@@ -29,7 +16,6 @@ public sealed record OptionsRead(
     IReadOnlyDictionary<string, int> LoadOrder,
     string? LastGameVersion)
 {
-    /// <summary>What to use when nothing could be read.</summary>
     public static OptionsRead Failed(string problem) => new(
         false,
         problem,
@@ -39,35 +25,24 @@ public sealed record OptionsRead(
 }
 
 /// <summary>
-/// Reads which mods the game has turned on, from the options file in the save folder.
-///
-/// <para>The options file is a save container like the sav files, so the outer layer comes from
-/// <see cref="SaveContainer"/>. Its "options" entry holds a flat stream of settings in a grammar
-/// of its own: records end at <c>&lt;optA&gt;</c>, a record splits into key and value at
-/// <c>&lt;optB&gt;</c>, a list value splits on <c>&lt;optC&gt;</c>, and a pair inside a list
-/// splits at <c>&lt;optD&gt;</c>.</para>
-///
-/// <para>This is the only place that says which mods are on. The enabledMods.txt file in the game
-/// folder looks like an answer but holds only the mods that carry a DLL, so the six that ship
-/// with the game are missing from it, and it records no ids or versions.</para>
-///
-/// <para>Nothing here is written. The app never edits the game's own files.</para>
+/// The options file is a save container like the sav files, and its "options" entry holds a flat
+/// stream of settings: records end at <c>&lt;optA&gt;</c>, a record splits into key and value at
+/// <c>&lt;optB&gt;</c>, a list value splits on <c>&lt;optC&gt;</c>, and a pair inside a list splits
+/// at <c>&lt;optD&gt;</c>. This is the only place that says which mods are on: enabledMods.txt in
+/// the game folder holds only the mods that carry a DLL, with no ids or versions.
 /// </summary>
 public static class OptionsFile
 {
     /// <summary>The file, which sits in the save folder beside the sav files.</summary>
     public const string FileName = "options";
 
-    /// <summary>The container entry holding the settings stream.</summary>
     public const string ContainerKey = "options";
 
-    /// <summary>Key of the list of mods that are turned on.</summary>
     public const string EnabledModsKey = "EnabledMods";
 
     /// <summary>Key of the load order, which outlives the mods it names.</summary>
     public const string ModLoadOrderKey = "ModLoadOrder";
 
-    /// <summary>Key of the game version the file was last written under.</summary>
     public const string LastGameVersionKey = "LastGameVersion";
 
     private const string RecordSeparator = "<optA>";
@@ -75,9 +50,7 @@ public static class OptionsFile
     private const string ListSeparator = "<optC>";
     private const string PairSeparator = "<optD>";
 
-    /// <summary>
-    /// Never throws. A missing or damaged options file costs the answer rather than the caller.
-    /// </summary>
+    /// <summary>Never throws: a missing or damaged options file costs the answer, not the caller.</summary>
     public static OptionsRead Read(string? saveRoot)
     {
         if (string.IsNullOrWhiteSpace(saveRoot))
@@ -105,9 +78,8 @@ public static class OptionsFile
             return OptionsRead.Failed("The options file could not be read: " + error);
         }
 
-        // A damaged hashtable pairs keys with values by index, so the value sitting under
-        // "options" may belong to some other key entirely. Reading mods out of that would
-        // invent an answer rather than fail to find one.
+        // A damaged hashtable pairs keys with values by index, so the value sitting under "options"
+        // may belong to some other key entirely.
         if (container.StructureProblem is not null)
         {
             return OptionsRead.Failed("The options file is damaged: " + container.StructureProblem + ".");
@@ -148,8 +120,7 @@ public static class OptionsFile
             string key = record[..split];
             string value = record[(split + KeyValueSeparator.Length)..];
 
-            // Keys repeat in this file: InputSetup is written once per player. The first
-            // occurrence wins so a later one cannot quietly replace what was already read.
+            // Keys repeat in this file: InputSetup is written once per player. The first wins.
             switch (key)
             {
                 case EnabledModsKey when !sawEnabled:
@@ -169,8 +140,8 @@ public static class OptionsFile
             }
         }
 
-        // No EnabledMods key means a vanilla install: the game omits the key rather than
-        // writing an empty one. That is an answer, not a failure to find one.
+        // No EnabledMods key means a vanilla install: the game omits it rather than writing an empty
+        // one, so that is an answer rather than a failure to find one.
         return new OptionsRead(true, null, enabled, loadOrder, gameVersion);
     }
 
@@ -199,8 +170,7 @@ public static class OptionsFile
             string id = raw[..split].Trim();
             string position = raw[(split + PairSeparator.Length)..].Trim();
 
-            // A position that will not parse costs that one mod its place in the order. The
-            // rest of the list is still worth having.
+            // A position that will not parse costs that one mod its place in the order.
             if (id.Length > 0 && int.TryParse(position, out int order))
             {
                 into.TryAdd(id, order);

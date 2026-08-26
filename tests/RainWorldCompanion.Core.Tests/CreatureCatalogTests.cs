@@ -3,10 +3,8 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The creature names, which were read off the installed game rather than written from memory.
-///
-/// The check that matters is the last one: every creature a real played save actually holds is a
-/// creature the catalog can name.
+/// Names read off the installed game, not written from memory. The check that matters is the
+/// last one: every creature a real played save holds is one the catalog can name.
 /// </summary>
 public class CreatureCatalogTests
 {
@@ -29,9 +27,8 @@ public class CreatureCatalogTests
     }
 
     /// <summary>
-    /// Both are bases the game builds other templates from, not creatures anything spawns, so
-    /// offering them in a picker would be offering something that is not a creature. Free text
-    /// still writes either of them.
+    /// Both are bases the game builds other templates from, not creatures anything spawns, so a
+    /// picker must not offer them. Free text still writes either.
     /// </summary>
     [Fact]
     public void The_two_names_that_are_templates_rather_than_creatures_are_left_out()
@@ -85,10 +82,7 @@ public class CreatureCatalogTests
             CreatureCatalog.Known.Count,
             CreatureCatalog.Known.Select(kind => kind.Name).Distinct(StringComparer.OrdinalIgnoreCase).Count());
 
-    /// <summary>
-    /// The creature types a real save carries as swallowed prey. If the catalog cannot name one of
-    /// these it was built from the wrong place.
-    /// </summary>
+    /// <summary>Types a real save carries as swallowed prey. One the catalog cannot name means it was built from the wrong place.</summary>
     [Theory]
     [InlineData("BlackLizard")]
     [InlineData("BigMoth")]

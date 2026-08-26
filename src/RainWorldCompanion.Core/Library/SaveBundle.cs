@@ -1,16 +1,13 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.IO.Compression;
 using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 
 namespace RainWorldCompanion.Core.Library;
 
-/// <summary>What a file offered for import turned out to be.</summary>
 internal enum BundleKind
 {
-    /// <summary>None of the others.</summary>
     Unknown,
 
     /// <summary>A .rwsave or .rwcampaign zip written by <see cref="SaveBundle.Write"/>.</summary>
@@ -25,44 +22,26 @@ internal enum BundleKind
 
 /// <summary>
 /// The .rwsave and .rwcampaign files: a zip holding exactly one stored thing and the manifest that
-/// describes it.
-///
-/// One file rather than a folder because the point of an export is to be sent somewhere, and the
-/// manifest is what carries the name, the note and the campaigns across. A bare save file survives
-/// the trip too and can be imported, but it arrives with nothing but its own bytes.
-///
-/// The two extensions are the same format and are told apart by what is inside, not by the name or
-/// the first bytes: both are zips, so a signature at the front says only that it is one of the two.
-/// A bundle holding campaign.bin is a campaign and one holding save.bin is a whole slot, and that is
-/// read off the archive rather than off the manifest, so a manifest that says otherwise is corrected
-/// by what is actually there.
-///
-/// Only three fixed names are ever read out of a bundle, so no path from inside the archive is ever
-/// used to build a destination and a bundle cannot write outside the folder it is extracted into.
+/// describes it. The two extensions are the same format, told apart by whether the archive holds
+/// campaign.bin or save.bin rather than by the name or the manifest. Only three fixed names are ever
+/// read out of one, so no path from inside the archive builds a destination.
 /// </summary>
 internal static class SaveBundle
 {
-    /// <summary>The extension an export of a whole slot defaults to.</summary>
     internal const string Extension = ".rwsave";
 
-    /// <summary>The extension an export of one campaign defaults to.</summary>
     internal const string CampaignExtension = ".rwcampaign";
 
-    /// <summary>
-    /// The largest save this will extract. A real container is a few megabytes; the cap is here so
-    /// a hostile archive declaring a huge entry cannot fill the disk before the hash check runs.
-    /// </summary>
+    /// <summary>A cap so a hostile archive declaring a huge entry cannot fill the disk before the
+    /// hash check runs.</summary>
     private const long MaxSaveBytes = 256L * 1024 * 1024;
 
     private const int CopyBufferBytes = 1024 * 128;
 
-    /// <summary>
-    /// Writes a bundle through a temp file, so an interrupted export cannot leave a half written
-    /// .rwsave behind where a whole one used to be.
-    /// </summary>
-    /// <param name="contentFileName">
-    /// save.bin or campaign.bin, which is what tells a reader which of the two this is.
-    /// </param>
+    /// <summary>Writes through a temp file, so an interrupted export cannot leave a half written
+    /// .rwsave where a whole one used to be.</summary>
+    /// <param name="contentFileName">save.bin or campaign.bin, which is what tells a reader which of
+    /// the two this is.</param>
     internal static void Write(string destinationPath, LibraryManifest manifest, string contentPath, string contentFileName)
     {
         var temp = destinationPath + ".tmp";
@@ -96,18 +75,13 @@ internal static class SaveBundle
                 }
                 catch (Exception)
                 {
-                    // The export either succeeded and moved the temp away, or failed and reported
-                    // why. A leftover temp is not worth a second error on top of the first.
                 }
             }
         }
     }
 
-    /// <summary>
-    /// Reads the first bytes to decide what a file is. A container always starts with the UTF-8
-    /// byte order mark, and a zip always starts with the local file header signature, so the two
-    /// are told apart without trusting the extension.
-    /// </summary>
+    /// <summary>A container always starts with the UTF-8 byte order mark and a zip with the local
+    /// file header signature, so the two are told apart without trusting the extension.</summary>
     internal static BundleKind Sniff(string path)
     {
         Span<byte> head = stackalloc byte[32];
@@ -143,15 +117,9 @@ internal static class SaveBundle
         return BundleKind.Unknown;
     }
 
-    /// <summary>
-    /// Extracts a bundle's save into <paramref name="destinationDirectory"/> under the standard
-    /// name and returns the manifest that came with it.
-    ///
-    /// Throws on anything that does not add up, including a save whose bytes do not match the hash
-    /// its own manifest recorded. That mismatch is what the hash is for: a bundle that was truncated
-    /// in transit or edited on the way is refused rather than imported with a warning, because
-    /// unlike a bare file there is a recorded answer to check it against.
-    /// </summary>
+    /// <summary>Throws on anything that does not add up, including a save whose bytes do not match
+    /// the hash its own manifest recorded: unlike a bare file, there is a recorded answer to check a
+    /// bundle against, so one truncated in transit is refused rather than imported with a warning.</summary>
     internal static LibraryManifest Extract(string sourcePath, string destinationDirectory)
     {
         using var archive = ZipFile.OpenRead(sourcePath);
@@ -160,8 +128,7 @@ internal static class SaveBundle
             ?? throw new InvalidDataException(
                 $"This file has no {LibraryEntry.ManifestFileName} in it, so it is not one this app wrote.");
 
-        // What is in the archive decides which of the two this is, not what the manifest claims and
-        // not the name the file arrived under.
+        // What is in the archive decides which of the two this is, not the manifest and not the name.
         var isCampaign = archive.GetEntry(LibraryEntry.SaveFileName) is null;
         var contentFileName = isCampaign ? LibraryEntry.CampaignFileName : LibraryEntry.SaveFileName;
 
@@ -210,10 +177,8 @@ internal static class SaveBundle
         return manifest;
     }
 
-    /// <summary>
-    /// Copies until the limit is passed, then throws. The declared length in an archive is a claim
-    /// by whoever wrote it, so the bytes actually arriving are counted too.
-    /// </summary>
+    /// <summary>The declared length in an archive is a claim by whoever wrote it, so the bytes
+    /// actually arriving are counted too.</summary>
     private static void CopyBounded(Stream source, Stream destination, long limit)
     {
         var buffer = new byte[CopyBufferBytes];

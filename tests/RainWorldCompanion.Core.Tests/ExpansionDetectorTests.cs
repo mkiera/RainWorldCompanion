@@ -4,11 +4,9 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Finding the expansions in a game folder.
-///
-/// Neither of them appears in the game's enabled-mods list, which covers workshop and local mods
-/// but not the expansions, so the folder being there is the signal. Everything here is allowed to
-/// answer "did not look", because the game path is optional throughout this app.
+/// Neither of them appears in the game's enabled-mods list, which covers workshop and local
+/// mods but not the expansions, so the folder being there is the signal. Everything here is
+/// allowed to answer "did not look", because the game path is optional throughout this app.
 /// </summary>
 public class ExpansionDetectorTests : IDisposable
 {
@@ -77,8 +75,6 @@ public class ExpansionDetectorTests : IDisposable
 
         Assert.False(ExpansionDetector.Detect(_install.Path).Watcher);
     }
-
-    // ---- not looking is different from finding nothing ----
 
     [Fact]
     public void No_game_folder_means_nothing_was_checked()

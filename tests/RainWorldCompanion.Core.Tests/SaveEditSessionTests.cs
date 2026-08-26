@@ -5,9 +5,9 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// An edit has to change what it was asked to change and nothing else. These work on a copy of a
-/// real slot, so what they prove is proved against a payload holding map records, region states
-/// and every field this app does not model, which is where a rebuilt payload would lose data.
+/// An edit must change only what it was asked to change. These work on a copy of a real slot, so
+/// it is proved against a payload holding map records, region states, and every field this app
+/// does not model, which is where a rebuilt payload would lose data.
 /// </summary>
 public class SaveEditSessionTests
 {
@@ -86,10 +86,7 @@ public class SaveEditSessionTests
         }
     }
 
-    /// <summary>
-    /// The strongest check available: write the edit, read it back with the production reader, and
-    /// compare every campaign field against what it was. Only the edited one may differ.
-    /// </summary>
+    /// <summary>Writes the edit, reads it back with the production reader, and compares every field to what it was.</summary>
     [Fact]
     public void An_edited_save_reads_back_with_only_the_edited_field_changed()
     {
@@ -242,7 +239,6 @@ public class SaveEditSessionTests
             Assert.StartsWith("Pred0", devourment[0].Value);
             Assert.StartsWith("Pred2", devourment[1].Value);
 
-            // The neighbouring fields survived the separator surgery.
             Assert.Contains(fields, f => f.Key == "FOOD");
             Assert.Contains(fields, f => f.Key == "SAV STATE NUMBER");
             Assert.Empty(session.BuildWritePlan().Problems);
@@ -304,8 +300,8 @@ public class SaveEditSessionTests
     }
 
     /// <summary>
-    /// A box bound to a field writes it again on every keystroke. All of those writes are the same
-    /// field going from where it started to where it ended up, and the log says so once.
+    /// A text box bound to a field writes it on every keystroke. All those writes are the same
+    /// field moving from start to end, so the change log says so once.
     /// </summary>
     [Fact]
     public void A_field_written_over_and_over_is_one_change()
@@ -476,7 +472,6 @@ public class SaveEditSessionTests
         {
             var session = SaveEditSession.Open(path);
 
-            // The map records sit in the same payload and must not be editable as campaigns.
             var campaignIndexes = session.Campaigns.Select(c => c.RecordIndex).ToHashSet();
             var mapRecord = Enumerable
                 .Range(0, SavePayloadReader.SplitRecords(session.Payload).Count)
@@ -503,10 +498,6 @@ public class SaveEditSessionTests
         }
     }
 
-    /// <summary>
-    /// The death persistent blob is one field value, so editing karma has to leave every other
-    /// field of that blob exactly as the game wrote it.
-    /// </summary>
     [Fact]
     public void Editing_karma_leaves_the_rest_of_the_death_persistent_blob_alone()
     {

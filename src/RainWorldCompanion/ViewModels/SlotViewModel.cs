@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
@@ -8,45 +6,27 @@ using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// One save file: slot 1, 2 or 3, and the campaigns inside it.
-///
-/// The same view model backs both the compact rows in the live save card and the full sections
-/// in the detail panel, so a slot reads the same in both places. The two uses build their own
-/// instances because expanding a campaign in the detail panel must not change the summary card.
-/// </summary>
+/// <summary>The card and the panel build their own instances, so expanding one leaves the other.</summary>
 public sealed class SlotViewModel
 {
     private const int MaxRowPortraits = 6;
 
     /// <param name="fileNameOverride">
-    /// What to call the file this came from, when the metadata's own name is not it. A library save
-    /// is parsed out of the copy kept under the library's own storage name, so its metadata says
-    /// save.bin and only the entry's manifest knows the container it was taken from.
+    /// A library save is parsed out of the copy kept under the library's own storage name, so its
+    /// metadata says save.bin and only the entry's manifest knows the container it came from.
     /// </param>
     /// <param name="nameRealm">
-    /// Whether the header says which realm this is. True for a panel whose sections are one realm
-    /// at a time, where the realm toggle picks between two files that share a slot number and the
-    /// number alone does not say which one is on screen. False for a library save, which is a single
-    /// section that names the file it came from beside the title.
+    /// True where the realm toggle picks between two files that share a slot number, so the number
+    /// alone does not say which one is on screen.
     /// </param>
-    /// <param name="editable">
-    /// True when these campaigns are the live ones and so can be edited. A backup and a library
-    /// save are copies taken at a moment, and editing one in place would leave it no longer a copy
-    /// of anything.
-    /// </param>
+    /// <param name="editable">True only for the live campaigns.</param>
     /// <param name="sourceDirectory">
-    /// The folder holding the file these campaigns were read out of, so one of them can be taken
-    /// back out and sent to a slot. Empty when there is no such file to go back to, which is what a
-    /// backup with a manifest but no snapshot on disk looks like.
+    /// Empty when there is no file to go back to, which is what a backup with a manifest but no
+    /// snapshot on disk looks like.
     /// </param>
-    /// <param name="sourceLabel">
-    /// What to call that file in a sentence, for example "backup 2026-08-24_120000". Empty for the
-    /// live folder, where the file name says it.
-    /// </param>
+    /// <param name="sourceLabel">For example "backup 2026-08-24_120000".</param>
     /// <param name="sourceFileOverride">
-    /// The file inside <paramref name="sourceDirectory"/>, when it is not named after the slot. A
-    /// library save keeps a whole slot under the library's own storage name.
+    /// The file inside <paramref name="sourceDirectory"/>, when it is not named after the slot.
     /// </param>
     public SlotViewModel(
         SlotMetadata slot,
@@ -63,8 +43,7 @@ public sealed class SlotViewModel
         FileName = string.IsNullOrEmpty(fileNameOverride) ? slot.FileName : fileNameOverride;
         Realm = slot.Realm;
 
-        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp gives online_sav2 the same slot
-        // number as sav2, so the number alone does not say which of the two a header is naming.
+        // online_sav2 carries the same slot number as sav2.
         string prefix = nameRealm && slot.Realm == SaveRealm.Online ? "ONLINE SLOT " : "SLOT ";
 
         NumberText = slot.Slot > 0 ? slot.Slot.ToString(CultureInfo.InvariantCulture) : "?";
@@ -100,7 +79,6 @@ public sealed class SlotViewModel
     /// <summary>1, 2 or 3. Zero for a save file with no numbered slot.</summary>
     public int SlotNumber { get; }
 
-    /// <summary>Whether this came from a local save file or a Rain Meadow online one.</summary>
     public SaveRealm Realm { get; }
 
     public string NumberText { get; }
@@ -109,29 +87,20 @@ public sealed class SlotViewModel
 
     public string FileName { get; }
 
-    /// <summary>One line for a compact row, for example "3 campaigns: Survivor, Monk, Hunter".</summary>
     public string SummaryText { get; }
 
     public string CampaignCountText { get; }
 
-    /// <summary>Faces for the campaigns in this slot, capped so a busy slot still fits a row.</summary>
     public IReadOnlyList<PortraitViewModel> Portraits { get; }
 
     public IReadOnlyList<CampaignViewModel> Campaigns { get; }
 
-    /// <summary>
-    /// The slot these campaigns can be written to, or null when they cannot be. Only the live save
-    /// folder passes one, and only for a slot number the game itself has.
-    /// </summary>
+    /// <summary>Null unless this is the live folder and a slot number the game itself has.</summary>
     public SaveSlotRef? EditableSlot { get; }
 
     /// <summary>
-    /// True when this slot has anything in it to delete.
-    ///
-    /// Campaigns are not the test. A slot the game has played and had its campaign wiped from still
-    /// holds the map it explored and its progression record, which is real data and is exactly what
-    /// deleting all of it is for. Only a slot holding no records at all has nothing to offer, and
-    /// that one is left off rather than offered and refused.
+    /// Campaigns are not the test. A slot whose campaign was wiped still holds the map it explored
+    /// and its progression record, which is what deleting all of it is for.
     /// </summary>
     public bool CanDelete => EditableSlot is not null && (Campaigns.Count > 0 || Metadata.RecordCount > 0);
 
@@ -144,17 +113,14 @@ public sealed class SlotViewModel
     public string ParseErrorText { get; }
 
     /// <summary>
-    /// True only when the file carried a digest and it did not recompute. A file with no digest
-    /// is normal in this format and says nothing about whether the save is sound.
+    /// True only when the file carried a digest and it did not recompute. A file with no digest is
+    /// normal in this format.
     /// </summary>
     public bool ChecksumBad { get; }
 
     /// <summary>
-    /// The line shown when a save holds no campaign to expand.
-    ///
     /// A Rain Meadow save routinely holds the explored map and the progression record with no
-    /// campaign among them. Saying only that it holds no campaign reports 12 KB of real progress as
-    /// nothing, so the two cases are worded apart.
+    /// campaign among them, so the two empty cases are worded apart.
     /// </summary>
     public string EmptyText
     {
@@ -172,11 +138,8 @@ public sealed class SlotViewModel
     }
 
     /// <summary>
-    /// Where these campaigns can be read back out of, or null when there is nowhere to read from.
-    ///
-    /// A backup's panel is filled from the manifest written beside it rather than from the files, so
-    /// the campaigns can be described without the snapshot folder being there at all. Taking one out
-    /// needs the file, and this is where the two part company: no folder, no source, no buttons.
+    /// A backup's panel is filled from its manifest, so the campaigns can be described without the
+    /// snapshot folder being there. Taking one out needs the file: no folder, no source, no buttons.
     /// </summary>
     private static CampaignSource? BuildSource(
         SlotMetadata slot,
@@ -199,8 +162,6 @@ public sealed class SlotViewModel
         }
         catch (ArgumentException)
         {
-            // A file name out of a manifest is whatever was written there. One that will not join to
-            // a path is one this app cannot go back to, which is the same answer as having no folder.
             return null;
         }
 
@@ -250,8 +211,7 @@ public sealed class SlotViewModel
 
         if (slot.Campaigns.Count == 0)
         {
-            // A Rain Meadow online_sav with no campaign in it still holds the explored map and the
-            // progression record, and this line sits beside a button that overwrites the file.
+            // This line sits beside a button that overwrites the file.
             return SlotMetadata.DescribeWithoutCampaigns(slot.RecordCount);
         }
 

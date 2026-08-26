@@ -1,21 +1,11 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Text.Json;
 
 namespace RainWorldCompanion.Core.Mods;
 
-/// <summary>
-/// What one look at this machine found.
-/// </summary>
-/// <param name="Enabled">
-/// The mods the game has turned on, which is what a snapshot records.
-/// </param>
-/// <param name="Installed">
-/// Every mod found on disk, turned on or not. This is what tells "turned off" apart from "not
-/// installed" when a recorded list is compared against the machine later, and neither answer is
-/// much use without the other.
-/// </param>
+/// <param name="Installed">Every mod found on disk, turned on or not. This is what tells "turned
+/// off" apart from "not installed" when a recorded list is compared against the machine later.</param>
 public sealed record CurrentMods(ModListSnapshot Enabled, IReadOnlyList<ModEntry> Installed)
 {
     /// <summary>What to use when nothing could be read at all.</summary>
@@ -25,22 +15,13 @@ public sealed record CurrentMods(ModListSnapshot Enabled, IReadOnlyList<ModEntry
 }
 
 /// <summary>
-/// Works out which mods are on this machine and which of them the game has turned on.
-///
-/// <para>Three sources, each of which can be absent on its own: the options file in the save
-/// folder says what is on, the game's mods folder and the Steam workshop content folder say what
-/// is installed and at what version, and GameVersion.txt says which game they are for.</para>
-///
-/// <para>The game path is optional throughout this app, so every answer here is allowed to be
-/// "did not look". A mod list read without the install is still worth recording: it holds the ids
-/// and the load order, and only the names and versions are missing.</para>
+/// Three sources, each of which can be absent on its own: the options file says what is on, the
+/// mods and workshop folders say what is installed and at what version, and GameVersion.txt says
+/// which game they are for. Every answer here is allowed to be "did not look".
 /// </summary>
 public static class CurrentModsReader
 {
-    /// <summary>
-    /// A folder under mods that is not a mod. It holds dlcversions.json, and the game skips it by
-    /// name when it loads mods, so this does too.
-    /// </summary>
+    /// <summary>A folder under mods that is not a mod. The game skips it by name, so this does too.</summary>
     public const string SkippedInstallFolder = "versioning";
 
     /// <summary>Rain World on Steam, which is the folder the workshop keeps its items under.</summary>
@@ -57,10 +38,7 @@ public static class CurrentModsReader
         CommentHandling = JsonCommentHandling.Skip,
     };
 
-    /// <summary>
-    /// Never throws. Either path may be missing or wrong, and each shortfall costs an answer
-    /// rather than the caller.
-    /// </summary>
+    /// <summary>Never throws: each missing path costs an answer rather than the caller.</summary>
     public static CurrentMods Read(string? saveRoot, string? gameInstallPath)
     {
         OptionsRead options = OptionsFile.Read(saveRoot);
@@ -96,15 +74,9 @@ public static class CurrentModsReader
         return new CurrentMods(snapshot, byId.Values.OrderBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase).ToList());
     }
 
-    /// <summary>
-    /// Where the workshop keeps this game's items: a sibling of the library's common folder, so
-    /// it is found by walking up from the install to its steamapps folder. Null for an install
-    /// that is not laid out the way Steam lays one out.
-    ///
-    /// <para>Walking up rather than assuming the default Steam root is what makes this right on a
-    /// machine with the game on a second drive, because an app's workshop content lives in the
-    /// same library the app does.</para>
-    /// </summary>
+    /// <summary>Found by walking up from the install to its steamapps folder rather than assuming
+    /// the default Steam root, because an app's workshop content lives in the same library the app
+    /// does. Null for an install not laid out the way Steam lays one out.</summary>
     internal static string? WorkshopContentPath(string? gameInstallPath)
     {
         if (string.IsNullOrWhiteSpace(gameInstallPath))
@@ -146,8 +118,7 @@ public static class CurrentModsReader
         {
             int? order = options.LoadOrder.TryGetValue(id, out int position) ? position : null;
 
-            // A mod the game has on but that is nowhere on disk is recorded as its id and
-            // nothing else. That is the honest shape: the game named it, we could not find it.
+            // A mod the game has on but that is nowhere on disk is recorded as its id and nothing else.
             ModEntry found = installed.TryGetValue(id, out ModEntry? match)
                 ? new ModEntry
                 {
@@ -163,8 +134,8 @@ public static class CurrentModsReader
             enabled.Add(found);
         }
 
-        // Load order first, because that is the order the game itself works in. A mod with no
-        // recorded position goes last rather than to the front, which is where a null would sort.
+        // Load order first, because that is the order the game works in. A mod with no recorded
+        // position goes last rather than to the front, which is where a null would sort.
         return enabled
             .OrderBy(mod => mod.LoadOrder is null)
             .ThenBy(mod => mod.LoadOrder ?? 0)
@@ -241,10 +212,8 @@ public static class CurrentModsReader
         return true;
     }
 
-    /// <summary>
-    /// One mod folder. A missing or unreadable modinfo.json leaves the folder name standing as
-    /// both id and name, which is what the game falls back to as well.
-    /// </summary>
+    /// <summary>A missing or unreadable modinfo.json leaves the folder name standing as both id and
+    /// name, which is what the game falls back to as well.</summary>
     private static ModEntry ReadMod(string folder, string folderName, string origin, string? workshopId)
     {
         var mod = new ModEntry
@@ -281,22 +250,16 @@ public static class CurrentModsReader
         }
         catch (JsonException)
         {
-            // The game's own reader is more forgiving than this one, and real mods rely on it:
-            // Push to Meow's Rain Meadow add-on ships a modinfo.json with a comma missing, and
-            // the game still knows its id, because that id is in the enabled list. Falling back
-            // to the folder name here would report an installed mod as missing.
+            // The game's own reader is more forgiving, and real mods rely on it: Push to Meow's Rain
+            // Meadow add-on ships a modinfo.json with a comma missing and the game still loads it.
             ReadLoosely(text, folderName, mod);
         }
 
         return mod;
     }
 
-    /// <summary>
-    /// Pulls the three fields out of a modinfo.json that is not quite JSON. Every one of them is
-    /// a plain string at the top level of a flat object, so finding the key and taking the quoted
-    /// text after it gets the same answer a parser would, and this only runs on a file a parser
-    /// has already refused.
-    /// </summary>
+    /// <summary>All three fields are plain strings at the top level of a flat object, so taking the
+    /// quoted text after each key gets the same answer a parser would.</summary>
     private static void ReadLoosely(string text, string folderName, ModEntry mod)
     {
         mod.Id = LooseString(text, "id") ?? folderName;

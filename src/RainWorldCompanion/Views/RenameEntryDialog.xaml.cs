@@ -3,15 +3,12 @@ using System.Windows;
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// Asks for a name and a note.
-///
-/// Renaming a library save is what it was written for, and storing a campaign asks for the same two
-/// things, so the wording is passed in rather than a second dialog being drawn with the same two
-/// boxes on it.
+/// Renaming a library save is what it was written for, and storing a campaign asks for the same
+/// two things, so the wording is passed in rather than a second dialog being drawn with the same
+/// two boxes on it.
 /// </summary>
 public partial class RenameEntryDialog : Window
 {
-    /// <summary>Changes a library save's name and note. Nothing else about the entry moves.</summary>
     public RenameEntryDialog(string currentName, string currentNote)
         : this(
             currentName,

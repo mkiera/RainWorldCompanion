@@ -1,29 +1,18 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 namespace RainWorldCompanion.Core.Mods;
 
-/// <summary>
-/// One mod whose version has moved since it was recorded.
-/// </summary>
 public sealed record ModVersionChange(string Id, string Name, string? Recorded, string? Now, string? WorkshopId);
 
 /// <summary>
-/// How a recorded mod list differs from this machine as it stands.
-///
-/// <para>Informational, always. Nothing here becomes a plan problem and nothing here refuses a
-/// load: the user is told what differs and decides. A save loads whatever the mod list says, and
-/// what a missing mod costs is the game's business, not this app's.</para>
-///
-/// <para>The three flags matter as much as the four lists, because an empty list can mean two
-/// opposite things. Nothing differing and nothing being known both produce four empty lists, and
-/// showing the second as the first would claim a match nobody checked.</para>
+/// Informational, always: nothing here becomes a plan problem or refuses a load. The three flags
+/// matter as much as the four lists, because nothing differing and nothing being known both produce
+/// four empty lists, and showing the second as the first would claim a match nobody checked.
 /// </summary>
 /// <param name="Missing">Recorded, and not installed on this machine now.</param>
 /// <param name="TurnedOff">Recorded, installed now, but not turned on.</param>
 /// <param name="Changed">On now, at a different version than was recorded.</param>
 /// <param name="Extra">On now, and not in the recording.</param>
-/// <param name="Notes">Plain sentences about what could not be checked.</param>
 public sealed record ModListDiff(
     IReadOnlyList<ModEntry> Missing,
     IReadOnlyList<ModEntry> TurnedOff,
@@ -39,13 +28,10 @@ public sealed record ModListDiff(
     /// <summary>The snapshot recorded that it could not read the mods that were on.</summary>
     public bool RecordedCouldNotLook { get; init; }
 
-    /// <summary>The mods on this machine could not be read now.</summary>
     public bool CurrentCouldNotLook { get; init; }
 
-    /// <summary>How many mods the recording holds, which is worth saying even when nothing differs.</summary>
     public int RecordedCount { get; init; }
 
-    /// <summary>How many mods are on now.</summary>
     public int CurrentCount { get; init; }
 
     /// <summary>True only when both versions are known and they disagree.</summary>
@@ -58,25 +44,19 @@ public sealed record ModListDiff(
     public bool ListsMatch =>
         Missing.Count == 0 && TurnedOff.Count == 0 && Changed.Count == 0 && Extra.Count == 0;
 
-    /// <summary>True when a comparison actually happened.</summary>
     public bool Compared => !NothingWasRecorded && !RecordedCouldNotLook && !CurrentCouldNotLook;
 
-    /// <summary>True when a comparison happened and found the machine unchanged.</summary>
     public bool Matches => Compared && ListsMatch && !GameVersionDiffers;
 
-    /// <summary>
-    /// Always returns a diff. The flags say how much of it means anything, so a caller never has
-    /// to hold a null and decide what a missing comparison looks like.
-    /// </summary>
+    /// <summary>Always returns a diff, with the flags saying how much of it means anything.</summary>
     public static ModListDiff Compare(ModListSnapshot? recorded, CurrentMods current)
     {
         ArgumentNullException.ThrowIfNull(current);
 
         ModListSnapshot now = current.Enabled;
 
-        // Either side being unreadable stops the comparison rather than skewing it. A recording
-        // that could not be read is not a recording of an empty machine, and diffing it as one
-        // would report every mod as removed.
+        // A recording that could not be read is not a recording of an empty machine, and diffing it
+        // as one would report every mod as removed.
         if (recorded is null || !recorded.ReadTheEnabledList || !now.ReadTheEnabledList)
         {
             return new ModListDiff(
@@ -128,8 +108,7 @@ public sealed record ModListDiff(
                 continue;
             }
 
-            // Installed but off is a different problem with a different fix, so it is only
-            // claimed when the install was actually looked at.
+            // Installed but off is only claimed when the install was actually looked at.
             if (now.CheckedTheInstall && installedNow.Contains(was.Id))
             {
                 turnedOff.Add(was);
@@ -171,10 +150,8 @@ public sealed record ModListDiff(
         };
     }
 
-    /// <summary>
-    /// A version only counts as moved when both sides have one. A mod that ships without a
-    /// version has nothing to compare, and saying it changed would be inventing a difference.
-    /// </summary>
+    /// <summary>Only counts as moved when both sides have a version: a mod that ships without one
+    /// has nothing to compare.</summary>
     private static bool VersionMoved(string? recorded, string? now)
         => recorded is { } was && now is { } current
             && was.Trim().Length > 0 && current.Trim().Length > 0
@@ -183,10 +160,8 @@ public sealed record ModListDiff(
     private static string Pick(params string?[] candidates)
         => candidates.FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? "";
 
-    /// <summary>
-    /// By name then id, so opening the same dialog twice reads the same way. Load order would be
-    /// the game's answer, but half of these lists hold mods the game has no order for.
-    /// </summary>
+    /// <summary>By name then id. Load order would be the game's answer, but half of these lists hold
+    /// mods the game has no order for.</summary>
     private static List<ModEntry> Sort(List<ModEntry> mods)
         => mods
             .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)

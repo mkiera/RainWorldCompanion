@@ -2,13 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace RainWorldCompanion.Core.System;
 
-/// <summary>
-/// Locates the Rain World save directory and recognises whether a folder looks like one.
-/// </summary>
 public static class SavePathResolver
 {
-    // LocalLow has no Environment.SpecialFolder member, so the path is composed from the user
-    // profile rather than looked up.
+    // LocalLow has no Environment.SpecialFolder member, so this is composed from the user profile.
     public static string DefaultSavePath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         "AppData",
@@ -23,9 +19,6 @@ public static class SavePathResolver
         @"^exp(Core)?[0-9]+$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    /// <summary>
-    /// Returns <see cref="DefaultSavePath"/> when it exists on disk, otherwise null.
-    /// </summary>
     public static string? FindSavePath()
     {
         try
@@ -42,10 +35,6 @@ public static class SavePathResolver
         }
     }
 
-    /// <summary>
-    /// True when the directory exists and holds at least one recognised save container file.
-    /// The settings dialog uses this to warn about a folder that is not a save root.
-    /// </summary>
     public static bool LooksLikeSaveRoot(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -88,7 +77,6 @@ public static class SavePathResolver
         }
         catch (ArgumentException)
         {
-            // An invalid path never names a save root.
             return false;
         }
 

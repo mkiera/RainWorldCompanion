@@ -1,20 +1,12 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// One slot number with its local save and its Rain Meadow online save beside each other.
-///
 /// Rain Meadow hooks Options.GetSaveFileName_SavOrExp and swaps sav for online_sav while a lobby
-/// is joined, so the game's own slot number picks both files. Slot 2 is sav2 and online_sav2, and
-/// pairing them is what lets a player see the two halves of one menu slot together.
-///
-/// The row shows what is in each file. Copying between slots is one command in the window's top
-/// bar, so the row carries no buttons of its own and reads the same in a backup as it does live.
+/// is joined, so one slot number picks both files. Slot 2 is sav2 and online_sav2.
 /// </summary>
 public sealed class SlotPairViewModel
 {
@@ -25,9 +17,8 @@ public sealed class SlotPairViewModel
         NumberText = slotNumber.ToString(CultureInfo.InvariantCulture);
         HeaderText = "SLOT " + NumberText;
 
-        // A row has to be able to name a file that is not there, and a file that is not there has
-        // no SlotMetadata to take a name from. SaveSlotRef is the one place the naming rule lives,
-        // so the fallback asks it rather than spelling the rule out again.
+        // A file that is not there has no SlotMetadata to take a name from, and SaveSlotRef is the
+        // one place the naming rule lives.
         string localName = local?.FileName is { Length: > 0 } name
             ? name
             : new SaveSlotRef(SaveRealm.Local, slotNumber).FileName;
@@ -50,16 +41,11 @@ public sealed class SlotPairViewModel
 
     public SlotSideViewModel Online { get; }
 
-    /// <summary>What a screen reader announces for the row as a whole.</summary>
     public string AccessibleName =>
         "Slot " + NumberText + ". Local, " + Local.SummaryText + ". Online, " + Online.SummaryText + ".";
 }
 
-/// <summary>
-/// One half of a slot pair, drawn the same way whichever half it is. A side with no file behind it
-/// still renders, because "there is no online save in this slot yet" is the state a player copying
-/// a local save across is starting from.
-/// </summary>
+/// <summary>A side with no file behind it still renders, which is where a copy starts from.</summary>
 public sealed class SlotSideViewModel
 {
     public SlotSideViewModel(string kindLabel, string fileName, SlotViewModel? slot)
@@ -73,7 +59,6 @@ public sealed class SlotSideViewModel
         ChecksumBad = slot?.ChecksumBad ?? false;
     }
 
-    /// <summary>"LOCAL" or "ONLINE".</summary>
     public string KindLabel { get; }
 
     /// <summary>sav2 or online_sav2, whether or not the file is there.</summary>

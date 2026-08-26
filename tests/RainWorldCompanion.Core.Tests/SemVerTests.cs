@@ -3,10 +3,8 @@ using RainWorldCompanion.Core.Updates;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Ordering release tags is what decides whether the app offers someone an update, walks them
-/// backwards onto an older build, or quietly offers them the copy they are already running. Every
-/// one of those is silent when it goes wrong, so the spec's own precedence chain is pinned here
-/// rather than sampled.
+/// Getting this wrong silently offers a downgrade or nothing at all, so the spec's own precedence
+/// chain is pinned here rather than sampled.
 /// </summary>
 public class SemVerTests
 {
@@ -17,9 +15,9 @@ public class SemVerTests
     }
 
     /// <summary>
-    /// Section 11 of the Semantic Versioning 2.0.0 spec, in the order it gives, as consecutive
-    /// pairs. The row that catches a naive implementation is beta.2 below beta.11: numeric
-    /// identifiers compare as numbers, and every string comparison puts "11" before "2".
+    /// Section 11 of the Semantic Versioning 2.0.0 spec, as consecutive pairs. beta.2 below
+    /// beta.11 catches a naive implementation: numeric identifiers compare as numbers, but a
+    /// string comparison puts "11" before "2".
     /// </summary>
     [Theory]
     [InlineData("1.0.0-alpha", "1.0.0-alpha.1")]
@@ -65,10 +63,9 @@ public class SemVerTests
     }
 
     /// <summary>
-    /// The .NET SDK appends the commit to InformationalVersion, so the running version always
-    /// arrives carrying build metadata while the tag it is compared against never does. If the
-    /// metadata took part, a build would be neither newer nor older nor the same as its own
-    /// release, and would be offered it forever.
+    /// The .NET SDK appends the commit to InformationalVersion, so a running build always carries
+    /// metadata that its own release tag never has. If metadata took part in comparison, a build
+    /// would never match its own release and would be offered it forever.
     /// </summary>
     [Fact]
     public void Build_metadata_takes_no_part_in_ordering_or_equality()
@@ -108,9 +105,8 @@ public class SemVerTests
     }
 
     /// <summary>
-    /// Anyone can push a tag, so the picker walks a list it does not control. A tag that cannot be
-    /// placed against the running version has to be passed over, which means parsing reports a
-    /// failure rather than throwing or guessing at a value.
+    /// Anyone can push a tag, so the picker walks a list it does not control. An unplaceable tag
+    /// must be passed over, which means parsing reports failure rather than throwing or guessing.
     /// </summary>
     [Theory]
     [InlineData(null)]

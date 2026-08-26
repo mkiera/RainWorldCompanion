@@ -4,43 +4,28 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// One mod in the diff, worded for the row it is drawn on.
-/// </summary>
-/// <param name="Name">What to call it, which is its display name and its id when it has none.</param>
-/// <param name="DetailText">What is different about it.</param>
-/// <param name="ActionText">What the user can do about it, empty when there is nothing to say.</param>
-/// <param name="WorkshopUrl">Its workshop page, empty for a local mod.</param>
+/// <param name="WorkshopUrl">Empty for a local mod.</param>
 public sealed record ModDiffRowViewModel(string Name, string DetailText, string ActionText, string WorkshopUrl)
 {
-    /// <summary>Whether this row gets a button. Only a workshop mod has a page to send anyone to.</summary>
     public bool HasWorkshopPage => WorkshopUrl.Length > 0;
 }
 
 /// <summary>
-/// The mod section of a confirmation dialog: how the mods a save was played with stand against
-/// this machine, and what can be done about the difference.
-///
-/// <para>Nothing here blocks anything. The buttons open a page in a browser and the sentences
-/// name what to turn on. The app does not edit the game's own files, so enabling a mod is
-/// something it tells the user how to do rather than something it does.</para>
+/// Nothing here blocks anything. The app does not edit the game's own files, so enabling a mod is
+/// something it tells the user how to do rather than something it does.
 /// </summary>
 public sealed class ModListDiffViewModel
 {
     /// <summary>
-    /// The workshop item page. The https address rather than a steam:// one, because the page
-    /// opens on any machine and offers the client itself, while the protocol link fails outright
-    /// where Steam is not installed to handle it.
+    /// The https address rather than a steam:// one, because the page opens on any machine while
+    /// the protocol link fails outright where Steam is not installed to handle it.
     /// </summary>
     public const string WorkshopUrlPrefix = "https://steamcommunity.com/sharedfiles/filedetails/?id=";
 
     private static readonly ModDiffRowViewModel[] NoRows = Array.Empty<ModDiffRowViewModel>();
 
-    /// <param name="diff">The comparison, or null when there was no way to look at all.</param>
-    /// <param name="fromABackup">
-    /// Changes only the wording for a snapshot that recorded nothing, because "this backup" and
-    /// "this save" are the two things it can be and neither reads right for the other.
-    /// </param>
+    /// <param name="diff">Null when there was no way to look at all.</param>
+    /// <param name="fromABackup">Changes only the wording for a snapshot that recorded nothing.</param>
     public ModListDiffViewModel(ModListDiff? diff, bool fromABackup = false)
     {
         if (diff is null)
@@ -100,10 +85,8 @@ public sealed class ModListDiffViewModel
     /// <summary>False when nothing was compared and there is nothing worth drawing.</summary>
     public bool ShowSection { get; }
 
-    /// <summary>One sentence saying where things stand.</summary>
     public string HeadlineText { get; }
 
-    /// <summary>What could not be checked, and the game version when it has moved.</summary>
     public IReadOnlyList<string> GroupNotes { get; }
 
     public bool HasNotes => GroupNotes.Count > 0;
@@ -132,7 +115,6 @@ public sealed class ModListDiffViewModel
 
     public bool HasExtra => Extra.Count > 0;
 
-    /// <summary>True when there is at least one row, which is what makes the lists worth drawing.</summary>
     public bool HasRows => HasMissing || HasTurnedOff || HasChanged || HasExtra;
 
     private static string Headline(ModListDiff diff, bool fromABackup)

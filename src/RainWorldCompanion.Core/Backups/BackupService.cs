@@ -10,29 +10,20 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.Core.Backups;
 
 /// <summary>
-/// Copies the in-scope save files into timestamped snapshot folders and puts them back again.
-///
-/// Three rules shape everything here. Save files are copied byte for byte and never decoded or
-/// rewritten, because the UTF-8 BOM and the trailing NUL padding are part of what the game reads
-/// back. Nothing destructive happens until the step before it has succeeded: the game must be
-/// closed, the snapshot must verify, and a safety copy of the current saves must exist on disk
-/// before a restore overwrites anything. And every integrity check compares two independent
+/// Copies save files byte for byte and never decodes them: the UTF-8 BOM and the trailing NUL
+/// padding are part of what the game reads back. Every integrity check compares two independent
 /// things, never a copy against itself, so a snapshot cannot certify its own damage.
 /// </summary>
 public sealed class BackupService
 {
     private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
 
-    /// <summary>Marks the backup folder as in use for the length of one operation.</summary>
     private const string LockFileName = ".operation-lock";
 
-    /// <summary>Claims a snapshot folder name while the snapshot is being written.</summary>
     internal const string ClaimFileName = ".creating";
 
-    /// <summary>
-    /// How often the restore loop re-checks for the game. Every file would mean a full process
-    /// enumeration per file, which on a large dvrmentSaveStates tree costs more than it buys.
-    /// </summary>
+    /// <summary>How often the restore loop re-checks for the game, counted in files. Checking every
+    /// file means a full process enumeration per file.</summary>
     private const int GameCheckInterval = 16;
 
     private readonly IGameProcessDetector _gameDetector;
@@ -45,12 +36,6 @@ public sealed class BackupService
     private SlotCopyService? _slotCopies;
     private SaveSlotWriter? _slotWriter;
 
-    /// <param name="modListSource">
-    /// Where to read the mods that are on, called once per snapshot. Optional because the service
-    /// is built in places that have no game folder to offer, and a snapshot with no mod list is
-    /// still a snapshot. Passed in rather than read here so this class keeps knowing only about
-    /// the save folder and the backup folder.
-    /// </param>
     public BackupService(
         string saveRoot,
         string backupRoot,
@@ -61,11 +46,6 @@ public sealed class BackupService
     {
     }
 
-    /// <summary>
-    /// The scope may be supplied by the caller. Everything this class copies, overwrites and
-    /// deletes comes from it, so a substitute scope is the whole of what the service is allowed
-    /// to touch.
-    /// </summary>
     internal BackupService(
         string saveRoot,
         string backupRoot,
@@ -91,8 +71,6 @@ public sealed class BackupService
         SaveRoot = Path.GetFullPath(saveRoot);
         BackupRoot = Path.GetFullPath(backupRoot);
 
-        // The same check the settings screen runs. Repeating it here means the invariant holds
-        // however the service was constructed, not only when the UI asked first.
         var problem = SettingsValidation.Validate(SaveRoot, BackupRoot);
         if (problem is not null)
         {
@@ -106,17 +84,9 @@ public sealed class BackupService
 
     public string BackupRoot { get; }
 
-    /// <summary>
-    /// Where the mods that are on come from, for the library and the restore plan, which record
-    /// and compare the same list this service stamps. Null when nothing was wired up.
-    /// </summary>
     internal Func<CurrentMods>? ModListSource => _modListSource;
 
-    /// <summary>
-    /// The mods that are on, or null when there is no source or it failed. A mod list is
-    /// something a snapshot carries, not something it depends on, so a backup that cannot record
-    /// one is still a backup.
-    /// </summary>
+    /// <summary>The mods that are on, or null when there is no source or reading it failed.</summary>
     internal ModListSnapshot? TryReadMods()
     {
         try
@@ -129,11 +99,8 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>
-    /// How a recorded list stands against this machine, or null when there is no way to look.
-    /// Null and "nothing was recorded" are different answers and the UI words them differently,
-    /// so a failure to read the machine does not turn into a claim about the snapshot.
-    /// </summary>
+    /// <summary>How a recorded list stands against this machine, or null when there is no way to
+    /// look. Null and "nothing was recorded" are different answers.</summary>
     internal ModListDiff? TryDiffMods(ModListSnapshot? recorded)
     {
         try
@@ -146,17 +113,11 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>The set of files this service is allowed to read, write, and delete.</summary>
     public BackupScope Scope { get; }
 
     /// <summary>
     /// Copies every in-scope file into a new snapshot folder. The manifest is written last, so a
-    /// folder without one is a snapshot that did not finish. A partial folder is left on disk on
-    /// failure: a half copy of a save is still evidence of what happened.
-    ///
-    /// Each copy is proved against its source before it is recorded. A file that moves under the
-    /// copy is copied a second time, and a file that will not sit still abandons the whole
-    /// snapshot rather than being written into the manifest as if it were sound.
+    /// folder without one is a snapshot that did not finish, and a failure leaves the folder there.
     /// </summary>
     public BackupSnapshot CreateBackup(
         string? label,
@@ -177,9 +138,7 @@ public sealed class BackupService
         {
             SchemaVersion = BackupManifest.CurrentSchemaVersion,
 
-            // Read off the scope that just produced scan, rather than off the current rules, so
-            // the snapshot says which rules actually decided its contents. A restore reads this
-            // back before it deletes anything.
+            // The scope that produced scan, not today's rules: this records what decided the contents.
             ScopeVersion = Scope.Version,
             AppVersion = _appVersion,
             CreatedUtc = DateTime.UtcNow,
@@ -219,10 +178,8 @@ public sealed class BackupService
         return BackupSnapshot.Load(directory);
     }
 
-    /// <summary>
-    /// Every snapshot folder under the backup root, newest first. A folder with a missing or
-    /// broken manifest is still listed, so the user can see it and delete it.
-    /// </summary>
+    /// <summary>Every snapshot folder under the backup root, newest first. A folder with a missing
+    /// or broken manifest is still listed.</summary>
     public IReadOnlyList<BackupSnapshot> ListBackups()
     {
         var snapshots = new List<BackupSnapshot>();
@@ -269,11 +226,8 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// What restoring this snapshot would do, worked out by comparing it against the live folder.
-    /// Timestamps are ignored: sameness means the bytes hash the same.
-    ///
-    /// The deletion list is judged by the scope rules the snapshot was taken under, so it says
-    /// what the restore will really remove rather than what today's wider rules would remove.
+    /// What restoring this snapshot would do. Timestamps are ignored: sameness means the bytes hash
+    /// the same. The deletion list is judged by the scope rules the snapshot was taken under.
     /// </summary>
     public RestorePlan PlanRestore(BackupSnapshot snapshot)
     {
@@ -288,7 +242,6 @@ public sealed class BackupService
 
         if (snapshot.Manifest is not { } manifest)
         {
-            // No manifest means nothing was recorded about anything, mods included.
             return new RestorePlan(added, overwritten, unchanged, deleted);
         }
 
@@ -313,8 +266,7 @@ public sealed class BackupService
             inSnapshot.Add(relative);
 
             // A file the snapshot holds and today's rules no longer cover is not put back, so it
-            // belongs in neither "added" nor "overwritten". Listing it as added would promise the
-            // user a file the restore is about to skip.
+            // belongs in neither "added" nor "overwritten".
             if (!Scope.IsInScope(relative)
                 && Scope.IsExcludedSinceScopeVersion(relative, snapshotScopeVersion))
             {
@@ -363,7 +315,6 @@ public sealed class BackupService
                 continue;
             }
 
-            // Both conditions come from the scope, so nothing outside it can reach either list.
             if (!Scope.IsInScope(liveEntry.RelativePath))
             {
                 continue;
@@ -394,24 +345,12 @@ public sealed class BackupService
         };
     }
 
-    /// <summary>
-    /// Whether restoring a snapshot taken under <paramref name="snapshotScopeVersion"/> may delete
-    /// a live file the snapshot does not hold.
-    ///
-    /// A file is only ever missing from a snapshot for two reasons: it was not there when the
-    /// snapshot was taken, or the rules of the day did not cover it. Only the first is the user
-    /// deleting something. Asking the scope under both versions separates them: the file has to be
-    /// one this app manages today and one the snapshot would have captured, so restoring a backup
-    /// from before Rain Meadow support leaves meadow.json alone instead of reading its absence as
-    /// an instruction.
-    /// </summary>
+    /// <summary>Whether restoring a snapshot taken under <paramref name="snapshotScopeVersion"/> may
+    /// delete a live file it does not hold. Asking both versions separates "the user deleted it"
+    /// from "the rules of the day did not cover it".</summary>
     private bool IsDeletableByRestore(string relativePath, int snapshotScopeVersion) =>
         Scope.IsInScope(relativePath) && Scope.IsInScope(relativePath, snapshotScopeVersion);
 
-    /// <summary>
-    /// Re-hashes the files inside a snapshot against its own manifest and reports every
-    /// mismatch, every missing file, and every file in the folder the manifest does not mention.
-    /// </summary>
     public VerifyResult Verify(BackupSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -503,15 +442,10 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Puts a snapshot back over the live save folder.
-    ///
-    /// Order matters and is fixed: refuse while the game runs, refuse an unfinished snapshot,
-    /// verify the snapshot before touching anything live, take a safety copy of the current
-    /// saves and abort if that copy fails, then overwrite, then remove in-scope files the
-    /// snapshot does not have, then re-hash what landed.
-    ///
-    /// The deletion step only runs when every file in the manifest went back. A restore that put
-    /// nothing back must not be the thing that deletes today's files.
+    /// Puts a snapshot back over the live save folder. The order is fixed: refuse while the game
+    /// runs, refuse an unfinished snapshot, verify, take a safety copy and abort if it fails,
+    /// overwrite, remove in-scope files the snapshot does not hold, re-hash what landed. The
+    /// deletion step runs only when every file in the manifest went back.
     /// </summary>
     public RestoreResult RestoreBackup(
         BackupSnapshot snapshot,
@@ -520,13 +454,11 @@ public sealed class BackupService
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
-        // (a) The game must be closed before anything else is considered.
         EnsureGameNotRunning();
 
         var errors = new List<string>();
         var warnings = new List<string>();
 
-        // (b) An unfinished snapshot is not a restore source.
         if (snapshot.Manifest is not { } manifest)
         {
             errors.Add($"Backup {snapshot.Id} did not finish ({snapshot.Problem ?? "manifest.json is missing"}), so nothing was changed.");
@@ -535,7 +467,6 @@ public sealed class BackupService
 
         using var lease = AcquireOperationLock();
 
-        // (c) Verify before touching anything live.
         progress?.Report("Checking the backup");
         var verification = Verify(snapshot);
         if (!verification.Ok)
@@ -553,7 +484,6 @@ public sealed class BackupService
         // Last point where abandoning the job costs nothing.
         ct.ThrowIfCancellationRequested();
 
-        // (d) Safety copy of the current live state. No safety copy, no restore.
         BackupSnapshot safety;
         try
         {
@@ -571,7 +501,6 @@ public sealed class BackupService
         }
         catch (OperationCanceledException)
         {
-            // Nothing live has been touched yet, so cancelling here is clean.
             throw;
         }
         catch (Exception ex)
@@ -586,13 +515,10 @@ public sealed class BackupService
             return new RestoreResult(false, safety, errors, warnings, false);
         }
 
-        // The safety copy took several seconds of hashing and copying. Check again before the
-        // first live write, because the player may have started the game during it. Nothing has
-        // been overwritten yet, so this can still refuse outright.
+        // The safety copy took several seconds, so the player may have started the game during it.
+        // Nothing has been overwritten yet, so this can still refuse outright.
         EnsureGameNotRunning();
 
-        // (e) Overwrite the live files. Per-file failures are collected so one locked file does
-        // not stop the rest, and every one of them is reported.
         var restored = new List<ManifestFileEntry>(manifest.Files.Count);
         var notRestored = new List<string>();
         var liveModified = false;
@@ -607,8 +533,7 @@ public sealed class BackupService
                 break;
             }
 
-            // The game can be launched while this loop runs, and it would then write its own
-            // state back over whatever is restored under it.
+            // The game can be launched mid-loop, and would write its own state over what is restored.
             if (index % GameCheckInterval == 0 && _gameDetector.IsGameRunning(out var processName))
             {
                 stopped = $"Rain World ({processName ?? "the game"}) started while the restore was running";
@@ -618,11 +543,9 @@ public sealed class BackupService
             var file = manifest.Files[index];
             var relative = NormaliseRelative(file.RelativePath);
 
-            // An exclusion added since the snapshot was taken is not a broken manifest. The rules
-            // that wrote this snapshot took the file, today's rules leave it out, and putting a
-            // stale steam_autocloud.vdf back is exactly what excluding it is for. Skipping it is a
-            // note, not a failure: treating it as one would fail the whole restore and, worse,
-            // skip the deletion step below, turning a return to one moment into a merge.
+            // An exclusion added since the snapshot was taken is a note, not a failure: treating it
+            // as one would fail the restore and skip the deletion step below, turning a return to
+            // one moment into a merge.
             if (!Scope.IsInScope(relative)
                 && Scope.IsExcludedSinceScopeVersion(relative, snapshotScopeVersion))
             {
@@ -641,9 +564,8 @@ public sealed class BackupService
                 continue;
             }
 
-            // TryResolveInside is textual, and text cannot see a junction or a symlink. A copy
-            // onto a link writes straight through it, over a file the user never named and the
-            // safety snapshot never copied.
+            // TryResolveInside is textual, and text cannot see a junction. A copy onto a link writes
+            // straight through it, over a file the safety snapshot never copied.
             if (CanonicalPath.LeadsThroughLink(SaveRoot, destination))
             {
                 errors.Add($"Skipped {relative}: it is a link, so restoring it would write outside the save folder.");
@@ -670,8 +592,7 @@ public sealed class BackupService
             }
         }
 
-        // A file skipped because today's rules exclude it counts as landed. It is where the
-        // snapshot's own rules would leave it, and the alternative is that one such entry stops
+        // A file skipped because today's rules exclude it counts as landed, or one such entry stops
         // the deletion step from running at all.
         var everyFileLanded = stopped is null
             && errors.Count == 0
@@ -679,9 +600,8 @@ public sealed class BackupService
 
         try
         {
-            // (f) Remove in-scope live files the snapshot does not have, then tidy up folders
-            // that this left empty. Only reached when the whole snapshot went back: deleting
-            // today's files on behalf of a restore that put nothing back is pure loss.
+            // Only reached when the whole snapshot went back: deleting today's files on behalf of a
+            // restore that put nothing back is pure loss.
             if (everyFileLanded)
             {
                 var keep = new HashSet<string>(PathComparer);
@@ -710,8 +630,8 @@ public sealed class BackupService
 
                     if (!IsDeletableByRestore(liveEntry.RelativePath, snapshotScopeVersion))
                     {
-                        // Out of scope entirely, or in scope only under rules newer than this
-                        // snapshot. Either way its absence from the manifest says nothing.
+                        // In scope only under rules newer than this snapshot, so its absence from
+                        // the manifest says nothing.
                         if (Scope.IsInScope(liveEntry.RelativePath))
                         {
                             leftAlone.Add(liveEntry.RelativePath);
@@ -742,8 +662,6 @@ public sealed class BackupService
                         $"{FormatPathList(leftAlone)}. Those files were left as they are rather than deleted.");
                 }
 
-                // An empty folder left behind changes nothing about the saves, so it is a note
-                // rather than a failure.
                 RemoveEmptiedScopeFolders(warnings, snapshotScopeVersion, removed);
             }
             else
@@ -760,7 +678,6 @@ public sealed class BackupService
 
         try
         {
-            // (g) Prove the live files match the manifest now.
             foreach (var file in restored)
             {
                 var relative = NormaliseRelative(file.RelativePath);
@@ -804,9 +721,7 @@ public sealed class BackupService
         return new RestoreResult(success, safety, errors, warnings, liveModified);
     }
 
-    /// <summary>
-    /// Deletes a snapshot folder. Refuses anything that is not a direct child of the backup root.
-    /// </summary>
+    /// <summary>Refuses anything that is not a direct child of the backup root.</summary>
     public void DeleteBackup(BackupSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -836,28 +751,13 @@ public sealed class BackupService
         Directory.Delete(target, recursive: true);
     }
 
-    /// <summary>
-    /// Slot metadata for the live save folder. Fail-soft: a slot that cannot be parsed comes back
-    /// with its ParseError set rather than throwing.
-    /// </summary>
+    /// <summary>A slot that cannot be parsed comes back with its ParseError set rather than throwing.</summary>
     public IReadOnlyList<SlotMetadata> ReadLiveSlots() => ReadSlots(SaveRoot);
 
-    /// <summary>
-    /// Copying one whole slot file onto another. It borrows this service's safety snapshot and
-    /// this service's scope, so it hangs off the same object rather than being built separately.
-    /// </summary>
     public SlotCopyService SlotCopies => _slotCopies ??= new SlotCopyService(this, _gameDetector);
 
-    /// <summary>
-    /// Writing an edited campaign back over its slot. It hangs off this service for the same reason
-    /// slot copying does: the safety snapshot it depends on is this service's.
-    /// </summary>
     public SaveSlotWriter SlotWriter => _slotWriter ??= new SaveSlotWriter(this, _gameDetector);
 
-    /// <summary>
-    /// Copies one whole save slot file onto another, byte for byte. See
-    /// <see cref="SlotCopyService.CopySlot"/> for what that does and does not touch.
-    /// </summary>
     public SlotCopyResult CopySlot(
         SaveSlotRef from,
         SaveSlotRef to,
@@ -873,16 +773,9 @@ public sealed class BackupService
         }
     }
 
-    /// <summary>
-    /// Copies one file into the snapshot and proves the copy against its source before the
-    /// manifest records it.
-    ///
-    /// The source is measured before the copy and hashed after it, and the copy is hashed too.
-    /// Hashing only the copy, which is what the manifest used to record, makes every later check
-    /// compare the snapshot against itself: a file truncated by Steam Cloud mid-copy would be
-    /// recorded at its truncated length with the hash of its truncated bytes, verify clean, and
-    /// be accepted as the safety snapshot standing behind a restore.
-    /// </summary>
+    /// <summary>The source is hashed as well as the copy. Hashing only the copy makes every later
+    /// check compare the snapshot against itself, so a file truncated by Steam Cloud mid-copy would
+    /// be recorded at its truncated length and verify clean.</summary>
     private static ManifestFileEntry CopyIntoSnapshot(ScopeEntry entry, string destination, IProgress<string>? progress)
     {
         var expectedLength = entry.Length;
@@ -945,9 +838,6 @@ public sealed class BackupService
             "recorded as sound. Close Steam, or wait for Steam Cloud to finish syncing, and try again.");
     }
 
-    /// <summary>
-    /// Reads sav, sav2, and sav3 from a folder, which is either the live folder or a snapshot.
-    /// </summary>
     private static List<SlotMetadata> ReadSlots(string rootDirectory)
     {
         var slots = new List<SlotMetadata>();
@@ -973,8 +863,7 @@ public sealed class BackupService
                 }
                 catch (Exception ex)
                 {
-                    // The realm comes from the name rather than being left to default, so a
-                    // Rain Meadow file that could not be read is still listed as an online one.
+                    // The realm comes from the name, so an unreadable Rain Meadow file is still online.
                     slots.Add(new SlotMetadata
                     {
                         Slot = slot.Slot,
@@ -987,7 +876,6 @@ public sealed class BackupService
         }
         catch (Exception)
         {
-            // Slot metadata is for display. A folder that cannot be listed shows no slots.
         }
 
         slots.Sort(static (a, b) => a.Slot.CompareTo(b.Slot));
@@ -1000,14 +888,8 @@ public sealed class BackupService
     private static void ReleaseClaim(string directory) =>
         TimestampedFolders.ReleaseClaim(directory, ClaimFileName);
 
-    /// <summary>
-    /// Holds the backup folder for the length of one operation, so a second window or a second
-    /// process cannot interleave with a restore that is part way through the live save folder.
-    /// Re-entrant, because a restore takes its safety snapshot through the same lock.
-    ///
-    /// Internal rather than private because a slot copy and a library load both write to the save
-    /// folder and have to be held against the same lock a restore takes.
-    /// </summary>
+    /// <summary>Holds the backup folder for the length of one operation. Re-entrant, because a
+    /// restore takes its safety snapshot through the same lock.</summary>
     internal IDisposable AcquireOperationLock()
     {
         lock (_lockGate)
@@ -1095,21 +977,9 @@ public sealed class BackupService
     }
 
     /// <summary>
-    /// Deletes the folders this restore's own deletions left empty, and nothing else.
-    ///
-    /// Only the parent chain of the files just removed is considered. Sweeping the scope folders
-    /// for any empty directory instead takes away ones the restore never touched: Warp\Export
-    /// ships empty, so a restore that changed nothing inside Warp would still remove it and the
-    /// mod would find its export directory gone.
-    ///
-    /// The folder list is the one the snapshot's own rules covered, so restoring a version 1
-    /// snapshot cannot reach into dressmyslugcat, RandomBuff or Warp, which those rules never
-    /// covered and which the confirmation dialog therefore never listed.
-    ///
-    /// The walk stops at the scope folders themselves, so the mod that owns one does not find it
-    /// gone, and every step checks for a reparse point: a user who moved dvrmentSaveStates onto
-    /// another drive and left a junction behind would otherwise have folders deleted on the far
-    /// side of it, outside the save folder and outside anything the safety snapshot holds.
+    /// Deletes the folders this restore's own deletions left empty, and nothing else. Only the
+    /// parent chain of the files just removed is considered: Warp\Export ships empty, so sweeping
+    /// for any empty directory would remove it from a restore that never touched Warp.
     /// </summary>
     private void RemoveEmptiedScopeFolders(
         List<string> warnings,
@@ -1151,8 +1021,7 @@ public sealed class BackupService
             {
                 var trimmed = TrimSeparators(Path.GetFullPath(directory));
 
-                // A scope folder is where the climb stops. It stays, and so does everything above
-                // it, which includes the save folder itself.
+                // A scope folder is where the climb stops. It stays, and so does everything above it.
                 if (IsOneOf(roots, trimmed) || !IsUnderAnyOf(roots, trimmed))
                 {
                     break;
@@ -1176,8 +1045,6 @@ public sealed class BackupService
                     continue;
                 }
 
-                // Last guard before a delete: the resolved path has to still be inside the
-                // save folder.
                 if (CanonicalPath.IsLink(directory) || !CanonicalPath.IsInside(SaveRoot, directory))
                 {
                     continue;
@@ -1229,8 +1096,7 @@ public sealed class BackupService
 
             var attributes = File.GetAttributes(path);
 
-            // Attributes on a link belong to the link, not to what it points at. Nothing here
-            // should be adjusting either.
+            // Attributes on a link belong to the link, not to what it points at.
             if (attributes.HasFlag(FileAttributes.ReparsePoint))
             {
                 return;
@@ -1243,7 +1109,6 @@ public sealed class BackupService
         }
         catch (Exception)
         {
-            // If the attribute cannot be cleared the copy or delete below reports the real error.
         }
     }
 
@@ -1262,10 +1127,7 @@ public sealed class BackupService
         return string.Join('\\', segments);
     }
 
-    /// <summary>
-    /// Turns a manifest path into a full path and proves it stays inside the given root. A
-    /// manifest is a file on disk, so it is treated as untrusted input.
-    /// </summary>
+    /// <summary>A manifest is a file on disk, so its paths are treated as untrusted input.</summary>
     private static bool TryResolveInside(string root, string relativePath, out string fullPath)
     {
         fullPath = "";
@@ -1291,9 +1153,8 @@ public sealed class BackupService
             return false;
         }
 
-        // Windows drops trailing spaces and dots while resolving a path. If the resolved path does
-        // not lead back to the relative path it came from, the entry does not name the file it
-        // claims to, so it is refused rather than written.
+        // Windows drops trailing spaces and dots while resolving a path, so a resolved path that
+        // does not lead back to the relative path it came from does not name the file it claims to.
         if (!PathComparer.Equals(NormaliseRelative(Path.GetRelativePath(root, candidate)), relative))
         {
             return false;
@@ -1312,10 +1173,6 @@ public sealed class BackupService
     private static string TrimSeparators(string path) =>
         path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
-    /// <summary>
-    /// Names a set of files for one line of a report, capped so a folder with hundreds of entries
-    /// does not turn a warning into a wall of text.
-    /// </summary>
     private static string FormatPathList(IReadOnlyList<string> paths)
     {
         const int Limit = 8;

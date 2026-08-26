@@ -7,9 +7,6 @@ using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// One channel, as a row in the picker at the top of the window.
-/// </summary>
 public sealed partial class ChannelViewModel(UpdateChannel channel) : ObservableObject
 {
     public UpdateChannel Channel { get; } = channel;
@@ -22,13 +19,6 @@ public sealed partial class ChannelViewModel(UpdateChannel channel) : Observable
     private bool isSelected;
 }
 
-/// <summary>
-/// One published release in the list.
-///
-/// Carries the word for its own button. The list holds versions older than the running one so a
-/// build can be gone back to, which means the same button is an update on one row and a downgrade
-/// two rows down, and only the row knows which.
-/// </summary>
 public sealed partial class ReleaseRowViewModel : ObservableObject
 {
     public ReleaseRowViewModel(UpdateOffer offer, ReleaseAction action)
@@ -51,20 +41,14 @@ public sealed partial class ReleaseRowViewModel : ObservableObject
 
     public string ReleaseUrl => Offer.ReleaseUrl;
 
-    /// <summary>What changed in this release, already cut back to the part worth showing here.</summary>
     public string Notes => Offer.Notes;
 
     public bool HasNotes => Offer.HasNotes;
 
-    /// <summary>
-    /// Whether this row is showing its notes. Rows are independent, so two releases can be open
-    /// at once and read against each other.
-    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(NotesVerb))]
     private bool isExpanded;
 
-    /// <summary>The word on the button, which has to say what pressing it will do.</summary>
     public string NotesVerb => IsExpanded ? "Hide" : "Notes";
 
     /// <summary>"Pre-release, 12 March 2026, 43.1 MB", or as much of it as is known.</summary>
@@ -92,10 +76,6 @@ public sealed partial class ReleaseRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Set by the first press on a downgrade, cleared by anything else. Going back to an older
-    /// build is the one direction that is hard to notice having chosen, so it takes two presses.
-    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConfirmationText))]
     private bool isArmed;
@@ -104,10 +84,6 @@ public sealed partial class ReleaseRowViewModel : ObservableObject
         IsArmed ? ReleaseActions.ConfirmationText(VersionText) : "";
 }
 
-/// <summary>
-/// One branch build in the list. No version of its own: a branch build is named by its branch and
-/// the workflow's run number, because nothing in it was ever tagged.
-/// </summary>
 public sealed class BranchRowViewModel(AlphaBuild build)
 {
     public AlphaBuild Build { get; } = build;
@@ -124,18 +100,12 @@ public sealed class BranchRowViewModel(AlphaBuild build)
 }
 
 /// <summary>
-/// The updates window: which channel, what is on it, and what each row would do.
-///
-/// Owns no network code and no install logic. Both live on <see cref="UpdateViewModel"/>, which
-/// the banner also uses, so the guard that refuses to close the app mid-save is written once and
-/// asked the same way whichever surface started the install. Like that class it constructs no
-/// Window and no Dispatcher, so App.Tests can drive it on whatever thread xunit hands it.
+/// Constructs no Window and no Dispatcher, so App.Tests can drive it on whatever thread xunit
+/// hands it.
 /// </summary>
 public sealed partial class UpdatesViewModel : ObservableObject
 {
     /// <summary>
-    /// How long a fetched list stays good for.
-    ///
     /// Anonymous GitHub requests are capped at sixty an hour and shared with everything else on
     /// the machine, so flicking between the three channels must not spend one per click.
     /// </summary>
@@ -183,7 +153,6 @@ public sealed partial class UpdatesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanRefresh))]
     private bool isLoading;
 
-    /// <summary>Drives the Check now button. A second read while one is in flight is wasted.</summary>
     public bool CanRefresh => !IsLoading;
 
     [ObservableProperty]
@@ -198,12 +167,6 @@ public sealed partial class UpdatesViewModel : ObservableObject
     /// <summary>"Checked 4 minutes ago", shared with the banner so both agree.</summary>
     public string LastCheckedText => _updates.LastCheckedText;
 
-    /// <summary>
-    /// Two-way with the checkbox, and it saves itself.
-    ///
-    /// The setting is written through the shared updater rather than here, because that class
-    /// owns the callback into MainViewModel and settings.json has one writer on purpose.
-    /// </summary>
     [ObservableProperty]
     private bool autoCheck;
 
@@ -211,19 +174,17 @@ public sealed partial class UpdatesViewModel : ObservableObject
 
     /// <summary>
     /// True when a channel has been asked for and answered with nothing, which is different from
-    /// not having asked yet. Without it an empty list reads as a failure.
+    /// not having asked yet.
     /// </summary>
     [ObservableProperty]
     private bool isEmpty;
 
-    /// <summary>Loads the current channel. Called once when the window opens.</summary>
     public Task InitializeAsync(CancellationToken cancellationToken) =>
         LoadAsync(force: false, cancellationToken);
 
     [RelayCommand]
     private Task RefreshAsync() => LoadAsync(force: true, CancellationToken.None);
 
-    /// <summary>Switches channel, saves the choice, and lists what is on the new one.</summary>
     [RelayCommand]
     private async Task SelectChannelAsync(ChannelViewModel? row)
     {
@@ -245,9 +206,6 @@ public sealed partial class UpdatesViewModel : ObservableObject
         await LoadAsync(force: false, CancellationToken.None);
     }
 
-    /// <summary>
-    /// Installs a release. A downgrade needs the button twice, and the first press only arms it.
-    /// </summary>
     [RelayCommand]
     private async Task InstallReleaseAsync(ReleaseRowViewModel? row)
     {
@@ -282,8 +240,6 @@ public sealed partial class UpdatesViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Shows or hides one row's notes.
-    ///
     /// Disarms for the same reason every other press does: an armed downgrade is waiting for a
     /// second press on its own button, and anything else the user does in between is a sign they
     /// went somewhere other than through with it.
@@ -308,12 +264,8 @@ public sealed partial class UpdatesViewModel : ObservableObject
     private void OpenRunPage(BranchRowViewModel? row) => OpenPage(row?.RunUrl);
 
     /// <summary>
-    /// Hands a URL to the browser.
-    ///
     /// Held to the same allowlist a download is, because both addresses arrive in a JSON document
-    /// off the network. A release page is only ever opened, never executed, but the check costs
-    /// nothing and the alternative is one place where a rewritten API response picks the
-    /// destination.
+    /// off the network.
     /// </summary>
     private void OpenPage(string? url)
     {
@@ -359,7 +311,6 @@ public sealed partial class UpdatesViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            // The window is closing. Nothing to report to somebody who is no longer looking.
         }
         catch (Exception e)
         {
@@ -381,8 +332,6 @@ public sealed partial class UpdatesViewModel : ObservableObject
             _releasesFetchedAt = _now();
         }
 
-        // Narrowed here rather than refetched. The cached list is the wide one, so a channel
-        // switch is a filter over what is already in hand.
         var running = _updates.Build.ParsedVersion;
         var rows = _cachedReleases!
             .Where(offer => Channel == UpdateChannel.Prerelease || !offer.IsPrerelease)

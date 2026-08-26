@@ -10,26 +10,14 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The number stored under FOOD is not always the number a run starts with, and a negative one
-/// never is. Three rules out of the game explain the gap:
-///
-/// SaveState.SessionEnded ends a cycle with food = Custom.IntClamp(food, 0, maxFood) minus
-/// characterStats.foodToHibernate, so a cycle that banked less than a shelter costs writes the
-/// shortfall as a negative, and one that ended with no living player writes exactly the negative
-/// of that cost. SaveState.LoadGame reads FOOD straight back with no clamp of its own. And the two
-/// places that use it afterwards both ignore anything below 1: the RainWorldGame constructor hands
-/// pips to the players only while the stored number is above zero, leaving PlayerState.foodInStomach
-/// at the 0 its constructor left, and Menu.SlugcatSelectMenu.SlugcatPageContinue runs
-/// Custom.IntClamp(food, 0, SlugcatStats.SlugcatFoodMeter(name).x) before drawing the meter.
-///
-/// The raw <see cref="CampaignSummary.Food"/> stays exactly as it sits on disk, because that is
-/// what a save editor writes back. Everything the UI shows is derived from it, and this suite pins
-/// that derivation.
+/// FOOD on disk can be negative: SaveState.SessionEnded stores clamped food minus
+/// foodToHibernate, LoadGame reads it back unclamped, and both consumers (the RainWorldGame
+/// constructor and SlugcatPageContinue) ignore anything below 1. Raw
+/// <see cref="CampaignSummary.Food"/> stays as it sits on disk because that is what an editor
+/// writes back, so everything the UI shows is derived, and this suite pins that derivation.
 /// </summary>
 public class FoodMathTests
 {
-    // ---- Every campaign in the live save folder ----
-
     /// <summary>
     /// The nine campaigns in the live sav, plus the Rain Meadow campaign that prompted this. Each
     /// one's stored FOOD and the pips a run starting from it gets. Only the Meadow Survivor stores
@@ -82,8 +70,6 @@ public class FoodMathTests
         Assert.InRange(storedFood, -meter.PipsToHibernate, meter.MaxPips - meter.PipsToHibernate);
     }
 
-    // ---- The case the panel was printing raw ----
-
     [Fact]
     public void Food_stored_below_zero_starts_the_run_with_nothing()
     {
@@ -108,8 +94,6 @@ public class FoodMathTests
         Assert.Equal(0, campaign.EffectiveFood);
         Assert.True(campaign.FoodStoredNegative);
     }
-
-    // ---- Boundaries ----
 
     [Fact]
     public void Food_of_zero_is_not_marked()
@@ -141,8 +125,6 @@ public class FoodMathTests
         Assert.False(campaign.FoodStoredNegative);
     }
 
-    // ---- A missing field ----
-
     [Fact]
     public void A_record_with_no_food_field_derives_nothing_from_it()
     {
@@ -152,8 +134,6 @@ public class FoodMathTests
         Assert.Null(campaign.EffectiveFood);
         Assert.False(campaign.FoodStoredNegative);
     }
-
-    // ---- The meter table ----
 
     /// <summary>
     /// SlugcatStats.SlugcatFoodMeter, value for value. The pairs are the pips the meter holds and
@@ -185,7 +165,6 @@ public class FoodMathTests
         Assert.Contains(SlugcatCatalog.Known, entry => entry.Id == "Inv");
     }
 
-    /// <summary>Every slugcat the catalog knows resolves to a meter, so no card falls back by accident.</summary>
     [Fact]
     public void Every_slugcat_the_catalog_knows_has_its_own_meter()
     {
@@ -221,8 +200,6 @@ public class FoodMathTests
         Assert.Equal(new FoodMeter(7, 4), FoodMath.DefaultMeter);
     }
 
-    // ---- The one line a list row shows ----
-
     [Fact]
     public void Describe_reports_the_food_the_run_starts_with_rather_than_the_stored_negative()
     {
@@ -239,8 +216,6 @@ public class FoodMathTests
             "White  cycle 4  food 0",
             new CampaignSummary { SlugcatId = "White", CycleNum = 4, Food = 0 }.Describe());
     }
-
-    // ---- Serialisation ----
 
     /// <summary>The camelCase names the derived properties would take if they were serialised.</summary>
     private static readonly string[] DerivedFoodJsonNames =

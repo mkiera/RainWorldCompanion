@@ -6,12 +6,10 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// Stand-ins for everything the updater talks to that this suite must not.
-///
-/// Mirrors what PanelWorld does for the portraits: the point is that a test can build the real view
-/// model on whatever thread xunit hands it, with no window, no dispatcher and no network. Only the
-/// decisions are exercised here, because the network, the disk and the process launch are all real
-/// enough elsewhere to be worth testing against the real thing rather than a double.
+/// Mirrors what PanelWorld does for the portraits: the point is that a test can build the real
+/// view model on whatever thread xunit hands it, with no window, no dispatcher and no network.
+/// Only the decisions are exercised here, because the network, the disk and the process launch
+/// are all real enough elsewhere to be worth testing against the real thing rather than a double.
 /// </summary>
 internal sealed class FakeReleaseSource : IReleaseSource
 {
@@ -19,7 +17,6 @@ internal sealed class FakeReleaseSource : IReleaseSource
 
     public List<WorkflowRun> Runs { get; } = [];
 
-    /// <summary>Set to make the next call fail the way a real one does.</summary>
     public Exception? Throws { get; set; }
 
     public int Calls { get; private set; }
@@ -69,7 +66,6 @@ internal sealed class FakeInstallerDownloader : IInstallerDownloader
         return Task.FromResult(Result);
     }
 
-    /// <summary>The run ids asked for, so a test can prove which row was pressed.</summary>
     public List<long> BranchRuns { get; } = [];
 
     public Task<string> DownloadBranchBuildAsync(
@@ -113,7 +109,6 @@ internal sealed class FakeBusyGuard : IBusyGuard
     public string? WhyNotNow() => Reason;
 }
 
-/// <summary>Builds an UpdateViewModel with everything faked, and keeps what it wrote.</summary>
 internal sealed class UpdateWorld
 {
     public FakeReleaseSource Source { get; } = new();

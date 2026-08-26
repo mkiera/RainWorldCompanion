@@ -2,15 +2,6 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// meadow.json is Rain Meadow's character progression: unlocked emotes and skins, the skin and
-/// character currently picked, where the character last was, and how long it has been played.
-/// The file is small and hand-editable, so the reader is fail-soft in the same way the save
-/// container reader is: anything it cannot make sense of comes back with ParseError set instead
-/// of throwing, because this runs while listing a folder the user did not curate.
-///
-/// The reference content is the whole file from one real install, quoted byte for byte.
-/// </summary>
 public class MeadowProfileTests
 {
     [Fact]
@@ -79,10 +70,8 @@ public class MeadowProfileTests
     [Fact]
     public void Time_played_is_milliseconds()
     {
-        // MeadowCharacterSelectPage.GetPlaytime reads the same field as
-        // TimeSpan.FromMilliseconds(timePlayed), so 147575 is two and a half minutes, not two
-        // and a half days. The unit is the whole reason this field is converted rather than
-        // shown raw.
+        // MeadowCharacterSelectPage.GetPlaytime reads this as milliseconds, so 147575 is two
+        // and a half minutes, not days.
         var character = Assert.Single(ReadLive().Characters);
 
         Assert.Equal(TimeSpan.FromMilliseconds(147575), character.PlayTime);
@@ -100,8 +89,8 @@ public class MeadowProfileTests
     [Fact]
     public void Several_characters_all_come_through()
     {
-        // The install this was taken from has one character. The schema holds one entry per
-        // character the player has touched, so the reader has to carry all of them.
+        // The real fixture has only one character. This schema holds one entry per character
+        // touched, so the reader has to carry all of them.
         const string Json = """
             {"collisionOn":true,"displayNames":true,"characterUnlockProgress":2,"characterProgress":
             {"Slugcat":{"timePlayed":1000,"unlockedSkins":["Slugcat_Survivor"],"selectedSkin":"Slugcat_Survivor"},
@@ -138,9 +127,6 @@ public class MeadowProfileTests
     [Fact]
     public void Unknown_properties_are_ignored_rather_than_failing()
     {
-        // A later version of the mod adds fields. An old copy of this app has to keep reading the
-        // file, because the alternative is telling the player their profile is broken when it is
-        // only newer.
         const string Json = """
             {"collisionOn":false,"displayNames":false,"characterUnlockProgress":0,
             "somethingAddedLater":{"nested":[1,2,3]},
@@ -188,9 +174,7 @@ public class MeadowProfileTests
     [Fact]
     public void An_empty_json_object_gives_an_error()
     {
-        // Well-formed JSON that says nothing. There is no character progression in it, so it is
-        // not a profile, and reporting it as one would show the player an empty panel with no
-        // explanation.
+        // Well-formed JSON with no character progression in it is not a profile, not an empty one.
         var profile = ReadJson("{}");
 
         Assert.NotNull(profile.ParseError);
@@ -279,15 +263,12 @@ public class MeadowProfileTests
         SnapshotLayout.AssertTreeUnchanged(before, temp.ReadTree());
     }
 
-    // ---- a stored play time the file has no business holding ----
-
     [Fact]
     public void A_play_time_past_what_a_duration_can_hold_renders_rather_than_throwing()
     {
-        // timePlayed is a number in a json file a mod owns and a user can edit. Anything past
-        // about 9.22e14 milliseconds cannot be a TimeSpan, and the panel reads this on the
-        // dispatcher with nothing catching underneath it, so an absurd number has to come back as
-        // a large duration rather than take the window down.
+        // Anything past about 9.22e14 ms cannot fit a TimeSpan, and this is read on the dispatcher
+        // with nothing catching underneath it, so an absurd value must render as a large duration
+        // rather than throw and take the window down.
         var profile = ReadJson(WithTimePlayed("9000000000000000"));
 
         Assert.Null(profile.ParseError);

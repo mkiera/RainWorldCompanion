@@ -4,10 +4,6 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Reading what is on this machine: which mods the game has turned on, what is installed, and
-/// which game they are for.
-/// </summary>
 public class CurrentModsReaderTests
 {
     /// <summary>
@@ -35,7 +31,6 @@ public class CurrentModsReaderTests
 
         public string WorkshopPath { get; }
 
-        /// <summary>Writes an options file naming what is on, with a load order to match.</summary>
         public void TurnOn(params string[] ids)
         {
             OptionsFixture.WriteInto(
@@ -49,7 +44,6 @@ public class CurrentModsReaderTests
 
         public void WriteOptions(string payload) => OptionsFixture.WriteInto(Directory, payload, "save/options");
 
-        /// <summary>A mod in the game's own mods folder.</summary>
         public void InstallMod(string folderName, string? json)
             => WriteMod(Path.Combine(ModsPath, folderName), json);
 
@@ -93,8 +87,6 @@ public class CurrentModsReaderTests
 
         return "{" + string.Join(", ", parts) + "}";
     }
-
-    // ---- matching what is on to what is installed ----
 
     /// <summary>
     /// The folder a mod sits in and the id the game knows it by are different things: Devourment
@@ -147,7 +139,6 @@ public class CurrentModsReaderTests
         Assert.Equal("", mod.Origin);
     }
 
-    /// <summary>An installed mod that is turned off belongs in Installed and nowhere else.</summary>
     [Fact]
     public void An_installed_mod_that_is_off_is_listed_as_installed_only()
     {
@@ -161,8 +152,6 @@ public class CurrentModsReaderTests
         Assert.Equal(new[] { "on" }, read.Enabled.Mods.Select(mod => mod.Id));
         Assert.Equal(new[] { "off", "on" }, read.Installed.Select(mod => mod.Id));
     }
-
-    // ---- reading a mod folder ----
 
     /// <summary>The folder holds dlcversions.json and is not a mod. The game skips it by name.</summary>
     [Fact]
@@ -227,7 +216,6 @@ public class CurrentModsReaderTests
         Assert.Equal("3440923780", mod.WorkshopId);
     }
 
-    /// <summary>A file with nothing usable in it still falls back rather than inventing.</summary>
     [Fact]
     public void A_modinfo_with_no_id_at_all_still_falls_back_to_its_folder_name()
     {
@@ -299,8 +287,6 @@ public class CurrentModsReaderTests
         Assert.Equal("55555", mod.WorkshopId);
     }
 
-    // ---- order ----
-
     [Fact]
     public void Mods_are_listed_in_the_order_the_game_loads_them()
     {
@@ -343,8 +329,6 @@ public class CurrentModsReaderTests
 
         Assert.Equal(new[] { "on" }, machine.Read().Enabled.Mods.Select(mod => mod.Id));
     }
-
-    // ---- what was and was not looked at ----
 
     [Fact]
     public void A_full_read_says_it_looked_everywhere()
@@ -395,7 +379,6 @@ public class CurrentModsReaderTests
         Assert.Equal("there", Assert.Single(read.Installed).Id);
     }
 
-    /// <summary>An install that is not under a steamapps folder has no workshop folder to find.</summary>
     [Fact]
     public void An_install_outside_a_steam_library_has_no_workshop_folder()
     {
@@ -414,8 +397,6 @@ public class CurrentModsReaderTests
 
         Assert.Equal(machine.WorkshopPath, CurrentModsReader.WorkshopContentPath(machine.InstallPath));
     }
-
-    // ---- the game version ----
 
     /// <summary>
     /// The options file names the game it was last written under, which is the game the player
@@ -449,8 +430,6 @@ public class CurrentModsReaderTests
 
         Assert.Null(machine.Read().Enabled.GameVersion);
     }
-
-    // ---- never throws ----
 
     [Fact]
     public void Nothing_on_this_machine_reads_as_nothing_rather_than_throwing()

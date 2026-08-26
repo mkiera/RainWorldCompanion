@@ -1,18 +1,12 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// meadow.json as the detail panel shows it: what Rain Meadow has unlocked, per character.
-///
-/// This is built only when the file is present. A save folder with no Rain Meadow in it has no
-/// meadow.json, and the panel leaves the whole section out rather than reporting a file that was
-/// never expected. A file that is present and could not be read keeps the section and shows the
-/// reason on one line, because that is a state the user can do something about.
+/// Built only when meadow.json is present. A file that is there and could not be read keeps the
+/// section and shows the reason, because that is a state the user can do something about.
 /// </summary>
 public sealed class MeadowProfileViewModel
 {
@@ -35,10 +29,8 @@ public sealed class MeadowProfileViewModel
 
     public string ErrorText { get; }
 
-    /// <summary>Everything below the error line is hidden while there is an error to report.</summary>
     public bool HasProfile => !HasError;
 
-    /// <summary>The profile-wide tiles: selected character, characters, play time, unlock progress.</summary>
     public IReadOnlyList<StatTile> Stats { get; }
 
     public IReadOnlyList<MeadowCharacterViewModel> Characters { get; }
@@ -78,8 +70,8 @@ public sealed class MeadowProfileViewModel
         Number(have) + " / " + Number(need);
 
     /// <summary>
-    /// Play time as text. The stored number is milliseconds: Rain Meadow adds
-    /// 1000 / framesPerSecond to it once per game update, so a second of play adds 1000.
+    /// The stored number is milliseconds: Rain Meadow adds 1000 / framesPerSecond to it once per
+    /// game update, so a second of play adds 1000.
     /// </summary>
     internal static string FormatPlayTime(TimeSpan time)
     {
@@ -88,8 +80,8 @@ public sealed class MeadowProfileViewModel
             time = TimeSpan.Zero;
         }
 
-        // Counted as a long. MeadowProfile caps an absurd stored number at what TimeSpan can hold,
-        // which is 2.5 trillion hours, and casting that to int wraps to a negative number.
+        // A long. MeadowProfile caps an absurd stored number at what TimeSpan can hold, which is
+        // 2.5 trillion hours, and casting that to int wraps to a negative number.
         if (time.TotalHours >= 1)
         {
             return Number((long)time.TotalHours) + "h " + Number(time.Minutes) + "m";
@@ -108,10 +100,7 @@ public sealed class MeadowProfileViewModel
     internal static string Number(long value) => value.ToString(CultureInfo.InvariantCulture);
 }
 
-/// <summary>
-/// One entry of meadow.json's characterProgress: what a single Rain Meadow character has
-/// unlocked, what skin it is wearing and how long it has been played.
-/// </summary>
+/// <summary>One entry of meadow.json's characterProgress.</summary>
 public sealed class MeadowCharacterViewModel
 {
     public MeadowCharacterViewModel(MeadowCharacterProgress character, string selectedCharacter)
@@ -121,9 +110,7 @@ public sealed class MeadowCharacterViewModel
         IsSelected = character.Name.Length > 0
             && string.Equals(character.Name, selectedCharacter, StringComparison.Ordinal);
 
-        // The names are ExtEnum values, so a mod can put anything in these lists. They are shown
-        // exactly as stored rather than prettified, so a name this app has never seen still reads
-        // as the name the mod uses for it.
+        // The names are ExtEnum values, so a mod can put anything in these lists. Shown as stored.
         Emotes = character.UnlockedEmotes.Select(emote => new ChipTile(emote, "")).ToList();
         Skins = character.UnlockedSkins.Select(skin => new ChipTile(skin, "")).ToList();
 
@@ -135,7 +122,6 @@ public sealed class MeadowCharacterViewModel
 
     public string Name { get; }
 
-    /// <summary>True for the character the menu is currently set to.</summary>
     public bool IsSelected { get; }
 
     public IReadOnlyList<StatTile> Stats { get; }

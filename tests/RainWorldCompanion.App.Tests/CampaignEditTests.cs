@@ -7,11 +7,9 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The editing panel, driven the way the window drives it, against a real save.
-///
-/// The rule these hold it to: an edit is written the moment it is made, and nothing is refused. A
-/// value the game would find strange produces a line of advice and is written anyway, so every
-/// test that checks a warning also checks the value went through.
+/// The rule these hold it to: an edit is written the moment it is made, and nothing is refused.
+/// A value the game would find strange produces a line of advice and is written anyway, so
+/// every test that checks a warning also checks the value went through.
 /// </summary>
 public class CampaignEditTests : IDisposable
 {
@@ -34,7 +32,6 @@ public class CampaignEditTests : IDisposable
         return new CampaignEditViewModel(_session, campaign, Summary(campaign.SlugcatId));
     }
 
-    /// <summary>Rebuilds the editor after the slugcat id is changed, for the Hunter-only behaviour.</summary>
     private CampaignEditViewModel EditorAs(string slugcatId)
     {
         var campaign = _session.Campaigns[0];
@@ -60,8 +57,6 @@ public class CampaignEditTests : IDisposable
     private DeathPersistentData Death()
         => DeathPersistentReader.Read(_session.GetFieldValue(_session.Campaigns[0], "DEATHPERSISTENTSAVEDATA"));
 
-    // ---- loading ----
-
     [Fact]
     public void The_boxes_open_holding_what_the_save_holds()
     {
@@ -81,8 +76,6 @@ public class CampaignEditTests : IDisposable
         Assert.Empty(_session.Changes);
     }
 
-    // ---- numbers ----
-
     [Fact]
     public void Typing_a_cycle_writes_it_into_the_save()
     {
@@ -95,10 +88,6 @@ public class CampaignEditTests : IDisposable
         Assert.Equal("1 change", editor.ChangeCountText);
     }
 
-    /// <summary>
-    /// The boxes write on every keystroke, so the suggestions and the warnings keep up as the user
-    /// types. What they must not do is count each keystroke as an edit of its own.
-    /// </summary>
     [Fact]
     public void Typing_into_a_box_one_character_at_a_time_is_one_change()
     {
@@ -139,7 +128,6 @@ public class CampaignEditTests : IDisposable
         editor.Echoes.First(e => e.RegionCode == "SH").TalkedTo = true;
         editor.Gates.First(g => g.Name == "GATE_SU_HI").UnlockedField = true;
 
-        // One for the cycle, one for karma, one for the echo, one for the gate.
         Assert.Equal("4 changes", editor.ChangeCountText);
         Assert.Contains(editor.Changes, c => c.Contains("Echo SH", StringComparison.Ordinal));
         Assert.Contains(editor.Changes, c => c.Contains("Gate GATE_SU_HI", StringComparison.Ordinal));
@@ -173,8 +161,6 @@ public class CampaignEditTests : IDisposable
         Assert.Contains(editor.Warnings, w => w.Contains("raw field list", StringComparison.Ordinal));
     }
 
-    // ---- karma ----
-
     [Fact]
     public void Karma_above_the_cap_is_written_and_explained_rather_than_refused()
     {
@@ -183,11 +169,9 @@ public class CampaignEditTests : IDisposable
         editor.KarmaCap = "4";
         editor.Karma = "9";
 
-        // Written, because the user asked for it.
         Assert.Equal(9, Death().Karma);
         Assert.Equal(4, Death().KarmaCap);
 
-        // And explained, because the game will not play it that way.
         Assert.Contains(editor.Warnings, w => w.Contains("clamps", StringComparison.Ordinal));
     }
 
@@ -202,12 +186,7 @@ public class CampaignEditTests : IDisposable
         Assert.DoesNotContain(editor.Warnings, w => w.Contains("clamps", StringComparison.Ordinal));
     }
 
-    // ---- hunter ----
-
-    /// <summary>
-    /// Hunter's cycle is not only a counter: the game reads the death flag from it. The edit goes
-    /// through, and the panel says what it did.
-    /// </summary>
+    /// <summary>Hunter's cycle is not only a counter: the game reads the death flag from it.</summary>
     [Fact]
     public void Pushing_hunter_past_the_limit_warns_and_still_writes()
     {
@@ -239,8 +218,6 @@ public class CampaignEditTests : IDisposable
 
         Assert.Contains(EditorAs("Red").Flags, f => f.Label == "Hunter's death");
     }
-
-    // ---- shelter ----
 
     [Fact]
     public void A_shelter_can_be_overwritten_and_is_suggested_as_it_is_typed()
@@ -286,8 +263,6 @@ public class CampaignEditTests : IDisposable
         Assert.Equal("SU_A17", Field("DENPOS"));
         Assert.Contains(editor.Warnings, w => w.Contains("not a shelter", StringComparison.Ordinal));
     }
-
-    // ---- echoes ----
 
     [Fact]
     public void Every_echo_is_offered_even_though_this_save_has_met_none()
@@ -338,8 +313,6 @@ public class CampaignEditTests : IDisposable
         var echo = Assert.Single(Death().Echoes);
         Assert.Equal(EchoRecord.TalkedTo, echo.State);
     }
-
-    // ---- gates ----
 
     [Fact]
     public void Every_gate_is_offered_and_none_are_open_yet()
@@ -398,8 +371,6 @@ public class CampaignEditTests : IDisposable
         Assert.Contains("GATE_SU_HI", Death().UnlockedGates);
     }
 
-    // ---- flags ----
-
     [Fact]
     public void A_flag_in_the_record_can_be_turned_on_and_off()
     {
@@ -423,12 +394,7 @@ public class CampaignEditTests : IDisposable
         Assert.True(Death().HasTheMark);
     }
 
-    // ---- the whole thing ----
-
-    /// <summary>
-    /// Everything the panel writes has to end up as a save the game would take. This is the same
-    /// check the writer makes, run over the edits the panel itself produced.
-    /// </summary>
+    /// <summary>This is the same check the writer makes, run over the edits the panel itself produced.</summary>
     [Fact]
     public void The_edits_a_panel_makes_produce_a_plan_with_no_problems()
     {
@@ -446,9 +412,9 @@ public class CampaignEditTests : IDisposable
         Assert.Empty(plan.Problems);
         Assert.True(plan.CanWrite);
 
-        // Every edit landed where it was aimed. The count of changes is deliberately not asserted:
-        // an edit that sets a value the save already held is not a change, and which of these that
-        // is depends on the fixture rather than on the panel.
+        // The count of changes is deliberately not asserted: an edit that sets a value the save
+        // already held is not a change, and which of these that is depends on the fixture rather
+        // than on the panel.
         Assert.Equal("40", Field("CYCLENUM"));
         Assert.Equal("HI_S03", Field("DENPOS"));
         Assert.Equal(6, Death().Karma);

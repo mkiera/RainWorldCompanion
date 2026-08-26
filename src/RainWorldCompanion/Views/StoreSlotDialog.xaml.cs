@@ -11,12 +11,11 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// Picks a slot and names it. Every side of the picked slot comes from what Core read off disk, so
-/// the campaigns shown are the campaigns that will be stored.
+/// Every side of the picked slot comes from what Core read off disk, so the campaigns shown are
+/// the campaigns that will be stored.
 /// </summary>
 public partial class StoreSlotDialog : Window, INotifyPropertyChanged
 {
-    /// <summary>One entry in the slot picker.</summary>
     public sealed record SlotChoice(SlotSide Side, string Label)
     {
         /// <summary>
@@ -29,8 +28,6 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
     private SlotChoice _selectedSource;
     private string _entryName = "";
 
-    /// <param name="sides">Every slot Core could read, in picker order.</param>
-    /// <param name="initial">Which one the picker starts on.</param>
     public StoreSlotDialog(IReadOnlyList<SlotSide> sides, SaveSlotRef initial)
     {
         Choices = BuildChoices(sides);
@@ -153,10 +150,7 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
         return null;
     }
 
-    /// <summary>
-    /// A starting name built from what is in the slot, for example "Survivor cycle 87". Something
-    /// to accept or type over beats an empty box the user has to fill before the button works.
-    /// </summary>
+    /// <summary>A starting name built from what is in the slot, for example "Survivor cycle 87".</summary>
     private static string SuggestName(SlotSide side)
     {
         if (side.Metadata is not { ParseError: null } metadata || metadata.Campaigns.Count == 0)

@@ -11,7 +11,6 @@ namespace RainWorldCompanion.Tests;
 /// </summary>
 public class DeathPersistentEditorTests
 {
-    /// <summary>The DEATHPERSISTENTSAVEDATA value of the first campaign in a real slot.</summary>
     private static string RealBlob()
     {
         var payload = FixtureFiles.ReadPayload(FixtureFiles.Sav2, "save");

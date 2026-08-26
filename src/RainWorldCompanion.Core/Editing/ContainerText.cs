@@ -1,56 +1,36 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Text;
 
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>What to do about the file length when an edit changes how much text the container holds.</summary>
 public enum SizePolicy
 {
-    /// <summary>
-    /// Emit the file at exactly the length it was read at. Refuses when the new text no longer
-    /// fits, so a caller that cares about the size on disk is told rather than surprised.
-    /// </summary>
+    /// <summary>Refuses when the new text no longer fits the length the file was read at.</summary>
     PreserveLength,
 
-    /// <summary>
-    /// Keep the original length while the text fits, and grow past it when it does not. Growth
-    /// keeps the padding the file already carried, so a file that had slack still has slack.
-    /// </summary>
+    /// <summary>Keeps the original length while the text fits, and grows past it when it does not.</summary>
     GrowIfNeeded,
 }
 
 /// <summary>
-/// One save container held as the bytes it was read as, with one value replaceable in place.
-///
-/// <see cref="SaveContainer"/> decodes a container into values and throws the document away, which
-/// is all a reader needs. Writing one back needs the opposite: the file kept intact and a single
-/// value's characters swapped out. Re-serialising through an XML writer is not an option, because
-/// the game's serializer stamps <c>z:Id</c> bookkeeping on every element and the numbering,
-/// attribute order and namespace placement would all have to be reproduced exactly to land on the
-/// same bytes. Editing the text directly reproduces them by not touching them.
-///
-/// The one rule that makes locating a value cheap and exact: XML text content can never hold a raw
-/// <c>&lt;</c>, because the writer escapes it. A value therefore runs from the end of its opening
-/// tag to the very next <c>&lt;</c> in the file, with no parsing in between.
+/// Re-serialising a container through an XML writer would not land on the same bytes: the game's
+/// serializer stamps <c>z:Id</c> bookkeeping whose numbering, attribute order and namespace
+/// placement would all have to be reproduced. XML text content can never hold a raw <c>&lt;</c>, so
+/// a value runs from the end of its opening tag to the very next <c>&lt;</c>, with no parsing.
 /// </summary>
 public sealed class ContainerText
 {
     private const string ClosingTag = "</ArrayOfKeyValueOfanyTypeanyType>";
 
-    /// <summary>
-    /// A container far larger than any save the game writes. The biggest real one measured is a
-    /// 6 MB sav; this is a tripwire for an edit that has gone wrong in a way that produces text
-    /// rather than an exception, not a limit anyone should meet.
-    /// </summary>
+    /// <summary>A tripwire for an edit gone wrong in a way that produces text rather than an
+    /// exception. The biggest real container measured is a 6 MB sav.</summary>
     public const int MaximumLength = 32 * 1024 * 1024;
 
-    // Decoding throws rather than substituting U+FFFD. A container that is not valid UTF-8 cannot
-    // be re-encoded to the bytes it came from, so the honest move is to refuse to load it at all
-    // instead of writing replacement characters over someone's save.
+    // Decoding throws rather than substituting U+FFFD: a container that is not valid UTF-8 cannot
+    // be re-encoded to the bytes it came from.
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private readonly byte[] _preamble;
@@ -74,13 +54,10 @@ public sealed class ContainerText
     /// <summary>Length in bytes of the file this was loaded from.</summary>
     public int OriginalLength { get; }
 
-    /// <summary>Count of NUL padding bytes that followed the closing tag.</summary>
     public int PaddingByteCount => _paddingByteCount;
 
-    /// <summary>
-    /// Hashtable keys in the order the file stores them. That order is not alphabetical and is not
-    /// stable between files: a real sav2 stores save__Backup before save.
-    /// </summary>
+    /// <summary>Keys in the order the file stores them, which is not alphabetical and not stable
+    /// between files: a real sav2 stores save__Backup before save.</summary>
     public IReadOnlyList<string> Keys => _keys;
 
     /// <exception cref="SaveContainerException">The bytes are not a container this can edit.</exception>
@@ -93,9 +70,8 @@ public sealed class ContainerText
 
         byte[] preamble = HasUtf8Preamble(fileBytes) ? fileBytes[..3] : Array.Empty<byte>();
 
-        // The closing tag is ASCII and the padding after it is NUL bytes, so the cut is made in the
-        // byte array, the same way SaveContainer makes it. Decoding first and slicing afterwards
-        // would decode megabytes of padding to find out it was padding.
+        // The cut is made in the byte array: decoding first would decode megabytes of padding to
+        // find out it was padding.
         int tagIndex = LastIndexOf(fileBytes, ClosingTag);
         if (tagIndex < 0)
         {
@@ -125,15 +101,10 @@ public sealed class ContainerText
         return _xml.Substring(span.Start, span.Length);
     }
 
-    /// <summary>The value as text, with the file's escaping decoded.</summary>
     public string GetValue(string key) => XmlValueText.Unescape(GetValueRaw(key));
 
     public bool ContainsKey(string key) => IndexOfKey(key) >= 0;
 
-    /// <summary>
-    /// A copy of this container with one value replaced and every other character of the file
-    /// left exactly as it was.
-    /// </summary>
     /// <exception cref="SaveContainerException">The key is not in this container.</exception>
     public ContainerText WithValue(string key, string newValue)
     {
@@ -148,13 +119,8 @@ public sealed class ContainerText
         return new ContainerText(_preamble, builder.ToString(), _paddingByteCount, OriginalLength);
     }
 
-    /// <summary>
-    /// The file as bytes: the preamble it had, the XML, then NUL padding.
-    ///
-    /// Padding is slack left by an earlier longer write, not content, so how much of it there is
-    /// carries no meaning to the game, which stops reading at the closing tag. It is reproduced
-    /// anyway because a file that keeps its length is one Steam Cloud sees the same size as before.
-    /// </summary>
+    /// <summary>The preamble, the XML, then NUL padding. The padding carries no meaning to the game,
+    /// which stops at the closing tag, but keeping it means Steam Cloud sees the same file size.</summary>
     /// <exception cref="SaveContainerException">The text no longer fits the policy.</exception>
     public byte[] ToBytes(SizePolicy policy = SizePolicy.GrowIfNeeded)
     {
@@ -224,12 +190,10 @@ public sealed class ContainerText
             keys.Add(XmlValueText.Unescape(xml.Substring(span.Start, span.Length)));
         }
 
-        // An empty hashtable is legitimate: exp1 holds no keys at all. A file missing the elements
-        // entirely reads as empty here too, and is reported when a key is asked for.
+        // An empty hashtable is legitimate: exp1 holds no keys at all.
         valueSpans.AddRange(ChildSpans(xml, "Values"));
     }
 
-    /// <summary>Content spans of the anyType children of a named array element.</summary>
     private static List<TextSpan> ChildSpans(string xml, string arrayName)
     {
         var spans = new List<TextSpan>();
@@ -252,14 +216,9 @@ public sealed class ContainerText
         return spans;
     }
 
-    /// <summary>
-    /// Finds the next element with the given local name at or after <paramref name="from"/>.
-    ///
-    /// The name is matched against a tag opening rather than searched for as text, so a value
-    /// holding the characters "&lt;Values" cannot be mistaken for the element. Attribute values are
-    /// scanned with their quoting respected, because an attribute is the one place a &gt; can sit
-    /// inside a tag without ending it.
-    /// </summary>
+    /// <summary>The name is matched against a tag opening rather than searched for as text, so a
+    /// value holding "&lt;Values" cannot be mistaken for the element. Attribute quoting is respected,
+    /// because an attribute is the one place a &gt; can sit inside a tag without ending it.</summary>
     private static bool TryFindElement(string xml, int from, string localName, out ElementSpan element)
     {
         int cursor = from;
@@ -293,9 +252,7 @@ public sealed class ContainerText
                 return true;
             }
 
-            // Text content cannot hold a raw <, so the first one after the opening tag begins the
-            // closing tag of this element unless a child element begins there. Children are found
-            // by their own opening tags, so the close is located by name to stay right either way.
+            // The close is located by name rather than by the first <, which may begin a child.
             int close = IndexOfCloseTag(xml, contentStart, localName);
             if (close < 0)
             {
@@ -329,7 +286,6 @@ public sealed class ContainerText
         return c is '>' or '/' || char.IsWhiteSpace(c);
     }
 
-    /// <summary>Index of the '&gt;' that ends the tag opening at <paramref name="tagStart"/>, or -1.</summary>
     private static int EndOfTag(string xml, int tagStart)
     {
         char quote = '\0';

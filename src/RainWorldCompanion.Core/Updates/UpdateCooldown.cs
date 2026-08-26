@@ -1,31 +1,20 @@
 namespace RainWorldCompanion.Core.Updates;
 
 /// <summary>
-/// How often the app is allowed to ask GitHub on its own.
-///
-/// Unauthenticated requests are budgeted at sixty an hour per address, and this app has no
-/// account to sign in with, so an over-eager check spends a budget shared with everything else on
-/// the machine.
+/// Unauthenticated GitHub requests are budgeted at sixty an hour per address, and this app has no
+/// account to sign in with, so the budget is shared with everything else on the machine.
 /// </summary>
 public static class UpdateCooldown
 {
     /// <summary>Between automatic checks. A check the user asked for ignores this.</summary>
     public static readonly TimeSpan Interval = TimeSpan.FromHours(1);
 
-    /// <summary>
-    /// How long after startup the first automatic check waits. Long enough that opening the
-    /// window, reading the settings and listing the backups all happen first: an update is never
-    /// the reason someone launched this.
-    /// </summary>
     public static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(4);
 
     /// <summary>
-    /// Whether an automatic check is due.
-    ///
     /// Phrased as "not inside the window" rather than "long enough ago" on purpose. A stamp from
-    /// the future, which a clock change or a settings file copied from another machine produces,
-    /// would otherwise sit there blocking every check until real time caught up with it. Reading
-    /// an unusable stamp as due costs one request; reading it as not due costs every request.
+    /// the future, which a clock change produces, would otherwise block every check until real
+    /// time caught up with it.
     /// </summary>
     public static bool IsDue(DateTimeOffset? lastCheck, DateTimeOffset now)
     {
@@ -38,10 +27,6 @@ public static class UpdateCooldown
         return !(elapsed >= TimeSpan.Zero && elapsed < Interval);
     }
 
-    /// <summary>
-    /// "checked 12 minutes ago", or a note that it never has been. Shown beside the refresh
-    /// button so the absence of an offer reads as "nothing new" rather than "nothing happened".
-    /// </summary>
     public static string Describe(DateTimeOffset? lastCheck, DateTimeOffset now)
     {
         if (lastCheck is not { } last)
@@ -52,8 +37,7 @@ public static class UpdateCooldown
         var elapsed = now - last;
         if (elapsed < TimeSpan.Zero)
         {
-            // Same unusable stamp IsDue tolerates. Saying nothing sensible beats saying it was
-            // checked in the future.
+            // The same stamp from the future that IsDue tolerates.
             return "Checked recently";
         }
 

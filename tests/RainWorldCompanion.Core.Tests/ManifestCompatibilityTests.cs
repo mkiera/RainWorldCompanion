@@ -7,10 +7,9 @@ using RainWorldCompanion.Core.Backups;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The schema version moves to 2 because a slot now records far more per campaign. There are
-/// schemaVersion 1 backups already sitting on disk, and they are the only copy of those saves,
-/// so every one of them has to keep listing, verifying and restoring. These build a v1 manifest
-/// by hand, in the shape the shipped version wrote, rather than by serialising today's classes.
+/// schemaVersion 1 backups already on disk are the only copy of those saves, so they still have
+/// to list, verify and restore. These build a v1 manifest by hand, in the shape the shipped
+/// version wrote, rather than by serialising today's classes.
 /// </summary>
 public class ManifestCompatibilityTests
 {
@@ -215,8 +214,6 @@ public class ManifestCompatibilityTests
         Assert.True(world.Service.Verify(snapshot).Ok);
     }
 
-    // ---- Derived values are computed, never recorded ----
-
     [Fact]
     public void The_manifest_does_not_record_the_values_it_computes()
     {
@@ -231,19 +228,15 @@ public class ManifestCompatibilityTests
 
         Assert.NotEmpty(campaigns);
 
-        // A campaign's DisplayName comes from the catalog and its TotalKills is the sum of the
-        // kills the manifest already lists. Neither has a setter, so writing them would put a
-        // value in the file that no reader can load back and that goes stale the moment a
-        // catalog name is corrected. A kill entry's own displayName is a different thing: it is
-        // read off the save and it does belong in the file.
+        // DisplayName and TotalKills are computed, not stored, so they never appear here. A kill
+        // entry's own displayName is different: it is read off the save and does belong in the file.
         foreach (var campaign in campaigns)
         {
             Assert.False(campaign.TryGetProperty("displayName", out _));
             Assert.False(campaign.TryGetProperty("totalKills", out _));
 
-            // The same holds for the two values read out of the game's own load rules. Hunter's
-            // countdown and the redsDeath the game keeps are both worked out from the cycle number
-            // and the flags beside them, which the file already records.
+            // displayCycleNum and effectiveRedsDeath are also derived, from the cycle number and
+            // flags the file already records.
             Assert.False(campaign.TryGetProperty("displayCycleNum", out _));
             Assert.False(campaign.TryGetProperty("effectiveRedsDeath", out _));
 
@@ -273,8 +266,6 @@ public class ManifestCompatibilityTests
         Assert.Equal("Survivor", campaign.DisplayName);
         Assert.Equal(campaign.Kills.Sum(kill => kill.Count), campaign.TotalKills);
     }
-
-    // ---- A manifest holding explicit nulls ----
 
     [Fact]
     public void A_manifest_that_stores_null_for_a_collection_reads_it_back_as_empty()
@@ -332,9 +323,8 @@ public class ManifestCompatibilityTests
         => world.Service.ListBackups().Single(s => s.Id == V1SnapshotId);
 
     /// <summary>
-    /// Writes a schema 2 manifest whose collections are all an explicit JSON null. Nothing this
-    /// app writes looks like this, but a hand-edited file or another tool's output does, and the
-    /// model promises the UI that these are never null.
+    /// Nothing this app writes looks like this, but a hand-edited file or another tool's output
+    /// does, and the model promises the UI these collections are never null.
     /// </summary>
     private static void WriteNullCollectionSnapshot(BackupWorld world, bool nullCampaigns = false)
     {
@@ -374,10 +364,7 @@ public class ManifestCompatibilityTests
         world.BackupRoot.WriteText(V1SnapshotId + @"\manifest.json", json.ToString());
     }
 
-    /// <summary>
-    /// Copies the live folder into a snapshot directory and writes the manifest.json the shipped
-    /// version 1 wrote: no per-campaign detail beyond the seven fields it knew about.
-    /// </summary>
+    /// <summary>Writes the manifest.json the shipped version 1 wrote: only the seven per-campaign fields it knew.</summary>
     private static void WriteVersionOneSnapshot(BackupWorld world, bool includeSlots = true)
     {
         var files = new List<string>();

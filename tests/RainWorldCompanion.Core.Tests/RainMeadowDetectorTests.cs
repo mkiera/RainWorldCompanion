@@ -3,9 +3,8 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Whether the window shows its Rain Meadow section at all hangs on this, so the cases that matter
-/// are the ones where the game folder is unknown or unreadable. Those must still find the mod when
-/// the save folder proves it is in use.
+/// The cases that matter are an unknown or unreadable game folder: those must still find the mod
+/// when the save folder proves it is in use.
 /// </summary>
 public class RainMeadowDetectorTests
 {

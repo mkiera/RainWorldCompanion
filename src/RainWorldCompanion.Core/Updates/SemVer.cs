@@ -1,17 +1,10 @@
 namespace RainWorldCompanion.Core.Updates;
 
 /// <summary>
-/// A Semantic Versioning 2.0.0 version, with the spec's precedence rules.
-///
-/// Release tags are the authority for what a build is, and they are semver, so ordering them is
-/// what decides whether a release is an update, a downgrade, or the copy already running. The
-/// full rule is implemented rather than a numeric-only approximation because the approximation
-/// has a specific failure: collapsing every pre-release to a single "is this stable" flag makes
-/// 1.2.0-rc.1 and 1.2.0-rc.2 compare equal, so nobody on rc.1 is ever offered rc.2.
-///
-/// Build metadata (everything after "+") is parsed and then ignored by every comparison, which
-/// is what the spec requires. It matters here because the .NET SDK appends the commit sha to
-/// InformationalVersion, so the running version arrives carrying one.
+/// The full Semantic Versioning 2.0.0 precedence rules, not a numeric-only approximation:
+/// collapsing every pre-release to one "is this stable" flag would make 1.2.0-rc.1 and 1.2.0-rc.2
+/// compare equal. Build metadata is ignored by every comparison, which matters because the .NET
+/// SDK appends the commit sha to InformationalVersion.
 /// </summary>
 public readonly record struct SemVer : IComparable<SemVer>
 {
@@ -36,17 +29,11 @@ public readonly record struct SemVer : IComparable<SemVer>
     /// <summary>The text after "+", or empty. Takes no part in ordering or equality.</summary>
     public string BuildMetadata { get; }
 
-    /// <summary>True for 1.0.0-beta.1, false for 1.0.0.</summary>
     public bool IsPreRelease => PreRelease.Length != 0;
 
     /// <summary>
-    /// Reads a version, tolerating one leading "v" so a caller holding a git tag gets the same
-    /// answer as one holding the number out of it.
-    ///
-    /// Returns false rather than throwing, because the caller is walking a list of tags that
-    /// anyone can create and an unorderable one has to be a skip. Strict about the three-part
-    /// core: "1.2" cannot be placed against "1.2.0" without guessing, and guessing about which
-    /// build someone is offered is worse than passing over the tag.
+    /// Tolerates one leading "v". Strict about the three-part core: "1.2" cannot be placed against
+    /// "1.2.0" without guessing, so it is a skip rather than a throw.
     /// </summary>
     public static bool TryParse(string? text, out SemVer version)
     {
@@ -128,10 +115,8 @@ public readonly record struct SemVer : IComparable<SemVer>
     }
 
     /// <summary>
-    /// Equality follows precedence, so two versions differing only in build metadata are equal.
-    /// The record's generated comparison would include the metadata and disagree with
-    /// <see cref="CompareTo"/>, which is how a version ends up neither newer, older, nor the
-    /// same as itself.
+    /// The record's generated comparison would include build metadata and disagree with
+    /// <see cref="CompareTo"/>, leaving a version neither newer, older, nor the same as itself.
     /// </summary>
     public bool Equals(SemVer other) => CompareTo(other) == 0;
 
@@ -145,7 +130,6 @@ public readonly record struct SemVer : IComparable<SemVer>
 
     public static bool operator >=(SemVer left, SemVer right) => left.CompareTo(right) >= 0;
 
-    /// <summary>The version as it would be written, without a leading "v".</summary>
     public override string ToString()
     {
         var text = Major + "." + Minor + "." + Patch;
@@ -163,10 +147,8 @@ public readonly record struct SemVer : IComparable<SemVer>
     }
 
     /// <summary>
-    /// The spec's rule, in order: a release outranks any pre-release of the same core, then the
-    /// dot-separated identifiers are compared left to right, then a longer run of identifiers
-    /// wins. Numeric identifiers compare as numbers and rank below alphanumeric ones, which is
-    /// the clause that puts beta.2 below beta.11 where a plain string comparison puts it above.
+    /// Numeric identifiers compare as numbers and rank below alphanumeric ones, the clause that
+    /// puts beta.2 below beta.11 where a plain string comparison puts it above.
     /// </summary>
     private static int ComparePreRelease(string left, string right)
     {
@@ -208,9 +190,9 @@ public readonly record struct SemVer : IComparable<SemVer>
 
         if (leftIsNumber && rightIsNumber)
         {
-            // Both are digits with no leading zero, so the longer string is the larger number and
-            // equal lengths order the same way the characters do. Parsing would cap the width at
-            // whatever integer type was chosen; the spec puts no cap on it.
+            // Both are digits with no leading zero, so the longer string is the larger number.
+            // Parsing would cap the width at whatever integer type was chosen, and the spec does
+            // not cap it.
             return left.Length != right.Length
                 ? left.Length.CompareTo(right.Length)
                 : string.CompareOrdinal(left, right);
@@ -225,10 +207,8 @@ public readonly record struct SemVer : IComparable<SemVer>
     }
 
     /// <summary>
-    /// A version core number: digits only, and no leading zero, because the spec forbids one and
-    /// allowing it would make 1.01.0 and 1.1.0 two spellings of the same version. int.TryParse
-    /// also rejects anything wider than an int, which is the right answer for a tag holding a
-    /// number nobody meant.
+    /// No leading zero: the spec forbids one, and allowing it would make 1.01.0 and 1.1.0 two
+    /// spellings of the same version.
     /// </summary>
     private static bool TryNumber(string text, out int value)
     {
@@ -255,10 +235,8 @@ public readonly record struct SemVer : IComparable<SemVer>
     }
 
     /// <summary>
-    /// Validates a pre-release or build-metadata tail. Both are dot-separated runs of
-    /// [0-9A-Za-z-] with no empty identifier. They differ in one clause: a numeric pre-release
-    /// identifier may not carry a leading zero, because it is compared as a number, while build
-    /// metadata is never compared and so may hold anything.
+    /// A numeric pre-release identifier may not carry a leading zero, because it is compared as a
+    /// number, while build metadata is never compared and so may hold anything.
     /// </summary>
     private static bool IsDotSeparatedIdentifiers(string text, bool numericIdentifiersAreStrict)
     {

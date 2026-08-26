@@ -8,14 +8,13 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The Devourment editor, driven the way the window drives it.
+/// Against sav3.bin, a real save with the mod installed: the player has swallowed three
+/// lizards, one of those is holding a pink lizard, and three of the four creatures are tamed
+/// as well.
 ///
-/// Against sav3.bin, a real save with the mod installed: the player has swallowed three lizards,
-/// one of those is holding a pink lizard, and three of the four creatures are tamed as well.
-///
-/// The shape is the thing most of these are about. What a save stores is a flat list of predator
-/// and prey pairs, and the chains are implied by ids, so the editor has to both draw the chains and
-/// turn a move back into an edit of one pair.
+/// The shape is the thing most of these are about. What a save stores is a flat list of
+/// predator and prey pairs, and the chains are implied by ids, so the editor has to both draw
+/// the chains and turn a move back into an edit of one pair.
 /// </summary>
 public class DevourmentPanelTests : IDisposable
 {
@@ -52,7 +51,6 @@ public class DevourmentPanelTests : IDisposable
 
     private DevourmentEditViewModel Panel() => Editor().Devourment;
 
-    /// <summary>An editor built as though the game folder said this about the expansions.</summary>
     private DevourmentEditViewModel PanelWith(ExpansionPresence expansions) => new CampaignEditViewModel(
         _session,
         _campaign,
@@ -64,8 +62,6 @@ public class DevourmentPanelTests : IDisposable
 
     private static DevourmentEditNode Node(DevourmentEditViewModel panel, string entityId)
         => panel.AllNodes.First(n => n.EntityId == entityId && !n.IsRoot);
-
-    // ---- the shape ----
 
     [Fact]
     public void The_chains_are_drawn_as_the_save_describes_them()
@@ -136,8 +132,6 @@ public class DevourmentPanelTests : IDisposable
     public void A_creature_that_is_not_on_the_friends_list_does_not_read_as_tamed()
         => Assert.False(Node(Panel(), PinkInside).IsTamed);
 
-    // ---- the row's own editors ----
-
     [Fact]
     public void Only_one_row_shows_its_editors_at_a_time()
     {
@@ -207,13 +201,12 @@ public class DevourmentPanelTests : IDisposable
     public void An_item_row_offers_no_feelings_and_no_taming()
         => Assert.All(Panel().AllNodes.Where(n => n.IsItem), node => Assert.False(node.IsCreature));
 
-    // ---- the buttons a row carries ----
-    //
     // These go through the commands the row itself binds to, rather than the view model's. A row
-    // reaches its buttons through its own DataContext and nothing else: looking up the visual tree
-    // instead finds the ItemsControl holding that row's siblings, and below the top of a chain that
-    // control belongs to the parent node, which carries no commands. The binding then resolves to
-    // nothing and the button does nothing, which is what shipped and what these hold shut.
+    // reaches its buttons through its own DataContext and nothing else: looking up the visual
+    // tree instead finds the ItemsControl holding that row's siblings, and below the top of a
+    // chain that control belongs to the parent node, which carries no commands. The binding then
+    // resolves to nothing and the button does nothing, which is what shipped and what these hold
+    // shut.
 
     [Fact]
     public void The_remove_button_on_a_row_takes_it_out()
@@ -271,8 +264,6 @@ public class DevourmentPanelTests : IDisposable
         Assert.DoesNotContain(Stored().Entries, e => e.PreyId == TamedLizard);
         Assert.DoesNotContain(panel.AllNodes, n => n.EntityId == TamedLizard);
     }
-
-    // ---- moving one thing inside another ----
 
     [Fact]
     public void Dropping_a_row_onto_a_creature_puts_it_inside_that_creature()
@@ -351,8 +342,6 @@ public class DevourmentPanelTests : IDisposable
         Assert.Equal(before, Stored().Entries.Select(e => e.PredatorId));
     }
 
-    // ---- order among the things sharing a stomach ----
-
     [Fact]
     public void The_arrows_move_a_row_past_the_one_beside_it()
     {
@@ -402,8 +391,6 @@ public class DevourmentPanelTests : IDisposable
 
         Assert.Equal(before, Stored().Entries.Select(e => e.PreyId));
     }
-
-    // ---- adding and removing ----
 
     [Fact]
     public void A_creature_can_be_put_inside_something()
@@ -476,10 +463,6 @@ public class DevourmentPanelTests : IDisposable
         Assert.DoesNotContain(Stored().Entries, e => e.PreyId == TamedLizard);
     }
 
-    /// <summary>
-    /// Taking out something that is holding things would otherwise take everything below it with
-    /// it, which is not what removing one row is meant to do.
-    /// </summary>
     [Fact]
     public void What_was_inside_a_removed_row_moves_up_to_whatever_was_holding_it()
     {
@@ -505,8 +488,6 @@ public class DevourmentPanelTests : IDisposable
 
         Assert.True(Stored().IsTamed(added.EntityId));
     }
-
-    // ---- putting an item in ----
 
     [Fact]
     public void An_item_can_be_put_inside_something()
@@ -649,8 +630,6 @@ public class DevourmentPanelTests : IDisposable
         Assert.DoesNotContain(panel.Warnings, w => w.Contains("leave it out of the stomach"));
     }
 
-    // ---- searching every creature ----
-
     [Fact]
     public void The_creature_box_offers_what_matches_what_is_typed()
     {
@@ -699,8 +678,6 @@ public class DevourmentPanelTests : IDisposable
 
         Assert.Equal($"1 of {CreatureCatalog.Known.Count}", panel.CreatureMatchCountText);
     }
-
-    // ---- whether the game has the creature ----
 
     [Fact]
     public void A_base_game_creature_is_always_available()
@@ -840,8 +817,6 @@ public class DevourmentPanelTests : IDisposable
         Assert.Single(panel.Warnings, w => w.Contains("Downpour"));
     }
 
-    // ---- advice ----
-
     [Fact]
     public void A_status_the_mod_cannot_read_is_written_and_warned_about()
     {
@@ -881,8 +856,6 @@ public class DevourmentPanelTests : IDisposable
         Assert.True(editor.HasWarnings);
         Assert.Contains(editor.Warnings, w => w.Contains("does not know"));
     }
-
-    // ---- the change log ----
 
     [Fact]
     public void An_edit_reads_as_something_a_person_did()

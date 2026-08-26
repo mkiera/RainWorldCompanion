@@ -1,19 +1,13 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 
 namespace RainWorldCompanion.Core.Saves;
 
 /// <summary>
-/// The shelter rooms of the game and its expansions, which is what DENPOS and LASTVDENPOS hold.
-///
-/// Extracted from the world files of Rain World 1.10 with Downpour and The Watcher, where a
-/// shelter is a room whose entry in world_&lt;region&gt;.txt ends in SHELTER. Reading the files
-/// rather than assuming a naming rule matters: most shelters are named &lt;REGION&gt;_S&lt;number&gt;, but
-/// LC_A05 is a shelter too, and a picker built on the pattern would not offer it.
-///
-/// The list suggests, it does not decide. A room from a mod this app has never heard of is still
-/// a room the player may be sitting in, so nothing here rejects a name for being absent.
+/// The shelter rooms DENPOS and LASTVDENPOS hold, extracted from the world files of Rain World 1.10
+/// with Downpour and The Watcher. Read from the files rather than from a naming rule: most shelters
+/// are named &lt;REGION&gt;_S&lt;number&gt;, but LC_A05 is a shelter too. The list suggests, it does
+/// not decide, so nothing here rejects a name for being absent.
 /// </summary>
 public static class ShelterCatalog
 {
@@ -74,7 +68,7 @@ public static class ShelterCatalog
         .GroupBy(RegionPrefix, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Every shelter this app knows, ordered by region and then by name.</summary>
+    /// <summary>Ordered by region and then by name.</summary>
     public static IReadOnlyList<string> All => AllShelters;
 
     public static bool IsKnown(string? roomName)
@@ -91,11 +85,8 @@ public static class ShelterCatalog
         return ByRegion.TryGetValue(regionCode.Trim(), out string[]? rooms) ? rooms : Array.Empty<string>();
     }
 
-    /// <summary>
-    /// The region a room name belongs to, taken from the part before the first underscore. This
-    /// works on names the catalog has never seen, which is the point: a modded room still shows
-    /// which region it is in.
-    /// </summary>
+    /// <summary>The part before the first underscore, so a modded room the catalog has never seen
+    /// still shows which region it is in.</summary>
     public static string? RegionOf(string? roomName)
     {
         if (string.IsNullOrWhiteSpace(roomName))
@@ -108,10 +99,8 @@ public static class ShelterCatalog
         return underscore <= 0 ? null : trimmed[..underscore].ToUpperInvariant();
     }
 
-    /// <summary>
-    /// Shelters matching the query by room name, region code or region name, so typing
-    /// "Outskirts" finds SU_S01. A blank query matches everything.
-    /// </summary>
+    /// <summary>Matches by room name, region code or region name, so typing "Outskirts" finds
+    /// SU_S01. A blank query matches everything.</summary>
     public static IEnumerable<string> Search(string? query)
     {
         if (string.IsNullOrWhiteSpace(query))

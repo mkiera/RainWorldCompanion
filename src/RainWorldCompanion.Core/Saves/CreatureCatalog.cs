@@ -1,10 +1,8 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>Which part of the game a creature comes from, for grouping the picker.</summary>
 public enum CreatureSource
 {
     Vanilla,
@@ -12,23 +10,15 @@ public enum CreatureSource
     Watcher,
 }
 
-/// <summary>One kind of creature, named the way a save names it.</summary>
 /// <param name="Name">The game's own spelling, which is what goes in the file.</param>
 /// <param name="DisplayName">The same name with its words separated, for reading.</param>
 public sealed record CreatureKind(string Name, string DisplayName, CreatureSource Source);
 
 /// <summary>
-/// The creature names the game registers, which is what the front of a serialized creature holds.
-///
-/// Taken from the game assembly rather than written from memory: CreatureTemplate.Type registers
-/// the base game's names, and DLCSharedEnums, MoreSlugcatsEnums and WatcherEnums register the rest.
-/// Reading them off the assembly is what makes the list match the game that is installed.
-///
-/// Two registered names are left out, StandardGroundCreature and LizardTemplate. Both are bases the
-/// game builds other templates from rather than creatures anything spawns. Free text still writes
-/// either of them, along with any name a mod adds.
-///
-/// The list suggests, it does not decide. Nothing here rejects a name for being absent.
+/// The creature names the game registers, taken off the game assembly rather than written from
+/// memory. StandardGroundCreature and LizardTemplate are left out: both are bases the game builds
+/// other templates from rather than creatures anything spawns. The list suggests, it does not
+/// decide, so nothing here rejects a name for being absent.
 /// </summary>
 public static class CreatureCatalog
 {
@@ -128,16 +118,13 @@ public static class CreatureCatalog
     private static readonly Dictionary<string, CreatureKind> ByName =
         AllCreatures.ToDictionary(creature => creature.Name, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Every creature the game registers, base game first.</summary>
+    /// <summary>Base game first.</summary>
     public static IReadOnlyList<CreatureKind> Known => AllCreatures;
 
     public static bool IsKnown(string? name)
         => !string.IsNullOrWhiteSpace(name) && ByName.ContainsKey(name.Trim());
 
-    /// <summary>
-    /// The catalog entry for a name, or one built from the name itself when the catalog has never
-    /// heard of it. A creature a mod added is still a creature the save holds.
-    /// </summary>
+    /// <summary>An unknown name comes back as an entry built from the name itself.</summary>
     public static CreatureKind ForName(string? name)
     {
         string trimmed = (name ?? "").Trim();
@@ -147,10 +134,7 @@ public static class CreatureCatalog
             : new CreatureKind(trimmed, trimmed, CreatureSource.Vanilla);
     }
 
-    /// <summary>
-    /// Creatures matching what has been typed, names starting with it first. An empty query offers
-    /// the whole list, because a picker with nothing typed in it should still show something.
-    /// </summary>
+    /// <summary>Names starting with the query first. An empty query offers the whole list.</summary>
     public static IEnumerable<CreatureKind> Search(string? query)
     {
         string trimmed = (query ?? "").Trim();

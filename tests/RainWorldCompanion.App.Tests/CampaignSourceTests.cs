@@ -7,12 +7,10 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// Which buttons a campaign card carries, and which file they act on.
-///
-/// The same card is drawn for a campaign in the live folder, one in a backup and one in a library
-/// save. Taking a campaign out and sending it somewhere is a read of the file it is in, so it works
-/// on all three. Editing it or removing it changes that file, so it works on the live folder only:
-/// a backup edited in place is no longer a copy of anything.
+/// The same card is drawn for a campaign in the live folder, one in a backup and one in a
+/// library save. Taking a campaign out and sending it somewhere is a read of the file it is in,
+/// so it works on all three. Editing it or removing it changes that file, so it works on the
+/// live folder only: a backup edited in place is no longer a copy of anything.
 /// </summary>
 public class CampaignSourceTests
 {

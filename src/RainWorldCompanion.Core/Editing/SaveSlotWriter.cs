@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 using RainWorldCompanion.Core.Backups;
@@ -10,10 +9,6 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>
-/// What writing an edit did, in the same shape as <see cref="SlotCopyResult"/> and
-/// <see cref="Library.LibraryLoadResult"/> so a caller reports all three the same way.
-/// </summary>
 public sealed record SaveWriteResult(
     bool Success,
     BackupSnapshot? SafetySnapshot,
@@ -23,10 +18,6 @@ public sealed record SaveWriteResult(
     long BytesWritten,
     string TargetFileName)
 {
-    /// <summary>
-    /// The line to lead a report with. The wording lives here rather than in the UI so "nothing was
-    /// changed" can never be printed over a save file that was in fact written to.
-    /// </summary>
     public string Headline()
     {
         if (Success)
@@ -53,13 +44,8 @@ public sealed record SaveWriteResult(
         => new(false, null, errors, Array.Empty<string>(), false, 0, targetFileName);
 }
 
-/// <summary>
-/// What moving a campaign onto or off one slot would do, worked out without changing anything.
-///
-/// <see cref="Splice"/> says what the move is: whether it replaces a campaign the slot already had,
-/// how much map comes with it, and anything the game will make of it that a person would not expect.
-/// <see cref="Write"/> is the same plan an edit builds, so writing one runs the same ladder.
-/// </summary>
+/// <summary>Worked out without changing anything. <see cref="Write"/> is the same plan an edit
+/// builds, so writing one runs the same steps.</summary>
 public sealed record CampaignMovePlan(
     SaveWritePlan Write,
     CampaignSpliceReport Splice,
@@ -72,7 +58,6 @@ public sealed record CampaignMovePlan(
     /// <summary>What is worth saying before this is written. None of it stops the write.</summary>
     public IReadOnlyList<string> Warnings => Splice.Warnings;
 
-    /// <summary>One line saying what this would do to the slot.</summary>
     public string Describe()
     {
         string what = Splice.Outcome switch
@@ -117,18 +102,10 @@ public sealed record CampaignMovePlan(
             problems);
 }
 
-/// <summary>
-/// What emptying one slot of its campaigns would do, worked out without changing anything.
-///
-/// The game's own WipeAll leaves a slot holding nothing but a reset MISCPROG. This app stops short
-/// of that: it takes the campaigns out and leaves MISCPROG as it found it, because rebuilding that
-/// record would drop every field of it this app does not model, which on a modded save is most of
-/// them. <see cref="Describe"/> says what is actually about to happen rather than what the game
-/// would have done.
-/// </summary>
-/// <param name="Campaigns">The campaigns about to go, by the name a person reads.</param>
+/// <summary>The game's own WipeAll leaves a slot holding nothing but a reset MISCPROG. This app stops
+/// short of that and leaves MISCPROG as it found it, so <see cref="Describe"/> says what is about to
+/// happen rather than what the game would have done.</summary>
 /// <param name="MapsRemoved">How many map records go with them, which is none unless asked for.</param>
-/// <param name="TakingTheMap">Whether the map discovery was asked to go too.</param>
 public sealed record SlotDeletePlan(
     SaveWritePlan Write,
     SaveSlotRef Target,
@@ -145,7 +122,6 @@ public sealed record SlotDeletePlan(
     /// <summary>True when the slot is being left as empty as one never played.</summary>
     public bool IsTotal => Depth == SlotDeleteDepth.Everything;
 
-    /// <summary>One line saying what this takes out of the slot.</summary>
     public string Describe()
     {
         if (IsTotal)
@@ -189,10 +165,7 @@ public sealed record SlotDeletePlan(
             : what + ", and leaves the map they explored behind.";
     }
 
-    /// <summary>
-    /// What the slot still holds afterwards. Worth saying out loud, because a slot cleared of its
-    /// campaigns is not an untouched one and the game will not treat it as new.
-    /// </summary>
+    /// <summary>What the slot still holds afterwards, which the game will not treat as new.</summary>
     public string WhatStays
     {
         get
@@ -228,17 +201,10 @@ public sealed record SlotDeletePlan(
 }
 
 /// <summary>
-/// Writes an edited save over the slot it came from.
-///
-/// The ladder that makes overwriting a save undoable is not repeated here. It already exists, a
-/// slot copy and a library load both run it, and this runs the same one: the edited bytes are put
-/// in a temp file and handed to <see cref="SlotCopyService.CopyOntoSlot"/> as the source. So the
-/// safety snapshot, the proof that the snapshot holds the file about to be replaced, the operation
-/// lock and the hashing of both sides afterwards all come along without a second implementation to
-/// keep in step.
-///
-/// The safety snapshot is not optional. An edit is the one operation in this app that writes bytes
-/// no file anywhere else holds, so the snapshot taken before it is the only copy of what was there.
+/// Writes an edited save over the slot it came from. The edited bytes go into a temp file handed to
+/// <see cref="SlotCopyService.CopyOntoSlot"/> as the source, so the safety snapshot, the operation
+/// lock and the hashing of both sides all come along without a second implementation. An edit is the
+/// one operation here that writes bytes no other file holds, so that snapshot is the only copy.
 /// </summary>
 public sealed class SaveSlotWriter
 {
@@ -251,13 +217,8 @@ public sealed class SaveSlotWriter
         _gameDetector = gameDetector ?? throw new ArgumentNullException(nameof(gameDetector));
     }
 
-    /// <summary>
-    /// Writes a plan over its slot.
-    ///
-    /// Refusals come back in <see cref="SaveWriteResult.Errors"/>. A running game throws
-    /// <see cref="GameRunningException"/>, the same way the copy and the restore do, so one handler
-    /// covers it wherever it is met.
-    /// </summary>
+    /// <summary>Refusals come back in <see cref="SaveWriteResult.Errors"/>, but a running game throws
+    /// <see cref="GameRunningException"/>, the same way the copy and the restore do.</summary>
     public SaveWriteResult Write(
         SaveWritePlan plan,
         SaveSlotRef target,
@@ -267,7 +228,6 @@ public sealed class SaveSlotWriter
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(target);
 
-        // The game holds the save files open while it runs and writes them on its own schedule.
         EnsureGameNotRunning();
 
         SlotSide side = _backups.SlotCopies.ReadSide(target, includeCampaigns: false);
@@ -350,7 +310,6 @@ public sealed class SaveSlotWriter
         }
     }
 
-    /// <summary>Empties a slot, through the same ladder an edit runs.</summary>
     public SaveWriteResult Write(
         SlotDeletePlan plan,
         IProgress<string>? progress = null,
@@ -363,7 +322,6 @@ public sealed class SaveSlotWriter
             : Write(plan.Write, plan.Target, progress, ct);
     }
 
-    /// <summary>Writes a campaign move over its slot, through the same ladder an edit runs.</summary>
     public SaveWriteResult Write(
         CampaignMovePlan plan,
         IProgress<string>? progress = null,
@@ -376,7 +334,6 @@ public sealed class SaveSlotWriter
             : Write(plan.Write, plan.Target, progress, ct);
     }
 
-    /// <summary>Reads one campaign out of a slot, to store it or to move it somewhere else.</summary>
     public CampaignSlice? ReadCampaign(SaveSlotRef source, string slugcatId)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -385,10 +342,8 @@ public sealed class SaveSlotWriter
         return SaveEditSession.Open(side.FullPath).TakeCampaign(slugcatId);
     }
 
-    /// <summary>
-    /// What putting a campaign into a slot would do. Nothing is written and nothing is locked, so
-    /// the answer is what the slot holds now rather than what it will hold when the write runs.
-    /// </summary>
+    /// <summary>Nothing is written and nothing is locked, so the answer describes what the slot holds
+    /// now rather than what it will hold when the write runs.</summary>
     public CampaignMovePlan PlanPutCampaign(SaveSlotRef target, CampaignSlice slice)
     {
         ArgumentNullException.ThrowIfNull(slice);
@@ -396,25 +351,13 @@ public sealed class SaveSlotWriter
         return Plan(target, session => session.PutCampaignIn(slice));
     }
 
-    /// <summary>
-    /// What taking a campaign out of a slot would do.
-    /// </summary>
-    /// <param name="includeMaps">
-    /// Whether the slugcat's map discovery goes with it. The game's own WipeSaveState leaves it
-    /// behind, so deleting a campaign in place should too. Moving one to another slot should take
-    /// it, or the map stays in a slot that no longer has the campaign.
-    /// </param>
+    /// <param name="includeMaps">Whether the slugcat's map discovery goes with it. WipeSaveState
+    /// leaves it behind, so a delete in place should too, but a move to another slot should take
+    /// it.</param>
     public CampaignMovePlan PlanTakeCampaign(SaveSlotRef target, string slugcatId, bool includeMaps)
         => Plan(target, session => session.TakeCampaignOut(slugcatId, includeMaps));
 
-    /// <summary>
-    /// What wiping a slot would do: every campaign in it taken out, worked out without changing
-    /// anything.
-    /// </summary>
-    /// <param name="includeMaps">
-    /// Whether each slugcat's map discovery goes with its campaign. The game's own wipe drops the
-    /// map, so true is the closer match; false leaves the slot remembering everywhere it has been.
-    /// </param>
+    /// <summary>Worked out without changing anything.</summary>
     public SlotDeletePlan PlanDeleteSlot(SaveSlotRef target, SlotDeleteDepth depth)
     {
         SlotEdit open = OpenSlot(target);
@@ -477,12 +420,8 @@ public sealed class SaveSlotWriter
             Array.Empty<string>());
     }
 
-    /// <summary>
-    /// A slot opened for a change, or the reason it was not.
-    ///
-    /// Every plan that rewrites a slot asks the same four questions first, and asking them once
-    /// keeps a new kind of change from quietly skipping one of them.
-    /// </summary>
+    /// <summary>Every plan that rewrites a slot asks the same four questions first, and asking them
+    /// once keeps a new kind of change from skipping one.</summary>
     private SlotEdit OpenSlot(SaveSlotRef target)
     {
         ArgumentNullException.ThrowIfNull(target);
@@ -527,17 +466,11 @@ public sealed class SaveSlotWriter
         }
     }
 
-    /// <summary>One slot open for a change, or the reason it is not.</summary>
     private sealed record SlotEdit(SlotSide Side, string Name, SaveEditSession? Session, string? Refusal);
 
-    /// <summary>
-    /// Puts the edited bytes on disk and reads them back before anything is overwritten.
-    ///
-    /// The plan already proved itself in memory. This proves the same things again about a real
-    /// file read by the ordinary reader, which is the last check available that costs nothing: a
-    /// disk that wrote the bytes wrongly, or a container that only decodes while it is a string in
-    /// this process, is caught while the save folder is still untouched.
-    /// </summary>
+    /// <summary>Puts the edited bytes on disk and reads them back through the ordinary reader before
+    /// anything is overwritten, so a disk that wrote them wrongly is caught while the save folder is
+    /// still untouched.</summary>
     private static bool StageEdit(
         SaveWritePlan plan,
         string tempPath,
@@ -592,10 +525,8 @@ public sealed class SaveSlotWriter
         return false;
     }
 
-    /// <summary>
-    /// The note recorded in the safety snapshot, listing what the edit was about to do. A snapshot
-    /// found weeks later says which change it was taken before rather than only when.
-    /// </summary>
+    /// <summary>Lists what the edit was about to do, so a snapshot found weeks later says which
+    /// change it was taken before rather than only when.</summary>
     private static string BuildSafetyNote(string fileName, SaveWritePlan plan)
     {
         const int Listed = 8;
@@ -652,8 +583,6 @@ public sealed class SaveSlotWriter
         }
         catch (Exception)
         {
-            // A temp file left behind is litter in the system temp folder, not a failed save, and
-            // reporting it would say the save went wrong when it did not.
         }
     }
 }

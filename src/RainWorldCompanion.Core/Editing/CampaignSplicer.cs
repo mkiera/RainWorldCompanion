@@ -1,57 +1,36 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>
-/// One campaign lifted out of a payload, kept as the characters the file holds.
-///
-/// The records are whole records, header included, and never a parsed model. A campaign carries
-/// fields from every mod that has ever touched it, and the only way to move one without losing
-/// them is to move the text.
-/// </summary>
-/// <param name="MapRecords">
-/// The map discovery this slugcat has, in stored order. These are the MAP_ and MAPUPDATE_ records
-/// named after the slugcat. The bare MAP and MAPUPDATE records are shared by every campaign in the
-/// slot, so they belong to no campaign and are never carried.
-/// </param>
+/// <summary>The records are whole records, header included, and never a parsed model: a campaign
+/// carries fields from mods, and the only way to move one without losing them is to move the text.</summary>
+/// <param name="MapRecords">The MAP_ and MAPUPDATE_ records named after the slugcat, in stored order.
+/// The bare MAP and MAPUPDATE records belong to no campaign and are never carried.</param>
 public sealed record CampaignSlice(
     string SlugcatId,
     string SaveStateRecord,
     IReadOnlyList<string> MapRecords);
 
-/// <summary>What a splice did to the target payload.</summary>
 public enum CampaignSpliceOutcome
 {
-    /// <summary>The target holds no campaign for that slugcat, so nothing was taken out.</summary>
     NotFound,
 
-    /// <summary>The campaign was not in the target and has been added to it.</summary>
     Added,
 
-    /// <summary>The target already had this slugcat, and that campaign is now this one.</summary>
     Replaced,
 
-    /// <summary>The campaign has been taken out of the target.</summary>
     Removed,
 }
 
-/// <summary>What a splice did, and anything about it worth saying out loud.</summary>
 /// <param name="MapsReplaced">Regions the target already had for this slugcat and now has again.</param>
 /// <param name="MapsAdded">Regions the target did not have for this slugcat.</param>
-/// <param name="MapsRemoved">
-/// Regions the target had for this slugcat and no longer has, because the campaign arriving has not
-/// been to them.
-/// </param>
-/// <param name="RecordsWritten">
-/// The records the splice put into the payload, and <paramref name="RecordsRemoved"/> the ones it
-/// took out. A write plan holds the splice to exactly these: every other record of the payload has
-/// to come back in the same order, character for character, or something was moved by accident.
-/// </param>
+/// <param name="MapsRemoved">Regions the target had for this slugcat and no longer has.</param>
+/// <param name="RecordsWritten">A write plan holds the splice to exactly these: every other record
+/// has to come back in the same order, character for character, or something was moved by accident.</param>
 public sealed record CampaignSpliceReport(
     CampaignSpliceOutcome Outcome,
     int MapsReplaced,
@@ -70,7 +49,6 @@ public sealed record CampaignSpliceReport(
         Array.Empty<string>(),
         Array.Empty<string>());
 
-    /// <summary>True when the payload came back the same as it went in.</summary>
     public bool DidNothing => Outcome == CampaignSpliceOutcome.NotFound
         && MapsReplaced == 0
         && MapsAdded == 0
@@ -80,23 +58,10 @@ public sealed record CampaignSpliceReport(
 }
 
 /// <summary>
-/// Moves one campaign between payloads: takes it out of one, puts it into another, or drops it.
-///
-/// Every operation is record surgery on the payload text. Records this app does not know are copied
-/// across untouched, and records it is not moving are left exactly where they were, so a payload
-/// that goes out and comes back is the same characters it started as.
-///
-/// Two facts from PlayerProgression shape all of it:
-///
-/// The game finds a campaign by splitting a record on the first &lt;progDivB&gt; and handing what
-/// follows to BackwardsCompatibilityRemix.ParseSaveNumber, which reads the value of the FIRST field
-/// of the body, whatever that field is called. So a campaign's identity is positional, and this
-/// class reads it the same way rather than looking for SAV STATE NUMBER by name. Every save seen so
-/// far writes that field first, and a save that does not is warned about instead of guessed at.
-///
-/// PlayerProgression.SaveToDisk rewrites the payload record by record in stored order and appends a
-/// campaign it did not find at the end, so that is where a new one goes here too. Order carries no
-/// meaning to the game: a real save has MAP records both before and after its SAVE STATE.
+/// Moves one campaign between payloads by record surgery on the payload text. Records this app does
+/// not know are copied across untouched. A campaign's identity is positional: the game reads the
+/// value of the FIRST field of the body, whatever that field is called, so this class reads it the
+/// same way rather than looking for SAV STATE NUMBER by name.
 /// </summary>
 public static class CampaignSplicer
 {
@@ -108,7 +73,6 @@ public static class CampaignSplicer
 
     private const string SharedMapUpdateHeader = "MAPUPDATE";
 
-    /// <summary>Header prefix of a map record belonging to one slugcat, as SaveToDisk writes it.</summary>
     private const string OwnedMapPrefix = "MAP_";
 
     private const string OwnedMapUpdatePrefix = "MAPUPDATE_";
@@ -131,15 +95,9 @@ public static class CampaignSplicer
 
     public static bool Contains(string? payload, string slugcatId) => Extract(payload, slugcatId) is not null;
 
-    /// <summary>
-    /// Takes one campaign out of a payload without changing it, or null when the payload holds no
-    /// campaign for that slugcat.
-    ///
-    /// Map records for a slugcat with no campaign are not a campaign. A real save carries
-    /// MAP_Inv records with no Inv campaign anywhere in it, which is what a slot looks like after
-    /// the game has wiped a save state: WipeSaveState drops the SAVE STATE record and leaves the
-    /// maps behind.
-    /// </summary>
+    /// <summary>Null when the payload holds no campaign for that slugcat. Map records for a slugcat
+    /// with no campaign are not a campaign: WipeSaveState drops the SAVE STATE record and leaves the
+    /// maps behind, so a real save can carry MAP_Inv records with no Inv campaign in it.</summary>
     public static CampaignSlice? Extract(string? payload, string slugcatId)
     {
         if (string.IsNullOrEmpty(payload) || string.IsNullOrWhiteSpace(slugcatId))
@@ -171,13 +129,8 @@ public static class CampaignSplicer
         return saveState is null ? null : new CampaignSlice(slugcatId, saveState, maps);
     }
 
-    /// <summary>
-    /// Puts a campaign into a payload, replacing the one already there for that slugcat.
-    ///
-    /// Map records are matched to the target's by slugcat and region, so one the target already has
-    /// is replaced where it lies. That keeps the record order of the file it was written in, and it
-    /// is what makes putting a campaign back where it came from give the same characters back.
-    /// </summary>
+    /// <summary>Map records are matched by slugcat and region, so one the target already has is
+    /// replaced where it lies and the record order of the file it was written in survives.</summary>
     public static string InsertCampaign(string? payload, CampaignSlice slice, out CampaignSpliceReport report)
     {
         ArgumentNullException.ThrowIfNull(slice);
@@ -197,14 +150,9 @@ public static class CampaignSplicer
         return Rebuild(slots, appended);
     }
 
-    /// <summary>
-    /// Takes a campaign out of a payload.
-    /// </summary>
-    /// <param name="includeMaps">
-    /// Whether the slugcat's map discovery goes with it. The game's own WipeSaveState leaves it
-    /// behind, so a campaign deleted in place should leave it too. A campaign moved to another slot
-    /// should take it, or the map it had stays in a slot that no longer has the campaign.
-    /// </param>
+    /// <param name="includeMaps">Whether the slugcat's map discovery goes with it. WipeSaveState
+    /// leaves it behind, so a delete in place should too, but a move to another slot should take
+    /// it.</param>
     public static string RemoveCampaign(
         string? payload,
         string slugcatId,
@@ -258,16 +206,8 @@ public static class CampaignSplicer
         return Rebuild(slots, Array.Empty<string>());
     }
 
-    /// <summary>
-    /// Takes out every map record in a payload, whoever it belongs to.
-    ///
-    /// One campaign leaving takes only its own map, because the others are still there to read
-    /// theirs. Emptying a slot is the case where that stops being true: with every campaign gone,
-    /// every map in the slot belongs to nobody. That includes the bare records the whole slot
-    /// shares, which the game writes when modded regions are off and which no campaign has ever
-    /// owned, and it includes a map left orphaned by an earlier delete that took the campaign and
-    /// left its map behind.
-    /// </summary>
+    /// <summary>Takes out every map record, the bare slot-shared ones included. For emptying a slot,
+    /// where with every campaign gone every map in it belongs to nobody.</summary>
     public static string RemoveEveryMap(string? payload, out IReadOnlyList<string> removed)
     {
         if (string.IsNullOrEmpty(payload))
@@ -295,10 +235,8 @@ public static class CampaignSplicer
     /// <summary>True for a map record of either kind, one a slugcat owns or one the slot shares.</summary>
     public static bool IsAnyMap(string? record) => IsSharedMap(record) || MapOwnerOf(record) is not null;
 
-    /// <summary>
-    /// Which slugcat a campaign record belongs to, read the way the game reads it: the value of the
-    /// first field of the body, whatever that field is called.
-    /// </summary>
+    /// <summary>Read the way the game reads it: the value of the first field of the body, whatever
+    /// that field is called.</summary>
     public static string? SlugcatOf(string? record)
     {
         if (string.IsNullOrEmpty(record))
@@ -312,13 +250,8 @@ public static class CampaignSplicer
         return value < 0 ? null : first[(value + SavePayloadReader.ValueSeparator.Length)..];
     }
 
-    /// <summary>
-    /// Which slugcat a map record belongs to, or null for one shared by the whole slot.
-    ///
-    /// The game writes per-slugcat map records only with modded regions enabled, which is what
-    /// Downpour and Watcher turn on. Without them it writes bare MAP records that every campaign in
-    /// the slot reads, and a real save can hold both at once.
-    /// </summary>
+    /// <summary>Null for a map record shared by the whole slot. The game writes per-slugcat records
+    /// only with modded regions on, and a real save can hold both kinds at once.</summary>
     public static string? MapOwnerOf(string? record)
     {
         string header = HeaderOf(record);
@@ -338,7 +271,6 @@ public static class CampaignSplicer
         return null;
     }
 
-    /// <summary>True for a map record every campaign in the slot shares.</summary>
     public static bool IsSharedMap(string? record)
     {
         string header = HeaderOf(record);
@@ -372,8 +304,7 @@ public static class CampaignSplicer
                 continue;
             }
 
-            // The game keeps whichever it reaches first and rewrites the rest as they are, so a
-            // second copy would go on shadowing this one for as long as the file lives.
+            // The game keeps whichever it reaches first and rewrites the rest as they are.
             slots[i] = null;
             log.Warnings.Add(
                 $"The slot held more than one {Name(slice.SlugcatId)} campaign. The extra one has been dropped.");
@@ -448,13 +379,8 @@ public static class CampaignSplicer
         return (replaced, added, removed);
     }
 
-    /// <summary>
-    /// Puts the records back together, appending the new ones where the game appends its own.
-    ///
-    /// SaveToDisk writes a separator after every record it keeps, so a payload ends with one and
-    /// splits with an empty record on the end. Appending before that empty record is what keeps the
-    /// payload ending the way the game writes it.
-    /// </summary>
+    /// <summary>SaveToDisk writes a separator after every record it keeps, so a payload splits with
+    /// an empty record on the end. New records go before that one.</summary>
     private static string Rebuild(List<string?> slots, IReadOnlyList<string> appended)
     {
         var kept = new List<string>(slots.Count + appended.Count);
@@ -473,10 +399,6 @@ public static class CampaignSplicer
         return string.Join(SavePayloadReader.RecordSeparator, kept);
     }
 
-    /// <summary>
-    /// Says what the game will do with this campaign that a person would not expect, without
-    /// refusing to write any of it.
-    /// </summary>
     private static void WarnAboutWhatTheGameWillMakeOfIt(CampaignSlice slice, List<string> warnings)
     {
         string header = HeaderOf(slice.SaveStateRecord);
@@ -529,7 +451,6 @@ public static class CampaignSplicer
         }
     }
 
-    /// <summary>The first field of a record body, which is where a campaign keeps its slugcat.</summary>
     private static string FirstField(string record)
     {
         int header = record.IndexOf(SavePayloadReader.HeaderSeparator, StringComparison.Ordinal);
@@ -561,8 +482,6 @@ public static class CampaignSplicer
         int next = body.IndexOf(SavePayloadReader.HeaderSeparator, StringComparison.Ordinal);
         string region = next < 0 ? body : body[..next];
 
-        // The separator is a character no header or region name holds, so no pair of them can
-        // collide by running together.
         return header + "\n" + region;
     }
 
@@ -590,14 +509,8 @@ public static class CampaignSplicer
         && right is not null
         && string.Equals(Normalise(left), Normalise(right), StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// The name a numbered slugcat stands for.
-    ///
-    /// A save written before the ids were names stores a number, and
-    /// BackwardsCompatibilityRemix.ParsePlayerNumber turns 0 to 3 into White, Yellow, Red and Night.
-    /// Anything above that it looks up in a list the game builds at runtime from the mods loaded, so
-    /// this app cannot resolve it and leaves it as the number it found.
-    /// </summary>
+    /// <summary>A save written before the ids were names stores a number. Above 3 the game looks it
+    /// up in a list built at runtime from the mods loaded, so this leaves it as the number.</summary>
     private static string Normalise(string id)
     {
         string trimmed = id.Trim();
@@ -619,13 +532,8 @@ public static class CampaignSplicer
 
     private static string Name(string? slugcatId) => SlugcatCatalog.ForId(slugcatId).DisplayName;
 
-    /// <summary>
-    /// What a splice did, collected as it goes.
-    ///
-    /// The two record lists are what a write plan checks the result against. A record replaced in
-    /// place is in both of them, which is what makes putting a campaign back where it came from
-    /// cancel out to no change at all.
-    /// </summary>
+    /// <summary>A record replaced in place goes into both Written and Removed, which is what makes
+    /// putting a campaign back where it came from cancel out to no change at all.</summary>
     private sealed class SpliceLog
     {
         public List<string> Written { get; } = new();

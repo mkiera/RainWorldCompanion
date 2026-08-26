@@ -3,13 +3,6 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Which slot holds which library save, and when the two stop matching.
-///
-/// The library is the only thing that knows this, so the rules live here rather than being worked
-/// out from the files. One slot has at most one claimant, an update makes the entry and the slot
-/// match again, and anything else writing to a slot takes the claim away.
-/// </summary>
 public class LibrarySlotLinkTests
 {
     private static readonly SaveSlotRef Slot1 = new(SaveRealm.Local, 1);
@@ -22,7 +15,6 @@ public class LibrarySlotLinkTests
 
         var entry = world.Library.StoreSlot(Slot1, "a save", null);
 
-        // Nothing was written to a slot, so no slot holds these bytes yet.
         Assert.Null(entry.Manifest!.LastLoadedSlotRef);
     }
 
@@ -42,8 +34,6 @@ public class LibrarySlotLinkTests
     [Fact]
     public void Loading_a_second_save_into_a_slot_takes_the_claim_from_the_first()
     {
-        // Without this the first row keeps saying it is in sav, and the badge reports a played slot
-        // when the slot in fact holds a different save entirely.
         using var world = new LibraryWorld();
         var first = world.Library.StoreSlot(Slot1, "first", null);
         var second = world.Library.StoreSlot(Slot2, "second", null);
@@ -72,9 +62,6 @@ public class LibrarySlotLinkTests
     [Fact]
     public void Updating_makes_the_entry_and_the_slot_match_again()
     {
-        // The bug this pins: an update copies the slot into the entry, so the two are byte for byte
-        // the same afterwards. Leaving the old stamp had the row say "played since" about the very
-        // slot it had just been brought level with, and no amount of updating cleared it.
         using var world = new LibraryWorld();
         var entry = world.Library.StoreSlot(Slot1, "a save", null);
         Assert.True(world.Library.LoadEntry(entry, Slot1).Success);
@@ -115,7 +102,6 @@ public class LibrarySlotLinkTests
     [Fact]
     public void Undoing_an_update_gives_up_the_slot()
     {
-        // The entry holds the older save again, which is not what the slot holds.
         using var world = new LibraryWorld();
         var entry = world.Library.StoreSlot(Slot1, "a save", null);
         Assert.True(world.Library.LoadEntry(entry, Slot1).Success);
@@ -161,8 +147,6 @@ public class LibrarySlotLinkTests
         Assert.Null(world.Reload(two).Manifest!.LastLoadedSlotRef);
     }
 
-    // ---- when the bytes were last written ----
-
     [Fact]
     public void A_new_save_reports_the_time_it_was_stored()
     {
@@ -177,8 +161,6 @@ public class LibrarySlotLinkTests
     [Fact]
     public void An_updated_save_reports_the_time_of_the_update()
     {
-        // The row showed the day the save was first stored, so a save brought level with an hour of
-        // play still read as days old.
         using var world = new LibraryWorld();
         var entry = world.Library.StoreSlot(Slot1, "a save", null);
         var stored = entry.CreatedUtc;
@@ -205,8 +187,6 @@ public class LibrarySlotLinkTests
 
         Assert.Equal("older", world.Library.ListEntries()[0].Name);
     }
-
-    // ---- which slot an update offers ----
 
     [Fact]
     public void A_save_that_was_never_loaded_still_knows_the_slot_it_came_from()

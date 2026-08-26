@@ -1,22 +1,15 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// What one DEATHPERSISTENTSAVEDATA blob says. Everything is optional: a value the blob does not
-/// carry stays null, and a collection it does not carry stays empty.
-/// </summary>
-/// <param name="RedsDeathStored">
-/// True when the blob carries a bare REDSDEATH token. DeathPersistentSaveData.SaveToString writes
-/// that token whenever the save is written as a death or a quit, whatever the flag holds, and
-/// SaveState.LoadGame then clears the flag while the campaign is inside Hunter's cycle limit. See
-/// <see cref="RedsIllness.EffectiveRedsDeath"/>.
-/// </param>
-/// <param name="RedExtraCycles">True when the blob carries a bare REDEXTRACYCLES token.</param>
+/// <summary>Everything is optional: a value the blob does not carry stays null, and a collection it
+/// does not carry stays empty.</summary>
+/// <param name="RedsDeathStored">True when the blob carries a bare REDSDEATH token, which SaveToString
+/// writes whenever the save is written as a death or a quit, whatever the flag holds. See
+/// <see cref="RedsIllness.EffectiveRedsDeath"/>.</param>
 public sealed record DeathPersistentData(
     int? Karma,
     int? KarmaCap,
@@ -43,17 +36,13 @@ public sealed record DeathPersistentData(
 }
 
 /// <summary>
-/// Parses the DEATHPERSISTENTSAVEDATA value of a SAVE STATE record. The blob is the same shape as
-/// a record body one level down: fields split on &lt;dpA&gt;, each either KEY&lt;dpB&gt;VALUE or a
-/// bare flag. Values carry their own angle bracket delimiters, so only the first &lt;dpB&gt; in a
-/// field is a key boundary.
-///
-/// Every part is read best effort. A field this does not recognise, or one whose value will not
-/// parse, leaves its property null or its collection empty rather than failing the whole blob.
+/// The blob is the same shape as a record body one level down: fields split on &lt;dpA&gt;, each
+/// either KEY&lt;dpB&gt;VALUE or a bare flag. Values carry their own angle bracket delimiters, so
+/// only the first &lt;dpB&gt; in a field is a key boundary. A field this does not recognise leaves
+/// its property null rather than failing the whole blob.
 /// </summary>
 public static class DeathPersistentReader
 {
-    /// <summary>Separates the fields of the blob.</summary>
     public const string FieldSeparator = "<dpA>";
 
     /// <summary>Separates a field key from its value.</summary>
@@ -187,11 +176,8 @@ public static class DeathPersistentReader
             passages);
     }
 
-    /// <summary>
-    /// Reads GHOSTS, a comma separated list of "region:state" such as "SH:1,UW:2", where 1 is a
-    /// hunch and 2 is an echo the player has spoken to. An entry with no colon or an unparseable
-    /// state is dropped.
-    /// </summary>
+    /// <summary>A comma separated list of "region:state" such as "SH:1,UW:2", where 1 is a hunch and
+    /// 2 is an echo the player has spoken to. An entry with no colon is dropped.</summary>
     public static IReadOnlyList<EchoRecord> ParseGhosts(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -249,15 +235,9 @@ public static class DeathPersistentReader
         return gates.Count == 0 ? Array.Empty<string>() : gates;
     }
 
-    /// <summary>
-    /// Reads WINSTATE: entries separated by &lt;wsA&gt;, each split on &lt;egA&gt; into a passage
-    /// name, the consumed flag as 1 or 0, and a tracker.
-    ///
-    /// The tracker takes several shapes in one real save: a plain int ("17"), a float ("30.29",
-    /// "0.01875") and a dotted string ("25.18.20", "1.1.1.1."). Which shape a passage uses depends
-    /// on the passage, so the raw text goes on <see cref="PassageRecord.Progress"/> untouched and
-    /// <see cref="PassageGoals"/> reads it against the name.
-    /// </summary>
+    /// <summary>Entries separated by &lt;wsA&gt;, each split on &lt;egA&gt; into a passage name, the
+    /// consumed flag as 1 or 0, and a tracker. The tracker takes several shapes ("17", "30.29",
+    /// "1.1.1."), so the raw text goes on <see cref="PassageRecord.Progress"/> untouched.</summary>
     public static IReadOnlyList<PassageRecord> ParseWinState(string? value)
     {
         if (string.IsNullOrEmpty(value))

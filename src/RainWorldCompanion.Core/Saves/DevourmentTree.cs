@@ -1,39 +1,25 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Saves;
 
 /// <summary>
-/// Turns the flat list of DEVOURMENTSTATE relationships into the stomach chains they describe.
-///
-/// The mod writes one row per predator and prey pair, so a creature swallowed while itself
-/// carrying something appears twice: once as prey, once as predator, under the same entity id.
-/// Following those ids rebuilds the nesting. In a real save that is how you see a lizard inside
-/// the player that is itself holding a spear, or the player inside a lizard, neither of which
-/// the flat list gives any way to tell apart.
+/// Turns the flat list of DEVOURMENTSTATE relationships into the stomach chains they describe. The
+/// mod writes one row per predator and prey pair, so a creature swallowed while itself carrying
+/// something appears twice under the same entity id, and following those ids rebuilds the nesting.
 /// </summary>
 public static class DevourmentTree
 {
-    /// <summary>
-    /// A row with no usable predator id cannot be linked to anything, so it is given a key of its
-    /// own built from this prefix and its position. The leading space keeps it from colliding with
-    /// a real id. Manifests written before ids were recorded are entirely this case, and they come
-    /// out as the flat list they used to be.
-    /// </summary>
+    /// <summary>A row with no usable predator id gets a key of its own from this prefix and its
+    /// position. The leading space keeps it from colliding with a real id.</summary>
     private const string UnlinkedKeyPrefix = " unlinked:";
 
-    /// <summary>
-    /// Builds the chains. Every relationship reaches the result exactly once, including ones the
-    /// ids cannot place, so nothing is dropped for being malformed.
-    /// </summary>
-    /// <param name="friendIds">
-    /// Entity ids from the campaign's FRIENDS field, so a swallowed creature the player had tamed
-    /// can be marked. Optional: without it nothing is marked, which is what a manifest written
-    /// before FRIENDS was recorded gives.
-    /// </param>
+    /// <summary>Every relationship reaches the result exactly once, including ones the ids cannot
+    /// place, so nothing is dropped for being malformed.</summary>
+    /// <param name="friendIds">Optional. Without it nothing is marked as tamed, which is what a
+    /// manifest written before FRIENDS was recorded gives.</param>
     public static IReadOnlyList<DevourmentNode> Build(
         IReadOnlyList<DevourmentRelationship>? relationships,
         IReadOnlyCollection<string>? friendIds = null)
@@ -86,8 +72,7 @@ public static class DevourmentTree
             }
         }
 
-        // Anything still unplaced was only reachable through a loop, so it has no root to hang
-        // from. Promote it rather than letting a malformed save hide rows.
+        // Anything still unplaced was only reachable through a loop, so it has no root to hang from.
         foreach (string predatorKey in predatorOrder)
         {
             if (placed.Add(predatorKey))

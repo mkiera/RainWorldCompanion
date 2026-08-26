@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,10 +9,6 @@ using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// One row in the backup list. The row carries the faces of the slugcats in the snapshot so one
-/// backup can be told from another without selecting it.
-/// </summary>
 public sealed partial class BackupItemViewModel : ObservableObject
 {
     private const int MaxRowPortraits = 8;
@@ -47,9 +41,8 @@ public sealed partial class BackupItemViewModel : ObservableObject
     public bool CanRestore => Snapshot.IsComplete;
 
     /// <summary>
-    /// The backup time, in the same calendar as the folder name it is shown beside. BackupService
-    /// builds that name with the invariant culture, so formatting this with the current one would
-    /// print 2569 next to 2026 on a machine set to the Thai Buddhist calendar.
+    /// Invariant culture, matching the folder name shown beside it. The current culture would print
+    /// 2569 next to 2026 on a machine set to the Thai Buddhist calendar.
     /// </summary>
     public string CreatedText =>
         Snapshot.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
@@ -71,12 +64,10 @@ public sealed partial class BackupItemViewModel : ObservableObject
 
     public string KindText => IsSafetyBackup ? "Auto (pre-restore)" : "Manual";
 
-    /// <summary>Faces for the slugcats this snapshot holds, one per slugcat across all slots.</summary>
     public IReadOnlyList<PortraitViewModel> Portraits { get; }
 
     public bool HasPortraits => Portraits.Count > 0;
 
-    /// <summary>For example "11 campaigns", or "no slot data" for a snapshot with no manifest.</summary>
     public string CampaignCountText { get; }
 
     public int FileCount => Snapshot.Manifest?.Files.Count ?? 0;
@@ -90,8 +81,8 @@ public sealed partial class BackupItemViewModel : ObservableObject
     public string DisplayName => $"{CreatedText}  {LabelText}";
 
     /// <summary>
-    /// What a screen reader announces for the row. The row itself is a grid of separate text
-    /// blocks, so without this the container falls back to naming the view model type.
+    /// The row is a grid of separate text blocks, so without this a screen reader falls back to
+    /// naming the view model type.
     /// </summary>
     public string AccessibleName =>
         $"{KindText} backup, {CreatedText}, {LabelText}, {CampaignCountText}, {SizeText}, {StateText}";
@@ -145,11 +136,7 @@ public sealed partial class BackupItemViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// A byte count for the list and the detail header. Formatted with the invariant culture, the
-    /// same as every size Core prints, so one operation cannot report "6,0 MB" in a dialog and
-    /// "6.0 MB" in the message box that follows it on a comma-decimal machine.
-    /// </summary>
+    /// <summary>Invariant culture, the same as every size Core prints.</summary>
     public static string FormatSize(long bytes)
     {
         if (bytes >= 1024L * 1024L * 1024L)

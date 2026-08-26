@@ -4,18 +4,12 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Building the strings the game writes for one abstract object.
-///
-/// The blobs quoted here are the game's own, taken from a played save. That matters more for items
-/// than it did for creatures: the game's reader special-cases twenty types, each taking its own
-/// fields at its own indices, and the whole method sits inside a try. A blob short of a field is
+/// The blobs quoted here are the game's own, taken from a played save. A blob short of a field is
 /// not reported, it is dropped, so the only way to know a tail is right is to compare it against
 /// one the game wrote.
 /// </summary>
 public class ItemBlobBuilderTests
 {
-    // ---- real blobs, from a played save ----
-
     private const string RealRock = "ID.-1759.8243<oB>0<oA>Rock<oA>SL_S06.23.18.0";
 
     private const string RealPearl = "ID.-1.7631<oB>0<oA>PebblesPearl<oA>SL_S06.23.18.0<oA>-1<oA>-1<oA>PebblesPearl<oA>0<oA>1";
@@ -24,8 +18,6 @@ public class ItemBlobBuilderTests
 
     private const string RealWaterNut = "ID.-1.9110<oB>0<oA>WaterNut<oA>SL_S06.23.18.0<oA>534<oA>5<oA>0";
 
-    // ---- building ----
-
     [Fact]
     public void An_item_with_nothing_after_its_position_is_built_the_way_the_game_writes_a_rock()
         => Assert.Equal(
@@ -33,8 +25,8 @@ public class ItemBlobBuilderTests
             ItemBlobBuilder.Build("Rock", "ID.-1759.8243", "SL_S06", x: 23, y: 18));
 
     /// <summary>
-    /// A spear carries eight fields the reader takes one at a time, and every one of them has to be
-    /// there or it throws while unpacking. A real save writes them all as zero for a plain spear.
+    /// A spear carries eight fields the reader takes one at a time, and every one has to be there
+    /// or it throws while unpacking.
     /// </summary>
     [Fact]
     public void A_spear_is_built_with_all_eight_of_the_fields_the_reader_takes()
@@ -52,8 +44,8 @@ public class ItemBlobBuilderTests
 
         Assert.Equal(RealPearl, blob);
 
-        // The reader takes colour at 6 and number at 7, so the slot at 5 has to be filled even
-        // though nothing reads it for this type.
+        // The reader takes colour at 6 and number at 7, so slot 5 has to be filled even though
+        // nothing reads it for this type.
         Assert.Equal(5, ItemBlobBuilder.Parse(blob)!.Tail.Count);
     }
 
@@ -92,8 +84,6 @@ public class ItemBlobBuilderTests
 
         Assert.Equal("ID.-1.5<oB>0<oA>Rock<oA>HI_S03.-1.-1.2", blob);
     }
-
-    // ---- reading it back ----
 
     [Fact]
     public void A_real_blob_taken_apart_and_put_back_together_is_the_same_string()
@@ -134,8 +124,6 @@ public class ItemBlobBuilderTests
         Assert.Equal("nonsense", ItemBlobBuilder.WithRoom("nonsense", "HI_S03"));
     }
 
-    // ---- moving ----
-
     [Fact]
     public void Moving_an_item_keeps_the_rest_of_where_it_was()
     {
@@ -164,8 +152,6 @@ public class ItemBlobBuilderTests
         Assert.Equal("SOME.ROOM", ItemBlobBuilder.RoomOf(blob));
         Assert.Equal("OTHER.ROOM.1.2.3", ItemBlobBuilder.Parse(ItemBlobBuilder.WithRoom(blob, "OTHER.ROOM"))!.Position);
     }
-
-    // ---- the catalog behind it ----
 
     [Fact]
     public void The_items_a_played_save_actually_holds_are_all_buildable()

@@ -7,15 +7,14 @@ using RainWorldCompanion.Core.Mods;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The mod list is added to manifests without moving the schema version, so builds on either
-/// side of the change have to read each other's files. These prove both directions, and prove
-/// that nothing in the new shape can cost the read of the whole manifest.
+/// The mod list was added without moving the schema version, so builds on either side of the
+/// change have to read each other's files. These tests prove both directions.
 /// </summary>
 public class ModListCompatibilityTests
 {
     /// <summary>
-    /// The manifest as it was before mod lists existed. Deserialising a current file into this is
-    /// what an older build does, and it must land every field it knows about.
+    /// The manifest shape before mod lists existed. Deserialising a current file into this is
+    /// what an older build does.
     /// </summary>
     private sealed class ManifestBeforeModLists
     {
@@ -55,8 +54,8 @@ public class ModListCompatibilityTests
     }
 
     /// <summary>
-    /// A build from before this field existed reads a file carrying it. Unknown members are
-    /// skipped, and a skipped subtree is never bound, so nothing inside the block can throw.
+    /// Unknown members are skipped, and a skipped subtree is never bound, so nothing inside the
+    /// mod list block can throw here.
     /// </summary>
     [Fact]
     public void A_build_that_predates_mod_lists_reads_a_manifest_that_has_one()
@@ -77,8 +76,8 @@ public class ModListCompatibilityTests
     }
 
     /// <summary>
-    /// The other direction: a snapshot written before this existed carries no block, which reads
-    /// as null and has to stay null rather than becoming an empty list.
+    /// A pre-existing snapshot carries no mods block at all, which must read as null, not an
+    /// empty list.
     /// </summary>
     [Fact]
     public void A_manifest_without_a_mod_list_reads_as_nothing_recorded()
@@ -109,7 +108,6 @@ public class ModListCompatibilityTests
     }
 
     /// <summary>
-    /// A file from a later build carrying a property this one has never heard of still reads.
     /// This is the case the enum ban is for: an unknown property is skipped, but an unknown enum
     /// value would throw and take the whole manifest with it.
     /// </summary>
@@ -128,10 +126,6 @@ public class ModListCompatibilityTests
         Assert.Equal("v1.12.0", manifest.Mods.GameVersion);
     }
 
-    /// <summary>
-    /// Nothing in the mod list is worked out from something else the file already holds, so
-    /// nothing here can go stale against a value that is recomputed later.
-    /// </summary>
     [Fact]
     public void The_recorded_mod_list_holds_only_stored_fields()
     {

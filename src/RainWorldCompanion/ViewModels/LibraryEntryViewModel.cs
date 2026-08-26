@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -12,10 +10,6 @@ using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
-/// <summary>
-/// One row in the library list. The row carries the faces of the slugcats in the stored save, so
-/// one named save can be told from another without selecting it.
-/// </summary>
 public sealed partial class LibraryEntryViewModel : ObservableObject
 {
     private const int MaxRowPortraits = 8;
@@ -46,11 +40,7 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
 
     public bool IsComplete => Entry.IsComplete;
 
-    /// <summary>
-    /// When the bytes in this save were last written, which is what the row shows. An update
-    /// replaces them, so a save brought level with an hour of play reads as an hour old rather than
-    /// as old as the day it was first stored.
-    /// </summary>
+    /// <summary>When the bytes were last written, which an update replaces.</summary>
     public string ModifiedText => FormatTime(Entry.ModifiedUtc);
 
     /// <summary>When the save was first stored, whether or not an update has replaced it since.</summary>
@@ -58,14 +48,9 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
 
     public bool WasUpdated => Entry.WasUpdated;
 
-    /// <summary>"updated" or "stored", the word in front of the time on the row.</summary>
     public string ModifiedLabel => WasUpdated ? "updated" : "stored";
 
-    /// <summary>
-    /// In the same calendar as the folder name beside it. The folder name is built with the
-    /// invariant culture, so formatting this with the current one would print 2569 next to 2026 on
-    /// a machine set to the Thai Buddhist calendar.
-    /// </summary>
+    /// <summary>Invariant culture, in the same calendar as the folder name beside it.</summary>
     private static string FormatTime(DateTime utc) =>
         utc.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
@@ -75,7 +60,6 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
 
     public string SizeText => BackupItemViewModel.FormatSize(Entry.Manifest?.SizeBytes ?? 0);
 
-    /// <summary>"from sav2", or empty when nothing recorded where it came from.</summary>
     public string SourceText
     {
         get
@@ -85,12 +69,10 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
         }
     }
 
-    /// <summary>Faces for the slugcats in the stored save.</summary>
     public IReadOnlyList<PortraitViewModel> Portraits { get; }
 
     public bool HasPortraits => Portraits.Count > 0;
 
-    /// <summary>For example "3 campaigns", or "no campaign" for a Rain Meadow online save.</summary>
     public string CampaignCountText
     {
         get
@@ -115,12 +97,9 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
     }
 
     /// <summary>
-    /// "in sav", or "in sav, played since" when the slot file no longer looks like it did when the
-    /// two were last level. Empty when no slot holds this save.
-    ///
-    /// A size and a write time rather than a hash. This is a hint on a row, and re-hashing every
-    /// slot on every refresh would cost several megabytes of reading to answer a question the user
-    /// has not asked yet.
+    /// "in sav", or "in sav, played since" when the slot no longer looks like it did when the two
+    /// were last level. Judged on size and write time, because re-hashing every slot on every
+    /// refresh would cost megabytes of reading for a hint on a row.
     /// </summary>
     public string SlotBadgeText { get; }
 
@@ -154,8 +133,8 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
     public string DisplayName => Name;
 
     /// <summary>
-    /// What a screen reader announces for the row. The row is a grid of separate text blocks, so
-    /// without this the container falls back to naming the view model type.
+    /// The row is a grid of separate text blocks, so without this a screen reader falls back to
+    /// naming the view model type.
     /// </summary>
     public string AccessibleName
     {
@@ -167,9 +146,8 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
             text.Append(", ").Append(SizeText);
             text.Append(", ").Append(ModifiedLabel).Append(' ').Append(ModifiedText);
 
-            // Which container it was taken from is announced here and nowhere else. On screen it is
-            // read off the row and the panel subtitle, neither of which a screen reader reaches
-            // through the row's own name.
+            // Which container it came from is announced here and nowhere else a screen reader
+            // reaches through the row's own name.
             if (SourceText.Length > 0)
             {
                 text.Append(", ").Append(SourceText);
@@ -278,8 +256,6 @@ public sealed partial class LibraryEntryViewModel : ObservableObject
         }
         catch (Exception)
         {
-            // A slot that cannot be measured says only where the save went, which is the part that
-            // came out of the manifest and is still true.
             return where;
         }
     }

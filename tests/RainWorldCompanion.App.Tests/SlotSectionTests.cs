@@ -4,11 +4,9 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// One slot section: the header line and the campaigns under it.
-///
-/// The two cases worth pinning are the header, which must not name a realm, and the line shown when
-/// there is no campaign, because a Rain Meadow save routinely holds the explored map and the
-/// progression record without one and reporting that as nothing is wrong.
+/// The two cases worth pinning are the header, which must not name a realm, and the line shown
+/// when there is no campaign, because a Rain Meadow save routinely holds the explored map and
+/// the progression record without one and reporting that as nothing is wrong.
 /// </summary>
 public class SlotSectionTests
 {

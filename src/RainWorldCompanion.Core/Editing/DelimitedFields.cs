@@ -1,16 +1,11 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>Where one field sits inside a delimited body, and what it holds.</summary>
-/// <param name="Start">Index of the first character of the field.</param>
 /// <param name="Length">Characters the field occupies, separators excluded.</param>
-/// <param name="Key">The field key.</param>
 /// <param name="ValueStart">Index of the first character of the value, or -1 for a bare flag.</param>
-/// <param name="ValueLength">Characters the value occupies, or 0 for a bare flag.</param>
 internal readonly record struct FieldSpan(int Start, int Length, string Key, int ValueStart, int ValueLength)
 {
     /// <summary>True when the field is a bare token such as HASTHEGLOW, which means true by being present.</summary>
@@ -20,26 +15,16 @@ internal readonly record struct FieldSpan(int Start, int Length, string Key, int
 }
 
 /// <summary>
-/// Finds and replaces fields inside one delimited body, by position, leaving every other character
-/// of the body where it was.
-///
-/// Rain World nests the same shape at three levels with three sets of delimiters: a record body
-/// splits on &lt;svA&gt;, the DEATHPERSISTENTSAVEDATA value inside it splits on &lt;dpA&gt;, and
-/// each splits key from value on the first separator only, because values carry their own angle
-/// bracket delimiters. One implementation with the separators passed in keeps the awkward parts,
-/// which are the ones about separators, written once.
-///
-/// Nothing here rebuilds a body from parsed fields. That is the difference between an edit that
-/// changes one number and an edit that silently drops whatever this app does not model, which on a
-/// save touched by a mod is most of it.
+/// Finds and replaces fields inside one delimited body by position, leaving every other character
+/// where it was. Key and value split on the first separator only, because values carry their own
+/// angle bracket delimiters. Nothing here rebuilds a body from parsed fields, which would drop
+/// whatever this app does not model.
 /// </summary>
 internal sealed class DelimitedFields
 {
-    /// <summary>The fields of a record body, such as a SAVE STATE.</summary>
     public static readonly DelimitedFields Record =
         new(SavePayloadReader.FieldSeparator, SavePayloadReader.ValueSeparator);
 
-    /// <summary>The fields inside a DEATHPERSISTENTSAVEDATA value.</summary>
     public static readonly DelimitedFields DeathPersistent =
         new(DeathPersistentReader.FieldSeparator, DeathPersistentReader.ValueSeparator);
 
@@ -52,7 +37,7 @@ internal sealed class DelimitedFields
         _valueSeparator = valueSeparator;
     }
 
-    /// <summary>Every field of the body, in stored order. Empty fields are skipped, as the readers skip them.</summary>
+    /// <summary>In stored order. Empty fields are skipped, as the readers skip them.</summary>
     public List<FieldSpan> Locate(string body)
     {
         var spans = new List<FieldSpan>();
@@ -92,7 +77,6 @@ internal sealed class DelimitedFields
         }
     }
 
-    /// <summary>The nth field with this key, or null when the body has fewer than that many.</summary>
     public FieldSpan? Find(string body, string key, int occurrence = 0)
     {
         int seen = 0;
@@ -128,10 +112,7 @@ internal sealed class DelimitedFields
 
     public bool Has(string body, string key) => Find(body, key) is not null;
 
-    /// <summary>
-    /// Sets a keyed field, replacing the occurrence if the body has it and appending it if not.
-    /// A key stored as a bare flag becomes a keyed field, because that is what was asked for.
-    /// </summary>
+    /// <summary>A key stored as a bare flag becomes a keyed field.</summary>
     public string SetValue(string body, string key, string value, int occurrence = 0)
     {
         FieldSpan? found = Find(body, key, occurrence);
@@ -148,10 +129,7 @@ internal sealed class DelimitedFields
             : Splice(body, span.ValueStart, span.ValueLength, value);
     }
 
-    /// <summary>
-    /// Adds or removes a bare flag. Setting one the body already carries as a keyed field rewrites
-    /// it to the bare form, so what the game reads back is a flag either way.
-    /// </summary>
+    /// <summary>Setting one the body carries as a keyed field rewrites it to the bare form.</summary>
     public string SetFlag(string body, string key, bool present)
     {
         FieldSpan? found = Find(body, key);
@@ -176,7 +154,7 @@ internal sealed class DelimitedFields
         return found is null ? body : RemoveAt(body, found.Value);
     }
 
-    /// <summary>Inserts a field directly after one occurrence of a key, or appends when that occurrence is absent.</summary>
+    /// <summary>Appends when that occurrence is absent.</summary>
     public string InsertAfter(string body, string key, int occurrence, string newField)
     {
         FieldSpan? found = Find(body, key, occurrence);
@@ -186,11 +164,7 @@ internal sealed class DelimitedFields
             : Splice(body, found.Value.End, 0, _fieldSeparator + newField);
     }
 
-    /// <summary>
-    /// Appends a field, keeping whatever the body does about a trailing separator. A body that
-    /// ends with one still ends with one afterwards, so the shape the game wrote is the shape it
-    /// reads back.
-    /// </summary>
+    /// <summary>A body that ends with a separator still ends with one afterwards.</summary>
     public string Append(string body, string field)
     {
         if (string.IsNullOrEmpty(body))
@@ -203,10 +177,9 @@ internal sealed class DelimitedFields
             : body + _fieldSeparator + field;
     }
 
-    /// <summary>Builds one field, keyed or bare.</summary>
+    /// <summary>A null value builds a bare field.</summary>
     public string Field(string key, string? value) => value is null ? key : key + _valueSeparator + value;
 
-    /// <summary>The key half of a field built by <see cref="Field"/>.</summary>
     public string KeyOf(string field)
     {
         int separator = field.IndexOf(_valueSeparator, StringComparison.Ordinal);

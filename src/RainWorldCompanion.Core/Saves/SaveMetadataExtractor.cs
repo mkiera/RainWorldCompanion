@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace on purpose: RainWorldCompanion.Core.System would otherwise
+// bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using System.Text;
 using RainWorldCompanion.Core.Saves.Models;
@@ -8,17 +7,14 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Core.Saves;
 
 /// <summary>
-/// Pulls the campaign summary out of a save container. Every entry point is fail-soft: a
-/// missing, truncated, empty or garbage file comes back as a <see cref="SlotMetadata"/> with
-/// <see cref="SlotMetadata.ParseError"/> set rather than an exception, because this runs while
-/// listing a directory the user did not curate.
+/// Pulls the campaign summary out of a save container. Every entry point is fail-soft: a bad file
+/// comes back with <see cref="SlotMetadata.ParseError"/> set rather than throwing, because this
+/// runs while listing a directory the user did not curate.
 /// </summary>
 public static class SaveMetadataExtractor
 {
-    /// <summary>Hashtable key holding the live progression payload.</summary>
     private const string SaveKey = "save";
 
-    /// <summary>Record header that carries a campaign.</summary>
     private const string SaveStateHeader = "SAVE STATE";
 
     private const string SlugcatField = "SAV STATE NUMBER";
@@ -37,8 +33,8 @@ public static class SaveMetadataExtractor
     private const string JustBeatGameField = "JUSTBEATGAME";
 
     /// <summary>
-    /// The SAVE STATE half of the extra cycles flag. DEATHPERSISTENTSAVEDATA carries one under the
-    /// same name, and SaveState.RedExtraCycles is true when either is set.
+    /// DEATHPERSISTENTSAVEDATA carries one under the same name, and SaveState.RedExtraCycles is
+    /// true when either is set.
     /// </summary>
     private const string RedExtraCyclesField = "REDEXTRACYCLES";
 
@@ -47,29 +43,23 @@ public static class SaveMetadataExtractor
     private const string SwallowedItemsField = "SWALLOWEDITEMS";
     private const string HeldItemsField = "UNRECOGNIZEDPLAYERGRASPS";
 
-    /// <summary>The game's list of creatures it keeps with the player between cycles.</summary>
+    /// <summary>The creatures the game keeps with the player between cycles.</summary>
     private const string FriendsField = "FRIENDS";
 
-    /// <summary>Separates the entries of the KILLS value.</summary>
     private const string KillSeparator = "<svC>";
 
-    /// <summary>Separates a creature id from its count inside one KILLS entry.</summary>
     private const string KillCountSeparator = "<svD>";
 
     private const int MaxErrorLength = 200;
 
     /// <summary>
-    /// Never throws. On failure returns metadata with ParseError set. The realm is taken from the
-    /// file name, so a file read out of the save folder under its real name lands on the right
-    /// side without the caller saying so.
+    /// Never throws. The realm is taken from the file name, so a file read out of the save folder
+    /// under its real name lands on the right side without the caller saying so.
     /// </summary>
     public static SlotMetadata Extract(string filePath, int slotNumber)
         => Extract(filePath, slotNumber, SaveSlotRef.RealmForFileName(SafeFileName(filePath)));
 
-    /// <summary>
-    /// Never throws. Same as <see cref="Extract(string, int)"/> with the realm stated outright,
-    /// for a file whose name does not say which set it came from.
-    /// </summary>
+    /// <summary>Never throws. For a file whose name does not say which set it came from.</summary>
     public static SlotMetadata Extract(string filePath, int slotNumber, SaveRealm realm)
     {
         string fileName = SafeFileName(filePath);
@@ -92,15 +82,13 @@ public static class SaveMetadataExtractor
                 return Failed(slotNumber, fileName, realm, Shorten(Localise(error, filePath, fileName)) ?? "unreadable save container");
             }
 
-            // A hashtable whose Keys and Values disagree has lost entries. Reporting that as a
-            // parse error is the only thing that separates a damaged slot from an unused one.
+            // Reporting this is the only thing that separates a damaged slot from an unused one.
             if (container.StructureProblem is { } structureProblem)
             {
                 return Failed(slotNumber, fileName, realm, Shorten(structureProblem) ?? "the save file is damaged");
             }
 
-            // No "save" key is a real state, not a failure: exp1 has no keys at all and
-            // expCore1 only has "core".
+            // No "save" key is a real state: exp1 has no keys at all and expCore1 only has "core".
             if (!container.Entries.TryGetValue(SaveKey, out string? rawValue))
             {
                 return new SlotMetadata
@@ -115,14 +103,11 @@ public static class SaveMetadataExtractor
                 };
             }
 
-            // The return value says whether a digest was there at all. A value with no digest is
-            // a raw payload, which is how the format stores several keys, and reporting it as a
-            // failed checksum tells the player their save is corrupt when the game reads it fine.
+            // A value with no digest is a raw payload, which is how the format stores several keys.
+            // Reporting that as a failed checksum tells the player their save is corrupt when it is not.
             bool hasDigest = SaveChecksum.TryUnwrap(rawValue, out string payload, out bool checksumValid);
 
-            // An empty payload is an untouched slot, which is what online_sav3 is on a fresh
-            // install: the value is the digest and nothing after it. That reads as no campaigns
-            // and no parse error, so Describe says "empty" rather than reporting a failure.
+            // An empty payload is an untouched slot, as online_sav3 is on a fresh install.
             return Walk(payload, fileName, slotNumber, realm, hasDigest ? checksumValid : null);
         }
         catch (Exception ex)
@@ -132,12 +117,8 @@ public static class SaveMetadataExtractor
     }
 
     /// <summary>
-    /// The same read as <see cref="Extract(string, int)"/>, over a payload already in hand rather
-    /// than a file on disk.
-    ///
-    /// A campaign stored on its own is a payload with no container around it, so there is no digest
-    /// to check and <see cref="SlotMetadata.ChecksumValid"/> comes back null, which is the state
-    /// this format already uses for a value that carries none.
+    /// The same read over a payload already in hand. A campaign stored on its own has no container
+    /// around it and so no digest, leaving <see cref="SlotMetadata.ChecksumValid"/> null.
     /// </summary>
     public static SlotMetadata FromPayload(string? payload, string fileName, int slotNumber, SaveRealm realm)
     {
@@ -158,9 +139,8 @@ public static class SaveMetadataExtractor
         SaveRealm realm,
         bool? checksumValid)
     {
-        // Every record is counted, not only the campaigns. A Rain Meadow online_sav commonly holds
-        // MAP, MAPUPDATE and MISCPROG records and no SAVE STATE at all, and without the total the
-        // app has no way to tell that file from a slot that has never been played.
+        // Every record is counted, not only the campaigns. A Rain Meadow online_sav often holds MAP
+        // and MISCPROG records and no SAVE STATE, which without the total looks like a fresh slot.
         var campaigns = new List<CampaignSummary>();
         int records = 0;
 
@@ -168,8 +148,7 @@ public static class SaveMetadataExtractor
         {
             records++;
 
-            // Compare the header before touching the body. MAP records run to hundreds of
-            // kilobytes and copying one out to look at its header is wasted work.
+            // Header before body: MAP records run to hundreds of kilobytes.
             if (!record.HeaderIs(SaveStateHeader))
             {
                 continue;
@@ -190,21 +169,12 @@ public static class SaveMetadataExtractor
         };
     }
 
-    /// <summary>
-    /// "sav" to 1, "sav2" to 2, "sav3" to 3, and the Rain Meadow "online_sav", "online_sav2",
-    /// "online_sav3" to the same 1, 2, 3. Anything else is null.
-    /// </summary>
+    /// <summary>"sav" to 1, "sav2" to 2, and the Rain Meadow "online_sav" names to the same. Else null.</summary>
     public static int? SlotNumberForFileName(string fileName) => SlotForFileName(fileName)?.Slot;
 
     /// <summary>
-    /// The slot a container file name stands for, realm and number together. Null when the name is
-    /// not one of the six.
-    ///
-    /// Both realms are numbered by the same Options.saveSlot. Options.GetSaveFileName_SavOrExp
-    /// returns "sav" for saveSlot 0 and "sav" + (saveSlot + 1) above it, and Rain Meadow's hook
-    /// RainMeadow.RainMeadow.Options_GetSaveFileName_SavOrExp returns "online_sav" and
-    /// "online_sav" + (saveSlot + 1) from the same field once a lobby is joined. So online_sav2
-    /// is the online half of the same UI slot 2 that sav2 is the local half of.
+    /// The slot a container file name stands for. Both realms are numbered by the same
+    /// Options.saveSlot, so online_sav2 is the online half of the same UI slot 2 as sav2.
     /// </summary>
     public static SaveSlotRef? SlotForFileName(string fileName) => SaveSlotRef.ForFileName(fileName);
 
@@ -233,7 +203,7 @@ public static class SaveMetadataExtractor
         List<string>? friendIds = null;
 
         // REGIONSTATE and COMMUNITIES are skipped by omission. REGIONSTATE alone appears about a
-        // hundred times per campaign and each value runs to kilobytes, and nothing here reads them.
+        // hundred times per campaign and each value runs to kilobytes.
         foreach (KeyValuePair<string, string?> field in SavePayloadReader.SplitFields(body))
         {
             switch (field.Key)
@@ -275,9 +245,8 @@ public static class SaveMetadataExtractor
                     break;
 
                 case DevourmentField:
-                    // The count is of fields, not of parsed relationships. A field a newer mod
-                    // version writes in a shape this app does not know still happened, and the
-                    // count is what the UI reports as "carried".
+                    // Counts fields, not parsed relationships: one a newer mod version writes in an
+                    // unknown shape still happened, and the count is what the UI reports as carried.
                     devourmentCount++;
                     if (DevourmentReader.TryRead(field.Value, out DevourmentRelationship? relationship)
                         && relationship is not null)
@@ -403,8 +372,8 @@ public static class SaveMetadataExtractor
     }
 
     /// <summary>
-    /// Reads one KILLS value: entries separated by &lt;svC&gt;, each "CreatureId&lt;svD&gt;Count".
-    /// An entry with no count, or a count that will not parse, is dropped.
+    /// One KILLS value: entries separated by &lt;svC&gt;, each "CreatureId&lt;svD&gt;Count". An
+    /// entry with no count, or a count that will not parse, is dropped.
     /// </summary>
     private static void AppendKills(string? value, ref List<KillRecord>? kills)
     {
@@ -442,8 +411,8 @@ public static class SaveMetadataExtractor
     }
 
     /// <summary>
-    /// Reads UNRECOGNIZEDPLAYERGRASPS, which lists one item name per hand separated by
-    /// &lt;svB&gt;. The first &lt;svB&gt; was already consumed as the key boundary.
+    /// UNRECOGNIZEDPLAYERGRASPS lists one item name per hand separated by &lt;svB&gt;. The first
+    /// &lt;svB&gt; was already consumed as the key boundary.
     /// </summary>
     private static void AppendHeldItems(string? value, ref List<string>? heldItems)
     {
@@ -486,8 +455,8 @@ public static class SaveMetadataExtractor
     }
 
     /// <summary>
-    /// Swaps the full path in a container message for the bare file name. The exception names
-    /// the path because a caller may only have the message, but a list row has no space for it.
+    /// Swaps the full path in a container message for the bare file name, which a list row has
+    /// room for.
     /// </summary>
     private static string? Localise(string? message, string filePath, string fileName)
     {
@@ -499,7 +468,6 @@ public static class SaveMetadataExtractor
         return message.Replace(filePath, fileName, StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>Collapses a message to one capped line so it fits a list row.</summary>
     private static string? Shorten(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))

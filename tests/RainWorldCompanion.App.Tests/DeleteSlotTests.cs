@@ -4,12 +4,10 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// Which slots offer to be deleted.
-///
-/// Deleting a slot rewrites the file, so it belongs to the live save folder alone: a backup and a library
-/// save are copies taken at a moment. A slot with nothing in it is left off rather than offered and
-/// refused, because a button that can only ever report that there is nothing to delete is one to not
-/// draw at all.
+/// Deleting a slot rewrites the file, so it belongs to the live save folder alone: a backup and
+/// a library save are copies taken at a moment. A slot with nothing in it is left off rather
+/// than offered and refused, because a button that can only ever report that there is nothing
+/// to delete is one to not draw at all.
 /// </summary>
 public class DeleteSlotTests
 {
@@ -23,9 +21,9 @@ public class DeleteSlotTests
     }
 
     /// <summary>
-    /// A slot the game has played and had its campaign wiped from still holds the map it explored
-    /// and its progression record. That is real data, and deleting all of it is exactly what the
-    /// button is for, so counting campaigns was the wrong test.
+    /// A slot the game has played and had its campaign wiped from still holds the map it
+    /// explored and its progression record. That is real data, and deleting all of it is
+    /// exactly what the button is for.
     /// </summary>
     [Fact]
     public void A_live_slot_with_data_but_no_campaign_still_offers_it()

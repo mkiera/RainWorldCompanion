@@ -4,11 +4,7 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// The catalog turns the id stored in a save into the name and colour the UI paints. It is
-/// asked about ids that came out of a file, so an id nobody has heard of has to come back as a
-/// usable entry rather than as null.
-/// </summary>
+/// <summary>Ids come out of a save file, so an unknown one must come back as a usable entry rather than null.</summary>
 public class SlugcatCatalogTests
 {
     [Theory]

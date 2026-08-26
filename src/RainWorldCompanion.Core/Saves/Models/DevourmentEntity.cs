@@ -1,26 +1,16 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 
 namespace RainWorldCompanion.Core.Saves.Models;
 
-/// <summary>
-/// One remembered relationship out of a creature's social memory.
-///
-/// The game writes an entry only when like or fear is not zero, so a creature with no entry has
-/// simply never felt anything about anything, rather than being unable to. tempLike and tempFear
-/// exist on the game side but are never serialized.
-/// </summary>
+/// <summary>The game writes an entry only when like or fear is not zero.</summary>
 /// <param name="SubjectId">Entity the feeling is about. "ID.-1.0" is the player.</param>
 /// <param name="Like">Stored as L. Negative means dislike. Absent when zero.</param>
 /// <param name="Fear">Stored as F. Absent when zero.</param>
 /// <param name="Know">Stored as K, how well it knows the subject. Absent when zero.</param>
 public sealed record SocialRelationship(string SubjectId, float? Like, float? Fear, float? Know);
 
-/// <summary>
-/// The extra state a spear carries. A plain spear stores zero for all of it, so these only tell
-/// you something when one of them is set.
-/// </summary>
+/// <summary>A plain spear stores zero for all of it.</summary>
 public sealed record SpearState(
     int StuckInWallCycles,
     bool Explosive,
@@ -29,16 +19,11 @@ public sealed record SpearState(
     bool Needle,
     float Poison)
 {
-    /// <summary>True when this is anything other than an ordinary spear.</summary>
     public bool IsSpecial => Explosive || Electric || Needle || Poison > 0f;
 }
 
-/// <summary>
-/// What one serialized creature or object says about itself, beyond its type and id.
-///
-/// Everything here is best effort. A field the blob does not carry comes back null or empty, and
-/// a blob written by a newer game or mod version simply yields less rather than failing.
-/// </summary>
+/// <summary>A field the blob does not carry comes back null or empty, so a blob written by a newer
+/// game or mod version yields less rather than failing.</summary>
 public sealed class DevourmentEntity
 {
     public string EntityId { get; init; } = "";
@@ -50,10 +35,8 @@ public sealed class DevourmentEntity
     /// <summary>Empty for an item, and for a creature that has never felt anything.</summary>
     public IReadOnlyList<SocialRelationship> Social { get; init; } = Array.Empty<SocialRelationship>();
 
-    /// <summary>
-    /// Meat points left on a creature that has been partly eaten. The maximum varies by creature
-    /// type, so this is only meaningful as "some has been taken".
-    /// </summary>
+    /// <summary>Meat points left on a partly eaten creature. The maximum varies by creature type,
+    /// so this is only meaningful as "some has been taken".</summary>
     public int? MeatLeft { get; init; }
 
     /// <summary>The stored DataPearlType, for example SL_moon. Null for anything not a pearl.</summary>
@@ -65,7 +48,6 @@ public sealed class DevourmentEntity
     /// <summary>Set only for a spear.</summary>
     public SpearState? Spear { get; init; }
 
-    /// <summary>The feeling this creature has about the player, when it has one.</summary>
     public SocialRelationship? TowardPlayer
     {
         get

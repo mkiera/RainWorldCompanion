@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Saves;
@@ -9,7 +8,6 @@ using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Library;
 
-/// <summary>What one library entry holds.</summary>
 public enum LibraryEntryKind
 {
     /// <summary>A whole slot file, byte for byte as the game wrote it.</summary>
@@ -19,32 +17,19 @@ public enum LibraryEntryKind
     Campaign,
 }
 
-/// <summary>
-/// What entry.json holds: everything needed to list, describe and check one stored save without
-/// opening the save itself.
-///
-/// <see cref="Sha256"/> is the anchor. Every later check compares the bytes on disk against it
-/// rather than against another copy of themselves, which is the same rule the backup manifests
-/// follow and the reason a damaged entry cannot certify itself sound.
-/// </summary>
+/// <summary>Every check compares the bytes on disk against <see cref="Sha256"/> rather than against
+/// another copy of themselves, so a damaged entry cannot certify itself sound.</summary>
 public sealed class LibraryManifest
 {
-    /// <summary>
-    /// Two, because an entry can now hold one campaign rather than a whole slot.
-    ///
-    /// A version one manifest carries no kind at all and reads back as a whole slot, which is what
-    /// every one of them is. Going the other way, a version of this app that predates campaign
-    /// entries skips the key it does not know and then finds no save.bin, so such an entry lists
-    /// with a problem rather than being loaded as something it is not.
-    /// </summary>
+    /// <summary>A version one manifest carries no kind and reads back as a whole slot, which is what
+    /// every one of them is.</summary>
     public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
-    /// <summary>Whether this is a whole slot or one campaign out of one.</summary>
     public LibraryEntryKind Kind { get; set; } = LibraryEntryKind.WholeSlot;
 
-    /// <summary>Which slugcat the stored campaign belongs to. Null for a whole slot.</summary>
+    /// <summary>Null for a whole slot.</summary>
     public string? CampaignSlugcatId { get; set; }
 
     public string Name { get; set; } = "";
@@ -53,11 +38,8 @@ public sealed class LibraryManifest
 
     public DateTime CreatedUtc { get; set; }
 
-    /// <summary>
-    /// When the save bytes were last replaced, by an update or by undoing one. Null while the entry
-    /// still holds what it was first stored with, which is why a row falls back to
-    /// <see cref="CreatedUtc"/> rather than showing a blank.
-    /// </summary>
+    /// <summary>When the save bytes were last replaced, by an update or by undoing one. Null while
+    /// the entry still holds what it was first stored with.</summary>
     public DateTime? UpdatedUtc { get; set; }
 
     public string AppVersion { get; set; } = "";
@@ -74,33 +56,21 @@ public sealed class LibraryManifest
 
     public string Sha256 { get; set; } = "";
 
-    /// <summary>
-    /// The campaigns in the stored save, parsed once when the entry was written so that selecting
-    /// a row costs no disk read. Null when the save could not be parsed at all.
-    /// </summary>
+    /// <summary>Parsed once when the entry was written, so selecting a row costs no disk read. Null
+    /// when the save could not be parsed at all.</summary>
     public SlotMetadata? Metadata { get; set; }
 
-    /// <summary>
-    /// The slot holding these same bytes, so an update knows which slot to offer and a row can say
-    /// where the save went.
-    ///
-    /// A load sets it, and so does an update, because either way the entry and that slot file are
-    /// byte for byte the same afterwards. At most one entry names a given slot: whichever entry
-    /// last put its bytes there owns the link, and everyone else's is cleared, so two rows can never
-    /// both claim to be in sav.
-    /// </summary>
+    /// <summary>The slot holding these same bytes. At most one entry names a given slot: whichever
+    /// entry last put its bytes there owns the link and everyone else's is cleared, so two rows can
+    /// never both claim to be in sav.</summary>
     public SaveRealm? LastLoadedRealm { get; set; }
 
     public int? LastLoadedSlot { get; set; }
 
-    /// <summary>When the entry and the slot were last made to match.</summary>
     public DateTime? LastLoadedUtc { get; set; }
 
-    /// <summary>
-    /// The size and write time of the slot file at the moment the two matched. Comparing these
-    /// against the file today says whether the slot has been played since, which is a hint on a row
-    /// rather than a check, so a stamp rather than a hash is the right cost.
-    /// </summary>
+    /// <summary>The size and write time of the slot file at the moment the two matched. Comparing
+    /// them against the file today is a hint on a row rather than a check, hence a stamp not a hash.</summary>
     public long? LastLoadedSizeBytes { get; set; }
 
     public DateTime? LastLoadedWriteUtc { get; set; }
@@ -114,51 +84,30 @@ public sealed class LibraryManifest
 
     public SlotMetadata? PreviousMetadata { get; set; }
 
-    /// <summary>
-    /// The mods that were on when these bytes were taken, and the game version they ran under.
-    /// A load compares this against the machine as it stands and says how the two differ.
-    ///
-    /// <para>This travels inside a .rwsave or .rwcampaign, because the bundle carries this whole
-    /// manifest, so an import keeps the exporter's record rather than stamping its own. That is
-    /// the point of it: the record describes the machine the save was played on, which is what a
-    /// load onto this machine wants to be compared against.</para>
-    ///
-    /// <para>Null when nothing was recorded, which covers entries stored before this existed and
-    /// bare files that arrived with nothing but their bytes. Null never means "no mods".</para>
-    /// </summary>
+    /// <summary>The mods that were on when these bytes were taken, and the game version they ran
+    /// under. Null when nothing was recorded, which covers entries stored before this existed and
+    /// bare files that arrived with nothing but their bytes. Null never means "no mods".</summary>
     public ModListSnapshot? Mods { get; set; }
 
-    /// <summary>
-    /// The mod list that went with the bytes now kept as the previous generation. Follows
-    /// <see cref="PreviousMetadata"/> exactly: set on update, put back on undo, cleared on import.
-    /// </summary>
+    /// <summary>Follows <see cref="PreviousMetadata"/> exactly: set on update, put back on undo,
+    /// cleared on import.</summary>
     public ModListSnapshot? PreviousMods { get; set; }
 
-    /// <summary>The slot the last load wrote to, or null when this has never been loaded.</summary>
     public SaveSlotRef? LastLoadedSlotRef =>
         LastLoadedRealm is { } realm && LastLoadedSlot is { } slot
             ? new SaveSlotRef(realm, slot)
             : null;
 
-    /// <summary>
-    /// The slot this was taken from, or null for an import whose file name named no slot. A save
-    /// that has never been loaded still knows where it came from, which is the slot worth offering
-    /// when there is no load on record.
-    /// </summary>
+    /// <summary>Null for an import whose file name named no slot.</summary>
     public SaveSlotRef? SourceSlotRef =>
         new SaveSlotRef(SourceRealm, SourceSlot) is { IsRealSlot: true } slot ? slot : null;
 }
 
 /// <summary>
-/// One stored save on disk: a folder holding the save bytes and the manifest that describes them.
-///
-/// The manifest is written last, so a folder without one is an entry that did not finish. Such a
-/// folder is still listed, because a half-written save is evidence of what happened, but it cannot
-/// be loaded, renamed or exported.
-///
-/// Folder names are timestamps rather than the user's chosen name. That name lives only in the
-/// manifest, which keeps reserved names, invalid characters and case collisions out of the
-/// filesystem entirely and makes a rename a manifest rewrite rather than a folder move.
+/// One stored save on disk. The manifest is written last, so a folder without one is an entry that
+/// did not finish: still listed, but not loadable. Folder names are timestamps and the user's name
+/// lives only in the manifest, which keeps reserved names and case collisions off the filesystem and
+/// makes a rename a manifest rewrite rather than a folder move.
 /// </summary>
 public sealed class LibraryEntry
 {
@@ -174,7 +123,6 @@ public sealed class LibraryEntry
 
     public const string PreviousCampaignFileName = "campaign.previous.bin";
 
-    /// <summary>Claims an entry folder while it is being written.</summary>
     internal const string ClaimFileName = ".creating";
 
     private LibraryEntry(string directoryPath, LibraryManifest? manifest, string? problem, DateTime createdUtc)
@@ -200,13 +148,9 @@ public sealed class LibraryEntry
 
     public DateTime CreatedUtc { get; }
 
-    /// <summary>
-    /// When the bytes in this entry were last written, which is the time a row shows. An entry that
-    /// has never been updated still holds what it was stored with, so that is its own store time.
-    /// </summary>
+    /// <summary>When the bytes in this entry were last written, which is the time a row shows.</summary>
     public DateTime ModifiedUtc => Manifest?.UpdatedUtc ?? CreatedUtc;
 
-    /// <summary>Whether an update has replaced the bytes this was first stored with.</summary>
     public bool WasUpdated => Manifest?.UpdatedUtc is not null;
 
     /// <summary>The user's name for it, falling back to the folder name for a broken entry.</summary>
@@ -219,7 +163,6 @@ public sealed class LibraryEntry
         }
     }
 
-    /// <summary>True when this entry holds one campaign rather than a whole slot.</summary>
     public bool IsCampaign => Manifest?.Kind == LibraryEntryKind.Campaign;
 
     public string ManifestPath => Path.Combine(DirectoryPath, ManifestFileName);
@@ -228,10 +171,7 @@ public sealed class LibraryEntry
 
     public string CampaignPath => Path.Combine(DirectoryPath, CampaignFileName);
 
-    /// <summary>
-    /// The file this entry is about, whichever of the two it holds. Everything that hashes, copies,
-    /// exports or verifies an entry goes through this rather than through the kind.
-    /// </summary>
+    /// <summary>Everything that hashes, copies, exports or verifies an entry goes through this.</summary>
     public string ContentPath => IsCampaign ? CampaignPath : SavePath;
 
     public string ContentFileName => IsCampaign ? CampaignFileName : SaveFileName;
@@ -246,10 +186,7 @@ public sealed class LibraryEntry
     public bool HasPrevious =>
         Manifest?.PreviousSha256 is { Length: > 0 } && File.Exists(PreviousContentPath);
 
-    /// <summary>
-    /// Reads one entry folder. Never throws: a folder that cannot be read comes back with a
-    /// Problem, because a library with one bad entry in it still has to list the rest.
-    /// </summary>
+    /// <summary>Never throws: a folder that cannot be read comes back with a Problem set.</summary>
     public static LibraryEntry Load(string directoryPath)
     {
         var full = Path.GetFullPath(directoryPath);
