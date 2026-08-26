@@ -25,20 +25,25 @@ namespace RainWorldCompanion.Views;
 /// </summary>
 public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
 {
-    private readonly Func<SlotDeleteDepth, SlotDeletePlan> _replan;
+    private readonly IReadOnlyDictionary<SlotDeleteDepth, SlotDeletePlan> _plans;
 
     private SlotDeletePlan _plan;
-    private SlotDeleteDepth _depth = SlotDeleteDepth.Campaigns;
+    private SlotDeleteDepth _depth;
 
-    /// <param name="plan">What deleting the campaigns alone would do, which is where this opens.</param>
-    /// <param name="replan">
-    /// Asks Core again when the choice moves. Every side of this window comes from one of those
-    /// answers, so it cannot disagree with the write.
+    /// <param name="plans">
+    /// What each depth would do, worked out before this opened. All three come in together because
+    /// a row that cannot do anything is drawn disabled rather than left to refuse when it is picked,
+    /// and knowing that needs the answer for every row, not just the one showing.
     /// </param>
-    public DeleteSlotDialog(SlotDeletePlan plan, Func<SlotDeleteDepth, SlotDeletePlan> replan)
+    public DeleteSlotDialog(IReadOnlyDictionary<SlotDeleteDepth, SlotDeletePlan> plans)
     {
-        _plan = plan;
-        _replan = replan;
+        _plans = plans;
+
+        // Open on the least that would actually do something. For a slot still holding campaigns
+        // that is the campaigns alone; for one holding only a map and a progression record the
+        // first two rows would change nothing, so it opens further down.
+        _depth = Depths.FirstOrDefault(depth => plans[depth].CanWrite, Depths[0]);
+        _plan = plans[_depth];
 
         InitializeComponent();
         DataContext = this;
@@ -48,6 +53,14 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    /// <summary>The three depths, least first, which is the order the rows are drawn in.</summary>
+    private static readonly SlotDeleteDepth[] Depths =
+    [
+        SlotDeleteDepth.Campaigns,
+        SlotDeleteDepth.CampaignsAndMap,
+        SlotDeleteDepth.Everything,
+    ];
 
     /// <summary>How much goes. Read after the dialog closes.</summary>
     public SlotDeleteDepth ChosenDepth => _depth;
@@ -72,6 +85,13 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
         get => _depth == SlotDeleteDepth.Everything;
         set => Choose(value, SlotDeleteDepth.Everything);
     }
+
+    /// <summary>Whether picking a row would change anything, which is what greys one out.</summary>
+    public bool CanPickJustTheCampaigns => _plans[SlotDeleteDepth.Campaigns].CanWrite;
+
+    public bool CanPickTheCampaignsAndTheMap => _plans[SlotDeleteDepth.CampaignsAndMap].CanWrite;
+
+    public bool CanPickAllOfIt => _plans[SlotDeleteDepth.Everything].CanWrite;
 
     public string HeadlineText => _plan.Campaigns.Count switch
     {
@@ -124,7 +144,7 @@ public partial class DeleteSlotDialog : Window, INotifyPropertyChanged
         }
 
         _depth = depth;
-        _plan = _replan(depth);
+        _plan = _plans[depth];
         RaiseAll();
     }
 

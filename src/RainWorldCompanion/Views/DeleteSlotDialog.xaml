@@ -44,11 +44,14 @@
         <TextBlock Text="HOW MUCH GOES" Style="{StaticResource Text.SectionLabel}" Margin="0,16,0,6" />
         <StackPanel>
             <RadioButton Content="{Binding JustTheCampaignsText}" GroupName="Depth"
-                         IsChecked="{Binding JustTheCampaigns, Mode=TwoWay}" />
+                         IsChecked="{Binding JustTheCampaigns, Mode=TwoWay}"
+                         IsEnabled="{Binding CanPickJustTheCampaigns}" />
             <RadioButton Content="{Binding TheCampaignsAndTheMapText}" GroupName="Depth"
-                         IsChecked="{Binding TheCampaignsAndTheMap, Mode=TwoWay}" Margin="0,6,0,0" />
+                         IsChecked="{Binding TheCampaignsAndTheMap, Mode=TwoWay}"
+                         IsEnabled="{Binding CanPickTheCampaignsAndTheMap}" Margin="0,6,0,0" />
             <RadioButton Content="{Binding AllOfItText}" GroupName="Depth"
-                         IsChecked="{Binding AllOfIt, Mode=TwoWay}" Margin="0,6,0,0" />
+                         IsChecked="{Binding AllOfIt, Mode=TwoWay}"
+                         IsEnabled="{Binding CanPickAllOfIt}" Margin="0,6,0,0" />
         </StackPanel>
 
         <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="10,8">
