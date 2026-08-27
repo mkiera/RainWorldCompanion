@@ -173,6 +173,10 @@ internal static class SaveBundle
                 "damaged or altered since it was exported. Nothing was imported.");
         }
 
+        // A bundle carries the manifest whole, mod settings record included, but not yet the files
+        // it names. Keeping the record would list settings that are not in the entry.
+        manifest.Configs = null;
+
         manifest.SizeBytes = new FileInfo(contentPath).Length;
         return manifest;
     }

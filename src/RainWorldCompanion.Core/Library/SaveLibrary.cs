@@ -369,6 +369,7 @@ public sealed class SaveLibrary
             Sha256 = copied.Sha256,
             Metadata = metadata,
             Mods = _backups.TryReadMods(),
+            Configs = StoreConfigs(directory, SaveRoot),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
@@ -419,7 +420,7 @@ public sealed class SaveLibrary
                 $"{source.FileName} holds no {SlugcatCatalog.ForId(slugcatId).DisplayName} campaign, so there is nothing to store.");
 
         var entry = StoreCampaignFrom(
-            slice, source.FileName, source.Realm, source.Slot, trimmedName, note, _backups.TryReadMods());
+            slice, source.FileName, source.Realm, source.Slot, trimmedName, note, _backups.TryReadMods(), SaveRoot);
 
         progress?.Report("Stored");
         return entry;
@@ -429,6 +430,8 @@ public sealed class SaveLibrary
     /// lock and does not care whether the game is running, because it touches no save file.</summary>
     /// <param name="mods">The mods that were on when the campaign was taken. Passed in because a
     /// campaign pulled out of a backup carries that backup's record, not what is on right now.</param>
+    /// <param name="configsRoot">The folder holding the ModConfigs that go with those bytes, which
+    /// for a campaign out of a backup is that backup's folder. Null keeps no settings.</param>
     public LibraryEntry StoreCampaignFrom(
         CampaignSlice slice,
         string sourceFileName,
@@ -436,7 +439,8 @@ public sealed class SaveLibrary
         int sourceSlot,
         string name,
         string? note,
-        ModListSnapshot? mods = null)
+        ModListSnapshot? mods = null,
+        string? configsRoot = null)
     {
         ArgumentNullException.ThrowIfNull(slice);
 
@@ -469,6 +473,7 @@ public sealed class SaveLibrary
             Metadata = SaveMetadataExtractor.FromPayload(
                 payload, LibraryEntry.CampaignFileName, sourceSlot, sourceRealm),
             Mods = mods,
+            Configs = StoreConfigs(directory, configsRoot),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
@@ -684,11 +689,13 @@ public sealed class SaveLibrary
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
+        manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
 
         manifest.SizeBytes = copied.SizeBytes;
         manifest.Sha256 = copied.Sha256;
         manifest.Metadata = metadata;
         manifest.Mods = _backups.TryReadMods();
+        manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -734,7 +741,9 @@ public sealed class SaveLibrary
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
+        manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
         manifest.Mods = _backups.TryReadMods();
+        manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
 
         manifest.SizeBytes = new FileInfo(entry.CampaignPath).Length;
         manifest.Sha256 = Hashing.ComputeFileSha256(entry.CampaignPath);
@@ -790,11 +799,19 @@ public sealed class SaveLibrary
 
         manifest.Mods = manifest.PreviousMods;
 
+        // A record that outlived the files it describes would be worse than none, so the settings
+        // only go back in the manifest if they went back on disk.
+        if (MoveConfigsBack(entry))
+        {
+            manifest.Configs = manifest.PreviousConfigs;
+        }
+
         manifest.PreviousSha256 = null;
         manifest.PreviousSizeBytes = null;
         manifest.PreviousReplacedUtc = null;
         manifest.PreviousMetadata = null;
         manifest.PreviousMods = null;
+        manifest.PreviousConfigs = null;
 
         manifest.UpdatedUtc = DateTime.UtcNow;
 
@@ -989,9 +1006,11 @@ public sealed class SaveLibrary
             manifest.PreviousReplacedUtc = null;
             manifest.PreviousMetadata = null;
             manifest.PreviousMods = null;
+            manifest.PreviousConfigs = null;
 
-            // manifest.Mods is deliberately left standing: it describes the machine the save was
-            // played on, which is what a load onto this machine is compared against.
+            // manifest.Mods and manifest.Configs are deliberately left standing: they describe the
+            // machine the save was played on, which is what a load onto this machine is compared
+            // against and what its settings are offered from.
 
             TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
             WriteManifest(directory, manifest);
@@ -1091,6 +1110,148 @@ public sealed class SaveLibrary
             Sha256 = copied.Sha256,
             Metadata = metadata,
         };
+    }
+
+    /// <summary>
+    /// Where one settings file sits inside an entry: ModConfigs\DvrmentConfs\current.json is kept
+    /// at configs\DvrmentConfs\current.json. Null for a path that is not one of the ones that
+    /// travel, rather than a guessed destination for a path this does not recognise.
+    /// </summary>
+    private static string? ConfigEntryPath(string entryDirectory, string relativePath)
+    {
+        if (!ModConfigReader.Travels(relativePath))
+        {
+            return null;
+        }
+
+        var below = relativePath
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
+            .Skip(1)
+            .ToArray();
+
+        if (below.Length == 0)
+        {
+            return null;
+        }
+
+        var root = Path.Combine(entryDirectory, LibraryEntry.ConfigsFolderName);
+        var candidate = Path.GetFullPath(Path.Combine(root, Path.Combine(below)));
+
+        return CanonicalPath.IsInside(root, candidate) ? candidate : null;
+    }
+
+    /// <summary>
+    /// Moves the settings an update is replacing into configs.previous, following save.previous.bin
+    /// exactly: one generation, and the next update replaces it. False when the folder would not
+    /// move, which is the caller's cue not to record a previous generation the folder does not hold.
+    /// </summary>
+    private static bool MoveConfigsAside(LibraryEntry entry)
+    {
+        try
+        {
+            TryDeleteDirectory(entry.PreviousConfigsPath);
+
+            if (Directory.Exists(entry.ConfigsPath))
+            {
+                Directory.Move(entry.ConfigsPath, entry.PreviousConfigsPath);
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Puts the earlier settings back. False leaves the newer ones in place and configs.previous
+    /// where it is: the next update clears it, and nothing is lost in the meantime.
+    /// </summary>
+    private static bool MoveConfigsBack(LibraryEntry entry)
+    {
+        try
+        {
+            if (!Directory.Exists(entry.PreviousConfigsPath))
+            {
+                TryDeleteDirectory(entry.ConfigsPath);
+                return true;
+            }
+
+            TryDeleteDirectory(entry.ConfigsPath);
+            Directory.Move(entry.PreviousConfigsPath, entry.ConfigsPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The settings in a save folder, or null when there is no folder to read them from.</summary>
+    private static ModConfigSet? StoreConfigs(string entryDirectory, string? configsRoot)
+        => string.IsNullOrWhiteSpace(configsRoot)
+            ? null
+            : CopyConfigsInto(entryDirectory, ModConfigReader.Read(configsRoot));
+
+    /// <summary>
+    /// Copies mod settings into an entry, proving each one the way the save itself is proved. One
+    /// that cannot be proved is left out of the record and named in the note rather than throwing:
+    /// losing the save because a mod rewrote its settings mid-copy would be the wrong trade.
+    /// </summary>
+    private static ModConfigSet CopyConfigsInto(string entryDirectory, ModConfigScan scan)
+    {
+        var set = new ModConfigSet { ReadTheFolder = scan.ReadTheFolder, Note = scan.Note };
+
+        if (!scan.ReadTheFolder)
+        {
+            return set;
+        }
+
+        var missed = new List<string>();
+
+        foreach (var file in scan.Files)
+        {
+            var destination = ConfigEntryPath(entryDirectory, file.RelativePath);
+            if (destination is null)
+            {
+                missed.Add(file.RelativePath);
+                continue;
+            }
+
+            try
+            {
+                var parent = Path.GetDirectoryName(destination);
+                if (!string.IsNullOrEmpty(parent))
+                {
+                    Directory.CreateDirectory(parent);
+                }
+
+                var copied = CopyProving(file.FullPath, destination, file.RelativePath, progress: null);
+
+                set.Files.Add(new ModConfigFile
+                {
+                    RelativePath = file.RelativePath,
+                    ModId = file.ModId,
+                    SizeBytes = copied.SizeBytes,
+                    Sha256 = copied.Sha256,
+                });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                TryDelete(destination);
+                missed.Add(file.RelativePath);
+            }
+        }
+
+        if (missed.Count > 0)
+        {
+            var line = "These mod settings were not kept with the save: " + string.Join(", ", missed) + ".";
+            set.Note = string.IsNullOrWhiteSpace(set.Note) ? line : set.Note + " " + line;
+        }
+
+        return set;
     }
 
     /// <summary>A file that moves under the copy is copied again, and one that will not sit still
