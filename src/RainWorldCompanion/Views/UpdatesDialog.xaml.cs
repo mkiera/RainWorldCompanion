@@ -32,7 +32,6 @@ public partial class UpdatesDialog : Window
         }
         catch (OperationCanceledException)
         {
-            // Closed while the first list was still being read.
         }
     }
 

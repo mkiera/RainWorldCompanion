@@ -4,17 +4,13 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Moving one campaign between payloads.
-///
-/// The identity tests are the ones that matter. A payload is a megabyte of records this app does not
-/// read, and taking a campaign out and putting it back has to give the same characters back, or
-/// something in between them was rewritten by accident.
+/// The identity tests are the ones that matter. A payload is a megabyte of records this app
+/// does not read, and taking a campaign out and putting it back has to give the same
+/// characters back, or something in between them was rewritten by accident.
 /// </summary>
 public class CampaignSplicerTests
 {
     private const string Separator = SyntheticSave.RecordSeparator;
-
-    // ---- taking one out ----
 
     [Fact]
     public void A_campaign_comes_out_with_the_map_of_the_slugcat_it_belongs_to()
@@ -59,8 +55,6 @@ public class CampaignSplicerTests
 
         Assert.Equal(new[] { "Gourmand", "White" }, CampaignSplicer.Campaigns(payload));
     }
-
-    // ---- putting it back ----
 
     [Theory]
     [InlineData(FixtureFiles.Sav2)]
@@ -111,7 +105,6 @@ public class CampaignSplicerTests
         Assert.Equal(2, report.MapsAdded);
         Assert.Equal(0, report.MapsRemoved);
 
-        // Everything the slot had is still there, in order, with the new records after it.
         IReadOnlyList<SaveRecord> before = SavePayloadReader.SplitRecords(target);
         IReadOnlyList<SaveRecord> after = SavePayloadReader.SplitRecords(result);
 
@@ -162,8 +155,6 @@ public class CampaignSplicerTests
         Assert.Equal(CampaignSpliceOutcome.Added, report.Outcome);
         Assert.Equal(SliceFor("White").SaveStateRecord + Separator, result);
     }
-
-    // ---- one slot to another ----
 
     [Fact]
     public void Loading_a_campaign_over_another_leaves_the_rest_of_the_slot_alone()
@@ -243,8 +234,6 @@ public class CampaignSplicerTests
         Assert.DoesNotContain("MAP_White", result, StringComparison.Ordinal);
     }
 
-    // ---- taking one away ----
-
     /// <summary>
     /// The game's own WipeSaveState drops the SAVE STATE record and nothing else, so a campaign
     /// deleted in place leaves its map behind the same way.
@@ -286,8 +275,6 @@ public class CampaignSplicerTests
         Assert.Equal(CampaignSpliceOutcome.NotFound, report.Outcome);
         Assert.True(report.DidNothing);
     }
-
-    // ---- what the game will make of it ----
 
     /// <summary>
     /// BackwardsCompatibilityRemix.ParseSaveNumber reads the first value of a campaign whatever its
@@ -403,8 +390,6 @@ public class CampaignSplicerTests
         Assert.Single(CampaignSplicer.Campaigns(result));
     }
 
-    // ---- nothing to work with ----
-
     [Fact]
     public void Nothing_in_gives_nothing_back()
     {
@@ -416,8 +401,6 @@ public class CampaignSplicerTests
         Assert.Null(CampaignSplicer.SlugcatOf(null));
         Assert.Null(CampaignSplicer.MapOwnerOf("MAP_"));
     }
-
-    // ---- helpers ----
 
     private static CampaignSlice SliceFor(string slugcat, params string[] regions)
         => new(

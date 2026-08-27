@@ -6,10 +6,8 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The writer is the first code in this app that can destroy a save, because a container it
-/// rebuilds wrongly is one the game answers by wiping the slot. These tests hold it to the only
-/// standard worth having: a file it loads and writes back unedited is the same bytes, and a file
-/// it edits differs only where the edit was.
+/// A container rebuilt wrongly is one the game answers by wiping the slot. A file loaded and
+/// written back unedited must be the same bytes, and an edited one must differ only at the edit.
 /// </summary>
 public class ContainerTextTests
 {
@@ -66,11 +64,7 @@ public class ContainerTextTests
         }
     }
 
-    /// <summary>
-    /// The escape table is only complete if re-escaping what a real file holds lands back on the
-    /// characters that file stores. Anything the game escapes and this does not would show up
-    /// here as a difference, before it could show up as a corrupted save.
-    /// </summary>
+    /// <summary>An incomplete escape table shows up here as a difference before it shows up as a corrupted save.</summary>
     [Theory]
     [MemberData(nameof(AllFixtures))]
     public void Re_escaping_a_stored_value_reproduces_it_exactly(string fixture)
@@ -250,9 +244,8 @@ public class ContainerTextTests
     }
 
     /// <summary>
-    /// A carriage return has to leave as a numeric reference. Written literally it would be
-    /// normalised to a newline by the next reader, which is a silent one-character edit to
-    /// somebody's save.
+    /// A carriage return has to leave as a numeric reference. Written literally the next reader
+    /// normalises it to a newline, a silent one-character edit to somebody's save.
     /// </summary>
     [Fact]
     public void A_carriage_return_is_escaped_numerically()

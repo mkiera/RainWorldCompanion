@@ -8,19 +8,17 @@ using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// Picks a library save and a slot, and confirms writing the one over the other.
-///
 /// Every line comes from the plan Core built for the pair the pickers are on, so the file this
 /// shows as being replaced is the file that will be written to and nothing here works it out a
 /// second time.
 /// </summary>
 public partial class LoadSaveDialog : Window, INotifyPropertyChanged
 {
-    /// <summary>One entry in the library picker.</summary>
     public sealed record EntryChoice(LibraryEntry Entry, string Label)
     {
         /// <summary>
@@ -30,7 +28,6 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         public override string ToString() => Label;
     }
 
-    /// <summary>One entry in the slot picker.</summary>
     public sealed record SlotChoice(SaveSlotRef Ref, string Label)
     {
         public override string ToString() => Label;
@@ -46,15 +43,8 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
     private SlotChoice _selectedTarget;
     private LibraryLoadPlan _plan;
 
-    /// <param name="entries">Every entry that can be loaded, in picker order.</param>
-    /// <param name="plan">The pair the pickers start on.</param>
-    /// <param name="replan">
-    /// Asks Core to describe a different pair. Every side of this dialog comes from a plan Core
-    /// built, so changing a picker cannot make the dialog disagree with what the load will do.
-    /// </param>
     /// <param name="includeOnline">
-    /// Whether the online slots are offered. False when Rain Meadow is not on the machine, where
-    /// online_sav is a file nothing reads.
+    /// False when Rain Meadow is not on the machine, where online_sav is a file nothing reads.
     /// </param>
     public LoadSaveDialog(
         IReadOnlyList<LibraryEntry> entries,
@@ -74,8 +64,7 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         _plans[(plan.Entry.Id, new SaveSlotRef(plan.Target.Realm, plan.Target.Slot))] = plan;
 
         // The pickers can land on a different pair than the one planned, when the entry is not in
-        // the list or the realm is not offered. This asks Core about the pair actually shown, and
-        // hits the cache when it is the same one.
+        // the list or the realm is not offered.
         Replan();
 
         InitializeComponent();
@@ -126,10 +115,6 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
 
     public SaveSlotRef ChosenTarget => _selectedTarget.Ref;
 
-    /// <summary>
-    /// Core's own answer for the pair the pickers are on. The dialog decides nothing itself, so a
-    /// pair it lets through is a pair Core has already agreed to.
-    /// </summary>
     public bool CanLoad => _plan.CanLoad;
 
     public string BlockedReason => string.Join("\n", _plan.Problems);
@@ -281,7 +266,13 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         return null;
     }
 
-    /// <summary>Rebuilds every line from the plan for the pair the pickers are on.</summary>
+    /// <summary>
+    /// Rebuilt with the rest of the window when the pickers move, because a different entry
+    /// carries a different record. The target slot does not change it: the mods are the
+    /// machine's, not the slot's.
+    /// </summary>
+    public ModListDiffViewModel ModDiff => new(_plan.Mods);
+
     private void Replan()
     {
         var key = (_selectedEntry.Entry.Id, _selectedTarget.Ref);
@@ -300,6 +291,7 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
                      nameof(HeadlineText), nameof(DirectionText), nameof(ReplaceWarningText),
                      nameof(SourceName), nameof(TargetName), nameof(SourceSummary), nameof(TargetSummary),
                      nameof(SourceCampaigns), nameof(TargetCampaigns), nameof(Warnings), nameof(WarningsVisibility),
+                     nameof(ModDiff),
                  })
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

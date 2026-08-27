@@ -10,10 +10,7 @@ using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.App.Tests;
 
-/// <summary>
-/// Stands in for the portraits read out of the player's own game install. Frozen, so the tests can
-/// build view models on whatever thread xunit hands them.
-/// </summary>
+/// <summary>Frozen, so the tests can build view models on whatever thread xunit hands them.</summary>
 internal sealed class FakeIcons : ISlugcatIconProvider
 {
     private static readonly ImageSource Blank = CreateBlank();
@@ -28,7 +25,6 @@ internal sealed class FakeIcons : ISlugcatIconProvider
     }
 }
 
-/// <summary>A throwaway directory that removes itself on dispose.</summary>
 internal sealed class TempDirectory : IDisposable
 {
     public TempDirectory(string prefix)
@@ -65,11 +61,8 @@ internal sealed class TempDirectory : IDisposable
 }
 
 /// <summary>
-/// Builds the three kinds of detail panel from data alone.
-///
-/// The panel is where the app decides what a save looks like on screen, and the same class renders
-/// the live folder, a backup and a library save. These helpers exist so a test can ask one kind a
-/// question without the other two having to be on disk.
+/// These helpers exist so a test can ask one kind a question without the other two having to
+/// be on disk.
 /// </summary>
 internal static class Panels
 {
@@ -93,13 +86,12 @@ internal static class Panels
                 .ToList(),
         };
 
-    /// <summary>The live save folder, with whatever slots the test names.</summary>
     public static SnapshotDetailViewModel Live(params SlotMetadata[] slots) =>
         SnapshotDetailViewModel.ForLive(slots, @"C:\saves", 1024, slots.Length, null, new FakeIcons());
 
     /// <summary>
-    /// One backup. A snapshot is loaded off disk, so this writes a folder holding just the manifest,
-    /// which is all the panel reads.
+    /// A snapshot is loaded off disk, so this writes a folder holding just the manifest, which is
+    /// all the panel reads.
     /// </summary>
     public static SnapshotDetailViewModel Backup(TempDirectory root, params SlotMetadata[] slots)
     {
@@ -122,7 +114,6 @@ internal static class Panels
         return SnapshotDetailViewModel.ForBackup(item, null, new FakeIcons());
     }
 
-    /// <summary>One library save, written to disk the way SaveLibrary writes one.</summary>
     /// <param name="folderNameSuffix">
     /// Keeps two entries in one root apart, the way the real timestamp suffix does.
     /// </param>

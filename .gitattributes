@@ -3,3 +3,7 @@
 # Save fixtures are byte-exact copies of real containers. The parser tests assert
 # their exact length and NUL padding, so no filter may rewrite a byte.
 tests/RainWorldCompanion.Core.Tests/Fixtures/*.bin binary
+
+# The icon's Affinity project. "* text=auto" above leaves git to guess, and a wrong guess on a
+# proprietary format rewrites line endings inside the file and corrupts it.
+art/*.af binary

@@ -81,7 +81,6 @@ public class SaveChecksumTests
         var payload = SyntheticSave.SavePayload(cycle: 17);
         var wrapped = SaveChecksum.Wrap(payload);
 
-        // Change a single payload character while leaving the stored digest alone.
         var tamperedIndex = 32 + payload.Length / 2;
         var original = wrapped[tamperedIndex];
         var replacement = original == 'X' ? 'Y' : 'X';

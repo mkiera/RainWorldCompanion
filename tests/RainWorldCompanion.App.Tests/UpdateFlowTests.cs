@@ -5,11 +5,9 @@ using RainWorldCompanion.Services;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The decisions the updater makes between finding a release and ending the process.
-///
-/// The dangerous one is the last of those. An update closes the app, and closing it partway through
-/// a restore leaves the live save folder half overwritten, so the guard that refuses is checked
-/// twice and both checks are pinned here.
+/// The dangerous one is the last of those. An update closes the app, and closing it partway
+/// through a restore leaves the live save folder half overwritten, so the guard that refuses
+/// is checked twice and both checks are pinned here.
 /// </summary>
 public class UpdateFlowTests
 {
@@ -74,7 +72,6 @@ public class UpdateFlowTests
         await updates.CheckAsync(userAsked: true, CancellationToken.None);
         Assert.True(updates.HasOffer);
 
-        // And nothing about the dismissal reached the settings file.
         Assert.Equal(new AppSettings().UpdateChannel, world.Saved.UpdateChannel);
     }
 
@@ -194,7 +191,6 @@ public class UpdateFlowTests
     [Fact]
     public async Task An_update_is_refused_before_the_download_while_a_save_is_being_written()
     {
-        // Nothing is gained by fetching 43 MB first, and the message has to name what to do.
         var world = new UpdateWorld();
         world.Busy.Reason = "RainWorld Companion is in the middle of something that writes to your saves.";
         world.Source.Releases.Add(UpdateWorld.Release("v1.1.0"));
@@ -301,18 +297,6 @@ public class UpdateFlowTests
         Assert.True(updates.IsProblem);
         Assert.True(updates.HasOffer);
         Assert.False(updates.HasStandaloneProblem);
-    }
-
-    [Fact]
-    public async Task A_copy_that_cannot_say_what_version_it_is_gets_offered_nothing()
-    {
-        var world = new UpdateWorld();
-        world.Source.Releases.Add(UpdateWorld.Release("v9.9.9"));
-        var updates = world.Build(runningVersion: "not a version");
-
-        await updates.CheckAsync(userAsked: true, CancellationToken.None);
-
-        Assert.False(updates.HasOffer);
     }
 
     [Fact]

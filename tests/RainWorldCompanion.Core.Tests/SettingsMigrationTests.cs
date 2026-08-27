@@ -3,11 +3,9 @@ using RainWorldCompanion.Core.Settings;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Carrying the settings folder over from the name the app used before it was renamed.
-///
-/// The folder holds backups and a save library that are the only copy of the saves in them, so the
-/// rule throughout is that no outcome may lose any of it. A failed move leaves everything where it
-/// was, an ambiguous case is left alone rather than guessed at, and the app starts either way.
+/// The folder holds backups and a library that are the only copy of the saves in them, so no
+/// outcome here may lose any of it. A failed move leaves everything where it was, and an
+/// ambiguous case is left alone rather than guessed at.
 /// </summary>
 public class SettingsMigrationTests
 {
@@ -53,10 +51,9 @@ public class SettingsMigrationTests
     [Fact]
     public void Running_a_second_time_does_nothing()
     {
-        // This runs at every launch, so all the launches after the one that migrated matter more
-        // than the one that did. The second answer is AlreadyMigrated rather than NothingToMove
-        // because the folder under the new name is what it found, which is also true of a fresh
-        // install that never had an old folder to move.
+        // This runs at every launch, so the launches after the one that migrated matter most. The
+        // answer is AlreadyMigrated, not NothingToMove, even though both just find the new folder
+        // already there.
         using var dir = new TempDirectory();
         var (previous, root) = Roots(dir);
         Seed(previous, "settings.json", "{}");
@@ -70,9 +67,8 @@ public class SettingsMigrationTests
     [Fact]
     public void Both_folders_existing_leaves_both_alone()
     {
-        // Which copy of a given backup is the real one is not a question this can answer, and
-        // guessing wrong destroys a save. The new folder is the live one and the old one stays on
-        // disk for the user to look through.
+        // Which copy is the real one is not a question this can answer, and guessing wrong
+        // destroys a save. The new folder stays live, the old one stays on disk to look through.
         using var dir = new TempDirectory();
         var (previous, root) = Roots(dir);
         Seed(previous, "settings.json", "old");
@@ -218,7 +214,6 @@ public class SettingsMigrationTests
         // A property this build has never heard of survives the edit, because a downgrade has to
         // be able to read back what a later version wrote.
         Assert.Contains("somethingALaterVersionAdded", written);
-        // And the fields it was not asked to touch are still there.
         Assert.Contains("C:\\\\saves", written);
     }
 
@@ -286,8 +281,7 @@ public class SettingsMigrationTests
     [Fact]
     public void The_settings_file_comes_back_pointing_at_the_folder_that_now_holds_the_backups()
     {
-        // The whole point, end to end: rename the folder, then load the settings written before it
-        // and check the app knows where the backups went.
+        // The whole point, end to end: rename the folder, then check the app finds the backups.
         using var dir = new TempDirectory();
         var (previous, root) = Roots(dir);
         Seed(previous, Path.Combine("backups", "2026-08-24_19-31-07", "manifest.json"), "{}");

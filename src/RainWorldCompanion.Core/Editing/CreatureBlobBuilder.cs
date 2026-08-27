@@ -1,17 +1,12 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>The pieces of a serialized creature, kept apart so one of them can be replaced.</summary>
 /// <param name="Type">The creature name, such as PinkLizard.</param>
 /// <param name="EntityId">The id, in the form ID.spawner.number.</param>
 /// <param name="RippleLayer">Written after the id, behind a &lt;cB&gt;. Zero in every save without Watcher.</param>
-/// <param name="Room">The room name the creature is in.</param>
-/// <param name="Node">Which node of that room, which the game writes after a dot.</param>
-/// <param name="State">Everything the creature's own state class wrote, which may be empty.</param>
 public sealed record CreatureBlob(
     string Type,
     string EntityId,
@@ -21,25 +16,14 @@ public sealed record CreatureBlob(
     string State);
 
 /// <summary>
-/// Builds and takes apart the strings the game writes for one abstract creature.
-///
-/// Every position here is pinned to the game's own code rather than inferred from a save.
 /// SaveState.AbstractCreatureToStringStoryWorld writes
 /// <c>{type}&lt;cA&gt;{id}&lt;cB&gt;{rippleLayer}&lt;cA&gt;{room}.{node}&lt;cA&gt;{state}</c>, and
-/// SaveState.AbstractCreatureFromString reads it back by splitting on &lt;cA&gt; and taking those
-/// four in order. EntityID.ToString writes <c>ID.{spawner}.{number}</c>.
-///
-/// The state is whatever CreatureState.ToString produced, which is a run of
-/// <c>Tag&lt;cC&gt;value&lt;cB&gt;</c> blocks. A creature that is alive, undamaged and remembers
-/// nobody writes an empty state, and the game reads an empty one back without complaint: every
-/// branch of CreatureState.LoadFromString that touches a value is behind a length check. A save
-/// from a real game confirms it, storing the player as
-/// <c>Slugcat&lt;cA&gt;ID.-1.0&lt;cB&gt;0&lt;cA&gt;SL_S06.0&lt;cA&gt;</c> with nothing after the
-/// last separator.
+/// AbstractCreatureFromString reads it back by splitting on &lt;cA&gt; and taking those four in
+/// order. The state is a run of <c>Tag&lt;cC&gt;value&lt;cB&gt;</c> blocks, empty for a creature
+/// alive, undamaged and remembering nobody, which the game reads back without complaint.
 /// </summary>
 public static class CreatureBlobBuilder
 {
-    /// <summary>Separates the parts of a serialized creature.</summary>
     public const string PartSeparator = "<cA>";
 
     /// <summary>Separates the id from the ripple layer, and one state block from the next.</summary>
@@ -57,40 +41,29 @@ public static class CreatureBlobBuilder
     /// <summary>Separates one relationship from the next.</summary>
     public const string RelationSeparator = "<smA>";
 
-    /// <summary>The state block holding a creature's social memory.</summary>
     public const string SocialTag = "Social";
 
-    /// <summary>The state block holding how much of a creature is left to eat.</summary>
     public const string MeatLeftTag = "MeatLeft";
 
     /// <summary>The state block, written bare, that marks a creature as dead.</summary>
     public const string DeadTag = "Dead";
 
-    /// <summary>
-    /// The player's id in a story campaign, which is what a creature's feelings towards the player
-    /// are stored against. Confirmed in a real save: every swallowed creature that has met the
-    /// player carries a relationship addressed to this id.
-    /// </summary>
+    /// <summary>The player's id in a story campaign, which is what a creature's feelings towards the
+    /// player are stored against.</summary>
     public const string PlayerEntityId = "ID.-1.0";
 
-    /// <summary>
-    /// The spawner the game uses for an id it issues itself. RainWorldGame.GetNewID builds
-    /// <c>new EntityID(-1, ++nextIssuedId)</c>, so an id this app hands out looks like one the game
-    /// handed out.
-    /// </summary>
+    /// <summary>The spawner the game uses for an id it issues itself: RainWorldGame.GetNewID builds
+    /// <c>new EntityID(-1, ++nextIssuedId)</c>.</summary>
     public const int IssuedSpawner = -1;
 
-    /// <summary>Builds the id text for a spawner and a number.</summary>
     public static string EntityId(int spawner, int number) => string.Format(
         CultureInfo.InvariantCulture,
         "ID.{0}.{1}",
         spawner,
         number);
 
-    /// <summary>
-    /// The number half of an id, which is the half that has to be unique: EntityID.Equals compares
-    /// only the number, so two creatures sharing one are the same creature to the game.
-    /// </summary>
+    /// <summary>The half of an id that has to be unique: EntityID.Equals compares only the number,
+    /// so two creatures sharing one are the same creature to the game.</summary>
     public static int? NumberOf(string? entityId)
     {
         if (string.IsNullOrEmpty(entityId))
@@ -106,11 +79,7 @@ public static class CreatureBlobBuilder
                 : null;
     }
 
-    /// <summary>Builds a creature the game will read back as one it wrote.</summary>
-    /// <param name="state">
-    /// The creature's state blocks. Empty means alive, undamaged and remembering nobody, which is
-    /// what the game itself writes for a creature in that condition.
-    /// </param>
+    /// <param name="state">Empty means alive, undamaged and remembering nobody.</param>
     public static string Build(
         string type,
         string entityId,
@@ -130,10 +99,7 @@ public static class CreatureBlobBuilder
             BlockSeparator,
             state);
 
-    /// <summary>
-    /// Takes a creature blob apart. Null when it does not have the four parts the game's reader
-    /// requires, because a blob that short is one this app should leave exactly as it found it.
-    /// </summary>
+    /// <summary>Null when the blob does not have the four parts the game's own reader requires.</summary>
     public static CreatureBlob? Parse(string? blob)
     {
         if (string.IsNullOrEmpty(blob))
@@ -168,35 +134,27 @@ public static class CreatureBlobBuilder
             room = room.Substring(0, dot);
         }
 
-        // Everything from the fourth part on is state. A state value can itself hold <cA>, so the
-        // parts are joined back rather than only the fourth one taken.
+        // A state value can itself hold <cA>, so the parts from the fourth on are joined back rather
+        // than only the fourth one taken.
         string state = string.Join(PartSeparator, parts.Skip(3));
 
         return new CreatureBlob(parts[0], id, rippleLayer, room, node, state);
     }
 
-    /// <summary>Writes a blob back out from its pieces.</summary>
     public static string ToBlob(CreatureBlob blob)
         => Build(blob.Type, blob.EntityId, blob.Room, blob.Node, blob.RippleLayer, blob.State);
 
-    /// <summary>Replaces a creature's state, leaving its type, id and room where they were.</summary>
     public static string WithState(string blob, string state)
         => Parse(blob) is { } parsed ? ToBlob(parsed with { State = state }) : blob;
 
-    /// <summary>Moves a creature to another room, which is how a swallowed creature follows its predator.</summary>
     public static string WithRoom(string blob, string room, int node = 0)
         => Parse(blob) is { } parsed ? ToBlob(parsed with { Room = room, Node = node }) : blob;
 
-    /// <summary>Gives a creature a different id, in both halves of the id text.</summary>
     public static string WithEntityId(string blob, string entityId)
         => Parse(blob) is { } parsed ? ToBlob(parsed with { EntityId = entityId }) : blob;
 
-    // ---- state blocks ----
-
-    /// <summary>
-    /// The value of one state block, or null when the state does not carry it. A block written
-    /// bare, such as Dead, has no value and answers null as well.
-    /// </summary>
+    /// <summary>Null when the state does not carry the block, and also when it carries it written
+    /// bare, such as Dead, which has no value.</summary>
     public static string? GetStateBlock(string? state, string tag)
     {
         foreach (string block in Blocks(state))
@@ -217,7 +175,7 @@ public static class CreatureBlobBuilder
         return null;
     }
 
-    /// <summary>Whether the state carries a block at all, whether or not it has a value.</summary>
+    /// <summary>True whether or not the block has a value.</summary>
     public static bool HasStateBlock(string? state, string tag)
     {
         foreach (string block in Blocks(state))
@@ -234,15 +192,9 @@ public static class CreatureBlobBuilder
         return false;
     }
 
-    /// <summary>
-    /// Writes one state block, replacing it where it is or adding it at the end. A null value
-    /// removes it.
-    ///
-    /// Every block the game writes ends with a &lt;cB&gt;, including the last one, which is what a
-    /// real save shows: a swallowed creature's social memory runs up to
-    /// <c>...&lt;cB&gt;&lt;dvD&gt;Held</c>. Keeping that trailing separator is what makes an edited
-    /// creature read back the same way as one the game wrote.
-    /// </summary>
+    /// <summary>A null value removes the block. Every block the game writes ends with a &lt;cB&gt;,
+    /// the last one included, and keeping that trailing separator is what makes an edited creature
+    /// read back the same way as one the game wrote.</summary>
     public static string SetStateBlock(string? state, string tag, string? value)
     {
         var kept = new List<string>();
@@ -275,10 +227,8 @@ public static class CreatureBlobBuilder
         return kept.Count == 0 ? "" : string.Concat(kept.Select(block => block + BlockSeparator));
     }
 
-    /// <summary>
-    /// The blocks of a state string. The trailing separator the game writes leaves an empty piece
-    /// at the end, which is dropped rather than carried as a block of its own.
-    /// </summary>
+    /// <summary>The trailing separator the game writes leaves an empty piece at the end, which is
+    /// dropped rather than carried as a block of its own.</summary>
     private static IEnumerable<string> Blocks(string? state)
     {
         if (string.IsNullOrEmpty(state))
@@ -295,15 +245,11 @@ public static class CreatureBlobBuilder
         }
     }
 
-    // ---- social memory ----
-
-    /// <summary>
-    /// What a creature feels about one other. Null means the number was not written, which the game
-    /// treats as zero.
-    /// </summary>
+    /// <summary>What a creature feels about one other. A null number was not written, which the game
+    /// treats as zero.</summary>
     public sealed record Relation(string SubjectId, float? Like, float? Fear, float? Know);
 
-    /// <summary>Reads the relationships out of a state's Social block, in stored order.</summary>
+    /// <summary>In stored order.</summary>
     public static IReadOnlyList<Relation> ReadRelations(string? state)
     {
         string? social = GetStateBlock(state, SocialTag);
@@ -352,15 +298,9 @@ public static class CreatureBlobBuilder
         return relations;
     }
 
-    /// <summary>
-    /// Writes one relationship into a state, replacing what was there for that subject.
-    ///
-    /// A relationship the game would not write is not written here either. SocialMemory.Relationship
-    /// .ToString returns nothing at all when like and fear are both zero, so setting a creature's
-    /// liking to zero takes the whole entry out, and what it knows of the subject goes with it. That
-    /// is the game's rule, kept rather than worked around, so a save this app writes matches one the
-    /// game would.
-    /// </summary>
+    /// <summary>SocialMemory.Relationship.ToString writes nothing at all when like and fear are both
+    /// zero, so setting a creature's liking to zero takes the whole entry out and what it knows of
+    /// the subject goes with it. The game's rule, kept rather than worked around.</summary>
     public static string SetRelation(string? state, string subjectId, float? like, float? fear, float? know)
     {
         var relations = ReadRelations(state).ToList();
@@ -381,7 +321,6 @@ public static class CreatureBlobBuilder
         return SetRelations(state, relations);
     }
 
-    /// <summary>Replaces every relationship in a state at once.</summary>
     public static string SetRelations(string? state, IReadOnlyList<Relation> relations)
     {
         var written = relations

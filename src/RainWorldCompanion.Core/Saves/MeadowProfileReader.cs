@@ -1,28 +1,19 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// Reads meadow.json into a <see cref="MeadowProfile"/>. Fail-soft in the same way as
-/// <see cref="SaveMetadataExtractor"/>: a missing, empty or malformed file comes back as a
-/// profile with <see cref="MeadowProfile.ParseError"/> set rather than an exception, because
-/// this runs while listing a folder the user did not curate and a mod update can change the
-/// file's shape at any time.
-/// </summary>
+/// <summary>A missing, empty or malformed file comes back as a profile with
+/// <see cref="MeadowProfile.ParseError"/> set rather than an exception.</summary>
 internal static class MeadowProfileReader
 {
     private const int MaxErrorLength = 200;
 
-    /// <summary>
-    /// Unknown members are skipped rather than rejected, because Rain Meadow adds fields to
-    /// ProgressionData between versions and a new one must not turn the whole file unreadable.
-    /// Skip is the default for this option and is set here so that stays deliberate.
-    /// </summary>
+    /// <summary>Unknown members are skipped rather than rejected, because Rain Meadow adds fields to
+    /// ProgressionData between versions and a new one must not turn the whole file unreadable.</summary>
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -57,10 +48,7 @@ internal static class MeadowProfileReader
         }
     }
 
-    /// <summary>
-    /// Reads <see cref="MeadowProfile.FileName"/> out of a save folder, which is either the live
-    /// folder or a snapshot. Never throws.
-    /// </summary>
+    /// <summary>Never throws.</summary>
     public static MeadowProfile ReadFromFolder(string folderPath)
     {
         if (string.IsNullOrWhiteSpace(folderPath))
@@ -95,10 +83,8 @@ internal static class MeadowProfileReader
                 return Failed("the file holds no profile");
             }
 
-            // Well-formed json that carries no characterProgress key at all, "{}" being the
-            // shortest example, is not a Rain Meadow profile. Every other key defaults to a
-            // plausible value, so without this check such a file renders as an empty panel with
-            // nothing to say why.
+            // Well-formed json with no characterProgress key, "{}" being the shortest example, is
+            // not a Rain Meadow profile. Every other key defaults to a plausible value.
             if (dto.CharacterProgress is null)
             {
                 return Failed("the file holds no character progression");
@@ -124,11 +110,8 @@ internal static class MeadowProfileReader
         }
     }
 
-    /// <summary>
-    /// Turns the "characterProgress" object into a list. The key is the character name, which
-    /// the entry itself does not carry, so it is copied onto each one. Sorted by name because a
-    /// json object has no order the UI can rely on.
-    /// </summary>
+    /// <summary>The key is the character name, which the entry itself does not carry, so it is
+    /// copied onto each one. Sorted by name because a json object has no order to rely on.</summary>
     private static IReadOnlyList<MeadowCharacterProgress> BuildCharacters(
         Dictionary<string, CharacterDto?>? progress)
     {
@@ -164,10 +147,8 @@ internal static class MeadowProfileReader
 
     private static string Clean(string? value) => value ?? "";
 
-    /// <summary>
-    /// Drops nulls and blanks from a name list. Newtonsoft writes an ExtEnum as its string value,
-    /// and an entry the mod could not resolve is written as null.
-    /// </summary>
+    /// <summary>Newtonsoft writes an ExtEnum as its string value, and an entry the mod could not
+    /// resolve is written as null.</summary>
     private static IReadOnlyList<string> CleanList(List<string?>? values)
     {
         if (values is null || values.Count == 0)
@@ -217,7 +198,6 @@ internal static class MeadowProfileReader
             lastWasSpace = isSpace;
         }
 
-        // The reason renders inside parentheses in a list row, where a sentence stop reads oddly.
         string text = flattened.ToString().Trim().TrimEnd('.');
         if (text.Length <= MaxErrorLength)
         {
@@ -227,10 +207,8 @@ internal static class MeadowProfileReader
         return text.Substring(0, MaxErrorLength - 3) + "...";
     }
 
-    /// <summary>
-    /// The wire shape of meadow.json. The names are the field and property names of
-    /// MeadowProgression.ProgressionData, which is what Newtonsoft writes with default settings.
-    /// </summary>
+    /// <summary>The names are the field and property names of MeadowProgression.ProgressionData,
+    /// which is what Newtonsoft writes with default settings.</summary>
     private sealed class ProfileDto
     {
         [JsonPropertyName("collisionOn")]
@@ -249,10 +227,6 @@ internal static class MeadowProfileReader
         public Dictionary<string, CharacterDto?>? CharacterProgress { get; set; }
     }
 
-    /// <summary>
-    /// The wire shape of one characterProgress entry, from
-    /// MeadowProgression.ProgressionData.CharacterProgressionData.
-    /// </summary>
     private sealed class CharacterDto
     {
         [JsonPropertyName("timePlayed")]

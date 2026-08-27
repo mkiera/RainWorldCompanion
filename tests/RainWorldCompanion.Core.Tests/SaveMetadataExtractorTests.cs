@@ -58,9 +58,9 @@ public class SaveMetadataExtractorTests
     [Fact]
     public void A_file_with_no_save_state_record_still_counts_the_records_it_has()
     {
-        // The real online_sav holds an empty header, MAP_White, MAPUPDATE_White and MISCPROG, and
-        // no SAVE STATE. Campaigns being empty is therefore not the same question as the file
-        // being empty, and only the record count can tell them apart.
+        // online_sav holds an empty header, MAP_White, MAPUPDATE_White and MISCPROG, but no SAVE
+        // STATE. Empty campaigns is not the same as an empty file, and only the record count
+        // tells them apart.
         var metadata = SaveMetadataExtractor.Extract(FixtureFiles.PathTo(FixtureFiles.OnlineSav), 1, SaveRealm.Online);
 
         Assert.Empty(metadata.Campaigns);
@@ -272,40 +272,5 @@ public class SaveMetadataExtractorTests
         Assert.False(string.IsNullOrWhiteSpace(text));
     }
 
-    [Theory]
-    [InlineData("sav", 1)]
-    [InlineData("sav2", 2)]
-    [InlineData("sav3", 3)]
-    public void SlotNumberForFileName_maps_the_three_container_names(string fileName, int expected)
-        => Assert.Equal(expected, SaveMetadataExtractor.SlotNumberForFileName(fileName));
-
-    [Theory]
-    [InlineData("online_sav", 1)]
-    [InlineData("online_sav2", 2)]
-    [InlineData("online_sav3", 3)]
-    public void SlotNumberForFileName_maps_the_online_containers_to_the_same_numbers(string fileName, int expected)
-    {
-        // Rain Meadow's hook on Options.GetSaveFileName_SavOrExp picks online_sav from the same
-        // Options.saveSlot that picks sav, so online_sav2 carries slot number 2 exactly as sav2
-        // does. SaveSlotRef.Realm is what tells the two apart, not the number.
-        Assert.Equal(expected, SaveMetadataExtractor.SlotNumberForFileName(fileName));
-        Assert.Equal(SaveRealm.Online, SaveMetadataExtractor.SlotForFileName(fileName)!.Realm);
-    }
-
-    [Theory]
-    [InlineData("sav - Copy")]
-    [InlineData("sav - Copy (2)")]
-    [InlineData("sav.bak")]
-    [InlineData("sav4")]
-    [InlineData("sav0")]
-    [InlineData("save")]
-    [InlineData("exp1")]
-    [InlineData("expCore1")]
-    [InlineData("online_sav4")]
-    [InlineData("online_sav0")]
-    [InlineData("options")]
-    [InlineData("steam_autocloud.vdf")]
-    [InlineData("")]
-    public void SlotNumberForFileName_returns_null_for_everything_else(string fileName)
-        => Assert.Null(SaveMetadataExtractor.SlotNumberForFileName(fileName));
+    // Mapping a file name to a slot is covered by SlotCopyTests, not here.
 }

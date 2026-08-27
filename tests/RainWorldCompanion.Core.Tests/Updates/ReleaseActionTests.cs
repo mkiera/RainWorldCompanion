@@ -34,9 +34,8 @@ public class ReleaseActionTests
     }
 
     /// <summary>
-    /// Build metadata takes no part in semver ordering, so the same version rebuilt at a different
-    /// commit is the version already installed. Calling it an update would offer somebody a build
-    /// they cannot tell apart from the one they are running.
+    /// Build metadata takes no part in semver ordering, so the same version at a different commit
+    /// is the version already installed, not an update to it.
     /// </summary>
     [Fact]
     public void The_same_version_from_another_commit_is_a_reinstall()

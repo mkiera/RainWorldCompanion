@@ -7,21 +7,13 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// A .rwsave file is a zip holding the save and the manifest that describes it, which is what makes
-/// a named save something you can send to somebody. A bare save file can be imported too, but it
-/// arrives with nothing but its own bytes.
-///
-/// The line between the two runs through the recorded hash. A bundle has one, so a bundle whose
-/// save no longer matches it has been damaged in transit and is refused. A bare file has none, so a
-/// damaged one is imported with a warning: getting a broken save into the library is how somebody
-/// looks at what is left of it.
+/// A .rwsave bundle carries a recorded hash, so a bundle whose save no longer matches it is
+/// refused. A bare save file has no hash, so a damaged one imports with a warning instead.
 /// </summary>
 public class LibraryBundleTests
 {
     private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
     private static readonly SaveSlotRef LocalThree = new(SaveRealm.Local, 3);
-
-    // ---- round trip ----
 
     [Fact]
     public void An_exported_save_imports_somewhere_else_byte_for_byte()
@@ -117,8 +109,6 @@ public class LibraryBundleTests
         Assert.Equal("second", other.ImportFile(bundle).Entry!.Name);
     }
 
-    // ---- a bundle that arrived damaged ----
-
     [Fact]
     public void A_bundle_whose_save_was_rewritten_is_refused()
     {
@@ -187,8 +177,6 @@ public class LibraryBundleTests
         Assert.Empty(Directory.GetDirectories(world.LibraryRoot.Path));
     }
 
-    // ---- a bare save file ----
-
     [Fact]
     public void A_bare_save_file_imports_with_its_slot_worked_out_from_its_name()
     {
@@ -238,8 +226,6 @@ public class LibraryBundleTests
     [Fact]
     public void A_bare_save_with_a_checksum_the_game_would_reject_imports_with_a_warning()
     {
-        // Unlike a bundle there is no recorded hash to hold it to, and a save the game will not
-        // load is still something the user may want in the library to look at.
         using var world = new LibraryWorld();
         using var inbox = new TempDirectory("inbox");
         var source = FixtureFiles.CopyTo(inbox, FixtureFiles.Sav2, "sav2");
@@ -250,8 +236,6 @@ public class LibraryBundleTests
         Assert.True(result.Success, string.Join("; ", result.Errors));
         Assert.NotEmpty(result.Warnings);
     }
-
-    // ---- neither one ----
 
     [Fact]
     public void A_file_that_is_neither_a_bundle_nor_a_save_is_refused()

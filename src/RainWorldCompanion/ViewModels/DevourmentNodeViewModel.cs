@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in the referenced assembly, so a using written inside the namespace body
-// would bind "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using System.Text;
 using System.Windows;
@@ -12,15 +10,11 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// One entity in a Devourment stomach chain, and whatever it is carrying.
-///
-/// The save records a flat list of predator and prey pairs, so the fact that a swallowed lizard
-/// is itself holding a spear, or that the player is the one inside something, only shows up once
-/// the pairs are linked by entity id. This is the linked form, ready to nest in the panel.
+/// The save records a flat list of predator and prey pairs, so a swallowed lizard holding a spear
+/// only shows up once the pairs are linked by entity id. This is the linked form.
 /// </summary>
 public sealed partial class DevourmentNodeViewModel : ObservableObject
 {
-    /// <summary>Shown when the save recorded no food value at all.</summary>
     private const string Missing = "-";
 
     public DevourmentNodeViewModel(DevourmentNode node, int depth)
@@ -35,8 +29,7 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
         Kind = IsRoot ? "" : node.IsItem ? "item" : "creature";
         StatusText = string.IsNullOrWhiteSpace(node.Status) ? "" : node.Status;
 
-        // Items store -1 to mean they are worth no food. Printing that as a number reads like a
-        // negative meal, so items say so in words instead.
+        // Items store -1 to mean they are worth no food, which reads as a negative meal.
         FoodText = IsRoot
             ? ""
             : node.IsItem
@@ -60,8 +53,8 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
         IsLorePearl = PearlInfo?.IsLore == true;
         PearlBrush = BuildPearlBrush(PearlInfo);
 
-        // Five Pebbles' own pearls all carry the type name PebblesPearl, so repeating it beside an
-        // item already called PebblesPearl says nothing. The number is what tells them apart.
+        // Five Pebbles' own pearls all carry the type name PebblesPearl. The number tells them
+        // apart.
         PearlLabel = detail?.PebblesPearlNumber is { } pebblesNumber
             ? "no " + pebblesNumber.ToString(CultureInfo.InvariantCulture)
             : PearlType;
@@ -92,17 +85,14 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
     /// <summary>False for the generic Misc and Broadcast pickups, which carry no lore.</summary>
     public bool IsLorePearl { get; }
 
-    /// <summary>The colour the game paints this pearl, or a muted grey when it is not known.</summary>
     public Brush PearlBrush { get; }
 
-    /// <summary>What the pearl chip reads: the pearl type, or the number for a Pebbles pearl.</summary>
     public string PearlLabel { get; }
 
     public string MeatText { get; }
 
     public bool HasMeat => MeatText.Length > 0;
 
-    /// <summary>For example "likes you 1.00". Empty when the creature remembers nothing.</summary>
     public string SocialText { get; }
 
     public bool HasSocial => SocialText.Length > 0;
@@ -112,7 +102,6 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
 
     public bool DislikesPlayer => LikeValue is < 0f;
 
-    /// <summary>For example "explosive". Empty for an ordinary spear or anything else.</summary>
     public string SpearText { get; }
 
     public bool HasSpear => SpearText.Length > 0;
@@ -130,7 +119,6 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
             }
             catch (FormatException)
             {
-                // fall through to the neutral brush
             }
         }
 
@@ -168,12 +156,10 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
 
     public DevourmentNode Node { get; }
 
-    /// <summary>0 for a root. Used only to indent the row.</summary>
     public int Depth { get; }
 
     public string Type { get; }
 
-    /// <summary>"item", "creature", or empty for a root, which is neither swallowed nor held.</summary>
     public string Kind { get; }
 
     public bool IsItem { get; }
@@ -193,12 +179,11 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
 
     public bool HasContents { get; }
 
-    /// <summary>For example "holds 15", counting everything below at any depth.</summary>
     public string ContentsSummary { get; }
 
     /// <summary>
     /// Set when this entity also appears further up its own chain, which no save should describe.
-    /// The row is drawn as a leaf and says so rather than being followed round the loop.
+    /// The row is drawn as a leaf rather than being followed round the loop.
     /// </summary>
     public bool RepeatsAncestor { get; }
 
@@ -207,7 +192,6 @@ public sealed partial class DevourmentNodeViewModel : ObservableObject
     [ObservableProperty]
     private bool isExpanded;
 
-    /// <summary>Indent for this row, one step per level of nesting.</summary>
     public Thickness Indent => new(Depth * 16, 0, 0, 0);
 
     private static string BuildToolTip(

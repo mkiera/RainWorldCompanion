@@ -1,20 +1,21 @@
 using System.Windows;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// The confirmation shown before a restore. Every list the plan carries is rendered, including
-/// the two that say where the restore stops short of an exact match: files this backup's rules
-/// never covered, which survive it, and files it holds that today's rules exclude, which are not
-/// written back. Leaving either out tells the user the save folder will match the snapshot when
-/// it will not.
+/// Every list the plan carries is rendered, including the two that say where the restore stops
+/// short of an exact match: files this backup's rules never covered, which survive it, and files
+/// it holds that today's rules exclude, which are not written back. Leaving either out tells the
+/// user the save folder will match the snapshot when it will not.
 /// </summary>
 public partial class RestoreConfirmDialog : Window
 {
     public RestoreConfirmDialog(RestorePlan plan, string snapshotName)
     {
         SnapshotName = snapshotName;
+        ModDiff = new ModListDiffViewModel(plan.Mods, fromABackup: true);
         Added = plan.Added;
         Overwritten = plan.Overwritten;
         Unchanged = plan.Unchanged;
@@ -45,6 +46,8 @@ public partial class RestoreConfirmDialog : Window
     }
 
     public string SnapshotName { get; }
+
+    public ModListDiffViewModel ModDiff { get; }
 
     public IReadOnlyList<string> Added { get; }
 
@@ -84,7 +87,6 @@ public partial class RestoreConfirmDialog : Window
 
     public Visibility NotRestoredVisibility { get; }
 
-    /// <summary>Hides the whole exceptions panel when the restore really is an exact match.</summary>
     public Visibility ExceptionsVisibility { get; }
 
     private void OnRestore(object sender, RoutedEventArgs e)

@@ -3,9 +3,9 @@
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The list of branch builds. These are never offered on their own, so the risks are different
-/// from a release: a row that cannot be downloaded, a row that claims to be the copy you are
-/// running when it is not, and a branch name reaching a URL it was never safe in.
+/// These are never offered on their own, so the risks are different from a release: a row
+/// that cannot be downloaded, a row that claims to be the copy you are running when it is
+/// not, and a branch name reaching a URL it was never safe in.
 /// </summary>
 public class AlphaBuildTests
 {
@@ -120,9 +120,8 @@ public class AlphaBuildTests
 }
 
 /// <summary>
-/// The addresses the app is willing to fetch from, and the names it is willing to write to disk.
-/// Both arrive inside a document downloaded over the network, and the file at the end of them is
-/// executed, so neither is taken on trust.
+/// Both arrive inside a document downloaded over the network, and the file at the end of them
+/// is executed, so neither is taken on trust.
 /// </summary>
 public class UpdateUrlTests
 {

@@ -4,12 +4,7 @@ using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.App.Tests;
 
-/// <summary>
-/// The updates window's decisions: which rows a channel shows, what each row's button says, and
-/// what it takes to walk backwards onto an older build.
-///
-/// Builds no Window and no Dispatcher, the same rule the rest of this suite keeps.
-/// </summary>
+/// <summary>Builds no Window and no Dispatcher, the same rule the rest of this suite keeps.</summary>
 public class UpdatesWindowTests
 {
     private static UpdatesViewModel Window(UpdateWorld world, UpdateViewModel updates) =>
@@ -76,8 +71,8 @@ public class UpdatesWindowTests
     }
 
     /// <summary>
-    /// The first press only arms it. Going back to an older build is easy to choose by accident
-    /// in a list where every other row is an update.
+    /// Going back to an older build is easy to choose by accident in a list where every other
+    /// row is an update.
     /// </summary>
     [Fact]
     public async Task A_downgrade_takes_two_presses()
@@ -164,10 +159,6 @@ public class UpdatesWindowTests
         Assert.False(window.Channels.Single(c => c.Channel == UpdateChannel.Stable).IsSelected);
     }
 
-    /// <summary>
-    /// Sixty anonymous requests an hour are shared with everything else on the machine, so moving
-    /// between two channels backed by the same list must not spend one per click.
-    /// </summary>
     [Fact]
     public async Task Moving_between_release_channels_costs_no_extra_request()
     {
@@ -229,8 +220,6 @@ public class UpdatesWindowTests
         Assert.False(window.IsProblem);
         Assert.NotEmpty(window.Message);
     }
-
-    // Branch builds
 
     private static WorkflowRun Run(long id, string branch, int number, string sha = "abc1234def") =>
         new(id, "Build Test", branch, sha, number, "success", DateTimeOffset.UnixEpoch);

@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using System.Text.Json.Serialization;
 using RainWorldCompanion.Core.Saves;
@@ -8,16 +7,10 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Core.Saves.Models;
 
 /// <summary>
-/// One campaign read out of a SAVE STATE record: which slugcat, how far the run has got, what it
-/// has killed and unlocked, and what the Devourment mod recorded alongside it.
-///
-/// Every field is optional. The extractor is fail-soft, so a value the record did not carry, or
-/// one that would not parse, arrives as null or as an empty collection. Collections are never
-/// null, which lets the UI bind to them without a converter.
-///
-/// That last part holds through deserialisation too. A field initialiser alone would not: a
-/// manifest.json carrying an explicit null for one of these arrays overwrites the initialiser,
-/// so each collection stores through an init accessor that turns a null into an empty array.
+/// One campaign read out of a SAVE STATE record. Every field is optional: a value the record did not
+/// carry arrives as null or as an empty collection. Each collection stores through an init accessor
+/// that turns a null into an empty array, because a manifest.json carrying an explicit null for one
+/// of them would otherwise overwrite the field initialiser.
 /// </summary>
 public sealed class CampaignSummary
 {
@@ -36,6 +29,9 @@ public sealed class CampaignSummary
 
     public int? CycleNum { get; init; }
 
+    /// <summary>FOOD, exactly as it sits on disk. Routinely negative: SaveState.SessionEnded
+    /// subtracts the shelter cost every cycle, so a cycle that banked less stores the shortfall.
+    /// See <see cref="EffectiveFood"/>.</summary>
     public int? Food { get; init; }
 
     /// <summary>Value of DENPOS, for example SU_S04.</summary>
@@ -49,22 +45,13 @@ public sealed class CampaignSummary
     /// <summary>True when the record carries a bare HASTHEGLOW flag.</summary>
     public bool HasGlow { get; init; }
 
-    /// <summary>
-    /// In-game name for <see cref="SlugcatId"/>, for example "Survivor" for White. An id the
-    /// catalog does not know comes back as the raw id.
-    ///
-    /// Not serialised. It is read from the catalog, not from the save, and it has no setter, so
-    /// writing it to manifest.json would record a value no reader can load back and freeze a
-    /// catalog name the catalog may later correct.
-    /// </summary>
+    /// <summary>In-game name, for example "Survivor" for White. An id the catalog does not know comes
+    /// back as the raw id.</summary>
     [JsonIgnore]
     public string DisplayName => SlugcatCatalog.ForId(SlugcatId).DisplayName;
 
-    /// <summary>
-    /// KARMA from DEATHPERSISTENTSAVEDATA, exactly as it sits on disk. This is a 0-based index,
-    /// and it can sit outside 0..<see cref="KarmaCap"/>, in which case the game discards it on
-    /// load. See <see cref="EffectiveKarma"/>.
-    /// </summary>
+    /// <summary>KARMA from DEATHPERSISTENTSAVEDATA, a 0-based index. It can sit outside
+    /// 0..<see cref="KarmaCap"/>, in which case the game discards it on load.</summary>
     public int? Karma { get; init; }
 
     /// <summary>KARMACAP from DEATHPERSISTENTSAVEDATA, also a 0-based index.</summary>
@@ -73,23 +60,13 @@ public sealed class CampaignSummary
     /// <summary>REINFORCEDKARMA from DEATHPERSISTENTSAVEDATA: the karma flower state.</summary>
     public int? ReinforcedKarma { get; init; }
 
-    /// <summary>
-    /// <see cref="Karma"/> as the game holds it after loading this record.
-    /// DeathPersistentSaveData.FromString ends with an unconditional clamp to 0..karmaCap, so a
-    /// stored value outside that range never reaches play. A null cap leaves the upper bound
-    /// unknown, so only the lower bound applies.
-    ///
-    /// Not serialised, for the same reason as <see cref="DisplayName"/>: it is derived from fields
-    /// the manifest already records, and it has no setter.
-    /// </summary>
+    /// <summary>DeathPersistentSaveData.FromString ends with an unconditional clamp to 0..karmaCap.
+    /// A null cap leaves the upper bound unknown, so only the lower bound applies.</summary>
     [JsonIgnore]
     public int? EffectiveKarma => KarmaMath.EffectiveKarma(Karma, KarmaCap);
 
-    /// <summary>
-    /// The karma level a player reads off the meter. The save stores a 0-based index, which
-    /// HUD.KarmaMeter uses directly as a sprite number over smallKarma0 to smallKarma9, so the
-    /// number on screen is one above the stored one. The +1 here is that offset, not a fudge.
-    /// </summary>
+    /// <summary>The karma level a player reads off the meter, which is one above the stored 0-based
+    /// index because HUD.KarmaMeter uses it as a sprite number over smallKarma0 to smallKarma9.</summary>
     [JsonIgnore]
     public int? DisplayKarma => KarmaMath.DisplayKarma(Karma, KarmaCap);
 
@@ -97,19 +74,27 @@ public sealed class CampaignSummary
     [JsonIgnore]
     public int? DisplayKarmaCap => KarmaMath.DisplayKarmaCap(KarmaCap);
 
-    /// <summary>
-    /// True when <see cref="Karma"/> differs from <see cref="EffectiveKarma"/>, so the value on
-    /// disk is one the game will discard.
-    /// </summary>
+    /// <summary>True when the value on disk is one the game will discard.</summary>
     [JsonIgnore]
     public bool KarmaStoredOutOfRange => KarmaMath.IsStoredOutOfRange(Karma, KarmaCap);
 
-    /// <summary>
-    /// Player-facing karma as "8 / 10", or "8" when the cap is unknown, or "-" when the record
-    /// carried no karma at all.
-    /// </summary>
+    /// <summary>"8 / 10", or "8" when the cap is unknown, or "-" when there was no karma at all.</summary>
     [JsonIgnore]
     public string KarmaText => KarmaMath.FormatKarma(Karma, KarmaCap);
+
+    /// <summary><see cref="Food"/> as the pips a run starts with. The RainWorldGame constructor hands
+    /// out food only while the stored number is above zero, so a negative is 0 pips.</summary>
+    [JsonIgnore]
+    public int? EffectiveFood => FoodMath.EffectiveFood(Food);
+
+    /// <summary>True when the value on disk is one the game will not hand to the player.</summary>
+    [JsonIgnore]
+    public bool FoodStoredNegative => FoodMath.IsStoredNegative(Food);
+
+    /// <summary>How many pips this slugcat's meter holds and what a shelter costs. Read from
+    /// <see cref="SlugcatId"/>, not from the save, which stores neither.</summary>
+    [JsonIgnore]
+    public FoodMeter FoodMeter => FoodMath.MeterFor(SlugcatId);
 
     /// <summary>True when DEATHPERSISTENTSAVEDATA carries a bare HASTHEMARK flag.</summary>
     public bool HasTheMark { get; init; }
@@ -120,52 +105,28 @@ public sealed class CampaignSummary
     /// <summary>True when the record carries a bare HASROBO flag.</summary>
     public bool HasRobo { get; init; }
 
-    /// <summary>
-    /// True when the record carries a bare JUSTBEATGAME flag.
-    ///
-    /// Despite the name the game gives it, this is SaveState.skipNextCycleFoodDrain: a one cycle
-    /// marker whose only reader is MoreSlugcats.PlayerNPCState.CycleTick, which skips one cycle of
-    /// food drain. SaveState.SessionEnded clears it at the end of the next session, and
-    /// Watcher.SpinningTop.MarkSpinningTopEncountered sets it on merely meeting Spinning Top, so
-    /// it is not a record of having beaten the game. That record lives in PlayerProgression's
-    /// miscProgressionData, which this app does not read.
-    /// </summary>
+    /// <summary>True when the record carries a bare JUSTBEATGAME flag. Despite the name, this is
+    /// SaveState.skipNextCycleFoodDrain, a one cycle marker that SpinningTop sets on merely meeting
+    /// it, so it is not a record of having beaten the game.</summary>
     public bool JustBeatGame { get; init; }
 
-    /// <summary>
-    /// True when DEATHPERSISTENTSAVEDATA carries a bare REDSDEATH token.
-    ///
-    /// The token is not the flag. DeathPersistentSaveData.SaveToString writes it whenever the save
-    /// is written as a death or a quit, whatever the flag holds, which is why eight of the nine
-    /// campaigns in a real slot carry it. See <see cref="EffectiveRedsDeath"/>.
-    /// </summary>
+    /// <summary>True when DEATHPERSISTENTSAVEDATA carries a bare REDSDEATH token. The token is not
+    /// the flag: SaveToString writes it whenever the save is written as a death or a quit, whatever
+    /// the flag holds. See <see cref="EffectiveRedsDeath"/>.</summary>
     public bool RedsDeathStored { get; init; }
 
-    /// <summary>
-    /// True when either REDEXTRACYCLES token is present. The game writes one in the SAVE STATE
-    /// record and one in DEATHPERSISTENTSAVEDATA, and SaveState.RedExtraCycles is true when either
-    /// is set, so this is the two of them together.
-    /// </summary>
+    /// <summary>The game writes one REDEXTRACYCLES token in the SAVE STATE record and one in
+    /// DEATHPERSISTENTSAVEDATA, and SaveState.RedExtraCycles is true when either is set.</summary>
     public bool RedExtraCycles { get; init; }
 
-    /// <summary>
-    /// The redsDeath flag as the game holds it after loading this record. SaveState.LoadGame
-    /// clears it while <see cref="CycleNum"/> is below Hunter's cycle limit.
-    ///
-    /// Not serialised, for the same reason as <see cref="DisplayName"/>: it is derived from fields
-    /// the manifest already records, and it has no setter.
-    /// </summary>
+    /// <summary>SaveState.LoadGame clears the redsDeath flag while <see cref="CycleNum"/> is below
+    /// Hunter's cycle limit.</summary>
     [JsonIgnore]
     public bool EffectiveRedsDeath
         => RedsIllness.EffectiveRedsDeath(RedsDeathStored, CycleNum, RedExtraCycles);
 
-    /// <summary>
-    /// The cycle number the game puts on screen. Hunter is shown the cycles remaining rather than
-    /// the cycles played, by both HUD.Map.CycleLabel and the save select menu, so for that one
-    /// campaign this is the limit minus <see cref="CycleNum"/>.
-    ///
-    /// Not serialised, for the same reason as <see cref="EffectiveRedsDeath"/>.
-    /// </summary>
+    /// <summary>Hunter is shown the cycles remaining rather than the cycles played, so for that one
+    /// campaign this is the limit minus <see cref="CycleNum"/>.</summary>
     [JsonIgnore]
     public int? DisplayCycleNum => RedsIllness.DisplayCycle(SlugcatId, CycleNum, RedExtraCycles);
 
@@ -218,13 +179,6 @@ public sealed class CampaignSummary
         init => _kills = value ?? Array.Empty<KillRecord>();
     }
 
-    /// <summary>
-    /// Every kill in <see cref="Kills"/> added up.
-    ///
-    /// Not serialised, for the same reason as <see cref="DisplayName"/>: it is derived from
-    /// <see cref="Kills"/>, which the manifest already records, and it has no setter. A v1
-    /// manifest has no kills at all, so a stored total there would contradict the file it sits in.
-    /// </summary>
     [JsonIgnore]
     public int TotalKills
     {
@@ -240,23 +194,16 @@ public sealed class CampaignSummary
         }
     }
 
-    /// <summary>
-    /// Devourment relationships that parsed. This can be shorter than
-    /// <see cref="DevourmentStateCount"/>, which counts every DEVOURMENTSTATE field including the
-    /// ones this app could not read.
-    /// </summary>
+    /// <summary>The relationships that parsed, which can be fewer than
+    /// <see cref="DevourmentStateCount"/>.</summary>
     public IReadOnlyList<DevourmentRelationship> DevourmentStates
     {
         get => _devourmentStates;
         init => _devourmentStates = value ?? Array.Empty<DevourmentRelationship>();
     }
 
-    /// <summary>
-    /// Entity ids from the FRIENDS field: the creatures the game is keeping with the player
-    /// between cycles. This is the game's own record of taming, and it is not the same as a high
-    /// like value in a creature's social memory. A creature can like the player completely and
-    /// still not be on this list.
-    /// </summary>
+    /// <summary>Entity ids from FRIENDS: the game's own record of taming, which is not the same as a
+    /// high like value in social memory. A creature can like the player completely and not be here.</summary>
     public IReadOnlyList<string> FriendIds
     {
         get => _friendIds;
@@ -288,18 +235,16 @@ public sealed class CampaignSummary
             parts.Add("cycle " + CycleNum.Value.ToString(CultureInfo.InvariantCulture));
         }
 
-        if (Food.HasValue)
+        // The pips the run starts with, not the raw field, which can be negative.
+        if (EffectiveFood is { } food)
         {
-            parts.Add("food " + Food.Value.ToString(CultureInfo.InvariantCulture));
+            parts.Add("food " + food.ToString(CultureInfo.InvariantCulture));
         }
 
         return string.Join("  ", parts);
     }
 
-    /// <summary>
-    /// Playtime as "14h 28m", or "48m" under an hour. A null span gives an empty string, so a
-    /// caller can bind it straight to a label.
-    /// </summary>
+    /// <summary>"14h 28m", or "48m" under an hour. A null span gives an empty string.</summary>
     public static string FormatPlayTime(TimeSpan? playTime)
     {
         if (playTime is not { } span || span < TimeSpan.Zero)

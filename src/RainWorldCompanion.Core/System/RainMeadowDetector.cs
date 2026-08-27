@@ -1,23 +1,10 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Text.Json;
 
 namespace RainWorldCompanion.Core.System;
 
-/// <summary>
-/// Whether Rain Meadow is on this machine, and how we know.
-/// </summary>
-/// <param name="Present">
-/// True when the mod is installed, or when the save folder carries something only Rain Meadow
-/// writes. The window shows its online section on this and hides it entirely otherwise.
-/// </param>
-/// <param name="Enabled">
-/// True only when the mod appears in the game's own enabled list. False does not mean absent: it
-/// also covers an install we could not read because the game folder is unknown.
-/// </param>
-/// <param name="Version">Version from the mod's modinfo.json, when it was read.</param>
-/// <param name="Reason">Plain sentence naming the evidence, for the tooltip and for support.</param>
+/// <param name="Present">Installed, or the save folder carries something only it writes.</param>
+/// <param name="Enabled">False also covers an install that could not be read, not just absence.</param>
 public sealed record RainMeadowPresence(bool Present, bool Enabled, string? Version, string Reason)
 {
     public static RainMeadowPresence Absent { get; } =
@@ -25,24 +12,16 @@ public sealed record RainMeadowPresence(bool Present, bool Enabled, string? Vers
 }
 
 /// <summary>
-/// Works out whether Rain Meadow is installed.
-///
-/// The mod ships from the Steam workshop rather than the game's own mods folder, and the game
-/// records what is turned on in StreamingAssets\enabledMods.txt as a list of workshop paths and
-/// bare folder names. That file is the authority, but it lives in the game install, and this app
-/// treats the game path as optional because it only ever needed it for slugcat portraits. So the
-/// save folder is checked too: several files there are written by nothing but Rain Meadow, and
-/// finding one is enough to know the player uses it.
+/// StreamingAssets\enabledMods.txt is the authority, but it lives in the game install and the game
+/// path is optional here, so the save folder is checked too: several files there are written by
+/// nothing but Rain Meadow.
 /// </summary>
 public static class RainMeadowDetector
 {
-    /// <summary>The mod id in its modinfo.json, and the name of its Remix config file.</summary>
     public const string ModId = "henpemaz_rainmeadow";
 
-    /// <summary>The game's list of what is turned on, relative to the install root.</summary>
     private const string EnabledModsRelativePath = @"RainWorld_Data\StreamingAssets\enabledMods.txt";
 
-    /// <summary>Local mods live here, and a bare line in the enabled list names one of them.</summary>
     private const string ModsRelativePath = @"RainWorld_Data\StreamingAssets\mods";
 
     /// <summary>A workshop line carries this prefix and then an absolute path.</summary>
@@ -58,10 +37,7 @@ public static class RainMeadowDetector
         "online_sav3",
     };
 
-    /// <summary>
-    /// Never throws. An unreadable game folder or a malformed modinfo.json costs the authoritative
-    /// answer and falls back to the save folder evidence.
-    /// </summary>
+    /// <summary>Never throws. An unreadable game folder falls back to the save folder evidence.</summary>
     public static RainMeadowPresence Detect(string? saveFolder, string? gameInstallPath)
     {
         RainMeadowPresence? fromGame = DetectFromGame(gameInstallPath);
@@ -159,8 +135,8 @@ public static class RainMeadowDetector
     }
 
     /// <summary>
-    /// The version string when this folder is Rain Meadow, an empty string when it is Rain Meadow
-    /// with no readable version, and null when it is some other mod.
+    /// The version when this folder is Rain Meadow, empty when it is Rain Meadow with no readable
+    /// version, and null when it is some other mod.
     /// </summary>
     private static string? ReadModVersionIfMeadow(string modFolder)
     {
@@ -207,7 +183,6 @@ public static class RainMeadowDetector
         }
     }
 
-    /// <summary>The first Rain Meadow file found in the save folder, or null.</summary>
     private static string? FindSaveFolderEvidence(string? saveFolder)
     {
         if (string.IsNullOrWhiteSpace(saveFolder))

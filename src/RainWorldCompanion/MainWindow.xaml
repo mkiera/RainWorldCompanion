@@ -32,18 +32,31 @@
                     <TextBlock Text="{Binding Label}"
                                Style="{StaticResource Text.SectionLabel}"
                                TextTrimming="CharacterEllipsis" />
-                    <TextBlock Text="{Binding Value}" Margin="0,3,0,0">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Value}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsMissing}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
-                                        <Setter Property="FontWeight" Value="Normal" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                    <!-- The value, and the asterisk a tile carries when it shows a number the
+                         game derived rather than the one on disk. A Grid rather than a horizontal
+                         StackPanel, which measures the value with unbounded width and so leaves
+                         TextTrimming nothing to trim against. -->
+                    <Grid Margin="0,3,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="{Binding Value}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Value}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                            <Setter Property="FontWeight" Value="Normal" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Grid.Column="1" Text="*" Style="{StaticResource Text.Tiny}"
+                                   Margin="2,0,0,0" VerticalAlignment="Top"
+                                   Visibility="{Binding Footnoted, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -1337,6 +1350,19 @@
                                Style="{StaticResource Text.Title}" Margin="9,0,0,0" VerticalAlignment="Center" />
                     <TextBlock DockPanel.Dock="Left" Text="{Binding CampaignCountText}"
                                Style="{StaticResource Text.Muted}" Margin="10,0,0,0" VerticalAlignment="Center" />
+
+                    <!-- Only the live save folder, and only a slot with something in it. A backup
+                         and a library save are copies taken at a moment, and a slot already empty
+                         has nothing to take. -->
+                    <Button DockPanel.Dock="Right" Content="Delete slot" Margin="10,0,0,0"
+                            Style="{StaticResource Button.Small}"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding CanDelete, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Deletes every campaign in this slot. The file stays, and so do the map and the progression record unless you ask for them."
+                            Command="{Binding DataContext.DeleteSlotCommand,
+                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}" />
+
                     <TextBlock Text="{Binding FileName}" Style="{StaticResource Text.Tiny}"
                                HorizontalAlignment="Right" VerticalAlignment="Center" />
                 </DockPanel>
@@ -1454,6 +1480,18 @@
         </DataTemplate>
 
         <!-- One character out of meadow.json -->
+        <!-- One mod: what it is called, its version, and where it came from. -->
+        <DataTemplate x:Key="ModListRowTemplate">
+            <DockPanel Margin="0,2">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding OriginText}"
+                           Style="{StaticResource Text.Muted}" Margin="10,0,0,0" />
+                <TextBlock DockPanel.Dock="Right" Text="{Binding VersionText}"
+                           Style="{StaticResource Text.Muted}" Margin="10,0,0,0" />
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Name}" />
+            </DockPanel>
+        </DataTemplate>
+
         <DataTemplate x:Key="MeadowCharacterTemplate">
             <Border Style="{StaticResource Card}" Padding="12,10" Margin="0,0,0,8">
                 <StackPanel>
@@ -2004,6 +2042,38 @@
                 </Grid>
             </Border>
 
+            <!-- What the build already running brought with it, shown once. The offer banner above
+                 points forward at a version to install; this points back at the one in use, so it
+                 carries no install button and only has to be read and put away. -->
+            <Border Style="{StaticResource Banner.Info}"
+                    Margin="16,12,16,0"
+                    Visibility="{Binding Updates.HasWhatsNew, Converter={StaticResource BoolToVis}}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Updates.WhatsNewTitle}"
+                                   TextWrapping="Wrap"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Text}" />
+                        <TextBlock Text="{Binding Updates.WhatsNewNotes}"
+                                   TextWrapping="Wrap"
+                                   Margin="0,4,12,0"
+                                   Foreground="{StaticResource Brush.Text}" />
+                    </StackPanel>
+
+                    <Button Grid.Column="1"
+                            Content="Got it"
+                            VerticalAlignment="Center"
+                            Style="{StaticResource Button.Small}"
+                            Margin="12,0,0,0"
+                            Command="{Binding Updates.DismissWhatsNewCommand}" />
+                </Grid>
+            </Border>
+
             <!-- A failure with no offer attached still has to reach the user, which is the case
                  after a check the user asked for could not reach GitHub. -->
             <Border Style="{StaticResource Banner.Warn}"
@@ -2400,6 +2470,35 @@
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
+
+                            <!-- What the save was played with. A flat list rather than a banded
+                                 panel: mods are context for the saves above, not another set of
+                                 saves. The empty line matters as much as the rows, because "no
+                                 mods" and "nobody looked" are different answers. -->
+                            <StackPanel Margin="0,22,0,0">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock DockPanel.Dock="Left" Text="MODS" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding Detail.Mods.GameVersionText}"
+                                               Style="{StaticResource Text.Muted}" Margin="8,0,0,0"
+                                               VerticalAlignment="Center" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}"
+                                            VerticalAlignment="Center" />
+                                </DockPanel>
+
+                                <TextBlock Text="{Binding Detail.Mods.CountText}"
+                                           Style="{StaticResource Text.Muted}"
+                                           Visibility="{Binding Detail.Mods.HasCount, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="{Binding Detail.Mods.EmptyText}"
+                                           Style="{StaticResource Text.Muted}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding Detail.Mods.HasEmptyText, Converter={StaticResource BoolToVis}}" />
+
+                                <ItemsControl ItemsSource="{Binding Detail.Mods.Rows}"
+                                              ItemTemplate="{StaticResource ModListRowTemplate}"
+                                              Margin="0,6,0,0" />
+                            </StackPanel>
                         </StackPanel>
                     </ScrollViewer>
 

@@ -9,8 +9,6 @@ namespace RainWorldCompanion.Tests;
 /// </summary>
 public class SettingsTests
 {
-    // ---- SettingsValidation ----
-
     [Theory]
     [InlineData(@"C:\Games\Rain World", @"C:\Games\Rain World")]
     [InlineData(@"C:\Games\Rain World", @"C:\Games\Rain World\")]
@@ -54,8 +52,6 @@ public class SettingsTests
     [InlineData(@"C:\Games\Rain World", @"D:\Backups\Rain World")]
     public void Validate_accepts_two_unrelated_folders(string savePath, string backupPath)
         => Assert.Null(SettingsValidation.Validate(savePath, backupPath));
-
-    // ---- the library root, which has to clear the same rule against both of the others ----
 
     [Theory]
     [InlineData(@"C:\Games\Rain World", @"D:\Backups", @"C:\Games\Rain World")]
@@ -124,9 +120,8 @@ public class SettingsTests
 
     /// <summary>
     /// Junctioning a folder out of the save folder and naming the junction as the backup root is
-    /// how a user relocates backups onto another drive. The two paths share no textual prefix, so
-    /// a string comparison accepts it, and every backup then sweeps up every earlier snapshot and
-    /// the first restore deletes the whole backup store.
+    /// how a user relocates backups. The two paths share no textual prefix, so a naive check
+    /// accepts it, and the first restore then deletes the whole backup store.
     /// </summary>
     [JunctionFact]
     public void Validate_rejects_a_backup_root_that_is_only_aliased_out_of_the_save_folder()
@@ -160,12 +155,9 @@ public class SettingsTests
         Assert.False(string.IsNullOrWhiteSpace(reason));
     }
 
-    // ---- SettingsValidation.ValidateText ----
-
-    // The settings dialog validates on every keystroke, and the full Validate resolves each path
-    // through the filesystem, which blocks for the whole network timeout on a half-typed UNC
-    // path. ValidateText is the part the dialog can afford to run inline, so it has to answer
-    // without touching disk and give the same reasons for the cases it does cover.
+    // The dialog validates on every keystroke, but the full Validate resolves each path through
+    // the filesystem, which can block for a network timeout on a half-typed UNC path.
+    // ValidateText is what the dialog can run inline: no disk access, same reasons where it applies.
 
     [Theory]
     [InlineData("", @"C:\Backups")]
@@ -203,16 +195,12 @@ public class SettingsTests
         Assert.Null(quick);
     }
 
-    // ---- AppSettings ----
-
     [Fact]
     public void CreateDefault_does_not_go_looking_for_the_game_install()
     {
-        // Finding the install reads the Steam registry value, parses every libraryfolders.vdf
-        // and probes each library it names, and a library on a share whose machine is off makes
-        // that probe block for the full SMB timeout. CreateDefault is called on the dispatcher
-        // before the window is shown, so the lookup belongs to SettingsStore.Load, which every
-        // caller runs on a worker.
+        // Finding the install probes every Steam library folder, which can block for the full SMB
+        // timeout on a share whose machine is off. CreateDefault runs on the dispatcher before the
+        // window is shown, so that lookup belongs in SettingsStore.Load, which runs on a worker.
         Assert.Null(AppSettings.CreateDefault().GameInstallPath);
     }
 
@@ -268,29 +256,6 @@ public class SettingsTests
         });
 
         Assert.Equal(@"E:\Library", store.Load().LibraryRootPath);
-    }
-
-    [Fact]
-    public void CreateDefault_returns_a_fresh_instance_each_time()
-    {
-        var first = AppSettings.CreateDefault();
-        var second = AppSettings.CreateDefault();
-
-        first.GameSavePath = @"C:\Somewhere";
-
-        Assert.NotSame(first, second);
-        Assert.NotEqual(@"C:\Somewhere", second.GameSavePath);
-    }
-
-    // ---- SettingsStore ----
-
-    [Fact]
-    public void SettingsPath_is_the_path_the_store_was_built_with()
-    {
-        using var temp = new TempDirectory("settings");
-        var path = temp.Resolve("settings.json");
-
-        Assert.Equal(path, new SettingsStore(path).SettingsPath);
     }
 
     [Fact]

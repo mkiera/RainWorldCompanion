@@ -5,20 +5,19 @@ using System.ComponentModel;
 using System.Windows;
 
 using RainWorldCompanion.Core.Editing;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
 /// <summary>
-/// Picks the slot one campaign is going to, and whether it leaves the one it came from.
-///
-/// Every line comes from the plan Core built for the slot the picker is on, so the file this shows
-/// as changing is the file that will be written to. Changing the picker asks Core again rather than
-/// working anything out here.
+/// Every line comes from the plan Core built for the slot the picker is on, so the file this
+/// shows as changing is the file that will be written to. Changing the picker asks Core again
+/// rather than working anything out here.
 /// </summary>
 public partial class SendCampaignDialog : Window, INotifyPropertyChanged
 {
-    /// <summary>One entry in the slot picker.</summary>
     public sealed record SlotChoice(SaveSlotRef Ref, string Label)
     {
         /// <summary>
@@ -42,24 +41,25 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     /// a library save has nowhere to be taken out of, so that half of this window is not offered.
     /// </param>
     /// <param name="sourceName">What to call where it is now, for example "backup 2026-08-24_120000".</param>
-    /// <param name="replan">
-    /// Asks Core what putting the campaign into a slot would do. Every side of this dialog comes
-    /// from one of those answers, so changing the picker cannot make the dialog disagree with the
-    /// write.
-    /// </param>
     /// <param name="includeOnline">
-    /// Whether the online slots are offered. False when Rain Meadow is not on the machine, where
-    /// online_sav is a file nothing reads.
+    /// False when Rain Meadow is not on the machine, where online_sav is a file nothing reads.
+    /// </param>
+    /// <param name="mods">
+    /// How the mods this campaign was saved with stand against the machine now, for a campaign
+    /// coming out of a backup or a library save. Null for a live slot, where the campaign and the
+    /// machine are the same machine and a comparison would only say so at length.
     /// </param>
     public SendCampaignDialog(
         string campaignName,
         SaveSlotRef? source,
         string sourceName,
         Func<SaveSlotRef, CampaignMovePlan> replan,
-        bool includeOnline)
+        bool includeOnline,
+        ModListDiff? mods = null)
     {
         CampaignName = campaignName;
         SourceName = sourceName;
+        ModDiff = new ModListDiffViewModel(mods);
 
         _source = source;
         _replan = replan;
@@ -78,6 +78,12 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string CampaignName { get; }
+
+    /// <summary>
+    /// It does not change with the target slot, because the mods belong to the machine rather
+    /// than to the slot, so nothing rebuilds it when the picker moves.
+    /// </summary>
+    public ModListDiffViewModel ModDiff { get; }
 
     public string SourceName { get; }
 
@@ -100,11 +106,9 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     }
 
     /// <summary>
-    /// Whether the campaign is taken out of the slot it came from once it has arrived.
-    ///
-    /// Off by default. Copying leaves both slots holding something, and a move that turned out to be
-    /// the wrong slot has thrown away the only copy of a run, so the destructive half is the one the
-    /// user has to ask for.
+    /// Off by default. Copying leaves both slots holding something, and a move that turned out
+    /// to be the wrong slot has thrown away the only copy of a run, so the destructive half is
+    /// the one the user has to ask for.
     /// </summary>
     public bool TakeItOut
     {
@@ -126,7 +130,6 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
 
     public bool ChosenToTakeItOut => _takeItOut && CanTakeItOut;
 
-    /// <summary>Core's own answer for the slot the picker is on.</summary>
     public bool CanSend => _plan.CanWrite && !SameAsTheSource;
 
     public bool SameAsTheSource => _source is { } source
@@ -134,9 +137,8 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
         && _selectedTarget.Ref.Slot == source.Slot;
 
     /// <summary>
-    /// Whether taking it out of where it is now is even a thing that can be done. A backup and a
-    /// library save are copies taken at a moment, and changing one would leave it no longer a copy
-    /// of anything, so the campaign is only ever copied out of them.
+    /// A backup and a library save are copies taken at a moment, and changing one would leave it
+    /// no longer a copy of anything, so the campaign is only ever copied out of them.
     /// </summary>
     public bool CanTakeItOut => _source is not null;
 
@@ -165,13 +167,11 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
         ? "Move " + CampaignName + " to " + _plan.TargetFileName + "?"
         : "Copy " + CampaignName + " to " + _plan.TargetFileName + "?";
 
-    /// <summary>What Core says this does to the slot it is going to.</summary>
     public string EffectText => _plan.Describe();
 
     /// <summary>
-    /// What it does to the slot it came from, which is the half a person is most likely to get
-    /// wrong. The map goes with a move, because a map left in a slot with no campaign to go with it
-    /// is not what anybody means by moving a campaign.
+    /// The map goes with a move, because a map left in a slot with no campaign to go with it is
+    /// not what anybody means by moving a campaign.
     /// </summary>
     public string SourceEffectText
     {

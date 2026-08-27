@@ -4,13 +4,9 @@ using RainWorldCompanion.Core.Updates;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// What survives reading a settings file that this build did not write.
-///
-/// This matters more than it looks. The updates window can install an older version, so an earlier
-/// build will read a file a later one wrote, holding fields it has never heard of and possibly a
-/// field whose type has changed. Losing the whole file to one bad value costs the user their
-/// backup and library locations, and while the folders are still on disk the app no longer knows
-/// where they are, which reads as "my backups are gone".
+/// The updates window can install an older version, so an earlier build reads a file a later one
+/// wrote. Losing the whole file to one bad value costs the user their backup and library
+/// locations, which reads as "my backups are gone" even though the folders are still on disk.
 /// </summary>
 public class SettingsResilienceTests
 {
@@ -23,8 +19,7 @@ public class SettingsResilienceTests
 
     /// <summary>
     /// The serializer is configured case-insensitively for files written before the camelCase
-    /// naming policy was set. Any change to how the file is read has to keep that working, and
-    /// there was no test holding it in place.
+    /// naming policy was set.
     /// </summary>
     [Fact]
     public void A_file_written_with_PascalCase_names_still_loads()
@@ -91,10 +86,7 @@ public class SettingsResilienceTests
         Assert.Equal("C:\\library", settings.LibraryRootPath);
     }
 
-    /// <summary>
-    /// The case a downgrade produces. One field whose type this build cannot read must cost that
-    /// field alone, not the paths beside it.
-    /// </summary>
+    /// <summary>The case a downgrade produces: one unreadable field must not cost the paths beside it.</summary>
     [Theory]
     [InlineData(""""{"schemaVersion": "not a number", "backupRootPath": "C:\\backups", "libraryRootPath": "C:\\library"}"""")]
     [InlineData(""""{"autoCheckUpdates": "yes", "backupRootPath": "C:\\backups", "libraryRootPath": "C:\\library"}"""")]
@@ -125,8 +117,8 @@ public class SettingsResilienceTests
     }
 
     /// <summary>
-    /// A document that is not JSON at all still falls back wholesale, because there is nothing in
-    /// it to salvage. That is a different case from one bad field and stays as it was.
+    /// Not JSON at all falls back wholesale, since there is nothing here to salvage. This is a
+    /// different case from one bad field, which keeps everything else.
     /// </summary>
     [Theory]
     [InlineData("")]

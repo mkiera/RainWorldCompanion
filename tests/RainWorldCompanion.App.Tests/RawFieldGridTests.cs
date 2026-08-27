@@ -7,12 +7,10 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The raw field list, which is what makes "edit any value" true rather than "edit the values this
-/// app happened to model".
-///
-/// The two halves of the panel are two views of one record, so most of these check that a change
-/// made in one shows up in the other. The rest check the thing the named boxes deliberately do not
-/// do: write whatever was typed, including text a field is not supposed to hold.
+/// The two halves of the panel are two views of one record, so most of these check that a
+/// change made in one shows up in the other. The rest check the thing the named boxes
+/// deliberately do not do: write whatever was typed, including text a field is not supposed
+/// to hold.
 /// </summary>
 public class RawFieldGridTests : IDisposable
 {
@@ -50,8 +48,6 @@ public class RawFieldGridTests : IDisposable
 
     private static RawFieldRow Row(CampaignEditViewModel editor, string key, int occurrence = 0)
         => editor.RawFields.Single(row => row.Key == key && row.Occurrence == occurrence);
-
-    // ---- what the list shows ----
 
     [Fact]
     public void Every_field_the_record_holds_gets_a_row_in_the_order_the_file_holds_them()
@@ -130,8 +126,6 @@ public class RawFieldGridTests : IDisposable
         Assert.Equal($"2 of {editor.RawFields.Count} fields", editor.RawFieldCountText);
     }
 
-    // ---- writing ----
-
     [Fact]
     public void Typing_into_a_row_writes_the_field()
     {
@@ -207,8 +201,6 @@ public class RawFieldGridTests : IDisposable
         Assert.Empty(editor.Changes);
     }
 
-    // ---- the two halves of the panel agreeing ----
-
     [Fact]
     public void A_raw_edit_of_a_named_field_moves_the_box_that_names_it()
     {
@@ -266,8 +258,6 @@ public class RawFieldGridTests : IDisposable
         Assert.Equal("", editor.DenPos);
         Assert.False(_session.HasField(Campaign, "DENPOS"));
     }
-
-    // ---- adding and removing ----
 
     [Fact]
     public void Removing_a_field_takes_it_out_of_the_save_and_off_the_list()
@@ -381,8 +371,6 @@ public class RawFieldGridTests : IDisposable
         Assert.Equal("", Field("RESPAWNS", 1));
     }
 
-    // ---- the separators ----
-
     /// <summary>
     /// Typing the string the file splits fields on is not refused. It genuinely makes another
     /// field, so the list shows two afterwards and a line of advice says that is what happened.
@@ -419,8 +407,6 @@ public class RawFieldGridTests : IDisposable
         Row(editor, "VERSION").Value = "2";
         Assert.DoesNotContain(editor.Warnings, warning => warning.Contains("more than one field"));
     }
-
-    // ---- what it all adds up to ----
 
     [Fact]
     public void A_raw_edit_writes_a_save_the_game_would_accept()

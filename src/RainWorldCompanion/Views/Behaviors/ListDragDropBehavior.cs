@@ -9,31 +9,12 @@ using System.Windows.Media;
 
 namespace RainWorldCompanion.Views.Behaviors;
 
-/// <summary>
-/// Somewhere a dragged row can be dropped.
-///
-/// The view model decides what a drop means, because what is on screen is a view of something in
-/// the save and the two have to change together. For a flat list that is a reorder; for a tree it
-/// is one thing moving inside another.
-/// </summary>
 public interface IReorderable
 {
     /// <summary>The row dragged, and the row it was dropped on.</summary>
     void MoveOnto(object moved, object target);
 }
 
-/// <summary>
-/// Dragging a row onto another one.
-///
-/// Rows are found by a flag on the template rather than by asking the list which item is where, so
-/// a tree works the same as a flat list: a row nested four levels down inside four ItemsControls is
-/// still just the nearest element marked as a row. Nothing here touches the collection. It reports
-/// the two rows and lets the view model decide.
-///
-/// Dragging is never the only way to move something. Every list this is attached to also carries
-/// buttons, because a drag cannot be done from the keyboard and a row that can only be moved with a
-/// mouse is a row some people cannot move.
-/// </summary>
 public static class ListDragDropBehavior
 {
     /// <summary>Where a drop is reported. Bind this on the control holding the rows.</summary>
@@ -136,7 +117,6 @@ public static class ListDragDropBehavior
         object row = _pressedRow;
         _pressedRow = null;
 
-        // A drag that starts inside a text box or a slider belongs to that control, not to the row.
         if (args.OriginalSource is DependencyObject source && WantsTheMouse(source))
         {
             return;

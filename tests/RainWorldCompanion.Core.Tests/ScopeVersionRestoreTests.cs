@@ -4,32 +4,9 @@ using RainWorldCompanion.Core.Backups;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// What a restore is allowed to touch on behalf of a snapshot written under older rules.
-///
-/// ScopeWideningTests covers the deletion side: a version 1 snapshot does not delete the files
-/// version 2 brought into scope. Three more things follow from the same versioning and are checked
-/// here.
-///
-/// The first is the other direction of an exclusion. steam_autocloud.vdf is left out at every
-/// version, because leaving a file out can only make a restore delete fewer files. It also makes a
-/// restore put back fewer files, and a snapshot taken by the shipped build over a folder whose
-/// dvrmentSaveStates held one has it in its manifest. Treating that entry as a broken manifest
-/// fails the whole restore and, worse, skips the deletion step, turning a return to one moment into
-/// a merge that reports failure.
-///
-/// The second is the folders a restore may tidy. The empty-folder sweep has to be gated by the
-/// snapshot's version the same way the file deletion is, or restoring a version 1 snapshot reaches
-/// into trees version 1 never covered and the confirmation dialog never listed.
-///
-/// The third is that the sweep may only remove folders this restore emptied. Warp\Export ships
-/// empty, so a sweep for any empty folder takes it away on a restore that changed nothing in there.
-/// </summary>
 public class ScopeVersionRestoreTests
 {
     private const string SteamManifestInsideAScopeFolder = @"dvrmentSaveStates\steam_autocloud.vdf";
-
-    // ---- an exclusion added after the snapshot was taken ----
 
     [Fact]
     public void An_old_snapshot_holding_a_now_excluded_file_still_restores()
@@ -62,9 +39,9 @@ public class ScopeVersionRestoreTests
     [Fact]
     public void The_deletion_step_still_runs_when_the_snapshot_holds_a_now_excluded_file()
     {
-        // This is the real cost of treating the entry as an error. Every save file lands, the
-        // restore reports failure, and the file written after the backup survives, so the folder
-        // is a merge of two moments rather than the one the backup holds.
+        // The cost of treating this entry as an error: every save file lands, the restore reports
+        // failure, and the file written after the backup survives, merging two moments instead of
+        // restoring the one the backup holds.
         const string Extra = @"dvrmentSaveStates\contents_9_Rivulet_story.txt";
 
         using var world = new WideWorld();
@@ -108,8 +85,6 @@ public class ScopeVersionRestoreTests
         Assert.Contains(result.Errors, error => error.Contains("options", StringComparison.Ordinal));
     }
 
-    // ---- the empty-folder sweep ----
-
     [Fact]
     public void A_restore_that_changes_nothing_leaves_an_already_empty_scope_folder_alone()
     {
@@ -148,8 +123,7 @@ public class ScopeVersionRestoreTests
     [Fact]
     public void A_folder_this_restore_did_empty_is_still_removed()
     {
-        // The mirror image. Without this the fix could be "never remove a folder" and everything
-        // above would still pass.
+        // The mirror image. Without this, "never remove a folder" would also pass every test above.
         using var world = new WideWorld();
         var snapshot = world.Service.CreateBackup("current", null);
         world.Live.WriteText(@"dvrmentSaveStates\later\contents_9_Rivulet_story.txt", "Rivulet|Slugcat|9|stomach");
@@ -166,10 +140,9 @@ public class ScopeVersionRestoreTests
     }
 
     /// <summary>
-    /// A version 1 snapshot that holds a steam_autocloud.vdf inside dvrmentSaveStates, which is
-    /// what the shipped build wrote: its rules took that folder whole and had no exclusion. The
-    /// current rules cannot produce one, so the file is put into the snapshot and into its manifest
-    /// directly.
+    /// A version 1 snapshot holding steam_autocloud.vdf inside dvrmentSaveStates, which is what
+    /// the shipped build wrote before the exclusion existed. Current rules cannot produce this
+    /// state, so the file is added to the snapshot and its manifest directly.
     /// </summary>
     private static BackupSnapshot TakeNarrowSnapshotHoldingTheSteamManifest(WideWorld world)
     {

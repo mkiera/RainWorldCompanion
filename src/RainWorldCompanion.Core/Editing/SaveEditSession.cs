@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 using RainWorldCompanion.Core.Backups;
@@ -8,40 +7,59 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>
-/// Which campaign inside a slot an edit applies to.
-///
-/// The index is what the session works from, because it stays put while a field is edited. The
-/// slugcat id is what a person reads, and it is carried alongside so a caller does not have to go
-/// back to the payload to say which campaign it changed.
-/// </summary>
+/// <summary>The index is what the session works from, because it stays put while a field is edited.
+/// The slugcat id is carried alongside for a caller to name the campaign it changed.</summary>
 public sealed record CampaignRecordRef(int RecordIndex, string SlugcatId);
 
-/// <summary>One field of a record body as the file stores it.</summary>
+/// <summary>How much of a slot goes when it is deleted.</summary>
+public enum SlotDeleteDepth
+{
+    /// <summary>The campaigns only. The map and the progression record stay, so the slot still
+    /// remembers every shelter found, every ending seen and every tutorial shown.</summary>
+    Campaigns,
+
+    /// <summary>The campaigns and the map, the records the whole slot shares included. The
+    /// progression record stays.</summary>
+    CampaignsAndMap,
+
+    /// <summary>All of it, including the copy of the old data the game keeps beside it in the same
+    /// file.</summary>
+    Everything,
+}
+
+public sealed record SlotDeleteReport(
+    IReadOnlyList<string> Campaigns,
+    int MapsRemoved,
+    int OtherRecordsRemoved = 0,
+    bool ClearedTheGamesOwnCopy = false)
+{
+    public bool TookNothing =>
+        Campaigns.Count == 0 && MapsRemoved == 0 && OtherRecordsRemoved == 0 && !ClearedTheGamesOwnCopy;
+}
+
 /// <param name="Occurrence">Which of the fields sharing this key it is, counting from zero.</param>
 /// <param name="IsFlag">True when the field is a bare token that means true by being present.</param>
 public sealed record RawField(string Key, string? Value, int Occurrence, bool IsFlag);
 
 /// <summary>
-/// One slot file open for editing, held as the payload it came from with edits applied by
-/// substring surgery.
-///
-/// The rule this class exists to keep: a payload is never rebuilt from a parsed model. The game
-/// itself keeps lists of save strings it did not recognise and writes them back untouched, which
-/// is how a save that a mod has written still loads without that mod. Rebuilding from
-/// <see cref="CampaignSummary"/> would drop every one of them, along with the map records, the
-/// region states and everything else this app does not read. So each edit replaces the characters
-/// of one field and leaves the rest of the file alone.
-///
-/// A session refuses to open a save whose digest is already wrong. Wrapping a fresh, correct
-/// digest around a payload that failed its old one would turn a file the game rejects into one it
-/// accepts, which hides the damage instead of reporting it.
+/// One slot file open for editing. A payload is never rebuilt from a parsed model: each edit
+/// replaces the characters of one field and leaves the rest of the file alone, because the game
+/// keeps save strings it did not recognise and writes them back untouched. A session also refuses to
+/// open a save whose digest is already wrong, or a fresh digest would hide the damage.
 /// </summary>
 public sealed class SaveEditSession
 {
     private const string SaveKey = "save";
     private const string SaveStateHeader = "SAVE STATE";
     private const string SlugcatField = "SAV STATE NUMBER";
+
+    /// <summary>The copy of the previous save the game keeps in the same file. PlayerProgression
+    /// writes it through BackUpSave and never reads it back.</summary>
+    private const string GameBackupKey = "save__Backup";
+
+    private const string EmptiedKey = "slot|emptied";
+
+    private const string MapKey = "slot|map";
 
     private static readonly DelimitedFields Fields = DelimitedFields.Record;
 
@@ -54,6 +72,10 @@ public sealed class SaveEditSession
     private readonly List<string> _recordsWritten = new();
 
     private readonly List<string> _recordsRemoved = new();
+
+    /// <summary>Container entries other than "save" this write is meant to clear. The plan holds the
+    /// write to exactly this list, so no other entry can be touched by accident.</summary>
+    private readonly HashSet<string> _entriesToClear = new(StringComparer.Ordinal);
 
     private string _payload;
     private int _changeOrder;
@@ -68,37 +90,29 @@ public sealed class SaveEditSession
         _payload = payload;
     }
 
-    /// <summary>The file this session was opened from.</summary>
     public string FilePath { get; }
 
-    /// <summary>
-    /// SHA-256 of the file as it was when the session opened.
-    ///
-    /// This is what makes an edit safe to write later. The session holds a payload in memory while
-    /// somebody fills in a dialog, and in that time the game or Steam Cloud can put different bytes
-    /// on disk. The write refuses when the file no longer hashes to this, rather than overwriting
-    /// whatever arrived with an edit of something else.
-    /// </summary>
+    /// <summary>SHA-256 of the file as it was when the session opened. The game or Steam Cloud can
+    /// put different bytes on disk while a dialog is open, so the write refuses when the file no
+    /// longer hashes to this.</summary>
     public string FileSha256 { get; }
 
     /// <summary>The payload with every edit so far applied.</summary>
     public string Payload => _payload;
 
-    public bool IsDirty => !string.Equals(_payload, _originalPayload, StringComparison.Ordinal);
+    public bool IsDirty =>
+        !string.Equals(_payload, _originalPayload, StringComparison.Ordinal) || _entriesToClear.Count > 0;
 
-    /// <summary>
-    /// One line per thing changed, in the order it was first touched. A field edited over and over,
-    /// which is what typing into a box does, reads as the one move it made.
-    /// </summary>
+    /// <summary>One line per thing changed, in the order it was first touched. A field edited over
+    /// and over, which is what typing into a box does, reads as the one move it made.</summary>
     public IReadOnlyList<string> Changes => _changes.Values
         .OrderBy(change => change.Order)
         .Select(change => change.Describe())
         .ToArray();
 
-    /// <summary>Raised after every edit, so a curated editor and the raw field list stay in step.</summary>
     public event EventHandler? Changed;
 
-    /// <summary>The campaigns in this slot, in the order the payload stores them.</summary>
+    /// <summary>In the order the payload stores them.</summary>
     public IReadOnlyList<CampaignRecordRef> Campaigns
     {
         get
@@ -164,10 +178,9 @@ public sealed class SaveEditSession
         return new SaveEditSession(path, Hashing.ComputeSha256(bytes), container, payload);
     }
 
-    /// <summary>The body of one campaign record as it currently stands.</summary>
     public string GetRecordBody(CampaignRecordRef campaign) => RecordAt(campaign).Body();
 
-    /// <summary>Every field of a campaign record, in stored order, with repeats numbered.</summary>
+    /// <summary>In stored order, with repeats numbered.</summary>
     public IReadOnlyList<RawField> EnumerateFields(CampaignRecordRef campaign)
     {
         string body = GetRecordBody(campaign);
@@ -195,7 +208,7 @@ public sealed class SaveEditSession
     public bool HasField(CampaignRecordRef campaign, string key)
         => Fields.Find(GetRecordBody(campaign), key) is not null;
 
-    /// <summary>Sets a keyed field, adding it when the campaign does not carry it yet.</summary>
+    /// <summary>Adds the field when the campaign does not carry it yet.</summary>
     public void SetField(CampaignRecordRef campaign, string key, string value, int occurrence = 0)
     {
         string body = GetRecordBody(campaign);
@@ -210,14 +223,8 @@ public sealed class SaveEditSession
         Apply(campaign, Fields.SetValue(body, key, value, occurrence));
     }
 
-    /// <summary>
-    /// Writes a field that holds values of its own, recording what moved inside it rather than the
-    /// field as a whole.
-    ///
-    /// DEATHPERSISTENTSAVEDATA is one field carrying karma, the echoes and every gate, so a log
-    /// keyed on the field name would collapse all of them into one line reading as an unbroken wall
-    /// of delimiters. The caller names the part it changed and how it reads.
-    /// </summary>
+    /// <summary>Records what moved inside the field rather than the field as a whole, because
+    /// DEATHPERSISTENTSAVEDATA carries karma, the echoes and every gate in one value.</summary>
     /// <param name="before">How the part read before, or null when it was not there.</param>
     /// <param name="after">How it reads now, or null when it has gone.</param>
     public void SetFieldPart(
@@ -239,7 +246,6 @@ public sealed class SaveEditSession
         Apply(campaign, Fields.SetValue(body, key, value));
     }
 
-    /// <summary>Adds or removes a bare flag such as HASTHEGLOW.</summary>
     public void SetFlag(CampaignRecordRef campaign, string key, bool present)
     {
         string body = GetRecordBody(campaign);
@@ -268,10 +274,8 @@ public sealed class SaveEditSession
         Apply(campaign, Fields.Remove(body, key, occurrence));
     }
 
-    /// <summary>
-    /// Replaces the value of one occurrence of a repeated key. DEVOURMENTSTATE is written once per
-    /// swallowed thing, so addressing those by position is the only way to change one of them.
-    /// </summary>
+    /// <summary>DEVOURMENTSTATE is written once per swallowed thing, so addressing those by position
+    /// is the only way to change one of them.</summary>
     public void ReplaceFieldOccurrence(CampaignRecordRef campaign, string key, int occurrence, string value)
         => SetField(campaign, key, value, occurrence);
 
@@ -283,24 +287,15 @@ public sealed class SaveEditSession
         Apply(campaign, Fields.InsertAfter(GetRecordBody(campaign), key, occurrence, newField));
     }
 
-    /// <summary>Replaces a whole campaign record body, for an edit too large to express field by field.</summary>
     public void ReplaceRecordBody(CampaignRecordRef campaign, string newBody, string description)
     {
         Record(campaign, PartKey(campaign, description, 0) + "|body", description, "", "changed");
         Apply(campaign, newBody);
     }
 
-    /// <summary>
-    /// Replaces a record body, logging the change in the caller's own words.
-    ///
-    /// An edit that spans several fields at once has no key and value to read a line out of, and
-    /// "DEVOURMENTSTATE changed" says nothing a person can check. The caller knows it moved a row
-    /// or renamed a status, so it writes that and this stores it.
-    /// </summary>
-    /// <param name="changeKey">
-    /// What is being changed, so doing it again replaces the line rather than adding one. Two edits
-    /// sharing a key are one line; two edits that are different things need different keys.
-    /// </param>
+    /// <summary>Logs the change in the caller's own words.</summary>
+    /// <param name="changeKey">Two edits sharing a key read as one line, so doing the same thing
+    /// again replaces the line rather than adding one.</param>
     public void ReplaceRecordBody(CampaignRecordRef campaign, string newBody, string changeKey, string note)
     {
         if (_changes.TryGetValue(changeKey, out TrackedChange? existing))
@@ -315,20 +310,13 @@ public sealed class SaveEditSession
         Apply(campaign, newBody);
     }
 
-    /// <summary>The campaign the session is holding for each slugcat, in stored order.</summary>
+    /// <summary>In stored order.</summary>
     public IReadOnlyList<string> CampaignSlugcats => CampaignSplicer.Campaigns(_payload);
 
-    /// <summary>Takes one campaign out of this slot, to store it or to move it somewhere else.</summary>
     public CampaignSlice? TakeCampaign(string slugcatId) => CampaignSplicer.Extract(_payload, slugcatId);
 
-    /// <summary>
-    /// Puts a campaign into this slot, replacing whatever campaign the slot has for that slugcat.
-    ///
-    /// This is a whole-record change rather than a field edit, so the plan built afterwards checks
-    /// the result a different way: it holds the splice to the records it said it wrote and took out,
-    /// and every other record of the payload has to come back in the same order character for
-    /// character.
-    /// </summary>
+    /// <summary>Replaces whatever campaign the slot has for that slugcat. A whole-record change, so
+    /// the plan built afterwards checks the result by what moved rather than by position.</summary>
     public CampaignSpliceReport PutCampaignIn(CampaignSlice slice)
     {
         ArgumentNullException.ThrowIfNull(slice);
@@ -343,14 +331,9 @@ public sealed class SaveEditSession
         return report;
     }
 
-    /// <summary>
-    /// Takes a campaign out of this slot.
-    /// </summary>
-    /// <param name="includeMaps">
-    /// Whether the slugcat's map discovery goes with it. The game's own WipeSaveState leaves it
-    /// behind, so deleting a campaign in place should too. Moving one to another slot should take
-    /// it, or the map stays in a slot that no longer has the campaign.
-    /// </param>
+    /// <param name="includeMaps">Whether the slugcat's map discovery goes with it. WipeSaveState
+    /// leaves it behind, so a delete in place should too, but a move to another slot should take
+    /// it.</param>
     public CampaignSpliceReport TakeCampaignOut(string slugcatId, bool includeMaps)
     {
         string newPayload = CampaignSplicer.RemoveCampaign(_payload, slugcatId, includeMaps, out CampaignSpliceReport report);
@@ -368,10 +351,117 @@ public sealed class SaveEditSession
         return report;
     }
 
-    /// <summary>
-    /// Everything needed to write this session to disk, with the result checked before anything
-    /// is written. A plan with problems is one to report, not one to write.
-    /// </summary>
+    /// <summary>The game's own WipeAll also resets MISCPROG, clearing discovered shelters, ending
+    /// ids, tutorial flags and campaign timers. This app cannot follow it there without rebuilding
+    /// that record and dropping every field of it this app does not model, so MISCPROG is left
+    /// exactly as it was found.</summary>
+    public SlotDeleteReport DeleteCampaigns(SlotDeleteDepth depth)
+    {
+        IReadOnlyList<string> names = CampaignSlugcats
+            .Select(Name)
+            .ToArray();
+
+        if (depth == SlotDeleteDepth.Everything)
+        {
+            return ClearEverything(names);
+        }
+
+        bool includeMaps = depth == SlotDeleteDepth.CampaignsAndMap;
+        var removed = new List<string>();
+        int maps = 0;
+
+        // Read the list up front. Each removal rewrites the payload, so walking the live list while
+        // taking things out of it would skip every second campaign.
+        foreach (string slugcatId in CampaignSlugcats.ToArray())
+        {
+            CampaignSpliceReport report = TakeCampaignOut(slugcatId, includeMaps);
+
+            if (report.Outcome == CampaignSpliceOutcome.Removed)
+            {
+                removed.Add(Name(slugcatId));
+            }
+
+            maps += report.MapsRemoved;
+        }
+
+        if (includeMaps)
+        {
+            // Every map left in the slot at this point belongs to nobody: the campaigns that owned
+            // them have just gone, and the bare ones were never owned.
+            string trimmed = CampaignSplicer.RemoveEveryMap(_payload, out IReadOnlyList<string> orphaned);
+
+            if (orphaned.Count > 0)
+            {
+                _recordsRemoved.AddRange(orphaned);
+                _splices++;
+                _payload = trimmed;
+                maps += orphaned.Count;
+
+                // The write refuses a plan that describes no change, so taking maps has to say so in
+                // its own right: a slot whose campaigns had already gone has nothing else to say.
+                Note(MapKey, "This slot", orphaned.Count == 1
+                    ? "took out the one region of map left in it"
+                    : $"took out the {orphaned.Count} regions of map left in it");
+
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        return new SlotDeleteReport(removed, maps);
+    }
+
+    /// <summary>A slot emptied to a payload of no records is exactly what the game reads on a fresh
+    /// install, where the value is the checksum and nothing after it. The copy the game keeps beside
+    /// it in the same file goes too, or every campaign stays sitting in the file.</summary>
+    private SlotDeleteReport ClearEverything(IReadOnlyList<string> names)
+    {
+        IReadOnlyList<string> before = _payload
+            .Split(SavePayloadReader.RecordSeparator, StringSplitOptions.None);
+
+        int maps = 0;
+        int others = 0;
+
+        foreach (string record in before)
+        {
+            if (record.Length == 0)
+            {
+                continue;
+            }
+
+            _recordsRemoved.Add(record);
+
+            if (record.StartsWith("MAP", StringComparison.Ordinal))
+            {
+                maps++;
+            }
+            else if (!record.StartsWith(SaveStateHeader, StringComparison.Ordinal))
+            {
+                others++;
+            }
+        }
+
+        _payload = "";
+        _splices++;
+
+        // Only worth clearing when it still holds something. An already empty one would otherwise
+        // make a second delete look like it had work to do.
+        bool clearedTheCopy = _container.ContainsKey(GameBackupKey)
+            && _container.GetValue(GameBackupKey).Length > 0;
+        if (clearedTheCopy)
+        {
+            _entriesToClear.Add(GameBackupKey);
+        }
+
+        Note(EmptiedKey, "This slot", names.Count == 0
+            ? "emptied this slot out entirely"
+            : "emptied this slot out entirely, campaigns and all");
+
+        Changed?.Invoke(this, EventArgs.Empty);
+
+        return new SlotDeleteReport(names, maps, others, clearedTheCopy);
+    }
+
+    /// <summary>The result is checked before anything is written.</summary>
     public SaveWritePlan BuildWritePlan(SizePolicy policy = SizePolicy.GrowIfNeeded)
         => SaveWritePlan.Build(
             this,
@@ -381,14 +471,11 @@ public sealed class SaveEditSession
             _touchedRecords,
             Changes,
             _splices > 0 ? new RecordSetChange(_recordsWritten, _recordsRemoved) : null,
+            _entriesToClear,
             policy);
 
-    /// <summary>
-    /// Replaces the whole payload after a campaign was moved in or out, and notes what moved.
-    ///
-    /// The record lists build up across splices rather than being replaced, so taking one campaign
-    /// out and putting another in is still one set of records the plan can check the result against.
-    /// </summary>
+    /// <summary>The record lists build up across splices rather than being replaced, so taking one
+    /// campaign out and putting another in is still one set the plan can check the result against.</summary>
     private void ApplySplice(
         string newPayload,
         CampaignSpliceReport report,
@@ -426,17 +513,9 @@ public sealed class SaveEditSession
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// Notes that one thing moved, folding a repeat of the same thing into the entry already there.
-    ///
-    /// This is what keeps a typed number from reading as one change per keystroke. Every character
-    /// typed into a box writes the field again, and each of those writes is a real edit to the
-    /// payload, but they are all the same field going from where it started to where it ended up.
-    /// The first write records where it started and every later one only moves the end.
-    ///
-    /// A value typed back to where it began stops being a change at all, which is the same answer
-    /// <see cref="IsDirty"/> gives for the payload as a whole.
-    /// </summary>
+    /// <summary>Folds a repeat of the same thing into the entry already there: the first write
+    /// records where it started and every later one only moves the end. A value typed back to where
+    /// it began stops being a change at all.</summary>
     /// <param name="before">What the record held, or null when it held nothing.</param>
     /// <param name="after">What it holds now, or null when the field has gone.</param>
     private void Record(CampaignRecordRef campaign, string changeKey, string label, string? before, string? after)
@@ -461,17 +540,24 @@ public sealed class SaveEditSession
         _changes[changeKey] = new TrackedChange(_changeOrder++, Name(campaign), label, before, after);
     }
 
+    /// <summary>Replaces an earlier note under the same key rather than adding a second line.</summary>
+    private void Note(string changeKey, string subject, string note)
+    {
+        if (_changes.TryGetValue(changeKey, out TrackedChange? existing))
+        {
+            existing.Note = note;
+            return;
+        }
+
+        _changes[changeKey] = new TrackedChange(_changeOrder++, subject, note);
+    }
+
     private static string PartKey(CampaignRecordRef campaign, string key, int occurrence)
         => campaign.RecordIndex.ToString(CultureInfo.InvariantCulture) + "|" + key + "|"
             + occurrence.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>
-    /// One thing that moved, and where it started, however many writes it took to get there.
-    ///
-    /// A null on either side means the record did not carry the field then. That is a state of its
-    /// own rather than a value, so it is a null and not a chosen word: any word picked to stand for
-    /// it is one a real field could also hold.
-    /// </summary>
+    /// <summary>A null Before or After means the record did not carry the field then, kept as a null
+    /// rather than a word because any word picked to stand for it is one a real field could hold.</summary>
     private sealed class TrackedChange
     {
         public TrackedChange(int order, string campaign, string label, string? before, string? after)
@@ -542,10 +628,7 @@ public sealed class SaveEditSession
             ? $"{Name(campaign)}: set {key} to {after}"
             : $"{Name(campaign)}: {key} {before} to {after}";
 
-    /// <summary>
-    /// Opens read-only and shares read and write access, the same way the reader does, so a save
-    /// folder the game happens to be holding open still opens for reading.
-    /// </summary>
+    /// <summary>Shares read and write access, so a file the game is holding open still opens.</summary>
     private static byte[] ReadAllBytesShared(string path)
     {
         using var stream = new FileStream(

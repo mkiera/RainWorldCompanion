@@ -14,9 +14,9 @@ public class SetupLogTests
     [Fact]
     public void A_message_box_nobody_answered_reads_as_a_pending_dialog()
     {
-        // Inno writes the box as it puts it on screen and writes the answer when one arrives, so
-        // an unanswered box is the last one with nothing after it. The file stops growing while
-        // the box is up, which is what makes this readable from another process at all.
+        // Inno writes the box when it appears and the answer when one arrives, so an unanswered
+        // box is the last one with nothing after it. The file stops growing while the box is up,
+        // which is what makes reading it from another process safe.
         var lines = new[]
         {
             Stamp + "   Starting the installation process.",
@@ -73,9 +73,8 @@ public class SetupLogTests
     [Fact]
     public void Continuation_lines_fold_into_the_message_above_them()
     {
-        // The text inside a box is written without a timestamp, across as many lines as it takes.
-        // Read as messages of their own, each line would look like a separate log entry and the
-        // question would be split across several of them.
+        // Text inside a box has no timestamp and can run across several lines. Read as messages
+        // of their own, the question would be split across several log entries.
         var lines = new[]
         {
             Stamp + "   Message box (Yes/No):",
@@ -114,10 +113,9 @@ public class SetupLogTests
     }
 
     /// <summary>
-    /// The opening lines of a log this project's own installer actually wrote, copied out of a run
-    /// of Inno Setup 6.7.3 with the switches the updater passes. The shape is what everything above
-    /// assumes, so it is worth holding one real sample against it: a byte order mark on the first
-    /// line, a timestamp and three spaces, and CRLF endings.
+    /// A real log from this project's own installer (Inno Setup 6.7.3, the updater's switches).
+    /// It holds a byte order mark on the first line, a timestamp and three spaces, and CRLF
+    /// endings, the shape every synthetic test above assumes.
     /// </summary>
     [Fact]
     public void A_log_this_installer_really_wrote_reads_as_ordinary_progress()
@@ -139,7 +137,6 @@ public class SetupLogTests
         Assert.Equal(lines.Length, messages.Count);
         Assert.Equal("Log opened. (Time zone: UTC-06:00)", messages[0]);
         Assert.Equal("Starting the installation process.", messages[4]);
-        // Nothing was asked, so the app is clear to close and let Setup replace its files.
         Assert.Null(SetupLog.PendingDialog(messages));
     }
 

@@ -6,12 +6,8 @@ namespace RainWorldCompanion.Tests;
 
 /// <summary>
 /// Reports progress synchronously like <see cref="CollectingProgress"/>, and runs an action when
-/// a message matches.
-///
-/// The races these tests need to reproduce (a save file truncated by Steam Cloud between the
-/// measurement and the copy, the game launched during a restore) all happen at a point the
-/// service announces through its progress reporter. Driving them from the reporter makes them
-/// exact instead of timing dependent.
+/// a message matches. Races like a truncated file or a game launched mid-restore all happen at a
+/// point the service announces through progress, so driving them from here makes them exact.
 /// </summary>
 internal sealed class ProgressHook : IProgress<string>
 {
@@ -77,9 +73,9 @@ internal sealed class ProgressHook : IProgress<string>
 }
 
 /// <summary>
-/// A scope that fails on a chosen walk of the save folder. Used to prove that a restore which
-/// falls over after the first live write still comes back as a result carrying the safety
-/// snapshot, rather than throwing it away with the exception.
+/// A scope that fails on a chosen walk of the save folder, used to prove a restore that falls
+/// over after the first live write still returns the safety snapshot rather than losing it to
+/// the exception.
 /// </summary>
 internal sealed class FailingScope : BackupScope
 {
@@ -103,12 +99,9 @@ internal sealed class FailingScope : BackupScope
 }
 
 /// <summary>
-/// A scope that runs an action just after a chosen walk of the save folder returns.
-///
-/// Every operation here starts by taking a safety snapshot, which walks the folder and then spends
-/// seconds hashing and copying. Something else can write into the save folder during that window,
-/// and Steam Cloud syncing a save down from another machine is the case the copy path has to
-/// survive. Driving it from the scope makes the timing exact rather than a race.
+/// A scope that runs an action just after a chosen walk of the save folder returns, standing in
+/// for something else (a Steam Cloud sync) writing into the save folder during the safety
+/// snapshot's scan. Driving it from the scope makes the timing exact rather than a race.
 /// </summary>
 internal sealed class ScopeWithSideEffect : BackupScope
 {

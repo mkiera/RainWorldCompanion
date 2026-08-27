@@ -7,13 +7,8 @@ using RainWorldCompanion.Core.Updates;
 namespace RainWorldCompanion.Services;
 
 /// <summary>
-/// Reads the release list and the branch-build runs from GitHub.
-///
-/// The only thing in this project that makes a network request. Everything it returns is handed
-/// straight to the decision layer in Core, which does the choosing, so nothing here decides what
-/// the user is offered. What it does own is the shape of a failure: every error becomes a sentence
-/// meant to be shown as it is, because the caller has no better idea what went wrong than this
-/// does.
+/// The only thing in this project that makes a network request. Every error becomes a sentence
+/// meant to be shown as it is, because the caller knows no more about what went wrong than this.
 /// </summary>
 public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
 {
@@ -36,8 +31,6 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
             Timeout = TimeSpan.FromSeconds(30),
         };
 
-        // Not decoration: GitHub answers 403 to an unauthenticated request that carries no
-        // User-Agent, and the answer looks exactly like being rate limited.
         _client.DefaultRequestHeaders.Add("User-Agent", UpdateUrls.UserAgent(appVersion));
         _client.DefaultRequestHeaders.Add("Accept", "application/vnd.github+json");
         _client.DefaultRequestHeaders.Add("X-GitHub-Api-Version", "2022-11-28");
@@ -45,8 +38,8 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
 
     public async Task<IReadOnlyList<ReleaseCandidate>> GetReleasesAsync(CancellationToken cancellationToken)
     {
-        // per_page because the default of thirty is enough today and will not be forever, and a
-        // release that falls off the end is one nobody can go back to.
+        // per_page, because a release that falls off the default page of thirty is one nobody can
+        // go back to.
         var payload = await GetAsync<List<GhRelease>>(
             UpdateUrls.Releases + "?per_page=100", cancellationToken);
 
@@ -57,8 +50,8 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
 
     public async Task<IReadOnlyList<WorkflowRun>> GetBranchBuildRunsAsync(CancellationToken cancellationToken)
     {
-        // status=success asks the server to do the filtering, which keeps the failed runs of a
-        // branch from crowding out the successful runs of others inside one page.
+        // Filtered server side, so the failed runs of one branch cannot crowd the successful runs
+        // of others out of the page.
         var payload = await GetAsync<GhRunsPage>(
             UpdateUrls.BranchBuildRuns + "?status=success&per_page=50", cancellationToken);
 
@@ -80,8 +73,6 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
         }
         catch (Exception e) when (e is HttpRequestException or OperationCanceledException)
         {
-            // No network, no DNS, or the request ran out of time. All the same thing to whoever is
-            // reading it, and none of it is worth a stack trace on screen.
             throw new UpdateCheckException("Could not reach GitHub to check for updates.", e);
         }
 
@@ -104,11 +95,6 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
         }
     }
 
-    /// <summary>
-    /// Rate limiting gets its own sentence because it is the one failure that is neither the
-    /// network nor this app, and it clears itself. Sixty unauthenticated requests an hour are
-    /// shared by everything on the machine, so it can be hit without this app having been greedy.
-    /// </summary>
     private static string DescribeStatus(HttpStatusCode status) => (int)status switch
     {
         403 or 429 => "GitHub is rate limiting update checks right now. Try again in a little while.",
@@ -118,10 +104,6 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
     };
 
     public void Dispose() => _client.Dispose();
-
-    // The handful of fields worth reading off each payload. Everything absent defaults, because a
-    // release with no assets and a run with no branch are both things the decision layer already
-    // knows how to pass over.
 
     private sealed class GhAsset
     {
@@ -140,6 +122,7 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
         [JsonPropertyName("prerelease")] public bool Prerelease { get; set; }
         [JsonPropertyName("published_at")] public DateTimeOffset? PublishedAt { get; set; }
         [JsonPropertyName("assets")] public List<GhAsset>? Assets { get; set; }
+        [JsonPropertyName("body")] public string? Body { get; set; }
 
         public ReleaseCandidate ToCandidate() => new(
             TagName ?? "",
@@ -147,7 +130,8 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
             Draft,
             Prerelease,
             PublishedAt,
-            Assets?.Where(a => a is not null).Select(a => a.ToAsset()).ToList() ?? []);
+            Assets?.Where(a => a is not null).Select(a => a.ToAsset()).ToList() ?? [],
+            Body ?? "");
     }
 
     private sealed class GhRun
@@ -170,9 +154,6 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
     }
 }
 
-/// <summary>
-/// A failure worth showing to the user as it is. Every message on one of these is a whole sentence
-/// written for that purpose, so a caller can put it on screen without rewording it.
-/// </summary>
+/// <summary>The message is a whole sentence, written to be shown to the user as it is.</summary>
 public sealed class UpdateCheckException(string message, Exception? inner = null)
     : Exception(message, inner);

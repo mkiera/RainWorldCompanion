@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,14 +9,6 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// One thing in a stomach chain, editable.
-///
-/// The same nesting the read-only panel draws, because that is what a person is looking at when
-/// they decide what to change. A row stays the one line it is until the Edit button on it is
-/// pressed, and only then does it open into the boxes underneath: an editor that made every row
-/// tall enough to hold five controls would bury the shape of the chain, which is the thing worth
-/// seeing.
-///
 /// A node stands for one DEVOURMENTSTATE field, addressed by position, except a root, which stands
 /// for a creature nothing is holding. A root has no status or food of its own, because those belong
 /// to being swallowed, but it can still be tamed and still remembers the player.
@@ -117,7 +107,6 @@ public sealed partial class DevourmentEditNode : ObservableObject
 
     public bool HasChildren => Children.Count > 0;
 
-    /// <summary>For example "holds 15", counting everything below at any depth.</summary>
     public string ContentsSummary => HasChildren
         ? "holds " + CountBelow().ToString(CultureInfo.InvariantCulture)
         : "";
@@ -128,19 +117,14 @@ public sealed partial class DevourmentEditNode : ObservableObject
     /// <summary>A root is not swallowed, so it has no state to be in and no food left in it.</summary>
     public bool IsSwallowed => !IsRoot && IsWellFormed;
 
-    /// <summary>Only a creature can hold something, so only a creature is a place to drop onto.</summary>
     public bool CanHoldThings => !IsItem && EntityId.Length > 0;
 
     public IReadOnlyList<string> StatusChoices => DevourmentStatus.All;
 
-    /// <summary>Whether the chevron is open. Separate from the row's own editors.</summary>
     [ObservableProperty]
     private bool isExpanded;
 
-    /// <summary>
-    /// Whether this row is showing its editors. One row at a time, so the chain stays readable
-    /// while one part of it is being worked on.
-    /// </summary>
+    /// <summary>One row at a time, so the chain stays readable while a part of it is worked on.</summary>
     [ObservableProperty]
     private bool isEditing;
 
@@ -211,13 +195,9 @@ public sealed partial class DevourmentEditNode : ObservableObject
 
     public float? KnowsValue => Number(Knows);
 
-    // ---- what the row's own buttons do ----
-    //
-    // On the node rather than on the view model, because a row reaches its buttons through its own
-    // DataContext and nothing else. Going up the visual tree instead would find the ItemsControl
-    // holding this row's siblings, and for anything below the top of a chain that control belongs
-    // to the parent node, which has no commands on it. The binding then resolves to nothing and the
-    // button quietly does nothing at all.
+    // These commands live on the node because a row reaches them through its own DataContext.
+    // Going up the visual tree finds the parent node's ItemsControl, which has no commands on it,
+    // and the binding then resolves to nothing and the button quietly does nothing.
 
     [RelayCommand]
     private void Remove() => _owner.RemoveNode(this);

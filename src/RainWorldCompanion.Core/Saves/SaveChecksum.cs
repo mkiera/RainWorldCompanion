@@ -1,29 +1,22 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Security.Cryptography;
 using System.Text;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// The checksum the game stamps on the "save" and "save__Backup" values. A value is stored as
-/// the 32 lowercase hex characters of md5(payload + Salt) followed by the payload itself.
-/// A mismatch makes the game discard the save, so the digest has to match byte for byte.
-/// </summary>
+/// <summary>The checksum the game stamps on the "save" and "save__Backup" values: a value is stored
+/// as the 32 lowercase hex characters of md5(payload + Salt) followed by the payload itself, and a
+/// mismatch makes the game discard the save.</summary>
 public static class SaveChecksum
 {
     /// <summary>The 97 character salt the game appends before hashing.</summary>
     public const string Salt =
         "WY+Nhg+PuYNEz6WVOo9DpOoPZ11fT3DuTU9WigSP9yeKT8U+EQ/EghqPxKqbj8AAIA/pihwPzuncT9L2XI/In50PzpJdj9D4n";
 
-    /// <summary>Length of the hex digest prefix.</summary>
     public const int PrefixLength = 32;
 
-    /// <summary>
-    /// MD5 over the UTF-8 bytes of payload + Salt, rendered as lowercase hex.
-    /// MD5 is the file format the game itself writes, not a security choice.
-    /// </summary>
+    /// <summary>MD5 is the file format the game itself writes, not a security choice.</summary>
     public static string Compute(string payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
@@ -39,12 +32,11 @@ public static class SaveChecksum
             hex.Append(HexDigits[b & 0x0F]);
         }
 
-        // The pad mirrors the game's own IL. A 16 byte digest is always 32 hex characters,
-        // so this never fires in practice.
+        // The pad mirrors the game's own IL. A 16 byte digest is always 32 hex characters.
         return hex.ToString().PadLeft(PrefixLength, '0');
     }
 
-    /// <summary>Returns the stored form: digest followed by the payload.</summary>
+    /// <summary>The stored form: digest followed by the payload.</summary>
     public static string Wrap(string payload) => Compute(payload) + payload;
 
     /// <summary>True when the first 32 characters are lowercase hex.</summary>
@@ -68,12 +60,9 @@ public static class SaveChecksum
         return true;
     }
 
-    /// <summary>
-    /// Splits a stored value into digest and payload.
-    /// Returns false when there is no digest prefix at all, which means the value is a raw
-    /// unchecksummed payload such as the expCore "core" key rather than a corrupt one.
-    /// Returns true with checksumValid false only when a digest is present but wrong.
-    /// </summary>
+    /// <summary>False when there is no digest prefix at all, which means a raw unchecksummed payload
+    /// such as the expCore "core" key rather than a corrupt one. True with checksumValid false only
+    /// when a digest is present but wrong.</summary>
     public static bool TryUnwrap(string value, out string payload, out bool checksumValid)
     {
         if (!HasChecksumPrefix(value))

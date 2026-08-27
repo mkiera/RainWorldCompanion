@@ -2,17 +2,11 @@ using System.Security.Cryptography;
 
 namespace RainWorldCompanion.Core.Backups;
 
-/// <summary>
-/// SHA-256 helpers for backup integrity checks.
-/// </summary>
 public static class Hashing
 {
-    // The sav file is about 6 MB, so hashing is streamed rather than loading the file into memory.
     private const int ReadBufferSize = 1 << 20;
 
-    /// <summary>
-    /// SHA-256 of a file as 64 lowercase hex characters.
-    /// </summary>
+    /// <summary>SHA-256 of a file as 64 lowercase hex characters.</summary>
     public static string ComputeFileSha256(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -31,24 +25,16 @@ public static class Hashing
         return ToHex(SHA256.HashData(stream));
     }
 
-    /// <summary>
-    /// SHA-256 of a stream read from its current position to the end.
-    /// </summary>
+    /// <summary>SHA-256 of a stream read from its current position to the end.</summary>
     public static string ComputeSha256(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
         return ToHex(SHA256.HashData(stream));
     }
 
-    /// <summary>
-    /// SHA-256 of a byte sequence.
-    /// </summary>
     public static string ComputeSha256(ReadOnlySpan<byte> bytes) => ToHex(SHA256.HashData(bytes));
 
-    /// <summary>
-    /// True when both files exist and have identical content. Length is compared first so
-    /// differently sized files never pay for a hash.
-    /// </summary>
+    /// <summary>False when either file is missing.</summary>
     public static bool FilesMatch(string leftPath, string rightPath)
     {
         if (!File.Exists(leftPath) || !File.Exists(rightPath))
@@ -67,10 +53,7 @@ public static class Hashing
             StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// True when the file on disk hashes to the expected digest. A missing file or a read
-    /// failure answers false rather than throwing, so callers can report it as a mismatch.
-    /// </summary>
+    /// <summary>A missing file or a read failure answers false rather than throwing.</summary>
     public static bool FileMatchesHash(string path, string expectedSha256)
     {
         try

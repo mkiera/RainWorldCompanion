@@ -10,9 +10,7 @@ using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion;
 
-/// <summary>
-/// Composition root. Services are constructed by hand here and handed to the main view model.
-/// </summary>
+/// <summary>Composition root. Services are constructed by hand and handed to the view model.</summary>
 public partial class App : Application
 {
     private const string SingleInstanceMutexName = @"Local\RainWorldCompanion.SingleInstance";
@@ -27,9 +25,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Two windows can start a restore within the same second, and both would then be writing
-        // into the same save folder and the same backup store. Core refuses the overlap as well,
-        // but a second window is not something to let the user open in the first place.
+        // Two windows can start a restore within the same second, both writing into the same save
+        // folder and the same backup store.
         _singleInstance = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isOnlyInstance);
         if (!isOnlyInstance)
         {
@@ -44,30 +41,21 @@ public partial class App : Application
 
         DispatcherUnhandledException += OnDispatcherUnhandledException;
 
-        // Before anything reads the settings, and before the mutex above has any bearing on it:
-        // this renames the folder the app kept its data in under its previous name. A rename
-        // within one volume, so it costs the same whether the folder holds nothing or a gigabyte
-        // of backups, and every outcome including failure leaves a working app.
+        // Before anything reads the settings.
         if (SettingsMigration.MoveFolder() == MigrationOutcome.Moved)
         {
-            // The roots are recorded in settings.json as absolute paths, so the file still names
-            // the folder that was just renamed out from under it. Reading them corrects that in
-            // memory every time, but only the rewrite leaves the file itself telling the truth.
             SettingsMigration.RepointSettingsFile(SettingsStore.DefaultSettingsPath);
         }
 
         var settingsStore = new SettingsStore();
         var gameDetector = new GameProcessDetector();
 
-        // The provider starts with no install. The view model points it at the configured path
-        // once the settings have been read, which happens off the dispatcher.
+        // Starts with no install. The view model points it at the configured path once the
+        // settings have been read, which happens off the dispatcher.
         var icons = new SlugcatIconProvider();
         var build = ResolveBuildStamp();
         var viewModel = new MainViewModel(settingsStore, gameDetector, icons, build.Version);
 
-        // Last launch's installer, if there is one. It cannot be cleared any earlier than this:
-        // the app hands a file to Setup and then exits, so it is gone before Setup has finished
-        // reading it and can never delete the one it just ran.
         UpdatesFolder.Clear();
 
         _releases = new GitHubReleaseSource(build.Version);
@@ -77,9 +65,8 @@ public partial class App : Application
             _releases,
             _downloader,
             new InstallerLauncher(),
-            // Shutdown rather than Environment.Exit, so OnExit runs and releases the mutex, and
-            // the window's own teardown cancels the verify sweep. Queued rather than called
-            // outright: this runs from inside the update, which still has a line or two left.
+            // Shutdown rather than Environment.Exit, so OnExit runs and releases the mutex.
+            // Queued, because this runs from inside the update, which has a line or two left.
             () => Dispatcher.BeginInvoke(Shutdown)));
 
         var window = new MainWindow { DataContext = viewModel };
@@ -102,7 +89,6 @@ public partial class App : Application
             }
             catch (ApplicationException)
             {
-                // Not the owning thread, which means this instance never took the mutex.
             }
 
             _singleInstance.Dispose();
@@ -113,16 +99,9 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// What this copy can say about itself: its version, and the build that produced it.
-    ///
     /// AssemblyInformationalVersion rather than GetName().Version, because the assembly version is
-    /// four numbers and cannot hold a "-beta.1" tail. A build that reports 1.1.0 for a 1.1.0-beta.1
-    /// tag is a build that keeps being offered its own release as an update.
-    ///
-    /// The .NET 8 and later SDKs bundle SourceLink, so a build made in a git checkout has "+" and
-    /// the commit appended to that attribute. Build metadata takes no part in version ordering, so
-    /// it is split off here rather than carried into every comparison, and the commit is worth
-    /// keeping: it is what marks the running row in the list of branch builds.
+    /// four numbers and cannot hold a "-beta.1" tail. The SDK bundles SourceLink, so a build made
+    /// in a git checkout has "+" and the commit appended to that attribute.
     /// </summary>
     private static BuildStamp ResolveBuildStamp()
     {
@@ -141,8 +120,7 @@ public partial class App : Application
 
         if (string.IsNullOrWhiteSpace(version))
         {
-            // Only reachable in a build with no informational version at all, which the SDK does
-            // not produce. Three parts because a four-part string is not a semver.
+            // Three parts, because a four-part string is not a semver.
             version = assembly.GetName().Version?.ToString(3) ?? "0.0.0";
         }
 
@@ -154,8 +132,8 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// One [assembly: AssemblyMetadata(key, value)] entry, or blank. The branch-build workflow is
-    /// the only thing that sets these, so a local build and a release both read blank.
+    /// The branch-build workflow is the only thing that sets these, so a local build and a release
+    /// both read blank.
     /// </summary>
     private static string Metadata(Assembly assembly, string key)
         => assembly.GetCustomAttributes<AssemblyMetadataAttribute>()

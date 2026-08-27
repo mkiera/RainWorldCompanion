@@ -4,13 +4,9 @@ using RainWorldCompanion.ViewModels;
 namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
-/// The toggle above the slot sections picks the realm they show. Both sets of sections are built
-/// when the panel is, so the tests here are about which set the panel hands out and what it says
-/// when that set is empty.
-///
-/// A library save is the case that needs guarding. It is one file, the toggle is not drawn for it,
-/// and the window carries the realm from one selection to the next, so a panel that honoured the
-/// realm there would show nothing at all.
+/// A library save is the case that needs guarding. It is one file, the toggle is not drawn for
+/// it, and the window carries the realm from one selection to the next, so a panel that
+/// honoured the realm there would show nothing at all.
 /// </summary>
 public class RealmToggleTests
 {
@@ -100,7 +96,6 @@ public class RealmToggleTests
     [Fact]
     public void The_pair_rows_stop_repeating_the_line_the_sections_are_already_showing()
     {
-        // Both lines say there is nothing online yet, and they land on one screen.
         var panel = Panels.Live(Panels.Slot(1));
 
         Assert.True(panel.HasNoOnlineSlots);
@@ -116,8 +111,6 @@ public class RealmToggleTests
         using var root = new TempDirectory("realm");
         var panel = Panels.Entry(root, Panels.Slot(2, SaveRealm.Online));
 
-        // The window carries the realm across a change of selection, so a panel built for a library
-        // save can arrive with the toggle still on ONLINE even though it is never drawn for one.
         panel.ShowOnline = true;
 
         Assert.Single(panel.Slots);

@@ -1,18 +1,12 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Saves.Models;
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// Reads the detail out of the game's own serialized creature and object strings.
-///
-/// Field positions here were taken from the game assembly rather than guessed: AbstractCreature
-/// and the AbstractPhysicalObject subclasses each build their string with a literal format, so
-/// every index below is pinned to a named field in that code.
-/// </summary>
+/// <summary>Every field index below is pinned to a named field in the game's own AbstractCreature
+/// and AbstractPhysicalObject string formats rather than guessed.</summary>
 public static class EntityBlobReader
 {
     private const string CreatureSep = "<cA>";
@@ -24,26 +18,20 @@ public static class EntityBlobReader
     private const string RelValueSep = "<rB>";
     private const string SocialSep = "<smA>";
 
-    /// <summary>Marks the social memory block inside a creature blob.</summary>
     private const string SocialTag = "Social";
 
-    /// <summary>Marks the meat remaining on a partly eaten creature.</summary>
     private const string MeatTag = "MeatLeft";
 
-    /// <summary>
-    /// From DataPearl.AbstractDataPearl.BaseToString: id, type, position, originRoom,
-    /// placedObjectIndex, dataPearlType. The first two of those are not object separators, so the
-    /// pearl type lands at index 5 of the &lt;oA&gt; split.
-    /// </summary>
+    /// <summary>From DataPearl.AbstractDataPearl.BaseToString: id, type, position, originRoom,
+    /// placedObjectIndex, dataPearlType. The first two are not object separators, so the pearl type
+    /// lands at index 5 of the &lt;oA&gt; split.</summary>
     private const int PearlTypeIndex = 5;
 
     /// <summary>PebblesPearl appends colour then number after the DataPearl part.</summary>
     private const int PebblesNumberIndex = 7;
 
-    /// <summary>
-    /// From AbstractSpear.ToString: after id, type and position come stuckInWallCycles, explosive,
-    /// hue, electric, electricCharge, needle, poison, poisonHue.
-    /// </summary>
+    /// <summary>From AbstractSpear.ToString: after id, type and position come stuckInWallCycles,
+    /// explosive, hue, electric, electricCharge, needle, poison, poisonHue.</summary>
     private const int SpearFirstIndex = 3;
 
     /// <summary>Reads a creature blob. Never throws.</summary>
@@ -126,8 +114,7 @@ public static class EntityBlobReader
             return null;
         }
 
-        // A spear written by an older version can stop short of the later fields, so each one is
-        // read only if it is there.
+        // A spear written by an older version can stop short of the later fields.
         int stuck = IntAt(parts, SpearFirstIndex);
         bool explosive = FlagAt(parts, SpearFirstIndex + 1);
         bool electric = FlagAt(parts, SpearFirstIndex + 3);
@@ -152,9 +139,7 @@ public static class EntityBlobReader
 
     private static bool FlagAt(string[] parts, int index) => IntAt(parts, index) == 1;
 
-    /// <summary>
-    /// Pulls the value out of a "Tag&lt;cC&gt;value&lt;cB&gt;" block inside a creature blob.
-    /// </summary>
+    /// <summary>Pulls the value out of a "Tag&lt;cC&gt;value&lt;cB&gt;" block.</summary>
     private static int? ReadTaggedInt(string blob, string tag)
     {
         string opener = tag + StateSep;
@@ -173,10 +158,8 @@ public static class EntityBlobReader
             : null;
     }
 
-    /// <summary>
-    /// Reads the social memory block. Each relationship is REL, the subject id, then any of L, F
-    /// and K that were not zero, and several relationships are separated by &lt;smA&gt;.
-    /// </summary>
+    /// <summary>Each relationship is REL, the subject id, then any of L, F and K that were not zero,
+    /// with relationships separated by &lt;smA&gt;.</summary>
     public static IReadOnlyList<SocialRelationship> ReadSocial(string? blob)
     {
         if (string.IsNullOrEmpty(blob))
@@ -248,10 +231,7 @@ public static class EntityBlobReader
         return results;
     }
 
-    /// <summary>
-    /// Entity ids out of a FRIENDS field, which lists tamed creatures as whole creature blobs
-    /// separated by &lt;svC&gt;.
-    /// </summary>
+    /// <summary>FRIENDS lists tamed creatures as whole creature blobs separated by &lt;svC&gt;.</summary>
     public static IReadOnlyList<string> ReadFriendIds(string? friendsField)
     {
         if (string.IsNullOrEmpty(friendsField))

@@ -4,13 +4,11 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Building the strings the game writes for one creature.
-///
-/// The blobs quoted here are the game's own, taken from a played save rather than composed for the
-/// test, because the only thing worth proving is that what this builds is what the game reads back.
-/// The round trip through <see cref="EntityBlobReader"/> and <see cref="DevourmentReader"/> is the
-/// other half of that: those were written against the game's reader, so a blob they agree with is
-/// one the game agrees with.
+/// The blobs quoted here are the game's own, taken from a played save rather than composed
+/// for the test, because the only thing worth proving is that what this builds is what the
+/// game reads back. The round trip through <see cref="EntityBlobReader"/> and
+/// <see cref="DevourmentReader"/> is the other half of that: those were written against the
+/// game's reader, so a blob they agree with is one the game agrees with.
 /// </summary>
 public class CreatureBlobBuilderTests
 {
@@ -21,8 +19,6 @@ public class CreatureBlobBuilderTests
     private const string LizardBlob =
         "EelLizard<cA>ID.21022.8070<cB>0<cA>SL_S06.0<cA>Social<cC>REL<rA>ID.-1.0<rA>L<rB>1<rA>K<rB>0.925<smA>"
         + "REL<rA>ID.9033.7215<rA>L<rB>0.0045<rA>K<rB>0.0045<cB>";
-
-    // ---- building ----
 
     [Fact]
     public void A_creature_with_nothing_to_remember_is_built_the_way_the_game_writes_the_player()
@@ -108,8 +104,6 @@ public class CreatureBlobBuilderTests
         Assert.Equal(2, CreatureBlobBuilder.Parse(blob)!.RippleLayer);
     }
 
-    // ---- ids ----
-
     [Theory]
     [InlineData("ID.-1.0", 0)]
     [InlineData("ID.21022.8070", 8070)]
@@ -128,8 +122,6 @@ public class CreatureBlobBuilderTests
     [Fact]
     public void An_id_is_written_the_way_the_game_writes_one_it_issued()
         => Assert.Equal("ID.-1.4211", CreatureBlobBuilder.EntityId(-1, 4211));
-
-    // ---- state blocks ----
 
     [Fact]
     public void A_state_block_is_read_out_of_a_real_creature()
@@ -199,8 +191,6 @@ public class CreatureBlobBuilderTests
         Assert.Contains("SomeModBlock<cC>17<cB>", updated);
         Assert.Contains("MeatLeft<cC>2<cB>", updated);
     }
-
-    // ---- social memory ----
 
     [Fact]
     public void What_a_real_creature_thinks_of_the_player_is_read_off_it()

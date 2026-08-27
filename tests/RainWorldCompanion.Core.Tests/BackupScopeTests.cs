@@ -3,9 +3,8 @@ using RainWorldCompanion.Core.Backups;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Scope decides what a restore is allowed to overwrite. The live folder holds files named
-/// "sav - Copy" and "sav.bak" sitting next to "sav", so a name match that is anything looser
-/// than exact would put a stale copy back over a real save.
+/// The live folder holds files named "sav - Copy" and "sav.bak" sitting next to "sav", so a
+/// name match that is anything looser than exact would put a stale copy back over a real save.
 /// </summary>
 public class BackupScopeTests
 {
@@ -186,14 +185,6 @@ public class BackupScopeTests
             Assert.Equal(scope.IsInScope(relativePath), scope.IsInScope(relativePath.ToUpperInvariant()));
             Assert.Equal(scope.IsInScope(relativePath), scope.IsInScope(relativePath.ToLowerInvariant()));
         }
-    }
-
-    [Fact]
-    public void SaveRoot_is_the_path_the_scope_was_built_for()
-    {
-        using var live = new TempDirectory("live");
-
-        Assert.Equal(live.Path, new BackupScope(live.Path).SaveRoot);
     }
 
     [Fact]

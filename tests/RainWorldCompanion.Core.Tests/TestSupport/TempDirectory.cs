@@ -16,7 +16,6 @@ public sealed class TempDirectory : IDisposable
         System.IO.Directory.CreateDirectory(Path);
     }
 
-    /// <summary>Absolute path of the directory.</summary>
     public string Path { get; }
 
     /// <summary>Absolute path for a relative path inside this directory. Nothing is created.</summary>

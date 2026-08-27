@@ -1,25 +1,14 @@
 namespace RainWorldCompanion.Core.Updates;
 
-/// <summary>
-/// Reads the log Inno Setup writes when it is handed /LOG.
-///
-/// The app launches the installer and then has to decide whether to close itself. Getting that
-/// wrong in one direction leaves the user staring at a dialog with no application left to explain
-/// where it came from, so the log is the one place to find out whether Setup is working or
-/// waiting. Everything here is pure: the caller reads the file and hands the lines over.
-/// </summary>
+/// <summary>Reads the log Inno Setup writes when it is handed /LOG.</summary>
 public static class SetupLog
 {
     private const string MessageBoxPrefix = "Message box (";
     private const string UserChosePrefix = "User chose ";
 
     /// <summary>
-    /// The log folded into one string per message.
-    ///
     /// A line Setup writes starts with a timestamp and two or more spaces. Anything else is the
-    /// continuation of the message above it, which is how the text inside a message box is
-    /// recorded, so those are joined onto the message they belong to rather than being read as
-    /// messages of their own.
+    /// continuation of the message above it, and is joined onto it.
     /// </summary>
     public static IReadOnlyList<string> ReadMessages(IEnumerable<string>? lines)
     {
@@ -31,9 +20,8 @@ public static class SetupLog
 
         foreach (var raw in lines)
         {
-            // The file is UTF-8 with a byte order mark. A reader that does not strip it leaves the
-            // character on the front of the first line, where it would stop that line looking like
-            // a timestamp.
+            // The file is UTF-8 with a byte order mark, which would otherwise stop the first line
+            // looking like a timestamp.
             var line = raw.TrimStart('﻿').TrimEnd();
             if (line.Length == 0)
             {
@@ -55,13 +43,8 @@ public static class SetupLog
     }
 
     /// <summary>
-    /// What Setup is asking, when it is sitting on a message box nobody has answered, or null
-    /// when it is not.
-    ///
-    /// Inno writes the box and its text to the log as it puts it on screen, and writes the answer
-    /// when one arrives, so an unanswered box is the last "Message box (" with no "User chose "
-    /// after it. The file stops growing while a box is up, which is what makes this readable at
-    /// all from outside the process.
+    /// An unanswered box is the last "Message box (" with no "User chose " after it. The file stops
+    /// growing while a box is up, which is what makes this readable from outside the process.
     /// </summary>
     public static string? PendingDialog(IReadOnlyList<string>? messages)
     {
@@ -87,9 +70,7 @@ public static class SetupLog
         return null;
     }
 
-    /// <summary>
-    /// Drops the "Message box (Yes/No):" preamble, leaving the sentence a person would read.
-    /// </summary>
+    /// <summary>Drops the "Message box (Yes/No):" preamble.</summary>
     private static string Tidy(string message)
     {
         var colon = message.IndexOf(':');
@@ -101,12 +82,8 @@ public static class SetupLog
     }
 
     /// <summary>
-    /// The message on a timestamped line, or null when the line carries no timestamp and is
-    /// therefore a continuation.
-    ///
-    /// Matched by shape rather than by parsing a date: the log is written in the machine's own
-    /// locale, so anything that tried to read the timestamp would have to agree with whatever
-    /// that machine does with dates. All that is needed here is the boundary.
+    /// Null when the line carries no timestamp and is therefore a continuation. Matched by shape
+    /// rather than by parsing a date, because the log is written in the machine's own locale.
     /// </summary>
     private static string? StripTimestamp(string line)
     {

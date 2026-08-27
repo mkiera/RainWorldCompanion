@@ -4,24 +4,14 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// A WINSTATE entry is a passage name, the tracker's <c>consumed</c> flag, and its progress. None
-/// of the three is "earned".
-///
-/// WinState.EndgameTracker.ToString writes field two from <c>consumed</c>, which is set once the
-/// player has used the passage to travel. Menu.EndgameTokens draws a passage token when
-/// <c>GoalFullfilled &amp;&amp; !consumed</c>, and GoalFullfilled is the progress against the
-/// maximum WinState.CreateAndAddTracker built the tracker with. So the flag on disk marks the
-/// passages the game no longer offers, and the ones it does offer have to be worked out.
-///
-/// The strings below are the ones the live save holds, campaign by campaign.
+/// A WINSTATE entry's <c>consumed</c> flag is set once a passage is used, not when it is earned.
+/// The game offers a passage when its progress is full and <c>consumed</c> is false, so reading
+/// <c>consumed</c> as "earned" reports exactly the wrong passages.
 /// </summary>
 public class PassageGoalsTests
 {
-    // ---- The inversion this exists to stop ----
-
     /// <summary>
-    /// Monk's WINSTATE holds "Martyr&lt;egA&gt;1&lt;egA&gt;1" and "Survivor&lt;egA&gt;0&lt;egA&gt;5".
-    /// Reading field two as "earned" reports exactly the wrong one of the two.
+    /// Monk's real WINSTATE: "Martyr&lt;egA&gt;1&lt;egA&gt;1" and "Survivor&lt;egA&gt;0&lt;egA&gt;5".
     /// </summary>
     [Fact]
     public void A_spent_passage_and_an_available_one_are_told_apart()
@@ -37,16 +27,11 @@ public class PassageGoalsTests
         Assert.False(survivor.Consumed);
         Assert.Equal(true, survivor.Goal.Fulfilled);
 
-        // Survivor is the one the game offers. Martyr is spent.
         Assert.True(survivor.Goal.Fulfilled == true && !survivor.Consumed);
         Assert.False(martyr.Goal.Fulfilled == true && !martyr.Consumed);
     }
 
-    /// <summary>
-    /// Spearmaster in the live save has four integer passages standing at their maximum with the
-    /// consumed flag clear, and one dragon slayer already spent. Every one of the four is
-    /// available in game and the spent one is not.
-    /// </summary>
+    /// <summary>Spearmaster's real save: four integer passages at maximum with consumed clear, one dragon slayer spent.</summary>
     [Theory]
     [InlineData("Survivor", "5")]
     [InlineData("Hunter", "12")]
@@ -59,8 +44,6 @@ public class PassageGoalsTests
         Assert.False(passage.Consumed);
         Assert.Equal(true, passage.Goal.Fulfilled);
     }
-
-    // ---- IntegerTracker: progress against the maximum, not a tally ----
 
     /// <summary>
     /// The maxima come from WinState.CreateAndAddTracker: Survivor 5, Outlaw 7, and Hunter, Monk
@@ -87,9 +70,8 @@ public class PassageGoalsTests
     }
 
     /// <summary>
-    /// Artificer stores "Hunter&lt;egA&gt;0&lt;egA&gt;-147". WinState.DeathModifyTracker subtracts
-    /// from progress on death, so a number this far below zero is ordinary, and reading it as a
-    /// count of times the passage was taken is not.
+    /// Artificer's real save stores "Hunter&lt;egA&gt;0&lt;egA&gt;-147". WinState.DeathModifyTracker
+    /// subtracts from progress on death, so a deeply negative number here is ordinary.
     /// </summary>
     [Fact]
     public void A_tracker_driven_far_below_zero_by_deaths_is_still_progress()
@@ -101,12 +83,9 @@ public class PassageGoalsTests
         Assert.Equal("-147 / 12", goal.Text);
     }
 
-    // ---- ListTracker: a dot separated list of item ids ----
-
     /// <summary>
-    /// Survivor's Scholar entry is "Scholar&lt;egA&gt;0&lt;egA&gt;17". WinState.ListTracker.ToString
-    /// joins myList with a dot, so that is a one item list holding pearl id 17, one of the three
-    /// the passage needs, and not seventeen of anything.
+    /// Survivor's real save stores "Scholar&lt;egA&gt;0&lt;egA&gt;17": a one item list holding
+    /// pearl id 17, not a count of seventeen.
     /// </summary>
     [Fact]
     public void A_single_item_list_is_one_item_and_not_its_id()
@@ -140,12 +119,10 @@ public class PassageGoalsTests
         Assert.Equal(fulfilled, goal.Fulfilled);
     }
 
-    // ---- BoolArrayTracker: one dot terminated flag each ----
-
     /// <summary>
-    /// A flag array ends in a separator and a list does not, which is the only thing that tells
-    /// Survivor's "DragonSlayer&lt;egA&gt;0&lt;egA&gt;0.0.1.1.0.0." apart from Gourmand's
-    /// "DragonSlayer&lt;egA&gt;1&lt;egA&gt;3.7.1.4.0.5". Both are six long and mean different things.
+    /// A flag array ends in a trailing separator and a list does not. That is the only thing that
+    /// tells Survivor's "0.0.1.1.0.0." from Gourmand's "3.7.1.4.0.5", both six items long but
+    /// meaning different things.
     /// </summary>
     [Fact]
     public void A_dragon_slayer_flag_array_is_not_read_as_a_list_of_kills()
@@ -200,8 +177,6 @@ public class PassageGoalsTests
         Assert.Equal(false, partial.Fulfilled);
     }
 
-    // ---- FloatTracker: a fraction that has to reach 1 ----
-
     [Theory]
     [InlineData("Chieftain", "0.65", false)]
     [InlineData("Chieftain", "1", true)]
@@ -222,12 +197,10 @@ public class PassageGoalsTests
         Assert.Equal(stored, goal.Text);
     }
 
-    // ---- Passages this app has no requirement for ----
-
     /// <summary>
-    /// The Watcher slot carries StoredStumps, StoredCorn, Glutton and P1food, none of which is a
-    /// WinState.EndgameID in the game's own assembly. A mod added them, so nothing here knows what
-    /// they need, and saying they are unearned would be an answer invented out of nothing.
+    /// The Watcher slot carries StoredStumps, StoredCorn, Glutton and P1food, none a
+    /// WinState.EndgameID in the game's own assembly. A mod added them, so claiming they are
+    /// unearned would be an answer invented out of nothing.
     /// </summary>
     [Theory]
     [InlineData("Glutton", "20")]
@@ -243,8 +216,6 @@ public class PassageGoalsTests
         Assert.Null(goal.Fulfilled);
         Assert.Equal(stored, goal.Text);
     }
-
-    // ---- Nothing to read ----
 
     [Fact]
     public void An_entry_with_no_tracker_text_claims_nothing()
@@ -286,8 +257,6 @@ public class PassageGoalsTests
         Assert.Null(goal.Fulfilled);
         Assert.Equal("half way", goal.Text);
     }
-
-    // ---- The record carries the reading ----
 
     [Fact]
     public void A_passage_record_reads_its_own_goal_from_the_name_and_the_stored_text()

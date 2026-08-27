@@ -2,10 +2,7 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Splitting is done against payloads pulled out of the fixtures by the test-side parser, so a
-/// failure here points at the splitter rather than at the container reader.
-/// </summary>
+/// <summary>Payloads come from the test-side parser, so a failure here points at the splitter rather than the container reader.</summary>
 public class SavePayloadReaderTests
 {
     [Fact]

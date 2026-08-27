@@ -1,19 +1,11 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// The one wording for "how many campaigns", used by the live save card, the backup rows and the
-/// detail header.
-///
-/// A folder counts its two realms separately because it shows them separately: the slot sections
-/// list the local saves and the Rain Meadow section lists the online ones. A single total would
-/// head a list that does not add up to it, and counting them differently in different places puts
-/// two numbers for the same folder on screen at once. One library save is a single file with one
-/// section, so it passes zero for the online half whichever realm it came from.
+/// A folder counts its two realms separately because it shows them separately. One library save is
+/// a single file with one section, so it passes zero for the online half whichever realm it is.
 /// </summary>
 internal static class CampaignCount
 {

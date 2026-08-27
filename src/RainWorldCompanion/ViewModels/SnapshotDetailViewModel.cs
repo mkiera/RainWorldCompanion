@@ -1,30 +1,17 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RainWorldCompanion.Core.Saves;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// What the detail panel shows: the save folder as it stands right now, one backup, or one library
-/// save, laid out the same way so any two of them can be read against each other.
-///
-/// A backup is filled from the manifest that was written with it, so selecting one costs no disk
-/// read. A manifest written by schema version 1 recorded far less per campaign, and those cards
-/// render with dashes where the value was never stored rather than failing to render at all.
-///
-/// For the live folder and for a backup, local saves and Rain Meadow's online saves are both built
-/// into full slot sections, and <see cref="ShowOnline"/> settles which set is on screen. The toggle
-/// that changes it is drawn only when the mod is on the machine, so a player without it sees the
-/// local sections and nothing else. The paired rows further down show both realms beside each other
-/// whichever way the toggle is set.
-///
-/// A library save is one file. It has no second half to pair against and no realm to switch, so it
-/// gets neither the toggle nor the banded section.
+/// A backup is filled from the manifest written with it, so selecting one costs no disk read, and
+/// a schema version 1 manifest renders with dashes rather than failing to render. A library save
+/// is one file: no second half to pair against and no realm to switch.
 /// </summary>
 public sealed partial class SnapshotDetailViewModel : ObservableObject
 {
@@ -34,6 +21,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     private readonly string _onlineEmptyText;
 
     private SnapshotDetailViewModel(
+        ModListSectionViewModel modsSection,
         bool isLive,
         string title,
         string subtitle,
@@ -51,6 +39,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         string sourceDirectory = "",
         string sourceLabel = "")
     {
+        Mods = modsSection;
         IsLive = isLive;
         Title = title;
         Subtitle = subtitle;
@@ -64,11 +53,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         _localEmptyText = localEmptyText;
         _onlineEmptyText = onlineEmptyText;
 
-        // A library save is one file and it reads the same whichever slot it came from. Splitting it
-        // by realm the way a folder is split would drop an online sourced save out of Slots and
-        // leave the panel with nothing in it, and there is no second half here to pair it against.
-        // Only the live folder's campaigns are editable. A backup and a library save are copies
-        // taken at a moment, and editing one in place would leave it no longer a copy of anything.
+        // A library save is not split by realm: that would drop an online sourced save out of Slots
+        // and leave the panel with nothing in it.
         _localSlots = entry is not null
             ? BuildSlots(
                 allSlots,
@@ -101,12 +87,10 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         CampaignCountText = CampaignCount.Describe(CountCampaigns(_localSlots), CountCampaigns(_onlineSlots));
     }
 
-    /// <summary>True for the save folder on disk, false for a backup.</summary>
     public bool IsLive { get; }
 
     public string Title { get; }
 
-    /// <summary>The save folder path, or the backup's folder name.</summary>
     public string Subtitle { get; }
 
     public string KindText { get; }
@@ -121,27 +105,17 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
     public bool HasNote => NoteText.Length > 0;
 
-    /// <summary>
-    /// The list row this panel was built from, or null for the live save. The header binds the
-    /// verify state through this so a Verify run updates the panel without rebuilding it.
-    /// </summary>
+    /// <summary>The header binds verify state through this, so Verify updates without a rebuild.</summary>
     public BackupItemViewModel? Backup { get; }
 
     public bool HasBackup => Backup is not null;
 
-    /// <summary>
-    /// The library row this panel was built from, or null for anything else. The header binds the
-    /// checked state through this the same way it binds a backup's.
-    /// </summary>
+    /// <summary>The library row this panel was built from, or null for anything else.</summary>
     public LibraryEntryViewModel? Entry { get; }
 
     public bool HasEntry => Entry is not null;
 
-    /// <summary>
-    /// Which realm the slot sections are showing. The toggle above them sets it, and the window
-    /// carries the choice from one selection to the next, so reading the same slot across several
-    /// backups does not drop back to the local saves every time.
-    /// </summary>
+    /// <summary>The window carries this choice from one selection to the next.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowLocal))]
     [NotifyPropertyChangedFor(nameof(Slots))]
@@ -152,9 +126,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     private bool showOnline;
 
     /// <summary>
-    /// The other half of the toggle. Settable because both halves bind two way: a screen reader
-    /// selecting a radio button sets its checked state directly and raises no click, so a toggle
-    /// driven by a command instead would do nothing at all for that user.
+    /// Settable because both halves bind two way: a screen reader selecting a radio button sets its
+    /// checked state directly and raises no click, so a command-driven toggle would do nothing.
     /// </summary>
     public bool ShowLocal
     {
@@ -163,13 +136,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     }
 
     /// <summary>
-    /// One section each: for the live folder and for a backup, the local save files or Rain Meadow's
-    /// online ones, whichever the toggle names. Both sets are built up front, so switching costs no
-    /// parsing.
-    ///
-    /// A library save ignores the realm and puts its one file here whichever slot it came from. The
-    /// toggle is not drawn for it, and a realm carried over from the previous selection would
-    /// otherwise leave the panel showing nothing.
+    /// A library save ignores the realm and puts its one file here, because a realm carried over
+    /// from the previous selection would otherwise leave the panel showing nothing.
     /// </summary>
     public IReadOnlyList<SlotViewModel> Slots => ShowOnline && !HasEntry ? _onlineSlots : _localSlots;
 
@@ -177,63 +145,54 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
     public bool HasNoSlots => Slots.Count == 0;
 
-    /// <summary>The line shown in place of the slot sections when the chosen realm has none.</summary>
     public string ActiveEmptyText => ShowOnline ? _onlineEmptyText : _localEmptyText;
 
-    /// <summary>
-    /// One row per slot number, local and online together. A slot with no online file still gets a
-    /// row, because an empty online slot is what a player about to copy a save across is looking at.
-    /// Empty for a library save, which is one file.
-    /// </summary>
+    /// <summary>A slot with no online file still gets a row. Empty for a library save.</summary>
     public IReadOnlyList<SlotPairViewModel> SlotPairs { get; }
 
     public bool HasOnlineSlots => SlotPairs.Any(pair => pair.Online.Exists);
 
     /// <summary>
-    /// Whether the pair rows should say there is nothing online yet. Silent while the sections
-    /// above are showing the online realm, because those are already saying it and the two lines
-    /// land on one screen.
+    /// Silent while the sections above are showing the online realm, because those already say it
+    /// and the two lines land on one screen.
     /// </summary>
     public bool HasNoOnlineSlots => SlotPairs.Count > 0 && !HasOnlineSlots && !ShowOnline;
 
-    /// <summary>Whether Rain Meadow is on this machine.</summary>
-    /// Set by the window after the detail is built, because only the window knows what is on the
-    /// machine. The whole detail is replaced on every rebuild, so this needs no change notification.
+    /// <summary>
+    /// Set by the window after the detail is built. The whole detail is replaced on every rebuild,
+    /// so this needs no change notification.
+    /// </summary>
     public bool MeadowInstalled { get; set; }
 
     /// <summary>
-    /// Whether the Rain Meadow block and the realm toggle above the sections are drawn.
-    ///
-    /// Both follow the mod being on the machine, not the folder happening to hold an online save, so
-    /// a player who has the mod but has not played online still gets the rows to copy a save across.
-    /// A player without the mod sees neither.
-    ///
-    /// A library save is left out whether or not the mod is here. It is one file, and both the block
-    /// and the toggle exist to work across a slot's two halves.
+    /// Follows the mod being on the machine, not the folder happening to hold an online save, so a
+    /// player who has the mod but has not played online still gets the rows to copy a save across.
     /// </summary>
     public bool ShowMeadowSection => MeadowInstalled && !HasEntry;
 
-    /// <summary>"v0.1.15.1", or empty when the version was not read.</summary>
     public string MeadowVersionText { get; set; } = "";
 
-    /// <summary>"2 online saves", for the section band.</summary>
     public string OnlineCountText { get; }
+
+    /// <summary>Never null: "nothing was recorded" is itself a line worth drawing.</summary>
+    public ModListSectionViewModel Mods { get; }
 
     /// <summary>meadow.json, or null when the folder holds no such file.</summary>
     public MeadowProfileViewModel? Meadow { get; }
 
     public bool HasMeadow => Meadow is not null;
 
-    /// <summary>The save folder as it stands on disk.</summary>
     public static SnapshotDetailViewModel ForLive(
         IReadOnlyList<SlotMetadata> slots,
         string savePath,
         long sizeBytes,
         int fileCount,
         MeadowProfile? meadow,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        CurrentMods? mods = null)
     {
         return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForCurrent(mods),
             isLive: true,
             title: "Live save",
             subtitle: savePath,
@@ -252,10 +211,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             sourceLabel: "");
     }
 
-    /// <summary>
-    /// One library save. Filled from the manifest written beside it, so selecting a row costs no
-    /// disk read, and drawn as a single slot section because that is what an entry holds.
-    /// </summary>
+    /// <summary>Filled from the manifest written beside it, so selecting a row costs no disk read.</summary>
     public static SnapshotDetailViewModel ForLibraryEntry(LibraryEntryViewModel item, ISlugcatIconProvider icons)
     {
         var metadata = item.Entry.Manifest?.Metadata;
@@ -273,6 +229,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             : when + "    " + item.Entry.Id;
 
         return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForRecorded(item.Entry.Manifest?.Mods, fromABackup: false),
             isLive: false,
             title: item.Name,
             subtitle: subtitle,
@@ -290,7 +247,6 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             icons: icons);
     }
 
-    /// <summary>One backup, read out of the manifest that was written with it.</summary>
     public static SnapshotDetailViewModel ForBackup(
         BackupItemViewModel item,
         MeadowProfile? meadow,
@@ -298,8 +254,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     {
         var source = item.Snapshot.Manifest?.Slots;
 
-        // A snapshot with no manifest recorded nothing about either realm, so both sides say the
-        // same thing. With a manifest, the realm the toggle is on is the one that came up short.
+        // A snapshot with no manifest recorded nothing about either realm.
         var noManifest = "This snapshot has no manifest, so it recorded no campaign detail.";
 
         var empty = item.Snapshot.Manifest is null
@@ -311,6 +266,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             : "This snapshot's manifest recorded no Rain Meadow online saves.";
 
         return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForRecorded(item.Snapshot.Manifest?.Mods, fromABackup: true),
             isLive: false,
             title: item.LabelText,
             subtitle: item.CreatedText + "    " + item.Snapshot.Id,
@@ -332,14 +288,14 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     }
 
     /// <param name="fileNameOverride">
-    /// The container name to show instead of the one the metadata carries. Only a library save
-    /// passes this, because it was parsed out of the copy kept under the library's storage name.
+    /// Only a library save passes this, having been parsed out of the copy kept under the library's
+    /// own storage name.
     /// </param>
     /// <param name="nameRealm">
-    /// Whether the section headers say which realm they are. True wherever the realm toggle can
-    /// swap these sections for the other realm's, which is everything except a library save.
+    /// True wherever the realm toggle can swap these sections for the other realm's, which is
+    /// everything except a library save.
     /// </param>
-    /// <param name="editable">True only for the live save folder, whose files are the ones an edit writes to.</param>
+    /// <param name="editable">True only for the live save folder.</param>
     private static IReadOnlyList<SlotViewModel> BuildSlots(
         IEnumerable<SlotMetadata> slots,
         ISlugcatIconProvider icons,
@@ -358,11 +314,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             .ToList();
     }
 
-    /// <summary>
-    /// One row per slot number, all three of them, whenever the Rain Meadow block is drawn at all.
-    /// A row with nothing on either side still earns its place: it shows the player which online
-    /// slots are still empty, which is what they need to know before copying a local save across.
-    /// </summary>
+    /// <summary>A row with nothing on either side still shows which online slots are empty.</summary>
     private static IReadOnlyList<SlotPairViewModel> BuildPairs(
         IReadOnlyList<SlotViewModel> local,
         IReadOnlyList<SlotViewModel> online)

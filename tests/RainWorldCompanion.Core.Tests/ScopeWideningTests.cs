@@ -5,29 +5,12 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Two things are checked here, and they are the same thing seen from opposite ends.
-///
-/// The first is that the widened scope picks up the Rain Meadow profile, the RandomBuff save
-/// data and the mod configs, and still leaves the game's own settings, the karma screenshots,
-/// Steam's manifests and the game's own backup folder alone.
-///
-/// The second is the cost of that widening. A restore makes the in-scope part of the save folder
-/// match the snapshot exactly, which means it deletes in-scope live files the snapshot does not
-/// hold. Every snapshot on disk today was written under the narrow scope and therefore does not
-/// hold meadow.json or buffsave100, so a restore under the widened rules would delete them.
-///
-/// The fix is that a snapshot records the scope rules it was written under, and a restore deletes
-/// a live file only when it is in scope under both the current rules and the rules the snapshot
-/// was written under. A manifest with no recorded version is version 1, because every manifest
-/// written before the version existed was written under the first rule set.
-///
-/// The second half of these tests is the part that keeps the fix honest: a snapshot written under
-/// the current rules that genuinely lacks an in-scope file still deletes that file.
+/// A snapshot records the scope rules it was written under, and a restore deletes a live file
+/// only when the file is in scope under both the current rules and the rules the snapshot was
+/// written under. A manifest with no recorded version is read as version 1.
 /// </summary>
 public class ScopeWideningTests
 {
-    // ---- the widened scope, against a mirror of the real save folder ----
-
     [Fact]
     public void Enumerate_returns_exactly_the_in_scope_files_of_the_whole_save_folder()
     {
@@ -142,8 +125,6 @@ public class ScopeWideningTests
         Assert.DoesNotContain(SaveTree.Normalize(relativePath), found);
     }
 
-    // ---- the online container names Rain Meadow can actually produce ----
-
     [Theory]
     [InlineData("online_sav")]
     [InlineData("online_sav2")]
@@ -152,10 +133,9 @@ public class ScopeWideningTests
     [InlineData("online_sav-2")]
     public void Every_name_the_Rain_Meadow_hook_can_write_is_backed_up(string fileName)
     {
-        // The hook's guard compiles to cgt.un against zero, which is "saveSlot is not 0", and the
-        // base game uses a negative saveSlot for Expedition. Joining a lobby from an Expedition
-        // slot therefore writes "online_sav" + (saveSlot + 1) with a negative number in it. Those
-        // are real saves, and a name the scope does not match is a save the whole app cannot see.
+        // The hook's guard is "saveSlot is not 0", and the base game uses a negative saveSlot for
+        // Expedition, so joining a lobby from an Expedition slot writes "online_sav" +
+        // (saveSlot + 1), which can be negative. Those are real saves the scope must still match.
         using var live = new TempDirectory("live");
         WideSaveTree.Populate(live);
         FixtureFiles.CopyTo(live, FixtureFiles.Sav3, fileName);
@@ -185,12 +165,9 @@ public class ScopeWideningTests
     [InlineData("online_sav-1")]
     public void A_negative_online_name_is_backed_up_but_is_not_a_menu_slot(string fileName)
     {
-        // Backed up, and still not offered as slot 1, 2 or 3. The game's menu has three slots and
-        // these names are not among them, so the paired rows must not claim one of them.
+        // The game's menu has only three slots, and these names are not among them.
         Assert.Null(SaveMetadataExtractor.SlotForFileName(fileName));
     }
-
-    // ---- the widening fix ----
 
     [Fact]
     public void The_current_scope_version_is_past_the_first_one()
@@ -233,8 +210,8 @@ public class ScopeWideningTests
 
         var plan = world.Service.PlanRestore(snapshot);
 
-        // Nothing diverged from the snapshot except the files the old rules never reached, so
-        // the confirmation dialog has nothing to list under "will be deleted".
+        // Nothing diverged except files the old rules never reached, so the confirmation dialog
+        // has nothing to list as deleted.
         Assert.Empty(plan.Deleted);
     }
 
@@ -255,7 +232,6 @@ public class ScopeWideningTests
         SnapshotLayout.AssertBytesEqual(meadowBefore, world.Live.ReadBytes("meadow.json"), "meadow.json");
         SnapshotLayout.AssertBytesEqual(buffBefore, world.Live.ReadBytes("buffsave100"), "buffsave100");
 
-        // The same reasoning covers every other rule the widening added.
         Assert.True(world.Live.FileExists(@"ModConfigs\moreslugcats.txt"), "a mod config the old scope never covered was deleted");
         Assert.True(world.Live.FileExists(@"Warp\Settings.txt"), "a Warp setting the old scope never covered was deleted");
         Assert.True(world.Live.FileExists(@"dressmyslugcat\customization.dat"), "a slugcat appearance the old scope never covered was deleted");
@@ -297,8 +273,7 @@ public class ScopeWideningTests
     [Fact]
     public void Restoring_a_current_snapshot_still_deletes_an_in_scope_file_it_lacks()
     {
-        // The mirror image of the test above it. Without this one the widening fix could be
-        // "never delete anything" and every other test here would still pass.
+        // The mirror image: without this, "never delete anything" would also pass every test here.
         using var world = new WideWorld();
         File.Delete(world.Live.Resolve("meadow.json"));
         var snapshot = world.Service.CreateBackup("current", null);
@@ -348,8 +323,6 @@ public class ScopeWideningTests
         Assert.NotNull(SnapshotLayout.FindFile(safety!, "buffsave100"));
     }
 
-    // ---- an older scope walks only the folders its own rules covered ----
-
     [Fact]
     public void A_version_1_scope_enumerates_only_what_version_1_covered()
     {
@@ -367,10 +340,9 @@ public class ScopeWideningTests
     [JunctionFact]
     public void A_version_1_scope_reports_no_link_skip_for_a_folder_its_rules_never_covered()
     {
-        // Enumerate has to walk the same folders IsInScope judges. Walking today's list under
-        // version 1 rules rejects the files correctly but still records every reparse point it
-        // meets, and that skip goes into a version 1 manifest and comes back as a warning about a
-        // folder those rules have no opinion about.
+        // Enumerate walks the same folders IsInScope judges. Walking today's folder list under
+        // version 1 rules still records every reparse point it meets, so a skip for a folder those
+        // rules have no opinion about must not leak into a version 1 manifest as a warning.
         using var live = new TempDirectory("live");
         using var elsewhere = new TempDirectory("elsewhere");
         WideSaveTree.Populate(live);
@@ -391,9 +363,8 @@ public class ScopeWideningTests
     }
 
     /// <summary>
-    /// Rewrites a manifest into the shape the backups already on disk have: schema version 1 and
-    /// no scopeVersion property at all. The file list is left exactly as written, so the snapshot
-    /// still verifies.
+    /// Rewrites a manifest into the shape backups already on disk have: schema version 1, no
+    /// scopeVersion property. The file list is untouched, so the snapshot still verifies.
     /// </summary>
     private static void StripScopeVersion(BackupSnapshot snapshot)
     {
@@ -405,9 +376,9 @@ public class ScopeWideningTests
 }
 
 /// <summary>
-/// A live folder holding the widened tree, a backup root beside it, and two services over the
-/// same pair: one on the current rules and one pinned to the first rule set, which is how a
-/// snapshot written before the widening is produced without hand-building a manifest.
+/// A live folder holding the widened tree, with two services over the same backup root: one on
+/// current rules and one pinned to the first rule set, so a pre-widening snapshot can be produced
+/// without hand-building a manifest.
 /// </summary>
 internal sealed class WideWorld : IDisposable
 {
@@ -446,9 +417,8 @@ internal sealed class WideWorld : IDisposable
 }
 
 /// <summary>
-/// A temp folder laid out like the real save folder, file for file. The file list comes from a
-/// directory listing of one live install, so an assertion about what Enumerate returns is an
-/// assertion about a real folder rather than about a convenient one.
+/// A temp folder laid out like the real save folder, file for file, from a directory listing of
+/// one live install rather than an invented structure.
 /// </summary>
 internal static class WideSaveTree
 {
@@ -581,9 +551,8 @@ internal static class WideSaveTree
     }
 
     /// <summary>
-    /// Writes the files the widened rules brought into scope. Called by Populate, and called
-    /// again after a narrow-scope snapshot to put them back in a folder that has to survive a
-    /// restore of that snapshot.
+    /// Writes the files the widened rules brought into scope. Called by Populate, and again after
+    /// a narrow-scope snapshot to test that a restore of it leaves them alone.
     /// </summary>
     public static void AddTheWidenedFiles(TempDirectory directory)
     {

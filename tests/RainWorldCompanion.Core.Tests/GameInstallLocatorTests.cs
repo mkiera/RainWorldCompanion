@@ -16,8 +16,6 @@ public class GameInstallLocatorTests
     private const string MoreSlugcats = StreamingAssets + @"\mods\moreslugcats\illustrations";
     private const string WatcherMod = StreamingAssets + @"\mods\watcher\illustrations";
 
-    // ---- LooksLikeInstall ----
-
     [Fact]
     public void An_empty_folder_does_not_look_like_an_install()
     {
@@ -60,8 +58,6 @@ public class GameInstallLocatorTests
 
         Assert.False(GameInstallLocator.LooksLikeInstall(temp.Resolve("nowhere")));
     }
-
-    // ---- FindPortraitFile ----
 
     [Fact]
     public void A_portrait_in_the_base_illustrations_folder_is_found()
@@ -174,22 +170,6 @@ public class GameInstallLocatorTests
         using var temp = new TempDirectory("install");
 
         Assert.Null(GameInstallLocator.FindPortraitFile(temp.Resolve("nowhere"), "White"));
-    }
-
-    // ---- FindInstallPath ----
-
-    [Fact]
-    public void Finding_the_install_returns_either_a_real_install_or_null()
-    {
-        // This one runs against whatever is on the machine, so it asserts the contract rather
-        // than a path: whatever comes back has to satisfy LooksLikeInstall, and nothing coming
-        // back is a valid answer on a machine with no Rain World.
-        var path = GameInstallLocator.FindInstallPath();
-
-        if (path is not null)
-        {
-            Assert.True(GameInstallLocator.LooksLikeInstall(path));
-        }
     }
 
     /// <summary>

@@ -10,20 +10,13 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.ViewModels;
 
 /// <summary>
-/// Backing view model for the settings dialog.
-///
-/// Both path boxes update their binding on every keystroke, so everything here is written for
-/// forty calls in a row against a half-typed path. Nothing that touches disk runs on the
-/// dispatcher, and every background check carries a version that a later keystroke moves past,
-/// which both drops the stale answer and stops the work that is producing it.
+/// Both path boxes update their binding on every keystroke, so nothing here that touches disk runs
+/// on the dispatcher. Every background check carries a version that a later keystroke moves past,
+/// which drops the stale answer and stops the work producing it.
 /// </summary>
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    /// <summary>
-    /// How long a typed install path has to stand still before it is checked. A full check walks
-    /// the illustrations folder and every mods\*\illustrations folder once per known slugcat, and
-    /// every intermediate path a user types through is a miss.
-    /// </summary>
+    /// <summary>A full check walks every mods\*\illustrations folder once per known slugcat.</summary>
     private const int InstallCheckDebounceMs = 350;
 
     private readonly SettingsStore _store;
@@ -48,7 +41,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Settings that were written to disk, null until Save succeeds.</summary>
     public AppSettings? Result { get; private set; }
 
-    /// <summary>Raised with the dialog result the view should close with.</summary>
     public event Action<bool>? CloseRequested;
 
     /// <summary>Owner for the folder picker. Set by the dialog.</summary>
@@ -62,18 +54,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string backupRootPath;
 
-    /// <summary>
-    /// Where the named save library lives. Checked against both of the other folders for the same
-    /// reason they are checked against each other: nothing this app writes to may sit inside
-    /// anything else it writes to.
-    /// </summary>
     [ObservableProperty]
     private string libraryRootPath;
 
-    /// <summary>
-    /// Where Rain World is installed. Only the slugcat portraits are read from it, so a blank or
-    /// wrong value never blocks Save and never stops a backup or a restore.
-    /// </summary>
+    /// <summary>Only the portraits read this, so a blank or wrong value never blocks Save.</summary>
     [ObservableProperty]
     private string gameInstallPath;
 
@@ -239,13 +223,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         GameInstallPath = found;
     }
 
-    /// <summary>
-    /// Reports how many portraits the install would give, off the UI thread. Nothing here can
-    /// make the settings invalid.
-    /// </summary>
     /// <param name="debounce">
-    /// True when the path came from typing. The check then waits for the box to stand still,
-    /// which is what stops one sweep per character from being started and run to completion.
+    /// True when the path came from typing, which stops one sweep per character being run through.
     /// </param>
     private async Task CheckInstallAsync(string path, bool debounce)
     {
@@ -273,11 +252,8 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Counts the portraits an install would give. Runs on a worker.
-    ///
-    /// Returns null when a later keystroke has moved <c>_installCheckVersion</c> past
-    /// <paramref name="version"/>, so a sweep whose answer is already stale stops between
-    /// slugcats instead of walking the mods folder ten more times for nothing.
+    /// Null when a later keystroke has moved <c>_installCheckVersion</c> past
+    /// <paramref name="version"/>, so a stale sweep stops between slugcats.
     /// </summary>
     private string? DescribeInstall(string trimmed, int version)
     {
@@ -315,10 +291,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         var installPath = GameInstallPath.Trim();
 
-        // Built from what was loaded rather than from scratch, and only the four fields this
-        // dialog owns are overwritten. A fresh object would carry the initialiser value for every
-        // field the dialog does not show, so saving here would quietly reset the update channel,
-        // the automatic-check choice and the last-check stamp every time.
+        // Built from what was loaded, so only the four fields this dialog owns are overwritten. A
+        // fresh object would reset the update channel, the auto-check choice and the last-check
+        // stamp to their initialisers every time.
         var settings = _current.Clone();
         settings.GameSavePath = GameSavePath.Trim();
         settings.BackupRootPath = BackupRootPath.Trim();
@@ -347,13 +322,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool CanSave() => IsValid && !IsBusy;
 
     /// <summary>
-    /// Runs on every keystroke in either path box.
-    ///
-    /// Only the text-only checks happen here. The rest of validation resolves each path through
-    /// the filesystem, which opens it with CreateFileW, and a half-typed UNC path such as
-    /// \\fileserver\rw blocks that call for the full DNS and SMB timeout. Save stays disabled
-    /// until the background half answers, so a path is never saved on the strength of the cheap
-    /// checks alone.
+    /// Only the text-only checks. The rest of validation opens each path with CreateFileW, and a
+    /// half-typed UNC path such as \\fileserver\rw blocks that for the full DNS and SMB timeout.
+    /// Save stays disabled until the background half answers.
     /// </summary>
     private void Revalidate()
     {
@@ -377,10 +348,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ = ValidateFullAsync(savePath, backupRoot, libraryRoot);
     }
 
-    /// <summary>
-    /// The half of validation that touches disk, off the dispatcher. A stale result is dropped
-    /// when any path has moved on.
-    /// </summary>
+    /// <summary>Off the dispatcher. A stale result is dropped when any path has moved on.</summary>
     private async Task ValidateFullAsync(string savePath, string backupRoot, string libraryRoot)
     {
         var version = ++_validationVersion;
@@ -414,9 +382,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         _ = CheckSaveRootAsync(savePath);
     }
 
-    /// <summary>
-    /// Folder probing happens off the UI thread. A stale result is dropped when the path has moved on.
-    /// </summary>
+    /// <summary>Off the UI thread. A stale result is dropped when the path has moved on.</summary>
     private async Task CheckSaveRootAsync(string path)
     {
         var version = ++_saveRootCheckVersion;
@@ -459,9 +425,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             Multiselect = false,
         };
 
-        // The probe runs off the dispatcher. A configured path on a share whose machine is off
-        // makes Directory.Exists block for as long as SMB takes to give up, and the window would
-        // sit there unpainted for all of it.
+        // Off the dispatcher: a configured path on a share whose machine is off makes
+        // Directory.Exists block for as long as SMB takes to give up.
         var startingPathExists = await Task.Run(() =>
         {
             try

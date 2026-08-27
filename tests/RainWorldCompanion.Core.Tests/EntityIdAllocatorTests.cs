@@ -3,10 +3,8 @@ using RainWorldCompanion.Core.Editing;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Handing out entity ids that do not collide with one already in the campaign.
-///
-/// The number half of an id is the whole of its identity to the game, so these are mostly about
-/// what the counter alone would miss.
+/// The number half of an id is the whole of its identity to the game, so these are mostly
+/// about what the counter alone would miss.
 /// </summary>
 public class EntityIdAllocatorTests
 {
@@ -94,8 +92,6 @@ public class EntityIdAllocatorTests
         Assert.True(allocator.CounterWasMissing);
         Assert.Equal("ID.-1.1", allocator.Allocate());
     }
-
-    // ---- writing the counter back ----
 
     [Fact]
     public void The_counter_written_back_is_where_the_game_should_carry_on_from()

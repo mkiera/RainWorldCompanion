@@ -1,29 +1,17 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 
 namespace RainWorldCompanion.Core.Saves;
 
-/// <summary>
-/// One region: the code a save stores, the name the game shows, and whether an echo lives there.
-///
-/// Named for the world rather than called RegionInfo, which is a type in System.Globalization that
-/// any file formatting a number for a culture already has in scope.
-/// </summary>
+/// <summary>Named for the world rather than called RegionInfo, which is a System.Globalization type
+/// any file formatting a number for a culture already has in scope.</summary>
 public sealed record WorldRegion(string Code, string DisplayName, bool HasEcho);
 
 /// <summary>
-/// The regions of the game and its expansions.
-///
-/// The list is baked in rather than read from the install, so the editor works with the game
-/// uninstalled or on another machine. It was extracted from the world files of Rain World 1.10
-/// with Downpour and The Watcher: a region is a folder under StreamingAssets\world holding a
-/// world_&lt;code&gt;.txt, its name comes from displayname.txt beside it, and it has an echo when a
-/// room in it places a GhostSpot.
-///
-/// Being baked in makes it a suggestion, never a rule. A region from a mod this list has never
-/// heard of still has to be typeable, so every lookup answers rather than failing and every
-/// picker built on it accepts text that matches nothing here.
+/// Baked in rather than read from the install, so the editor works with the game uninstalled.
+/// Extracted from the world files of Rain World 1.10 with Downpour and The Watcher. Being baked in
+/// makes it a suggestion, never a rule: every lookup answers rather than failing, and every picker
+/// built on it accepts text that matches nothing here.
 /// </summary>
 public static class RegionCatalog
 {
@@ -86,18 +74,13 @@ public static class RegionCatalog
     private static readonly Dictionary<string, WorldRegion> ByCode =
         KnownEntries.ToDictionary(r => r.Code, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Every region this app knows, ordered by code.</summary>
+    /// <summary>Ordered by code.</summary>
     public static IReadOnlyList<WorldRegion> Known => KnownEntries;
 
-    /// <summary>The regions an echo can be met in, which is what an echo editor lists.</summary>
     public static IReadOnlyList<WorldRegion> WithEchoes { get; } =
         KnownEntries.Where(r => r.HasEcho).ToArray();
 
-    /// <summary>
-    /// Looks up a region code, ignoring case. Never returns null: a code this list does not hold
-    /// comes back with the raw code as its name, because a save from a modded region is still a
-    /// save worth showing.
-    /// </summary>
+    /// <summary>Never returns null: an unknown code comes back with the raw code as its name.</summary>
     public static WorldRegion ForCode(string? code)
     {
         if (string.IsNullOrWhiteSpace(code))

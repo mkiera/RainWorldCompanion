@@ -28,7 +28,6 @@ public static class FixtureFiles
 
     public static byte[] Bytes(string fixtureName) => File.ReadAllBytes(PathTo(fixtureName));
 
-    /// <summary>Copies a fixture into a temp directory under a chosen name and returns the full path.</summary>
     public static string CopyTo(TempDirectory directory, string fixtureName, string relativePath)
         => directory.CopyFrom(PathTo(fixtureName), relativePath);
 
@@ -143,7 +142,6 @@ public static class SyntheticSave
         return true;
     }
 
-    /// <summary>A value with a well-formed hex prefix that does not match the payload.</summary>
     public static string WrapWithBadChecksum(string payload)
     {
         var good = ComputeChecksum(payload);
@@ -177,7 +175,6 @@ public static class SyntheticSave
     public static byte[] Bytes(IReadOnlyList<KeyValuePair<string, string>> entries, int paddingBytes = 0, string version = "8", int? hashSize = null)
         => Encode(Xml(entries, version, hashSize), paddingBytes);
 
-    /// <summary>A container whose text stops before the closing tag, which the reader has to reject.</summary>
     public static byte[] BytesWithoutClosingTag(IReadOnlyList<KeyValuePair<string, string>> entries, int paddingBytes = 0)
     {
         var xml = Xml(entries);
@@ -187,8 +184,8 @@ public static class SyntheticSave
 
     /// <summary>
     /// A container whose Values element has lost its last child while Keys kept all of its own,
-    /// which is the shape a write truncated part way through leaves behind. The z:Size attribute
-    /// still claims the original count, exactly as it would on a real file.
+    /// the shape a write truncated part way through leaves. The z:Size attribute still claims the
+    /// original count, exactly as on a real file.
     /// </summary>
     public static byte[] BytesWithAnUnpairedKey(IReadOnlyList<KeyValuePair<string, string>> entries, int paddingBytes = 0)
     {

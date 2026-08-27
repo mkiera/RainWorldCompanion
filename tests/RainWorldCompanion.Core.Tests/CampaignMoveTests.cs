@@ -6,17 +6,14 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Moving a campaign onto a live slot.
-///
-/// The write runs the same ladder an edit runs, so what is checked here is the part that is new: a
-/// change to the record list rather than to the characters inside one record. The plan proves the
-/// splice did what it said and nothing else, and these prove the plan would notice if it had not.
+/// The write runs the same ladder an edit runs, so what is checked here is the part that is
+/// new: a change to the record list rather than to the characters inside one record. The plan
+/// proves the splice did what it said and nothing else, and these prove the plan would notice
+/// if it had not.
 /// </summary>
 public class CampaignMoveTests
 {
     private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
-
-    // ---- onto a live slot ----
 
     [Fact]
     public void A_campaign_loaded_onto_a_slot_lands_on_disk_and_the_game_would_accept_it()
@@ -34,7 +31,6 @@ public class CampaignMoveTests
         Assert.Null(metadata.ParseError);
         Assert.True(metadata.ChecksumValid);
 
-        // The campaign that landed is the one from sav3, not the one sav2 had.
         CampaignSummary loaded = Assert.Single(metadata.Campaigns);
         Assert.Equal(world.CampaignSummaryIn("sav3", 3).CycleNum, loaded.CycleNum);
     }
@@ -141,8 +137,6 @@ public class CampaignMoveTests
         Assert.Single(session.Changes);
     }
 
-    // ---- what the plan holds a splice to ----
-
     /// <summary>
     /// Every record the move was not about has to come back in the same order, and here they are
     /// every record in the file: the campaign put back is the one taken out.
@@ -234,8 +228,6 @@ public class CampaignMoveTests
         Assert.False(session.IsDirty);
         Assert.Empty(session.Changes);
     }
-
-    // ---- what a move says it will do before it does it ----
 
     [Fact]
     public void A_plan_says_what_it_would_do_to_the_slot()
@@ -375,8 +367,6 @@ public class CampaignMoveTests
         Assert.Null(world.Writer.ReadCampaign(LocalTwo, "Saint"));
     }
 
-    // ---- reading a campaign on its own ----
-
     [Fact]
     public void A_campaign_taken_out_on_its_own_reads_back_as_the_campaign_it_was()
     {
@@ -403,8 +393,6 @@ public class CampaignMoveTests
         Assert.Empty(metadata.Campaigns);
         Assert.Null(metadata.ParseError);
     }
-
-    // ---- helpers ----
 
     private static CampaignSlice GourmandSlice() => new(
         "Gourmand",
@@ -464,6 +452,7 @@ public class CampaignMoveTests
                 new HashSet<int>(),
                 new[] { "a campaign moved" },
                 spliced,
+                new HashSet<string>(StringComparer.Ordinal),
                 SizePolicy.GrowIfNeeded);
 
         public void Dispose()

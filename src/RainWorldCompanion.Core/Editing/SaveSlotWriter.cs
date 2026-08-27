@@ -1,6 +1,5 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+// body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 
 using RainWorldCompanion.Core.Backups;
@@ -10,10 +9,6 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Editing;
 
-/// <summary>
-/// What writing an edit did, in the same shape as <see cref="SlotCopyResult"/> and
-/// <see cref="Library.LibraryLoadResult"/> so a caller reports all three the same way.
-/// </summary>
 public sealed record SaveWriteResult(
     bool Success,
     BackupSnapshot? SafetySnapshot,
@@ -23,10 +18,6 @@ public sealed record SaveWriteResult(
     long BytesWritten,
     string TargetFileName)
 {
-    /// <summary>
-    /// The line to lead a report with. The wording lives here rather than in the UI so "nothing was
-    /// changed" can never be printed over a save file that was in fact written to.
-    /// </summary>
     public string Headline()
     {
         if (Success)
@@ -53,13 +44,8 @@ public sealed record SaveWriteResult(
         => new(false, null, errors, Array.Empty<string>(), false, 0, targetFileName);
 }
 
-/// <summary>
-/// What moving a campaign onto or off one slot would do, worked out without changing anything.
-///
-/// <see cref="Splice"/> says what the move is: whether it replaces a campaign the slot already had,
-/// how much map comes with it, and anything the game will make of it that a person would not expect.
-/// <see cref="Write"/> is the same plan an edit builds, so writing one runs the same ladder.
-/// </summary>
+/// <summary>Worked out without changing anything. <see cref="Write"/> is the same plan an edit
+/// builds, so writing one runs the same steps.</summary>
 public sealed record CampaignMovePlan(
     SaveWritePlan Write,
     CampaignSpliceReport Splice,
@@ -72,7 +58,6 @@ public sealed record CampaignMovePlan(
     /// <summary>What is worth saying before this is written. None of it stops the write.</summary>
     public IReadOnlyList<string> Warnings => Splice.Warnings;
 
-    /// <summary>One line saying what this would do to the slot.</summary>
     public string Describe()
     {
         string what = Splice.Outcome switch
@@ -117,18 +102,109 @@ public sealed record CampaignMovePlan(
             problems);
 }
 
+/// <summary>The game's own WipeAll leaves a slot holding nothing but a reset MISCPROG. This app stops
+/// short of that and leaves MISCPROG as it found it, so <see cref="Describe"/> says what is about to
+/// happen rather than what the game would have done.</summary>
+/// <param name="MapsRemoved">How many map records go with them, which is none unless asked for.</param>
+public sealed record SlotDeletePlan(
+    SaveWritePlan Write,
+    SaveSlotRef Target,
+    string TargetFileName,
+    IReadOnlyList<string> Campaigns,
+    int MapsRemoved,
+    SlotDeleteDepth Depth,
+    int OtherRecordsRemoved,
+    bool ClearingTheGamesOwnCopy,
+    IReadOnlyList<string> Problems)
+{
+    public bool CanWrite => Problems.Count == 0 && Write.CanWrite;
+
+    /// <summary>True when the slot is being left as empty as one never played.</summary>
+    public bool IsTotal => Depth == SlotDeleteDepth.Everything;
+
+    public string Describe()
+    {
+        if (IsTotal)
+        {
+            return Campaigns.Count == 0
+                ? $"Empties {TargetFileName} out entirely, leaving it as it was before it was ever played."
+                : string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Empties {0} out entirely: {1}, the map, the progression record and everything else in it.",
+                    TargetFileName,
+                    Campaigns.Count == 1 ? Campaigns[0] : Campaigns.Count + " campaigns");
+        }
+
+        string what = Campaigns.Count switch
+        {
+            0 => $"Takes what is left in {TargetFileName}",
+            1 => $"Takes {Campaigns[0]} out of {TargetFileName}",
+            _ => string.Format(
+                CultureInfo.InvariantCulture,
+                "Takes all {0} campaigns out of {1}",
+                Campaigns.Count,
+                TargetFileName),
+        };
+
+        if (MapsRemoved > 0)
+        {
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "{0}, and the {1} regions of map it holds.",
+                what,
+                MapsRemoved);
+        }
+
+        if (Depth == SlotDeleteDepth.CampaignsAndMap)
+        {
+            return what + ".";
+        }
+
+        return Campaigns.Count == 0
+            ? what + ", and leaves the map behind."
+            : what + ", and leaves the map they explored behind.";
+    }
+
+    /// <summary>What the slot still holds afterwards, which the game will not treat as new.</summary>
+    public string WhatStays
+    {
+        get
+        {
+            if (IsTotal)
+            {
+                return ClearingTheGamesOwnCopy
+                    ? $"Nothing stays. The copy of the old save the game keeps inside {TargetFileName} goes as well."
+                    : "Nothing stays.";
+            }
+
+            return Depth == SlotDeleteDepth.CampaignsAndMap
+                ? $"{TargetFileName} keeps its progression record, so the game still counts what it has seen."
+                : $"{TargetFileName} keeps the map and its progression record, so the game still counts what it has seen.";
+        }
+    }
+
+    internal static SlotDeletePlan Refused(
+        string filePath,
+        SaveSlotRef target,
+        string targetFileName,
+        params string[] problems)
+        => new(
+            SaveWritePlan.CannotBuild(filePath, problems),
+            target,
+            targetFileName,
+            Array.Empty<string>(),
+            0,
+            SlotDeleteDepth.Campaigns,
+            0,
+            false,
+            problems);
+}
+
 /// <summary>
-/// Writes an edited save over the slot it came from.
-///
-/// The ladder that makes overwriting a save undoable is not repeated here. It already exists, a
-/// slot copy and a library load both run it, and this runs the same one: the edited bytes are put
-/// in a temp file and handed to <see cref="SlotCopyService.CopyOntoSlot"/> as the source. So the
-/// safety snapshot, the proof that the snapshot holds the file about to be replaced, the operation
-/// lock and the hashing of both sides afterwards all come along without a second implementation to
-/// keep in step.
-///
-/// The safety snapshot is not optional. An edit is the one operation in this app that writes bytes
-/// no file anywhere else holds, so the snapshot taken before it is the only copy of what was there.
+/// Writes an edited save over the slot it came from. The edited bytes go into a temp file handed to
+/// <see cref="SlotCopyService.CopyOntoSlot"/> as the source, so the safety snapshot, the operation
+/// lock and the hashing of both sides all come along without a second implementation. An edit is the
+/// one operation here that writes bytes no other file holds, so that snapshot is the only copy.
 /// </summary>
 public sealed class SaveSlotWriter
 {
@@ -141,13 +217,8 @@ public sealed class SaveSlotWriter
         _gameDetector = gameDetector ?? throw new ArgumentNullException(nameof(gameDetector));
     }
 
-    /// <summary>
-    /// Writes a plan over its slot.
-    ///
-    /// Refusals come back in <see cref="SaveWriteResult.Errors"/>. A running game throws
-    /// <see cref="GameRunningException"/>, the same way the copy and the restore do, so one handler
-    /// covers it wherever it is met.
-    /// </summary>
+    /// <summary>Refusals come back in <see cref="SaveWriteResult.Errors"/>, but a running game throws
+    /// <see cref="GameRunningException"/>, the same way the copy and the restore do.</summary>
     public SaveWriteResult Write(
         SaveWritePlan plan,
         SaveSlotRef target,
@@ -157,7 +228,6 @@ public sealed class SaveSlotWriter
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(target);
 
-        // The game holds the save files open while it runs and writes them on its own schedule.
         EnsureGameNotRunning();
 
         SlotSide side = _backups.SlotCopies.ReadSide(target, includeCampaigns: false);
@@ -240,7 +310,18 @@ public sealed class SaveSlotWriter
         }
     }
 
-    /// <summary>Writes a campaign move over its slot, through the same ladder an edit runs.</summary>
+    public SaveWriteResult Write(
+        SlotDeletePlan plan,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return plan.Problems.Count > 0
+            ? SaveWriteResult.Refused(plan.TargetFileName, plan.Problems.ToArray())
+            : Write(plan.Write, plan.Target, progress, ct);
+    }
+
     public SaveWriteResult Write(
         CampaignMovePlan plan,
         IProgress<string>? progress = null,
@@ -253,7 +334,6 @@ public sealed class SaveSlotWriter
             : Write(plan.Write, plan.Target, progress, ct);
     }
 
-    /// <summary>Reads one campaign out of a slot, to store it or to move it somewhere else.</summary>
     public CampaignSlice? ReadCampaign(SaveSlotRef source, string slugcatId)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -262,10 +342,8 @@ public sealed class SaveSlotWriter
         return SaveEditSession.Open(side.FullPath).TakeCampaign(slugcatId);
     }
 
-    /// <summary>
-    /// What putting a campaign into a slot would do. Nothing is written and nothing is locked, so
-    /// the answer is what the slot holds now rather than what it will hold when the write runs.
-    /// </summary>
+    /// <summary>Nothing is written and nothing is locked, so the answer describes what the slot holds
+    /// now rather than what it will hold when the write runs.</summary>
     public CampaignMovePlan PlanPutCampaign(SaveSlotRef target, CampaignSlice slice)
     {
         ArgumentNullException.ThrowIfNull(slice);
@@ -273,18 +351,78 @@ public sealed class SaveSlotWriter
         return Plan(target, session => session.PutCampaignIn(slice));
     }
 
-    /// <summary>
-    /// What taking a campaign out of a slot would do.
-    /// </summary>
-    /// <param name="includeMaps">
-    /// Whether the slugcat's map discovery goes with it. The game's own WipeSaveState leaves it
-    /// behind, so deleting a campaign in place should too. Moving one to another slot should take
-    /// it, or the map stays in a slot that no longer has the campaign.
-    /// </param>
+    /// <param name="includeMaps">Whether the slugcat's map discovery goes with it. WipeSaveState
+    /// leaves it behind, so a delete in place should too, but a move to another slot should take
+    /// it.</param>
     public CampaignMovePlan PlanTakeCampaign(SaveSlotRef target, string slugcatId, bool includeMaps)
         => Plan(target, session => session.TakeCampaignOut(slugcatId, includeMaps));
 
+    /// <summary>Worked out without changing anything.</summary>
+    public SlotDeletePlan PlanDeleteSlot(SaveSlotRef target, SlotDeleteDepth depth)
+    {
+        SlotEdit open = OpenSlot(target);
+
+        if (open.Refusal is { } refusal)
+        {
+            return SlotDeletePlan.Refused(open.Side.FullPath, target, open.Name, refusal);
+        }
+
+        SaveEditSession session = open.Session!;
+        SlotDeleteReport gone = session.DeleteCampaigns(depth);
+
+        if (!session.IsDirty)
+        {
+            return SlotDeletePlan.Refused(
+                open.Side.FullPath,
+                target,
+                open.Name,
+                $"{open.Name} is already as empty as it can be, so there is nothing in it to delete.");
+        }
+
+        return new SlotDeletePlan(
+            session.BuildWritePlan(),
+            target,
+            open.Name,
+            gone.Campaigns,
+            gone.MapsRemoved,
+            depth,
+            gone.OtherRecordsRemoved,
+            gone.ClearedTheGamesOwnCopy,
+            Array.Empty<string>());
+    }
+
     private CampaignMovePlan Plan(SaveSlotRef target, Func<SaveEditSession, CampaignSpliceReport> move)
+    {
+        SlotEdit open = OpenSlot(target);
+
+        if (open.Refusal is { } refusal)
+        {
+            return CampaignMovePlan.Refused(open.Side.FullPath, target, open.Name, refusal);
+        }
+
+        SaveEditSession session = open.Session!;
+        CampaignSpliceReport splice = move(session);
+
+        if (!session.IsDirty)
+        {
+            return CampaignMovePlan.Refused(
+                open.Side.FullPath,
+                target,
+                open.Name,
+                $"{open.Name} already holds exactly this, so there is nothing to write.");
+        }
+
+        return new CampaignMovePlan(
+            session.BuildWritePlan(),
+            splice,
+            target,
+            open.Name,
+            Array.Empty<string>());
+    }
+
+    /// <summary>Every plan that rewrites a slot asks the same four questions first, and asking them
+    /// once keeps a new kind of change from skipping one.</summary>
+    private SlotEdit OpenSlot(SaveSlotRef target)
     {
         ArgumentNullException.ThrowIfNull(target);
 
@@ -293,75 +431,46 @@ public sealed class SaveSlotWriter
 
         if (!target.IsRealSlot)
         {
-            return CampaignMovePlan.Refused(
-                side.FullPath,
-                target,
-                targetName,
-                string.Format(
-                    CultureInfo.InvariantCulture,
-                    "Slot {0} is not a Rain World slot. The game has slots {1} to {2}.",
-                    target.Slot,
-                    SaveSlotRef.MinSlot,
-                    SaveSlotRef.MaxSlot));
+            return new SlotEdit(side, targetName, null, string.Format(
+                CultureInfo.InvariantCulture,
+                "Slot {0} is not a Rain World slot. The game has slots {1} to {2}.",
+                target.Slot,
+                SaveSlotRef.MinSlot,
+                SaveSlotRef.MaxSlot));
         }
 
         if (!side.Exists)
         {
-            return CampaignMovePlan.Refused(
-                side.FullPath,
-                target,
-                targetName,
-                $"{targetName} is not in the save folder, so there is nothing to move a campaign into.");
+            return new SlotEdit(
+                side, targetName, null, $"{targetName} is not in the save folder, so there is nothing to change in it.");
         }
 
         // A plan read while the game is running describes a slot the game is about to rewrite. The
         // write refuses on its own, but saying so here keeps it out of the dialog that asks.
         if (_gameDetector.IsGameRunning(out string? processName))
         {
-            return CampaignMovePlan.Refused(
-                side.FullPath,
-                target,
+            return new SlotEdit(
+                side,
                 targetName,
+                null,
                 $"Rain World is running (process \"{processName ?? "Rain World"}\"). Close the game first.");
         }
 
-        SaveEditSession session;
         try
         {
-            session = SaveEditSession.Open(side.FullPath);
+            return new SlotEdit(side, targetName, SaveEditSession.Open(side.FullPath), null);
         }
         catch (SaveContainerException ex)
         {
-            return CampaignMovePlan.Refused(side.FullPath, target, targetName, ex.Message);
+            return new SlotEdit(side, targetName, null, ex.Message);
         }
-
-        CampaignSpliceReport splice = move(session);
-
-        if (!session.IsDirty)
-        {
-            return CampaignMovePlan.Refused(
-                side.FullPath,
-                target,
-                targetName,
-                $"{targetName} already holds exactly this, so there is nothing to write.");
-        }
-
-        return new CampaignMovePlan(
-            session.BuildWritePlan(),
-            splice,
-            target,
-            targetName,
-            Array.Empty<string>());
     }
 
-    /// <summary>
-    /// Puts the edited bytes on disk and reads them back before anything is overwritten.
-    ///
-    /// The plan already proved itself in memory. This proves the same things again about a real
-    /// file read by the ordinary reader, which is the last check available that costs nothing: a
-    /// disk that wrote the bytes wrongly, or a container that only decodes while it is a string in
-    /// this process, is caught while the save folder is still untouched.
-    /// </summary>
+    private sealed record SlotEdit(SlotSide Side, string Name, SaveEditSession? Session, string? Refusal);
+
+    /// <summary>Puts the edited bytes on disk and reads them back through the ordinary reader before
+    /// anything is overwritten, so a disk that wrote them wrongly is caught while the save folder is
+    /// still untouched.</summary>
     private static bool StageEdit(
         SaveWritePlan plan,
         string tempPath,
@@ -416,10 +525,8 @@ public sealed class SaveSlotWriter
         return false;
     }
 
-    /// <summary>
-    /// The note recorded in the safety snapshot, listing what the edit was about to do. A snapshot
-    /// found weeks later says which change it was taken before rather than only when.
-    /// </summary>
+    /// <summary>Lists what the edit was about to do, so a snapshot found weeks later says which
+    /// change it was taken before rather than only when.</summary>
     private static string BuildSafetyNote(string fileName, SaveWritePlan plan)
     {
         const int Listed = 8;
@@ -476,8 +583,6 @@ public sealed class SaveSlotWriter
         }
         catch (Exception)
         {
-            // A temp file left behind is litter in the system temp folder, not a failed save, and
-            // reporting it would say the save went wrong when it did not.
         }
     }
 }

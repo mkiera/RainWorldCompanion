@@ -2,22 +2,14 @@ using RainWorldCompanion.Core.Backups;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// What a restore does when it cannot finish. Every test here is about a save folder that has
-/// already been written to: which files it is then allowed to delete, whether the game can be
-/// launched under it, and whether the user is told the difference between a restore that
-/// refused to start and one that stopped half way.
-/// </summary>
 public class RestoreFailureTests
 {
     private const string AppVersion = "1.0.0-test";
     private const string NewInScopeFile = @"dvrmentSaveStates\contents_1_Rivulet_story.txt";
 
     /// <summary>
-    /// The backup root is on a drive that goes away, so every copy fails. The delete step used
-    /// to run anyway, on the grounds that it had not been cancelled, and removed the live files
-    /// the snapshot does not contain. A restore that put nothing back must not be the thing that
-    /// deletes today's expedition and Devourment files.
+    /// The delete step used to run even when every copy had failed, on the grounds that it had
+    /// not been cancelled, removing live files the (empty) snapshot did not contain.
     /// </summary>
     [Fact]
     public void A_restore_whose_copies_failed_does_not_delete_the_files_the_backup_lacks()
@@ -76,12 +68,9 @@ public class RestoreFailureTests
         Assert.Equal("Restore finished.", result.Headline());
     }
 
-    // ---- The game launched under the restore ----
-
     /// <summary>
-    /// The safety snapshot takes several seconds of hashing and copying on a real save folder.
-    /// A player who clicks Restore and then launches the game through Steam during that wait
-    /// used to have the game write its own progression back over the restored files.
+    /// The safety snapshot takes several seconds on a real save folder. A player who launches the
+    /// game through Steam during that wait used to have it write over the restore in progress.
     /// </summary>
     [Fact]
     public void A_game_launched_while_the_safety_snapshot_runs_stops_the_restore_before_the_first_write()
@@ -100,10 +89,7 @@ public class RestoreFailureTests
         Assert.Contains(world.Service.ListBackups(), s => s.Kind == BackupKind.PreRestoreSafety);
     }
 
-    /// <summary>
-    /// And once the overwrite loop is running, the same check aborts it rather than writing more
-    /// files under a process that is reading them.
-    /// </summary>
+    /// <summary>Once the overwrite loop is running, the same check aborts it mid-write.</summary>
     [Fact]
     public void A_game_launched_during_the_overwrite_loop_stops_the_restore_part_way()
     {
@@ -130,16 +116,10 @@ public class RestoreFailureTests
         Assert.True(world.Live.FileExists(NewInScopeFile), "an abandoned restore deleted a live file anyway");
     }
 
-    // ---- Warnings against errors ----
-
     /// <summary>
-    /// An empty folder that will not go away leaves the restored saves exactly right. Reporting
-    /// it as a failed restore sends the user to a dialog that says the restore did not finish,
-    /// for a folder with no files in it.
-    ///
-    /// The folder is emptied by this restore rather than starting empty, because that is the only
-    /// folder a restore may remove. One that was already empty before the restore is not this
-    /// restore's to take away.
+    /// An empty folder that cannot be removed is a warning, not a failure, since the restored
+    /// saves are exactly right regardless. A restore may only remove a folder it emptied itself,
+    /// not one that started empty before it ran.
     /// </summary>
     [Fact]
     public void An_empty_folder_that_cannot_be_removed_is_a_note_rather_than_a_failure()
@@ -147,8 +127,8 @@ public class RestoreFailureTests
         using var world = new BackupWorld();
         var snapshot = world.Service.CreateBackup("first", null);
 
-        // Written after the backup, so it is in scope, absent from the manifest, and removed by
-        // the restore, which leaves the folder it sat in empty.
+        // Written after the backup, so it is absent from the manifest and gets removed by the
+        // restore, leaving this folder empty.
         var stuck = world.Live.CreateSubdirectory(@"dvrmentSaveStates\stuck");
         world.Live.WriteText(@"dvrmentSaveStates\stuck\contents_9_Rivulet_story.txt", "Rivulet|Slugcat|9|stomach");
 
@@ -169,12 +149,9 @@ public class RestoreFailureTests
         }
     }
 
-    // ---- Links ----
-
     /// <summary>
-    /// A file that was real when the backup was taken and is a symlink now. Copying onto it
-    /// writes through the link, over a file outside the save folder that no dialog mentioned and
-    /// no safety snapshot holds.
+    /// The target was a real file when the backup was taken and is a symlink now. Copying onto it
+    /// writes through the link, over a file outside the save folder that no safety snapshot holds.
     /// </summary>
     [SymlinkFact]
     public void A_restore_refuses_to_write_through_a_symlinked_save_file()
@@ -221,9 +198,8 @@ public class RestoreFailureTests
     }
 
     /// <summary>
-    /// Relocating dvrmentSaveStates to another drive and leaving a junction behind used to cost
-    /// the empty folders on the far side of it, because SearchOption.AllDirectories walks through
-    /// a junction and the tidy-up step deleted whatever it found empty.
+    /// SearchOption.AllDirectories walks through a junction, so the tidy-up step used to delete
+    /// empty folders on the far side of one when dvrmentSaveStates was relocated behind it.
     /// </summary>
     [JunctionFact]
     public void The_tidy_up_step_does_not_delete_empty_folders_on_the_far_side_of_a_junction()
@@ -243,13 +219,10 @@ public class RestoreFailureTests
         Assert.True(result.Success, string.Join("; ", result.Errors));
     }
 
-    // ---- A failure after the first live write ----
-
     /// <summary>
-    /// The save folder walk in the deletion step is not wrapped in anything, so a folder that
-    /// disappears under it throws straight out of RestoreBackup. The live files have already
-    /// been overwritten by then, and the exception takes the safety snapshot id with it, which
-    /// is the one thing that can undo what just happened.
+    /// The deletion step's folder walk is unwrapped, so a folder that disappears under it throws
+    /// straight out of RestoreBackup after live files are already overwritten. The exception must
+    /// still carry the safety snapshot id, the only way to undo what just happened.
     /// </summary>
     [Fact]
     public void A_failure_after_the_live_files_were_written_still_returns_the_safety_snapshot()
@@ -258,7 +231,7 @@ public class RestoreFailureTests
         var snapshot = world.Service.CreateBackup("first", null);
         world.Live.WriteBytes("sav3", SyntheticSave.SaveFile(SyntheticSave.SavePayload(cycle: 999)));
 
-        // The safety snapshot walks the folder once; the deletion step is the second walk.
+        // The safety snapshot walks the folder once. The deletion step is the second walk.
         var service = new BackupService(
             world.Live.Path,
             world.BackupRoot.Path,
@@ -275,10 +248,9 @@ public class RestoreFailureTests
     }
 
     /// <summary>
-    /// Runs a restore in which one live file is locked the way a cloud sync service locks it, so
-    /// the copy onto it fails. The lock is taken at the first live write rather than up front,
-    /// because a file locked before the safety snapshot would stop the restore at that step
-    /// instead, which is a different case entirely.
+    /// Locks one live file the way a cloud sync service does, so the copy onto it fails. The lock
+    /// is taken at the first live write, not up front, since locking before the safety snapshot
+    /// would fail at that earlier step instead.
     /// </summary>
     private static RestoreResult RestoreWithSav3Locked(BackupWorld world, BackupSnapshot snapshot)
     {

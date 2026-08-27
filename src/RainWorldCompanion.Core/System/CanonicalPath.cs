@@ -1,19 +1,13 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
 namespace RainWorldCompanion.Core.System;
 
 /// <summary>
-/// Path comparisons that ask the filesystem rather than the string.
-///
 /// Path.GetFullPath is purely textual: it does not follow a junction, expand an 8.3 short name,
-/// resolve a subst drive, or strip a \\?\ prefix. Every one of those is a second name for a
-/// folder, so a containment test written on GetFullPath alone can be walked around by naming
-/// the same folder a different way. The checks here open the path and ask Windows for the name
-/// it resolves to, and fall back to the textual form when the path does not exist yet.
+/// resolve a subst drive, or strip a \\?\ prefix. The checks here open the path and ask Windows
+/// for the name it resolves to, falling back to the text when the path does not exist yet.
 /// </summary>
 public static class CanonicalPath
 {
@@ -23,11 +17,8 @@ public static class CanonicalPath
     private const int MaxResolvedLength = 32 * 1024;
 
     /// <summary>
-    /// The name Windows resolves a path to, with trailing separators removed. Junctions,
-    /// symlinks, short names, subst drives and \\?\ prefixes all collapse to the same answer.
-    /// A path that does not exist, or that cannot be opened, falls back to
-    /// <see cref="Path.GetFullPath(string)"/>, which is still the right answer for a folder
-    /// that is about to be created.
+    /// The name Windows resolves a path to, with trailing separators removed. A path that does not
+    /// exist, or that cannot be opened, falls back to <see cref="Path.GetFullPath(string)"/>.
     /// </summary>
     public static string Resolve(string path)
     {
@@ -49,10 +40,7 @@ public static class CanonicalPath
         }
     }
 
-    /// <summary>
-    /// True when <paramref name="candidate"/> resolves to a location strictly inside
-    /// <paramref name="container"/>. Both sides go through <see cref="Resolve"/> first.
-    /// </summary>
+    /// <summary>Strictly inside, and both sides go through <see cref="Resolve"/> first.</summary>
     public static bool IsInside(string container, string candidate)
         => IsInsideResolved(Resolve(container), Resolve(candidate));
 
@@ -73,10 +61,7 @@ public static class CanonicalPath
         return boundary == Path.DirectorySeparatorChar || boundary == Path.AltDirectorySeparatorChar;
     }
 
-    /// <summary>
-    /// True when the path itself is a junction, symlink or other reparse point. A path that
-    /// does not exist is not a reparse point.
-    /// </summary>
+    /// <summary>A path that does not exist is not a reparse point.</summary>
     public static bool IsLink(string path)
     {
         try
@@ -101,9 +86,8 @@ public static class CanonicalPath
     }
 
     /// <summary>
-    /// True when writing to <paramref name="candidate"/> could land somewhere other than where
-    /// its text says: either the file itself is a link, or one of the folders between the root
-    /// and it is. Existing entries only, because a path that is not there yet cannot redirect a
+    /// True when writing to <paramref name="candidate"/> could land somewhere other than where its
+    /// text says. Existing entries only, because a path that is not there yet cannot redirect a
     /// write.
     /// </summary>
     public static bool LeadsThroughLink(string root, string candidate)
@@ -116,8 +100,6 @@ public static class CanonicalPath
             return true;
         }
 
-        // Walk the chain from the root down. Any reparse point on the way can send the write
-        // somewhere else, whatever the text of the path says.
         var relative = candidateFull.Substring(rootFull.Length).TrimStart(
             Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         var segments = relative.Split(
@@ -166,10 +148,7 @@ public static class CanonicalPath
         return StripPrefix(new string(buffer, 0, (int)length));
     }
 
-    /// <summary>
-    /// GetFinalPathNameByHandle always answers in the \\?\ form. Both prefixes are removed so
-    /// the result compares against ordinary paths.
-    /// </summary>
+    /// <summary>GetFinalPathNameByHandle always answers in the \\?\ form.</summary>
     private static string StripPrefix(string path)
     {
         const string UncPrefix = @"\\?\UNC\";

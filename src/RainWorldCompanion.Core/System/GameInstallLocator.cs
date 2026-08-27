@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists elsewhere in this assembly, so a using written inside the namespace body would bind
-// "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
@@ -8,18 +6,12 @@ using Microsoft.Win32;
 namespace RainWorldCompanion.Core.System;
 
 /// <summary>
-/// Finds the Rain World install and the slugcat portrait art inside it.
-///
-/// The install is optional to this app. It is read for the portrait PNGs and nothing else, so
-/// every method here answers null or false rather than throwing: a missing, moved or locked
-/// install costs an icon and must never stop a backup or a restore.
-///
-/// The PNGs belong to the game publisher. They are read from the player's own install at
-/// runtime and are never copied into this repo or shipped with it.
+/// Every method here answers null or false rather than throwing: the install is read for the
+/// portrait PNGs and nothing else, so a missing or locked install costs an icon. The PNGs belong
+/// to the game publisher and are read from the player's own install, never shipped with this app.
 /// </summary>
 public static class GameInstallLocator
 {
-    /// <summary>Where the Steam client installs itself unless the user moved it.</summary>
     public const string SteamDefaultRoot = @"C:\Program Files (x86)\Steam";
 
     private const string SteamAppsFolder = "steamapps";
@@ -30,12 +22,10 @@ public static class GameInstallLocator
     private const string IllustrationsFolder = "illustrations";
     private const string ModsFolder = "mods";
 
-    /// <summary>The install path a default Steam setup ends up with.</summary>
     public static string SteamDefaultInstallPath { get; } =
         Path.Combine(SteamDefaultRoot, SteamAppsFolder, "common", GameFolder);
 
-    // A vdf is quoted key/value text. Only the "path" keys matter here, and their values escape
-    // backslashes, so C:\Games arrives as "C:\\Games".
+    // A vdf escapes backslashes in its values, so C:\Games arrives as "C:\\Games".
     private static readonly Regex LibraryPathPattern = new(
         @"""path""\s*""((?:\\.|[^""\\])*)""",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -56,11 +46,6 @@ public static class GameInstallLocator
             ["red"] = "2",
         };
 
-    /// <summary>
-    /// The first Steam location that holds an install, or null when none does. Tries the default
-    /// Steam folder, then every library named in libraryfolders.vdf, then the Steam folder
-    /// recorded in the registry.
-    /// </summary>
     public static string? FindInstallPath()
     {
         foreach (var candidate in CandidateInstallPaths())
@@ -74,10 +59,6 @@ public static class GameInstallLocator
         return null;
     }
 
-    /// <summary>
-    /// True when the folder exists and holds RainWorld_Data\StreamingAssets, which is where the
-    /// portrait art lives.
-    /// </summary>
     public static bool LooksLikeInstall(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -92,20 +73,13 @@ public static class GameInstallLocator
         }
         catch (Exception)
         {
-            // An unusable path, a locked folder or a drive that went away all mean "not an
-            // install" rather than an error worth surfacing.
             return false;
         }
     }
 
     /// <summary>
-    /// The portrait PNG for a slugcat, or null when the install has none. Inv has no portrait at
-    /// all, so null is its normal answer and the caller draws its own fallback.
-    ///
-    /// Files are named multiplayerportrait&lt;colour&gt;&lt;alive&gt;-&lt;lowercased id&gt;.png.
-    /// Only the alive variants are considered. The base illustrations folder is searched first,
-    /// then every mods\*\illustrations folder, so a slugcat that ships in an expansion is found
-    /// without the expansion names being written down here.
+    /// Inv has no portrait at all, so null is a normal answer. The base illustrations folder is
+    /// searched first, then every mods\*\illustrations folder.
     /// </summary>
     public static string? FindPortraitFile(string installPath, string slugcatId)
     {
@@ -135,8 +109,7 @@ public static class GameInstallLocator
             }
         }
 
-        // Nothing in the known colour digits. Take any living portrait for this id, whatever
-        // colour digit a mod chose.
+        // Take any living portrait for this id, whatever colour digit a mod chose.
         var anyColour = new Regex(
             "^" + Regex.Escape(PortraitPrefix) + @"\d1-" + Regex.Escape(id) + @"\.png$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -158,10 +131,6 @@ public static class GameInstallLocator
         return null;
     }
 
-    /// <summary>
-    /// The colour digits to try, most wanted first. The three vanilla slugcats lead with their
-    /// own tint, everything else leads with digit 4.
-    /// </summary>
     private static IEnumerable<string> ColourOrderFor(string lowercasedId)
     {
         if (VanillaPortraitColour.TryGetValue(lowercasedId, out var own))
@@ -178,10 +147,6 @@ public static class GameInstallLocator
         }
     }
 
-    /// <summary>
-    /// The base illustrations folder followed by every mods\*\illustrations folder, in a stable
-    /// order. Only folders that exist are returned.
-    /// </summary>
     private static List<string> IllustrationFolders(string installPath)
     {
         var folders = new List<string>();
@@ -216,17 +181,11 @@ public static class GameInstallLocator
         }
         catch (Exception)
         {
-            // Whatever was collected before the failure is still worth searching.
         }
 
         return folders;
     }
 
-    /// <summary>
-    /// Steam locations to test, in the order the requirements set out: the default install, then
-    /// the libraries listed in the default Steam folder's vdf, then the Steam folder from the
-    /// registry, then that folder's own vdf.
-    /// </summary>
     private static IEnumerable<string> CandidateInstallPaths()
     {
         yield return SteamDefaultInstallPath;
@@ -250,10 +209,6 @@ public static class GameInstallLocator
         }
     }
 
-    /// <summary>
-    /// Every library named in a Steam folder's libraryfolders.vdf, each turned into the path the
-    /// game would sit at inside it.
-    /// </summary>
     private static List<string> LibraryInstallPaths(string steamRoot)
     {
         var paths = new List<string>();
@@ -288,17 +243,12 @@ public static class GameInstallLocator
             }
             catch (ArgumentException)
             {
-                // A value with characters no path can hold is skipped.
             }
         }
 
         return paths;
     }
 
-    /// <summary>
-    /// HKCU\Software\Valve\Steam\SteamPath, which the client writes on install. Null off Windows
-    /// or when the value is missing.
-    /// </summary>
     private static string? SteamRootFromRegistry()
     {
         if (!OperatingSystem.IsWindows())
@@ -319,11 +269,8 @@ public static class GameInstallLocator
     }
 
     /// <summary>
-    /// Undoes the vdf's backslash escaping. Steam writes a path as "C:\\Games", and \" \n \t
-    /// occur too.
-    ///
-    /// A backslash followed by anything else is left alone rather than swallowed, so a file some
-    /// other tool wrote with single backslashes still yields a usable path instead of C:Games.
+    /// A backslash followed by anything but \ " n t is left alone rather than swallowed, so a file
+    /// written with single backslashes still yields a usable path instead of C:Games.
     /// </summary>
     private static string UnescapeVdf(string value)
     {
@@ -390,10 +337,6 @@ public static class GameInstallLocator
         }
     }
 
-    /// <summary>
-    /// Tidies a found path into one form, so a Steam root written with forward slashes does not
-    /// end up stored in the settings file that way.
-    /// </summary>
     private static string Normalise(string path)
     {
         try

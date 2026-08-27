@@ -4,16 +4,9 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// Hunter's cycle limit changes two things the save does not store.
-///
-/// HUD.Map.CycleLabel.UpdateCycleText and Menu.SlugcatSelectMenu.SlugcatPageContinue both show
-/// Hunter RedsIllness.RedsCycles minus the stored cycle number, and every other slugcat the stored
-/// number itself. SaveState.LoadGame clears the redsDeath flag whenever the stored cycle number is
-/// below that same limit, so the REDSDEATH token on disk is not the flag the game runs with.
-///
-/// The token is not even a record of the flag. DeathPersistentSaveData.SaveToString writes it when
-/// the save is written as a death or a quit, whatever the flag holds, which is why eight of the
-/// nine campaigns in the live slot carry it.
+/// Hunter is shown RedsIllness.RedsCycles minus the stored cycle, not the cycle itself.
+/// SaveState.LoadGame also clears the REDSDEATH flag on load whenever the stored cycle is below
+/// that limit, so the token on disk is not the flag the game actually runs with.
 /// </summary>
 public class RedsIllnessTests
 {
@@ -23,8 +16,6 @@ public class RedsIllnessTests
         Assert.Equal(19, RedsIllness.RedsCycles(false));
         Assert.Equal(24, RedsIllness.RedsCycles(true));
     }
-
-    // ---- The cycle a player reads ----
 
     /// <summary>
     /// The live Hunter campaign stores CYCLENUM 5 and carries no REDEXTRACYCLES token, and the
@@ -77,8 +68,6 @@ public class RedsIllnessTests
         Assert.Equal(-3, Campaign("Red", 22).DisplayCycleNum);
     }
 
-    // ---- The flag the game keeps ----
-
     /// <summary>
     /// The live Hunter campaign stores the REDSDEATH token on cycle 5, and the game clears the
     /// flag on load because 5 is under the limit.
@@ -122,8 +111,6 @@ public class RedsIllnessTests
     {
         Assert.True(Campaign("Red", cycleNum: null, redsDeathStored: true).EffectiveRedsDeath);
     }
-
-    // ---- Which campaign these rules belong to ----
 
     [Theory]
     [InlineData("Red", true)]

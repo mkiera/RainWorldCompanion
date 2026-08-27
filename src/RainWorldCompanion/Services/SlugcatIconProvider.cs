@@ -1,6 +1,4 @@
-// Usings sit above the namespace declaration on purpose. RainWorldCompanion.Core.System
-// exists in the referenced Core assembly, so a using written inside the namespace body would
-// bind "System" to that namespace instead of the BCL root.
+// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.IO;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -10,40 +8,25 @@ using RainWorldCompanion.Core.System;
 namespace RainWorldCompanion.Services;
 
 /// <summary>
-/// Hands out the icon for a save's slugcat id: the game's own portrait art when the install has
-/// it, and a drawn head when it does not.
-///
-/// The PNGs belong to the game publisher. They are never copied into this repo, never added to
-/// the project as resources and never shipped. Each one is read from the player's own install the
-/// first time it is asked for and held in memory for the life of the process. That is why
-/// <see cref="FallbackSlugcatIcon"/> exists: a player whose install this app cannot find still
-/// gets a complete list, drawn rather than empty. Inv has no portrait in any install, so its icon
-/// is always the drawn one.
-///
-/// <see cref="Preload"/> is the call that touches disk and is meant to run on a background
-/// thread. Everything after that is a dictionary hit. Every image handed out is frozen, so one
-/// decoded on a worker thread can be bound on the dispatcher.
+/// The portrait PNGs belong to the game publisher and are read from the player's own install,
+/// never shipped with this app. Every image handed out is frozen, so one decoded on a worker
+/// thread can be bound on the dispatcher.
 /// </summary>
 public sealed class SlugcatIconProvider : ISlugcatIconProvider
 {
     private readonly object _gate = new();
 
-    // Keyed by slugcat id, so a slot with nine campaigns reads at most nine files and a redraw
-    // reads none. A null value is a remembered miss: an id with no art is not probed twice.
+    // A null value is a remembered miss: an id with no art is not probed twice.
     private readonly Dictionary<string, ImageSource?> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     private string? _installPath;
 
-    /// <param name="installPath">
-    /// The Rain World install, or null when none was found. Null costs portraits and nothing
-    /// else: every id then draws its own icon.
-    /// </param>
+    /// <param name="installPath">Null costs the portraits and nothing else: every id draws its own.</param>
     public SlugcatIconProvider(string? installPath = null)
     {
         _installPath = Resolve(installPath);
     }
 
-    /// <summary>The install the portraits are read from, or null when none was usable.</summary>
     public string? InstallPath
     {
         get
@@ -55,14 +38,11 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
         }
     }
 
-    /// <summary>True when a folder that looks like a Rain World install is in use.</summary>
     public bool HasInstall => InstallPath is not null;
 
     /// <summary>
-    /// Points the provider at a different install, for when the setting changes while the window
-    /// is open. A path that does not look like an install is treated as no install at all.
-    /// Changing the path drops every cached image, because the cache belongs to the path it was
-    /// filled from.
+    /// A path that does not look like an install is treated as no install. Changing the path drops
+    /// every cached image, because the cache belongs to the path it was filled from.
     /// </summary>
     public void UseInstall(string? installPath)
     {
@@ -81,8 +61,8 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
     }
 
     /// <summary>
-    /// Reads and decodes the portraits for these slugcat ids. Call it from a background thread
-    /// before building the view models that will ask for them.
+    /// The one call that touches disk. Run it on a background thread, before building the view
+    /// models that will ask for these icons.
     /// </summary>
     public void Preload(IEnumerable<string> slugcatIds)
     {
@@ -98,17 +78,13 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
     /// <inheritdoc />
     public ImageSource GetIcon(string? slugcatId)
     {
-        // The catalog answers for any id, including one from a mod it has never heard of, so the
-        // colour for the drawn icon is always there.
+        // The catalog answers for any id, including one from a mod it has never heard of.
         var slugcat = SlugcatCatalog.ForId(slugcatId);
 
         return Portrait(slugcatId) ?? FallbackSlugcatIcon.ForColor(slugcat.ColorHex);
     }
 
-    /// <summary>
-    /// The portrait file for a slugcat id, or null when the install has none. Prefer
-    /// <see cref="GetIcon"/> unless the caller wants to render its own stand-in.
-    /// </summary>
+    /// <summary>Null when the install has no portrait for this id. Prefer <see cref="GetIcon"/>.</summary>
     public ImageSource? Portrait(string? slugcatId)
     {
         if (string.IsNullOrWhiteSpace(slugcatId))
@@ -147,9 +123,6 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
             }
             catch (Exception)
             {
-                // A moved file, a locked one, a truncated one, a drive that went away or art this
-                // app cannot decode all mean the same thing: no portrait, so the drawn icon is
-                // used. An icon is never worth taking the window down for.
                 image = null;
             }
         }
@@ -157,7 +130,7 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
         lock (_gate)
         {
             // A miss for the same id on two threads decodes twice and the second result wins.
-            // Both are the same picture, so the read does not need to be serialised.
+            // Both are the same picture, so the read is not serialised.
             _cache[slugcatId] = image;
         }
 
@@ -165,12 +138,9 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
     }
 
     /// <summary>
-    /// Decodes a PNG into a frozen image at a size that matches every other icon.
-    ///
     /// The player may be starting the game while this window is open, so the file is opened for
-    /// sharing and closed as soon as the pixels are decoded. OnLoad reads the whole image during
-    /// EndInit, which is what lets the stream be disposed here instead of being held open behind
-    /// the image for as long as it is on screen.
+    /// sharing. OnLoad reads the whole image during EndInit, which is what lets the stream be
+    /// disposed here rather than held open behind the image.
     /// </summary>
     private static ImageSource Decode(string path)
     {
@@ -194,13 +164,9 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
     }
 
     /// <summary>
-    /// Restamps an image to 96 DPI so its layout size equals its pixel size.
-    ///
-    /// Every portrait in the install is 84 by 84 pixels, but the art for Survivor, Monk, Hunter
-    /// and Watcher is tagged 300 DPI while the rest is tagged 96. WPF sizes an image by its DPI,
-    /// so left alone those four measure 26.88 units against everyone else's 84 and the list shows
-    /// two sizes of icon. Only the stamp changes here, so no pixel is resampled and the drawn
-    /// fallback lines up with all of them.
+    /// The art for Survivor, Monk, Hunter and Watcher is tagged 300 DPI while the rest is tagged
+    /// 96, and WPF sizes an image by its DPI, so left alone those four measure 26.88 units against
+    /// everyone else's 84. Only the stamp changes here, so no pixel is resampled.
     /// </summary>
     private static ImageSource AtScreenDpi(BitmapSource source)
     {
@@ -211,16 +177,14 @@ public sealed class SlugcatIconProvider : ISlugcatIconProvider
             return source;
         }
 
-        // Portrait art is tiny. Anything far larger is not a portrait, and rebuilding it would
-        // cost more memory than the icon is worth, so it is left at whatever size it claims.
+        // Anything this large is not portrait art, and rebuilding it would cost more than the icon.
         if (source.PixelWidth is <= 0 or > 1024 || source.PixelHeight is <= 0 or > 1024)
         {
             return source;
         }
 
-        // Copied in whatever format the decoder produced, so no pixel is converted on the way
-        // through and an image with premultiplied alpha does not round trip through a straight
-        // one.
+        // Copied in whatever format the decoder produced, so an image with premultiplied alpha
+        // does not round trip through a straight one.
         var stride = ((source.PixelWidth * source.Format.BitsPerPixel) + 7) / 8;
         var pixels = new byte[stride * source.PixelHeight];
         source.CopyPixels(pixels, stride, 0);

@@ -1,25 +1,21 @@
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Library;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
 /// <summary>
-/// The library keeps named saves outside the game's three slots. Every test here proves one of two
-/// things: the bytes came across untouched, or the operation was refused and left both the save
-/// folder and the entry exactly as they were.
-///
-/// Storing, renaming, deleting and updating never write into the save folder at all. Only a load
-/// does, and that has its own file.
+/// Every test here proves one of two things: the bytes came across untouched, or a refused
+/// operation left both the save folder and the entry exactly as they were. Storing, renaming,
+/// deleting and updating never write into the save folder at all, only a load does.
 /// </summary>
 public class SaveLibraryTests
 {
     private static readonly SaveSlotRef LocalOne = new(SaveRealm.Local, 1);
     private static readonly SaveSlotRef LocalTwo = new(SaveRealm.Local, 2);
     private static readonly SaveSlotRef LocalThree = new(SaveRealm.Local, 3);
-
-    // ---- storing ----
 
     [Fact]
     public void Storing_a_slot_copies_its_bytes_exactly()
@@ -152,8 +148,6 @@ public class SaveLibraryTests
         Assert.Equal(2, world.Library.ListEntries().Count);
     }
 
-    // ---- listing and the unfinished entry ----
-
     [Fact]
     public void An_entry_folder_with_no_manifest_lists_as_unfinished()
     {
@@ -220,8 +214,6 @@ public class SaveLibraryTests
         Assert.Empty(library.ListEntries());
     }
 
-    // ---- verifying ----
-
     [Fact]
     public void Verifying_passes_on_a_save_that_has_not_been_touched()
     {
@@ -253,8 +245,6 @@ public class SaveLibraryTests
 
         Assert.False(world.Library.VerifyEntry(entry).Ok);
     }
-
-    // ---- renaming ----
 
     [Fact]
     public void Renaming_changes_the_name_and_nothing_else()
@@ -296,8 +286,6 @@ public class SaveLibraryTests
         Assert.Throws<ArgumentException>(() => world.Library.RenameEntry(entry, "   ", null));
         Assert.Equal("Ironclaw run", world.Reload(entry).Name);
     }
-
-    // ---- deleting ----
 
     [Fact]
     public void Deleting_removes_the_folder_and_leaves_the_rest()
@@ -349,8 +337,6 @@ public class SaveLibraryTests
 
         Assert.True(Directory.Exists(world.LibraryRoot.Path));
     }
-
-    // ---- updating ----
 
     [Fact]
     public void Updating_replaces_the_save_with_what_is_in_the_slot_now()
@@ -469,8 +455,6 @@ public class SaveLibraryTests
         SnapshotLayout.AssertBytesEqual(currentBytes, File.ReadAllBytes(updated.SavePath), "save.bin");
     }
 
-    // ---- the service refuses a library that overlaps another folder ----
-
     [Fact]
     public void A_library_inside_the_save_folder_is_refused()
     {
@@ -513,7 +497,7 @@ internal sealed class LibraryWorld : IDisposable
 {
     public const string AppVersion = "1.0.0-test";
 
-    public LibraryWorld(FakeGameDetector? detector = null)
+    public LibraryWorld(FakeGameDetector? detector = null, Func<CurrentMods>? modListSource = null)
     {
         Live = new TempDirectory("live");
         BackupRoot = new TempDirectory("backups");
@@ -521,7 +505,7 @@ internal sealed class LibraryWorld : IDisposable
         SaveTree.Populate(Live);
         Detector = detector ?? FakeGameDetector.NotRunning();
 
-        Backups = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion);
+        Backups = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion, modListSource);
         Library = new SaveLibrary(Backups, LibraryRoot.Path, Detector, AppVersion);
     }
 

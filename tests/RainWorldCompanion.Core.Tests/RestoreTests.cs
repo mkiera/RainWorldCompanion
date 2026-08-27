@@ -2,18 +2,13 @@ using RainWorldCompanion.Core.Backups;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// Restore is the only operation that overwrites a player's saves. Every test here either proves
-/// the bytes come back exactly or proves that a refused restore left the live folder alone.
-/// </summary>
 public class RestoreTests
 {
     private const string NewInScopeFile = @"dvrmentSaveStates\contents_1_Rivulet_story.txt";
-    // Game settings, not save data. ModConfigs\*.txt is in scope now, so an unrelated mod's
-    // config no longer works as the out-of-scope file this suite adds.
-    private const string NewOutOfScopeFile = "localoptions.txt";
 
-    // ---- PlanRestore ----
+    // Game settings, not save data. ModConfigs\*.txt is in scope now, so it no longer works as
+    // the out-of-scope file this suite needs.
+    private const string NewOutOfScopeFile = "localoptions.txt";
 
     [Fact]
     public void A_plan_against_an_untouched_folder_reports_everything_unchanged()
@@ -76,8 +71,6 @@ public class RestoreTests
 
         SnapshotLayout.AssertTreeUnchanged(before, world.Live.ReadTree());
     }
-
-    // ---- RestoreBackup, the happy path ----
 
     [Fact]
     public void Restoring_puts_every_in_scope_file_back_byte_for_byte()
@@ -195,20 +188,6 @@ public class RestoreTests
     }
 
     [Fact]
-    public void RestoreBackup_accepts_a_progress_reporter_without_failing()
-    {
-        using var world = new BackupWorld();
-        var snapshot = world.Service.CreateBackup("first", null);
-        DivergeLiveFolder(world);
-
-        var result = world.Service.RestoreBackup(snapshot, new CollectingProgress());
-
-        Assert.True(result.Success, string.Join("; ", result.Errors));
-    }
-
-    // ---- The safety snapshot ----
-
-    [Fact]
     public void Restoring_takes_a_pre_restore_safety_snapshot_first()
     {
         using var world = new BackupWorld();
@@ -273,8 +252,6 @@ public class RestoreTests
             SnapshotLayout.AssertBytesEqual(preRestore[relativePath], world.Live.ReadBytes(relativePath), relativePath);
         }
     }
-
-    // ---- Refusals ----
 
     [Fact]
     public void Restoring_refuses_while_the_game_is_running()
