@@ -316,4 +316,15 @@ public class UpdateFlowTests
             "Running 1.2.0-alpha.42, commit a1b2c3d",
             world.Build(runningVersion: "1.2.0-alpha.42", sha: "a1b2c3d4e5f60718", branch: "beta").RunningVersionText);
     }
+
+    [Fact]
+    public void VersionText_is_the_same_without_the_leading_word()
+    {
+        var world = new UpdateWorld();
+
+        Assert.Equal("1.0.0", world.Build().VersionText);
+        Assert.Equal(
+            "1.2.0-alpha.42, commit a1b2c3d",
+            world.Build(runningVersion: "1.2.0-alpha.42", sha: "a1b2c3d4e5f60718", branch: "beta").VersionText);
+    }
 }

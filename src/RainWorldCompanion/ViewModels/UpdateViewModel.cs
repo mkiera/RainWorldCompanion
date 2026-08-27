@@ -67,9 +67,11 @@ public sealed partial class UpdateViewModel : ObservableObject
     /// The commit only shows for a branch build: a beta or a stable release is already named
     /// exactly by its tag, so the commit would only repeat what the version already says.
     /// </summary>
-    public string RunningVersionText => Build.IsBranchBuild && Build.ShortSha.Length > 0
-        ? $"Running {Build.Version}, commit {Build.ShortSha}"
-        : $"Running {Build.Version}";
+    public string VersionText => Build.IsBranchBuild && Build.ShortSha.Length > 0
+        ? $"{Build.Version}, commit {Build.ShortSha}"
+        : Build.Version;
+
+    public string RunningVersionText => $"Running {VersionText}";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOffer))]
