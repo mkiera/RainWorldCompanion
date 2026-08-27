@@ -11,6 +11,18 @@ on:
     # convention to follow. '**' still excludes tag pushes, which build-release.yml owns.
     branches:
       - '**'
+    # Nothing here reads a markdown file, so a push that touched only those produces an installer
+    # byte-identical to the one before it. Renaming Unreleased before a tag is the case that keeps
+    # happening: it built the same commit build-release.yml was about to build anyway.
+    paths-ignore:
+      - '**.md'
+
+# One run per branch. Pushing twice in a minute used to leave the first build finishing an
+# installer nobody would install, since the second push already superseded it. A cancelled run
+# uploads nothing, so an intermediate commit is not installable from the Alpha list.
+concurrency:
+  group: build-test-${{ github.ref }}
+  cancel-in-progress: true
 
 # Read-only. This workflow publishes nothing; the artifact upload needs no extra grant.
 permissions:
