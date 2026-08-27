@@ -150,10 +150,12 @@ public sealed class ModSyncService
         string optionsPath = Path.Combine(SaveRoot, OptionsFile.FileName);
         string listPath = EnabledModsFile.PathTo(GameInstallPath)!;
 
+        byte[] originalOptions;
         byte[] newOptions;
         try
         {
-            newOptions = OptionsWriter.Rewrite(File.ReadAllBytes(optionsPath), outcome.EnabledIds, outcome.LoadOrder);
+            originalOptions = File.ReadAllBytes(optionsPath);
+            newOptions = OptionsWriter.Rewrite(originalOptions, outcome.EnabledIds, outcome.LoadOrder);
         }
         catch (Exception ex) when (ex is SaveContainerException or IOException or UnauthorizedAccessException)
         {
@@ -205,7 +207,17 @@ public sealed class ModSyncService
             }
 
             File.Move(optionsStaged, optionsPath, overwrite: true);
-            File.Move(listStaged, listPath, overwrite: true);
+
+            // The pair cannot move as one, so a failure here puts the first file back rather than
+            // leaving the game and its loader describing different mods.
+            try
+            {
+                File.Move(listStaged, listPath, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return PutOptionsBack(optionsPath, originalOptions, ex.Message);
+            }
         }
         catch (GameRunningException)
         {
@@ -282,6 +294,23 @@ public sealed class ModSyncService
         return linesBack.SequenceEqual(newLines, StringComparer.Ordinal)
             ? null
             : "The new loader list came back different from what it was given, so nothing was changed.";
+    }
+
+    private static ModSyncResult PutOptionsBack(string optionsPath, byte[] original, string why)
+    {
+        try
+        {
+            File.WriteAllBytes(optionsPath, original);
+            return ModSyncResult.Refused(
+                $"The mod loader's list could not be written ({why}), so nothing was changed.");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return ModSyncResult.Refused(
+                $"The mod loader's list could not be written ({why}), and putting the options file "
+                + $"back failed too ({ex.Message}). Which mods are on has changed but which ones load "
+                + "has not. Use Restore my previous mods, or start the game and set them in Remix.");
+        }
     }
 
     private static void Delete(string path)
