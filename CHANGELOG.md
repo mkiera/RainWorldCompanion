@@ -32,6 +32,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
   the same way.
 - The panel has a SETTINGS section under MODS, showing which mods' settings a
   save carries.
+- Steam Workshop links open in Steam where it is installed, so Subscribe is
+  there without signing in to the site.
 - Backups now take everything under ModConfigs, so a mod that keeps its settings
   in a folder or a .json is covered too.
 - The window shows which version is running, under the folder paths in the

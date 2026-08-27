@@ -82,6 +82,115 @@ public class ModConfigPickerTests
         Assert.Equal(new[] { Devourment }, picker.Chosen);
     }
 
+    // ---- taking every mod at once ----
+
+    /// <summary>The one control that turns ticks on in bulk still starts clear, like the rows.</summary>
+    [Fact]
+    public void Take_all_starts_off()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        Assert.False(picker.TakeAll);
+        Assert.Empty(picker.Chosen);
+    }
+
+    [Fact]
+    public void Taking_all_ticks_every_row()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        picker.TakeAll = true;
+
+        Assert.All(picker.Rows, row => Assert.True(row.Take));
+        Assert.Equal(new[] { Devourment, "other" }, picker.Chosen);
+    }
+
+    [Fact]
+    public void Clearing_it_unticks_every_row()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        picker.TakeAll = true;
+        picker.TakeAll = false;
+
+        Assert.Empty(picker.Chosen);
+    }
+
+    /// <summary>Neither on nor off, which is the indeterminate a three state box draws.</summary>
+    [Fact]
+    public void Some_but_not_all_reads_as_neither()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        Row(picker, Devourment).Take = true;
+
+        Assert.Null(picker.TakeAll);
+    }
+
+    [Fact]
+    public void Ticking_the_last_row_by_hand_turns_it_on()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        foreach (ModConfigRowViewModel row in picker.Rows)
+        {
+            row.Take = true;
+        }
+
+        Assert.True(picker.TakeAll);
+    }
+
+    /// <summary>
+    /// Indeterminate is a state the box reports, not one to apply: there is no sensible set of rows
+    /// to leave behind for it, so setting it changes nothing.
+    /// </summary>
+    [Fact]
+    public void Setting_it_to_neither_changes_no_row()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        Row(picker, Devourment).Take = true;
+        picker.TakeAll = null;
+
+        Assert.Equal(new[] { Devourment }, picker.Chosen);
+    }
+
+    /// <summary>One row is its own select all, so the control would be noise beside it.</summary>
+    [Fact]
+    public void One_row_is_offered_no_take_all()
+    {
+        Assert.False(new ModConfigPickerViewModel(Offer()).HasSeveralRows);
+    }
+
+    [Fact]
+    public void Several_rows_are()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        Assert.True(picker.HasSeveralRows);
+    }
+
+    /// <summary>A reloaded picker must not still be answering for the rows it threw away.</summary>
+    [Fact]
+    public void Take_all_follows_the_rows_a_reload_left_behind()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(
+            Set(File(@"ModConfigs\devourment.txt", Devourment), File(@"ModConfigs\other.txt", "other"))));
+
+        picker.TakeAll = true;
+        picker.Reload(Offer(Set(File(@"ModConfigs\devourment.txt", Devourment))));
+
+        Assert.True(picker.TakeAll);
+        Assert.Equal(new[] { Devourment }, picker.Chosen);
+    }
+
     // ---- a row is a mod, not a file ----
 
     /// <summary>Devourment owns both its settings file and its whole preset folder, and ticking

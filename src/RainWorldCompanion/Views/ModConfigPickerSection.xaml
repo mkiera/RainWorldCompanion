@@ -41,6 +41,12 @@
 
             <TextBlock Text="{Binding HeadlineText}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
+            <CheckBox Margin="0,8,0,0" IsThreeState="False"
+                      IsChecked="{Binding TakeAll, Mode=TwoWay}"
+                      Content="{Binding TakeAllText}"
+                      Visibility="{Binding HasSeveralRows, Converter={StaticResource BoolToVis}}"
+                      AutomationProperties.Name="{Binding TakeAllText}" />
+
             <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="200" Margin="0,8,0,0">
                 <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource SettingsRow}" />
             </ScrollViewer>

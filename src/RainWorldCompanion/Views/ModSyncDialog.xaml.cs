@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 
 using RainWorldCompanion.ViewModels;
@@ -29,15 +28,5 @@ public partial class ModSyncDialog : Window
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 
-    private void Open(string url)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            ViewModel?.ReportLinkProblem(ex.Message);
-        }
-    }
+    private void Open(string url) => WorkshopLink.Open(url, problem => ViewModel?.ReportLinkProblem(problem));
 }

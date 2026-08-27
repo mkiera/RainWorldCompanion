@@ -19,8 +19,8 @@ public sealed record ModDiffRowViewModel(string Name, string DetailText, string 
 public sealed partial class ModListDiffViewModel : ObservableObject
 {
     /// <summary>
-    /// The https address rather than a steam:// one, because the page opens on any machine while
-    /// the protocol link fails outright where Steam is not installed to handle it.
+    /// The https address, which is what opens on a machine with no Steam. Views hand it to
+    /// <see cref="Views.WorkshopLink"/>, which offers it to the Steam client first.
     /// </summary>
     public const string WorkshopUrlPrefix = "https://steamcommunity.com/sharedfiles/filedetails/?id=";
 

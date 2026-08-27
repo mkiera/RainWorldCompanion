@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -39,12 +38,6 @@ public partial class ModDiffSection : UserControl
             return;
         }
 
-        try
-        {
-            Process.Start(new ProcessStartInfo(row.WorkshopUrl) { UseShellExecute = true });
-        }
-        catch (Exception)
-        {
-        }
+        WorkshopLink.Open(row.WorkshopUrl);
     }
 }

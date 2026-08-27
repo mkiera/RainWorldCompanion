@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -40,14 +41,15 @@ public sealed partial class ModConfigRowViewModel : ObservableObject
 /// The mod settings a save carries, offered one mod at a time. Nothing here can stop a load: the
 /// ticks decide what is written and every one of them starts clear.
 /// </summary>
-public sealed class ModConfigPickerViewModel
+public sealed partial class ModConfigPickerViewModel : ObservableObject
 {
     private static readonly ModConfigRowViewModel[] NoRows = Array.Empty<ModConfigRowViewModel>();
 
     public ModConfigPickerViewModel(ModConfigOffer? offer)
     {
-        Rows = offer is null ? NoRows : BuildRows(offer);
-        HeadlineText = offer is null ? "" : Headline(offer, Rows.Count);
+        Rows = NoRows;
+        HeadlineText = "";
+        Fill(offer);
     }
 
     public IReadOnlyList<ModConfigRowViewModel> Rows { get; private set; }
@@ -55,6 +57,48 @@ public sealed class ModConfigPickerViewModel
     public string HeadlineText { get; private set; }
 
     public bool HasRows => Rows.Count > 0;
+
+    /// <summary>One row is its own select all, so the control would be noise beside it.</summary>
+    public bool HasSeveralRows => Rows.Count > 1;
+
+    public string TakeAllText => "Take every mod's settings";
+
+    /// <summary>
+    /// Null when some but not all are ticked, which is the indeterminate a three state box draws.
+    /// Reading it walks the rows rather than keeping a second copy of what they already say.
+    /// </summary>
+    public bool? TakeAll
+    {
+        get
+        {
+            var taken = 0;
+
+            foreach (var row in Rows)
+            {
+                if (row.Take)
+                {
+                    taken++;
+                }
+            }
+
+            return taken == 0 ? false : taken == Rows.Count ? true : null;
+        }
+
+        set
+        {
+            // Indeterminate is a state the box reports, never one to apply: there is no sensible
+            // set of rows to leave behind for it.
+            if (value is not { } wanted)
+            {
+                return;
+            }
+
+            foreach (var row in Rows)
+            {
+                row.Take = wanted;
+            }
+        }
+    }
 
     /// <summary>Hidden when the save carries nothing to pick, which is most saves.</summary>
     public bool ShowSection => HasRows;
@@ -95,12 +139,39 @@ public sealed class ModConfigPickerViewModel
     {
         var ticked = new HashSet<string>(Chosen, StringComparer.OrdinalIgnoreCase);
 
+        Fill(offer);
+
+        foreach (var row in Rows)
+        {
+            row.Take = ticked.Contains(row.ModId);
+        }
+    }
+
+    /// <summary>
+    /// Rows are watched rather than asked, so the select all box follows a tick made on any one of
+    /// them. The old rows are dropped first, or a reloaded picker would keep answering for them.
+    /// </summary>
+    private void Fill(ModConfigOffer? offer)
+    {
+        foreach (var row in Rows)
+        {
+            row.PropertyChanged -= OnRowChanged;
+        }
+
         Rows = offer is null ? NoRows : BuildRows(offer);
         HeadlineText = offer is null ? "" : Headline(offer, Rows.Count);
 
         foreach (var row in Rows)
         {
-            row.Take = ticked.Contains(row.ModId);
+            row.PropertyChanged += OnRowChanged;
+        }
+    }
+
+    private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(ModConfigRowViewModel.Take))
+        {
+            OnPropertyChanged(nameof(TakeAll));
         }
     }
 
