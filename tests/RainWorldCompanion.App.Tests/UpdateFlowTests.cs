@@ -300,13 +300,31 @@ public class UpdateFlowTests
     }
 
     [Fact]
-    public void The_running_version_line_names_the_commit_when_there_is_one()
+    public void The_running_version_line_names_the_commit_only_for_a_branch_build()
     {
         var world = new UpdateWorld();
 
         Assert.Equal("Running 1.0.0", world.Build().RunningVersionText);
+
+        // A release build carries a commit too, from SourceLink, but no branch: its version
+        // already names it exactly, so the commit would only repeat that.
         Assert.Equal(
-            "Running 1.0.0, commit a1b2c3d",
+            "Running 1.0.0",
             world.Build(sha: "a1b2c3d4e5f60718").RunningVersionText);
+
+        Assert.Equal(
+            "Running 1.2.0-alpha.42, commit a1b2c3d",
+            world.Build(runningVersion: "1.2.0-alpha.42", sha: "a1b2c3d4e5f60718", branch: "beta").RunningVersionText);
+    }
+
+    [Fact]
+    public void VersionText_is_the_same_without_the_leading_word()
+    {
+        var world = new UpdateWorld();
+
+        Assert.Equal("1.0.0", world.Build().VersionText);
+        Assert.Equal(
+            "1.2.0-alpha.42, commit a1b2c3d",
+            world.Build(runningVersion: "1.2.0-alpha.42", sha: "a1b2c3d4e5f60718", branch: "beta").VersionText);
     }
 }

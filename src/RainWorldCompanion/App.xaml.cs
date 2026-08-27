@@ -70,6 +70,7 @@ public partial class App : Application
             () => Dispatcher.BeginInvoke(Shutdown)));
 
         var window = new MainWindow { DataContext = viewModel };
+        window.ApplyStartupGeometry(settingsStore);
         MainWindow = window;
         window.Show();
     }

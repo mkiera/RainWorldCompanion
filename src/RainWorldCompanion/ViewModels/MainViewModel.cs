@@ -180,6 +180,28 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         });
     }
 
+    /// <summary>
+    /// Written synchronously, unlike <see cref="PersistUpdateSetting"/>: this runs from the
+    /// window's Closed handler, moments before the process exits, so a background write could
+    /// lose the race and never land.
+    /// </summary>
+    public void SaveWindowGeometry(double width, double height, double left, double top, bool maximized)
+    {
+        _settings.WindowWidth = width;
+        _settings.WindowHeight = height;
+        _settings.WindowLeft = left;
+        _settings.WindowTop = top;
+        _settings.WindowMaximized = maximized;
+
+        try
+        {
+            _settingsStore.Save(_settings.Clone());
+        }
+        catch (Exception)
+        {
+        }
+    }
+
     public UpdateViewModel CreateUpdates(
         BuildStamp build,
         IReleaseSource source,

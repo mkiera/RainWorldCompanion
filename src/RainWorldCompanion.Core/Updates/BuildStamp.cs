@@ -14,6 +14,9 @@ public sealed record BuildStamp(string Version, string CommitSha, string Branch,
 
     public string ShortSha => CommitSha.Length <= 7 ? CommitSha : CommitSha[..7];
 
+    /// <summary>True only for a build the branch-build workflow made; a tagged release has no branch.</summary>
+    public bool IsBranchBuild => Branch.Length > 0;
+
     /// <summary>
     /// Null when the version cannot be read, which callers treat as a reason to offer no update
     /// rather than every update.
