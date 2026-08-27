@@ -29,14 +29,33 @@
                    Style="{StaticResource Text.Title}"
                    TextWrapping="Wrap" />
 
-        <!-- Plain text on purpose, the same way the Updates window shows a release's notes: the
-             entries are short lines and reading them needs no markdown renderer. -->
+        <!-- One block per release, so a reader who skipped a version can see which one brought
+             what. Plain text inside a block on purpose, the same way the Updates window shows a
+             release's notes: the entries are short lines and reading them needs no markdown
+             renderer. -->
         <ScrollViewer Grid.Row="1"
                       Margin="0,14,0,0"
                       VerticalScrollBarVisibility="Auto">
-            <TextBlock Text="{Binding Notes}"
-                       TextWrapping="Wrap"
-                       Foreground="{StaticResource Brush.Text}" />
+            <ItemsControl ItemsSource="{Binding Sections}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Margin="0,0,0,14">
+                            <!-- Named only when there are several. One release's notes under a
+                                 heading naming the version the title already gives would just be
+                                 the same word twice. -->
+                            <TextBlock Text="{Binding Version}"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,5"
+                                       Visibility="{Binding DataContext.ShowVersions,
+                                                            RelativeSource={RelativeSource AncestorType=Window},
+                                                            Converter={StaticResource BoolToVis}}" />
+                            <TextBlock Text="{Binding Notes}"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource Brush.Text}" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
         </ScrollViewer>
 
         <Button Grid.Row="2"

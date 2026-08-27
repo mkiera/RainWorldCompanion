@@ -10,13 +10,13 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- The what's new banner covers every version between the one you last ran and the one
+  you are on now, so skipping a release no longer skips what it changed.
+
 ## 1.2.0-beta.2 - 2026-08-27
 
 - The what's new banner is one line with a count on it, and a Read it button that opens
   the full list in its own window, so a release with a lot in it no longer buries the app.
-
-## 1.2.0-beta.1 - 2026-08-27
-
 - Turn Rain World's mods on and off from the app, without opening the game. The
   Mods window lists every mod you have with a tick beside it, and Apply writes
   what the game reads the next time it starts.

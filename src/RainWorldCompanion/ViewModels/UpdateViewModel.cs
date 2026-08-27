@@ -16,6 +16,9 @@ public interface IBusyGuard
     string? WhyNotNow();
 }
 
+/// <summary>One release's notes, kept apart so the reader can see which version brought what.</summary>
+public sealed record WhatsNewSection(string Version, string Notes);
+
 /// <summary>
 /// No message box and no timer, because App.Tests never constructs a Window, an Application or a
 /// Dispatcher. Failures become <see cref="StatusMessage"/> instead. Nothing here writes
@@ -116,9 +119,22 @@ public sealed partial class UpdateViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(WhatsNewTitle))]
     private string whatsNewVersion = "";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WhatsNewTitle))]
+    private string whatsNewSince = "";
+
+    [ObservableProperty]
+    private IReadOnlyList<WhatsNewSection> whatsNewSections = [];
+
     public bool HasWhatsNew => WhatsNewNotes.Length != 0;
 
-    public string WhatsNewTitle => $"What's new in {WhatsNewVersion}";
+    /// <summary>
+    /// Skipping releases is normal on the beta channel, so the version alone would name only the
+    /// last of several the reader is about to be shown.
+    /// </summary>
+    public string WhatsNewTitle => WhatsNewSince.Length == 0
+        ? $"What's new in {WhatsNewVersion}"
+        : $"What's new since {WhatsNewSince}";
 
     public string WhatsNewSummary => CountEntries(WhatsNewNotes) switch
     {
@@ -127,13 +143,13 @@ public sealed partial class UpdateViewModel : ObservableObject
         var many => $"{many} changes.",
     };
 
+    private static readonly string[] NoteLineBreaks = ["\r\n", "\n"];
+
     /// <summary>
     /// A release body is a markdown list, and one entry can wrap onto lines that carry no marker,
     /// so only the marked lines count. A body written some other way counts nothing, which is what
     /// the summary's first case is for.
     /// </summary>
-    private static readonly string[] NoteLineBreaks = ["\r\n", "\n"];
-
     private static int CountEntries(string notes)
     {
         var entries = 0;
@@ -271,21 +287,33 @@ public sealed partial class UpdateViewModel : ObservableObject
         {
             var releases = await _source.GetReleasesAsync(cancellationToken);
 
-            // The widest list, then an exact match, because the running build may be a
-            // pre-release and the stable list would not hold it.
-            var match = UpdatePicker
-                .ForChannel(releases, UpdateChannel.Prerelease)
-                .FirstOrDefault(offer => offer.Version == version);
+            // The widest list, because the running build may be a pre-release and the stable list
+            // would not hold it. Already newest first.
+            var known = UpdatePicker.ForChannel(releases, UpdateChannel.Prerelease);
 
-            if (match is null || !match.HasNotes)
+            // Everything between the version last seen and the one now running, so somebody who
+            // skipped two betas reads both rather than only the one they landed on. A last-seen
+            // version that will not parse narrows this to the running release alone.
+            var spanned = SemVer.TryParse(_lastSeenChangelog, out var seen)
+                ? known.Where(offer => offer.Version > seen && offer.Version <= version)
+                : known.Where(offer => offer.Version == version);
+
+            var sections = spanned
+                .Where(offer => offer.HasNotes)
+                .Select(offer => new WhatsNewSection(offer.VersionText, offer.Notes))
+                .ToList();
+
+            if (sections.Count == 0)
             {
                 // A branch build has no release of its own, and a release can carry no body.
                 RememberChangelogSeen(running);
                 return;
             }
 
-            WhatsNewVersion = match.VersionText;
-            WhatsNewNotes = match.Notes;
+            WhatsNewSections = sections;
+            WhatsNewVersion = sections[0].Version;
+            WhatsNewSince = sections.Count > 1 ? _lastSeenChangelog : "";
+            WhatsNewNotes = string.Join("\n\n", sections.Select(section => section.Notes));
         }
         catch (OperationCanceledException)
         {
@@ -302,6 +330,8 @@ public sealed partial class UpdateViewModel : ObservableObject
         RememberChangelogSeen(Build.Version);
         WhatsNewNotes = "";
         WhatsNewVersion = "";
+        WhatsNewSince = "";
+        WhatsNewSections = [];
     }
 
     private void RememberChangelogSeen(string version)

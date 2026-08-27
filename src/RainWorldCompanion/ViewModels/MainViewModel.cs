@@ -2460,7 +2460,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        var window = new WhatsNewDialog(updates.WhatsNewTitle, updates.WhatsNewNotes);
+        var window = new WhatsNewDialog(updates.WhatsNewTitle, updates.WhatsNewSections);
 
         if (OwnerWindow is { } owner && !ReferenceEquals(owner, window))
         {
