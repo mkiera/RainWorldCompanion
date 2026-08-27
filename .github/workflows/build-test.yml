@@ -7,10 +7,10 @@ name: Build Test
 on:
   workflow_dispatch:
   push:
+    # Any branch, so pushing one is enough to show up in the Alpha channel with no naming
+    # convention to follow. '**' still excludes tag pushes, which build-release.yml owns.
     branches:
-      - beta
-      - 'feature/**'
-      - 'bugfix/**'
+      - '**'
 
 # Read-only. This workflow publishes nothing; the artifact upload needs no extra grant.
 permissions:
