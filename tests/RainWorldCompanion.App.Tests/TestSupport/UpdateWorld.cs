@@ -126,8 +126,8 @@ internal sealed class UpdateWorld
 
     public DateTimeOffset Now { get; set; } = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
 
-    public UpdateViewModel Build(string runningVersion = "1.0.0", string sha = "", string runId = "") =>
-        new(new BuildStamp(runningVersion, sha, "", runId),
+    public UpdateViewModel Build(string runningVersion = "1.0.0", string sha = "", string branch = "", string runId = "") =>
+        new(new BuildStamp(runningVersion, sha, branch, runId),
             Source,
             Downloader,
             Launcher,
