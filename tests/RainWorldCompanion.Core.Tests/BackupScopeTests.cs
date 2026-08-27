@@ -59,9 +59,9 @@ public class BackupScopeTests
     [Fact]
     public void Every_mod_config_under_ModConfigs_is_included()
     {
-        // The rule is every .txt in ModConfigs, not devourment.txt alone. A player who has to
-        // restore a save wants the mod settings that save was played with back as well, and the
-        // files are a few kilobytes each.
+        // The rule is the whole folder, not devourment.txt alone and not the .txt files alone. A
+        // player who has to restore a save wants the mod settings that save was played with back as
+        // well, and a mod is free to keep those in a .json or in a folder of its own.
         using var live = new TempDirectory("live");
         SaveTree.Populate(live);
 
@@ -69,6 +69,37 @@ public class BackupScopeTests
 
         Assert.Contains(@"ModConfigs\devourment.txt", found);
         Assert.Contains(@"ModConfigs\moreslugcats.txt", found);
+        Assert.Contains(@"ModConfigs\willowwisp.bellyplus.json", found);
+        Assert.Contains(@"ModConfigs\MapOptions\cache.json", found);
+        Assert.Contains(@"ModConfigs\DvrmentConfs\current.json", found);
+    }
+
+    /// <summary>
+    /// Version 3 reaches DvrmentConfs from two roots, because version 1's rules name it and are
+    /// frozen while version 3 takes ModConfigs whole. A file recorded twice would be copied twice
+    /// and counted twice in the manifest.
+    /// </summary>
+    [Fact]
+    public void A_file_two_rules_both_cover_is_recorded_once()
+    {
+        using var live = new TempDirectory("live");
+        SaveTree.Populate(live);
+
+        var found = new BackupScope(live.Path).Enumerate().Select(e => e.RelativePath).ToList();
+
+        Assert.Equal(found.Count, found.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.Single(found, path => SaveTree.Normalize(path) == @"ModConfigs\DvrmentConfs\current.json");
+    }
+
+    [Fact]
+    public void Steam_cloud_state_is_left_out_however_deep_it_sits()
+    {
+        using var live = new TempDirectory("live");
+        SaveTree.Populate(live);
+
+        var found = SaveTree.Sorted(new BackupScope(live.Path).Enumerate().Select(e => e.RelativePath));
+
+        Assert.DoesNotContain(@"ModConfigs\MapOptions\steam_autocloud.vdf", found);
     }
 
     [Fact]

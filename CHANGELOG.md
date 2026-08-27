@@ -10,6 +10,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- Backups now take everything under ModConfigs, so a mod that keeps its settings
+  in a folder or a .json is covered too.
 - The window shows which version is running, under the folder paths in the
   bottom left. Alpha builds also show their commit.
 - The window opens at a size that fits your screen instead of a fixed small
