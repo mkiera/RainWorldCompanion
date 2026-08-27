@@ -22,7 +22,9 @@ public class OptionsWriterTests
         OptionsRead read = OptionsFile.Read(directory.Path);
 
         Assert.True(read.Read);
-        Assert.Equal(new[] { "moreslugcats", "warp", "devourment" }, read.EnabledModIds);
+
+        // The two it already had stay where the game put them, and the new one goes on the end.
+        Assert.Equal(new[] { "moreslugcats", "devourment", "warp" }, read.EnabledModIds);
     }
 
     [Fact]
@@ -128,6 +130,30 @@ public class OptionsWriterTests
     public void Bytes_that_are_not_a_container_are_refused_rather_than_written_over()
         => Assert.Throws<SaveContainerException>(
             () => OptionsWriter.Rewrite(SyntheticSave.GarbageBytes(), new[] { "a" }, NoOrder));
+
+    [Fact]
+    public void Writing_the_list_the_real_file_already_holds_changes_no_bytes()
+    {
+        byte[] before = FixtureFiles.Bytes(FixtureFiles.Options);
+        OptionsRead read = OptionsFile.ReadFile(FixtureFiles.PathTo(FixtureFiles.Options));
+
+        byte[] after = OptionsWriter.Rewrite(before, read.EnabledModIds, NoOrder);
+
+        Assert.Equal(before, after);
+    }
+
+    [Fact]
+    public void A_mod_turned_off_leaves_the_others_where_the_game_wrote_them()
+    {
+        byte[] before = OptionsFixture.Bytes(OptionsFixture.Payload(
+            OptionsFixture.Enabled("a", "b", "c")));
+
+        byte[] after = OptionsWriter.Rewrite(before, new[] { "c", "a" }, NoOrder);
+
+        Assert.Equal(
+            "a" + OptionsFixture.ListSeparator + "c",
+            RecordValue(BlobOf(after), "EnabledMods"));
+    }
 
     private static string BlobOf(byte[] bytes) => ContainerText.Load(bytes).GetValue(OptionsFile.ContainerKey);
 

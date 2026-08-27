@@ -261,7 +261,10 @@ public sealed class ModSyncService
             return $"The new options file did not read back correctly ({read.Problem}), so nothing was changed.";
         }
 
-        if (!read.EnabledModIds.SequenceEqual(outcome.EnabledIds, StringComparer.OrdinalIgnoreCase))
+        // Set rather than sequence: the writer keeps the file's own order, which is not the order
+        // the plan resolved them in.
+        if (!new HashSet<string>(read.EnabledModIds, StringComparer.OrdinalIgnoreCase)
+                .SetEquals(outcome.EnabledIds))
         {
             return "The new options file came back holding a different mod list than it was given, so nothing was changed.";
         }

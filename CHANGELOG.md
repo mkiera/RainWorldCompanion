@@ -10,6 +10,11 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- Turn Rain World's mods on and off from the app, without opening the game.
+  The Mods window matches what a backup or library save was played with in one
+  press, leaving out any mod you untick, and puts your own list back afterwards.
+- A mod a save needs but you do not have gets a button to its Steam Workshop
+  page, and Refresh picks it up once you have subscribed.
 - The window shows which version is running, under the folder paths in the
   bottom left. Alpha builds also show their commit.
 - The window opens at a size that fits your screen instead of a fixed small

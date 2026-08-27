@@ -20,12 +20,14 @@ public static class OptionsWriter
         ContainerText container = ContainerText.Load(optionsBytes);
         string blob = container.GetValue(OptionsFile.ContainerKey);
 
+        string storedEnabled = DelimitedFields.Options.GetValue(blob, OptionsFile.EnabledModsKey) ?? "";
+
         // Occurrence zero throughout, because InputSetup proves keys repeat here and OptionsFile
         // reads the first of them.
         string edited = DelimitedFields.Options.SetValue(
             blob,
             OptionsFile.EnabledModsKey,
-            string.Join(OptionsFile.ListSeparator, enabledIds));
+            string.Join(OptionsFile.ListSeparator, KeepStoredOrder(storedEnabled, enabledIds)));
 
         string storedOrder = DelimitedFields.Options.GetValue(blob, OptionsFile.ModLoadOrderKey) ?? "";
         string newOrder = MergeLoadOrder(storedOrder, loadOrder);
@@ -36,6 +38,34 @@ public static class OptionsWriter
         }
 
         return container.WithValue(OptionsFile.ContainerKey, edited).ToBytes();
+    }
+
+    // The game writes this list in its own order, which is not load order. Keeping that order means
+    // a rewrite that turns one mod on moves one line rather than all of them.
+    private static List<string> KeepStoredOrder(string stored, IReadOnlyList<string> enabledIds)
+    {
+        var wanted = new HashSet<string>(enabledIds, StringComparer.OrdinalIgnoreCase);
+        var kept = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string raw in stored.Split(OptionsFile.ListSeparator, StringSplitOptions.None))
+        {
+            string id = raw.Trim();
+            if (id.Length > 0 && wanted.Contains(id) && seen.Add(id))
+            {
+                kept.Add(id);
+            }
+        }
+
+        foreach (string id in enabledIds)
+        {
+            if (id.Trim().Length > 0 && seen.Add(id))
+            {
+                kept.Add(id);
+            }
+        }
+
+        return kept;
     }
 
     private static string MergeLoadOrder(string stored, IReadOnlyDictionary<string, int> loadOrder)
