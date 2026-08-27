@@ -17,6 +17,9 @@ public partial class ModDiffSection : UserControl
         InitializeComponent();
     }
 
+    private void OnFixMods(object sender, RoutedEventArgs e)
+        => (DataContext as ModListDiffViewModel)?.FixMods?.Invoke();
+
     private void OnOpenWorkshopPage(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not ModDiffRowViewModel row || !row.HasWorkshopPage)

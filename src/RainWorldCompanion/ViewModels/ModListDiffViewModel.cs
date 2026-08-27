@@ -24,6 +24,16 @@ public sealed class ModListDiffViewModel
 
     private static readonly ModDiffRowViewModel[] NoRows = Array.Empty<ModDiffRowViewModel>();
 
+    // Set by whoever builds the dialog. Null where there is nothing to open, which keeps the
+    // button off rather than drawing it dead.
+    public Action? FixMods { get; init; }
+
+    public bool CanFixMods => FixMods is not null && (TurnedOff.Count > 0 || Missing.Count > 0);
+
+    public string FixModsText => TurnedOff.Count > 0
+        ? $"Turn on {TurnedOff.Count}"
+        : "Open the Mods window";
+
     /// <param name="diff">Null when there was no way to look at all.</param>
     /// <param name="fromABackup">Changes only the wording for a snapshot that recorded nothing.</param>
     public ModListDiffViewModel(ModListDiff? diff, bool fromABackup = false)
@@ -53,7 +63,7 @@ public sealed class ModListDiffViewModel
             .Select(mod => new ModDiffRowViewModel(
                 NameOf(mod),
                 "installed, but turned off",
-                "Turn it on in the game's Remix menu.",
+                "The Mods window can turn it on.",
                 UrlFor(mod.WorkshopId)))
             .ToList();
 

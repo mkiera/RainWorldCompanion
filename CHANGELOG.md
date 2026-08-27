@@ -15,6 +15,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
   press, leaving out any mod you untick, and puts your own list back afterwards.
 - A mod a save needs but you do not have gets a button to its Steam Workshop
   page, and Refresh picks it up once you have subscribed.
+- Restoring, loading or sending a save offers to turn its mods on there and
+  then, instead of telling you to go and do it in the game's Remix menu.
 - The window shows which version is running, under the folder paths in the
   bottom left. Alpha builds also show their commit.
 - The window opens at a size that fits your screen instead of a fixed small

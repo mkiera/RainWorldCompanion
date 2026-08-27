@@ -1097,17 +1097,19 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // The dialog asks Core what each slot would do with the campaign, which means reading those
         // slots. A slot that will not read at all is a reason to say so rather than to open a window
         // that cannot describe anything.
+        SendCampaignDialog? sendDialog = null;
         SendCampaignDialog dialog;
         try
         {
-            dialog = new SendCampaignDialog(
+            dialog = sendDialog = new SendCampaignDialog(
                 campaign.DisplayName,
                 source.LiveSlot,
                 WhereItIs(source),
                 target => writer.PlanPutCampaign(target, slice),
                 _meadow.Present,
                 // Live to live is one machine against itself, so there is nothing to compare.
-                source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null);
+                source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null,
+                () => FixMods(RecordedModsOfSelection(), WhereItIs(source), sendDialog));
         }
         catch (Exception ex)
         {
@@ -1543,7 +1545,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         // A plan that cannot run still opens the dialog, for the reason Copy Slot does: the pair
         // here is only where the pickers start.
-        var dialog = new LoadSaveDialog(entries, plan!, library.PlanAnyLoad, _meadow.Present);
+        LoadSaveDialog? dialog = null;
+        dialog = new LoadSaveDialog(
+            entries,
+            plan!,
+            library.PlanAnyLoad,
+            _meadow.Present,
+            () => FixMods(dialog?.SelectedEntry.Entry.Manifest?.Mods, dialog?.SourceName ?? "that save", dialog));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -2125,7 +2133,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        var dialog = new RestoreConfirmDialog(plan!, item.DisplayName);
+        RestoreConfirmDialog? dialog = null;
+        dialog = new RestoreConfirmDialog(
+            plan!,
+            item.DisplayName,
+            () => FixMods(item.Snapshot.Manifest?.Mods, item.DisplayName, dialog));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -2415,19 +2427,29 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [RelayCommand(CanExecute = nameof(CanOpenModSync))]
     private void OpenModSync()
     {
+        if (ShowModSyncWindow() is not null)
+        {
+            MatchSelectedMods();
+        }
+    }
+
+    private bool CanOpenModSync() => !IsBusy && _modSync is not null;
+
+    private ModSyncViewModel? ShowModSyncWindow()
+    {
         if (_modSync is not { } service)
         {
-            return;
+            return null;
         }
 
         if (_modSyncWindow is { } already)
         {
             already.Activate();
-            MatchSelectedMods();
-            return;
+            return already.DataContext as ModSyncViewModel;
         }
 
-        var window = new ModSyncDialog(new ModSyncViewModel(service));
+        var view = new ModSyncViewModel(service);
+        var window = new ModSyncDialog(view);
         _modSyncWindow = window;
         window.Closed += (_, _) => _modSyncWindow = null;
 
@@ -2437,10 +2459,19 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         window.Show();
-        MatchSelectedMods();
+        return view;
     }
 
-    private bool CanOpenModSync() => !IsBusy && _modSync is not null;
+    // Closes the window that asked, because the mod list it is showing stops being true the moment
+    // this is acted on.
+    private void FixMods(ModListSnapshot? recorded, string name, Window? asking)
+    {
+        asking?.Close();
+
+        // Queued rather than opened here, so the modal loop has unwound first. Opened inside it,
+        // the window comes up behind the main one.
+        Application.Current?.Dispatcher.BeginInvoke(() => ShowModSyncWindow()?.Match(recorded, name));
+    }
 
     private void MatchSelectedMods()
     {

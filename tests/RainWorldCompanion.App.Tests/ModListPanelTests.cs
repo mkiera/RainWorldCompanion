@@ -112,17 +112,34 @@ public class ModListPanelTests
         Assert.Contains("local mod", local.ActionText);
     }
 
-    /// <summary>The app does not write the game's files, so this is advice rather than a button.</summary>
     [Fact]
-    public void A_mod_that_is_only_turned_off_is_pointed_at_the_remix_menu()
+    public void A_mod_that_is_only_turned_off_is_pointed_at_the_mods_window()
     {
         var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
         ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("off")), now);
 
         ModDiffRowViewModel row = Assert.Single(new ModListDiffViewModel(diff).TurnedOff);
 
-        Assert.Contains("Remix menu", row.ActionText);
+        Assert.Contains("Mods window", row.ActionText);
         Assert.Contains("turned off", row.DetailText);
+    }
+
+    [Fact]
+    public void The_button_that_opens_the_mods_window_appears_only_when_there_is_one_to_open()
+    {
+        var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
+        ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("off")), now);
+
+        Assert.False(new ModListDiffViewModel(diff).CanFixMods);
+        Assert.True(new ModListDiffViewModel(diff) { FixMods = () => { } }.CanFixMods);
+    }
+
+    [Fact]
+    public void Nothing_to_sort_out_means_no_button_even_when_one_could_be_opened()
+    {
+        ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("a")), Current(null, Mod("a")));
+
+        Assert.False(new ModListDiffViewModel(diff) { FixMods = () => { } }.CanFixMods);
     }
 
     [Fact]

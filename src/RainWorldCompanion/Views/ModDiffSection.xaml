@@ -49,6 +49,13 @@
 
             <TextBlock Text="{Binding HeadlineText}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
+            <Button HorizontalAlignment="Left" Margin="0,8,0,0"
+                    Style="{StaticResource Button.Small}"
+                    Content="{Binding FixModsText}"
+                    Click="OnFixMods"
+                    Visibility="{Binding CanFixMods, Converter={StaticResource BoolToVis}}"
+                    AutomationProperties.HelpText="Open the Mods window on this save's mod list" />
+
             <ItemsControl ItemsSource="{Binding GroupNotes}" ItemTemplate="{StaticResource NoteLine}"
                           Margin="0,6,0,0"
                           Visibility="{Binding HasNotes, Converter={StaticResource BoolToVis}}" />

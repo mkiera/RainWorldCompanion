@@ -50,10 +50,12 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         IReadOnlyList<LibraryEntry> entries,
         LibraryLoadPlan plan,
         Func<LibraryEntry, SaveSlotRef, LibraryLoadPlan> replan,
-        bool includeOnline)
+        bool includeOnline,
+        Action? fixMods = null)
     {
         _replan = replan;
         _plan = plan;
+        _fixMods = fixMods;
 
         Entries = BuildEntries(entries);
         Slots = BuildSlots(includeOnline);
@@ -271,7 +273,9 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
     /// carries a different record. The target slot does not change it: the mods are the
     /// machine's, not the slot's.
     /// </summary>
-    public ModListDiffViewModel ModDiff => new(_plan.Mods);
+    public ModListDiffViewModel ModDiff => new(_plan.Mods) { FixMods = _fixMods };
+
+    private readonly Action? _fixMods;
 
     private void Replan()
     {

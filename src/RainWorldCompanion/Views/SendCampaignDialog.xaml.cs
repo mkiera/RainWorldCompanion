@@ -55,11 +55,12 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
         string sourceName,
         Func<SaveSlotRef, CampaignMovePlan> replan,
         bool includeOnline,
-        ModListDiff? mods = null)
+        ModListDiff? mods = null,
+        Action? fixMods = null)
     {
         CampaignName = campaignName;
         SourceName = sourceName;
-        ModDiff = new ModListDiffViewModel(mods);
+        ModDiff = new ModListDiffViewModel(mods) { FixMods = fixMods };
 
         _source = source;
         _replan = replan;
