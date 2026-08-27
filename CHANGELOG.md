@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 What changed in each release, newest first. Headings are the version on its own,
 without a leading `v`, and match the tag the release was built from. Work that
@@ -9,6 +9,9 @@ release build looks the heading up by the exact version it was tagged with and
 fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
+
+- The what's new banner is one line with a count on it, and a Read it button that opens
+  the full list in its own window, so a release with a lot in it no longer buries the app.
 
 ## 1.2.0-beta.1 - 2026-08-27
 

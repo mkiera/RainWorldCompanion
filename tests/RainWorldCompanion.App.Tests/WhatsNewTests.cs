@@ -1,4 +1,4 @@
-using RainWorldCompanion.Core.Settings;
+﻿using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.Updates;
 using RainWorldCompanion.Services;
 
@@ -177,5 +177,54 @@ public class WhatsNewTests
 
         Assert.True(updates.HasOffer);
         Assert.Equal("1.2.0", updates.Offer!.VersionText);
+    }
+
+    /// <summary>
+    /// The banner shows the count and nothing else, so the notes themselves cannot push the app
+    /// off the screen. A release with twenty entries in it is what made that matter.
+    /// </summary>
+    [Theory]
+    [InlineData("- One thing.", "One change.")]
+    [InlineData("- One thing.\r\n- Another.", "2 changes.")]
+    [InlineData("* One thing.\r\n* Another.\r\n* A third.", "3 changes.")]
+    public async Task The_banner_says_how_many_changes_there_were(string section, string expected)
+    {
+        var world = new UpdateWorld();
+        world.Source.Releases.Add(UpdateWorld.Release("v1.1.0", notes: UpdateWorld.Body(section)));
+        var updates = world.Build(runningVersion: "1.1.0");
+        updates.Adopt(Seen("1.0.0"));
+
+        await updates.CheckForWhatsNewAsync(CancellationToken.None);
+
+        Assert.Equal(expected, updates.WhatsNewSummary);
+    }
+
+    [Fact]
+    public async Task An_entry_that_wraps_is_still_one_change()
+    {
+        var world = new UpdateWorld();
+        var section = "- One thing, said over\r\n  two lines.\r\n- Another.";
+        world.Source.Releases.Add(UpdateWorld.Release("v1.1.0", notes: UpdateWorld.Body(section)));
+        var updates = world.Build(runningVersion: "1.1.0");
+        updates.Adopt(Seen("1.0.0"));
+
+        await updates.CheckForWhatsNewAsync(CancellationToken.None);
+
+        Assert.Equal("2 changes.", updates.WhatsNewSummary);
+    }
+
+    [Fact]
+    public async Task A_body_that_is_not_a_list_still_asks_to_be_read()
+    {
+        var world = new UpdateWorld();
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.1.0", notes: UpdateWorld.Body("Slots can be deleted now.")));
+        var updates = world.Build(runningVersion: "1.1.0");
+        updates.Adopt(Seen("1.0.0"));
+
+        await updates.CheckForWhatsNewAsync(CancellationToken.None);
+
+        Assert.True(updates.HasWhatsNew);
+        Assert.Equal("Read what this version changed.", updates.WhatsNewSummary);
     }
 }
