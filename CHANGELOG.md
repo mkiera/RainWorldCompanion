@@ -25,6 +25,9 @@ fails when it finds none, so rename Unreleased before tagging, not after.
   ones it is missing.
 - Writing a save whose mods do not match this machine now asks you to tick that
   you know, before the button will do anything.
+- A library save and a `.rwsave` carry the mod settings that were on with them.
+  Loading one asks which mods' settings to take, and takes none unless you tick
+  them.
 - Backups now take everything under ModConfigs, so a mod that keeps its settings
   in a folder or a .json is covered too.
 - The window shows which version is running, under the folder paths in the

@@ -155,6 +155,21 @@ public static class ModConfigReader
     }
 
     /// <summary>
+    /// The part of a path below ModConfigs, which is how a settings file is laid out wherever it is
+    /// kept: configs\DvrmentConfs\current.json in a library entry, configs/ in a bundle. Null for a
+    /// path that is not one that travels, so no caller builds a destination for one.
+    /// </summary>
+    public static string? PathBelowFolder(string? relativePath)
+    {
+        if (!Travels(relativePath))
+        {
+            return null;
+        }
+
+        return string.Join('\\', Split(relativePath)!.Skip(1));
+    }
+
+    /// <summary>
     /// The mod a settings file belongs to, or empty when it cannot be worked out.
     ///
     /// <para>Remix writes ModConfigs\&lt;mod id&gt;.txt, so the file name without its extension is

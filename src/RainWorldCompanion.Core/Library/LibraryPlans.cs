@@ -40,6 +40,14 @@ public sealed record ModConfigOffer(
     ModConfigSet? Live,
     CurrentMods? Current)
 {
+    /// <summary>
+    /// Keys inside a recorded settings file that name something about the machine rather than the
+    /// game, by the path the file is recorded under. Read when the offer was built, so naming them
+    /// costs a picker no disk of its own.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> MachineSpecific { get; init; }
+        = new Dictionary<string, IReadOnlyList<string>>();
+
     /// <summary>What a player picks by: a mod, not a file. Devourment owns both its settings file
     /// and its whole preset folder, and ticking Devourment means both.</summary>
     public IReadOnlyList<ModConfigGroup> ByMod() => Recorded.ByMod();

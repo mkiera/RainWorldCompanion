@@ -1566,7 +1566,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginBusy("Loading " + chosen.Name, "Taking a safety snapshot");
         try
         {
-            result = await Task.Run(() => library.LoadAny(chosen, chosenTarget, progress, CancellationToken.None));
+            var settings = dialog.ChosenSettings;
+            result = await Task.Run(() => library.LoadAny(chosen, chosenTarget, settings, progress, CancellationToken.None));
         }
         catch (Exception ex)
         {
@@ -1921,6 +1922,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (result.Success)
         {
+            if (result.SettingsWritten > 0)
+            {
+                text.Append(result.SettingsWritten == 1
+                    ? "1 mod settings file was written beside it.\n\n"
+                    : $"{result.SettingsWritten} mod settings files were written beside it.\n\n");
+            }
+
             if (result.SafetySnapshot is { } safety)
             {
                 text.Append("Safety snapshot of your previous saves: ").Append(safety.Id).Append("\n\n");

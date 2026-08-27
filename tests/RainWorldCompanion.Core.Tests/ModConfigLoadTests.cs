@@ -371,6 +371,28 @@ public class ModConfigLoadTests
         Assert.NotNull(offer.Current);
     }
 
+    /// <summary>
+    /// Read from the entry's own copy rather than the save folder's, because what a picker warns
+    /// about is what would be written. Naming the keys is what lets a picker say it without
+    /// touching disk itself.
+    /// </summary>
+    [Fact]
+    public void A_plan_names_the_keys_in_a_settings_file_that_belong_to_one_machine()
+    {
+        using var world = new LibraryWorld();
+        world.Live.WriteText(@"ModConfigs\SBCameraScroll.txt", ModConfigs.ConfigWithDisplaySettings);
+        LibraryEntry entry = world.Library.StoreSlot(LocalTwo, "their save", null);
+
+        ModConfigOffer offer = world.Library.PlanAnyLoad(entry, LocalThree).Settings!;
+
+        Assert.Equal(
+            new[] { "customResolution", "resolution", "fullScreenEffects" },
+            offer.MachineSpecific[@"ModConfigs\SBCameraScroll.txt"]);
+
+        // An ordinary settings file is not named, or the note would mean nothing.
+        Assert.DoesNotContain(LivePath, offer.MachineSpecific.Keys);
+    }
+
     /// <summary>Said in the dialog rather than after the user has agreed, and never as a problem: a
     /// settings file that will not land is no reason to refuse the save.</summary>
     [Fact]

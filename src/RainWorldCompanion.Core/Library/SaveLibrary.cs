@@ -717,7 +717,37 @@ public sealed class SaveLibrary
         {
         }
 
-        return new ModConfigOffer(recorded, entry.Manifest.Mods, live, current);
+        return new ModConfigOffer(recorded, entry.Manifest.Mods, live, current)
+        {
+            MachineSpecific = ReadMachineSpecific(entry, recorded),
+        };
+    }
+
+    /// <summary>
+    /// Which recorded settings hold a key naming something about the machine. Read from the entry's
+    /// own copy rather than the save folder's: what a picker warns about is what would be written.
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadMachineSpecific(
+        LibraryEntry entry,
+        ModConfigSet recorded)
+    {
+        var found = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in recorded.Files)
+        {
+            if (ConfigEntryPath(entry.DirectoryPath, file.RelativePath) is not { } path)
+            {
+                continue;
+            }
+
+            var keys = ModConfigNotes.MachineSpecificKeys(path);
+            if (keys.Count > 0)
+            {
+                found[file.RelativePath] = keys;
+            }
+        }
+
+        return found;
     }
 
     public LibraryLoadResult LoadAny(
@@ -1253,24 +1283,13 @@ public sealed class SaveLibrary
     /// </summary>
     private static string? ConfigEntryPath(string entryDirectory, string relativePath)
     {
-        if (!ModConfigReader.Travels(relativePath))
-        {
-            return null;
-        }
-
-        var below = relativePath
-            .Replace('/', Path.DirectorySeparatorChar)
-            .Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
-            .Skip(1)
-            .ToArray();
-
-        if (below.Length == 0)
+        if (ModConfigReader.PathBelowFolder(relativePath) is not { Length: > 0 } below)
         {
             return null;
         }
 
         var root = Path.Combine(entryDirectory, LibraryEntry.ConfigsFolderName);
-        var candidate = Path.GetFullPath(Path.Combine(root, Path.Combine(below)));
+        var candidate = Path.GetFullPath(Path.Combine(root, below));
 
         return CanonicalPath.IsInside(root, candidate) ? candidate : null;
     }

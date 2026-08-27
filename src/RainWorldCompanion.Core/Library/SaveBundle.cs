@@ -154,18 +154,8 @@ internal static class SaveBundle
     private static string EntryNameFor(string[] segmentsBelowModConfigs)
         => ConfigsEntryPrefix + string.Join('/', segmentsBelowModConfigs);
 
-    /// <summary>
-    /// The part of a recorded path below ModConfigs, which is how it is laid out both in an entry
-    /// and in an archive. Null for a path that is not one this build carries.
-    /// </summary>
     private static string[]? ConfigSegments(string? relativePath)
-        => ModConfigReader.Travels(relativePath)
-            ? relativePath!
-                .Replace('/', '\\')
-                .Split('\\', StringSplitOptions.RemoveEmptyEntries)
-                .Skip(1)
-                .ToArray()
-            : null;
+        => ModConfigReader.PathBelowFolder(relativePath)?.Split('\\');
 
     /// <summary>A container always starts with the UTF-8 byte order mark and a zip with the local
     /// file header signature, so the two are told apart without trusting the extension.</summary>
