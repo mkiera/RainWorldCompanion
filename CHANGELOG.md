@@ -34,6 +34,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
   save carries.
 - Steam Workshop links open in Steam where it is installed, so Subscribe is
   there without signing in to the site.
+- Check now in the Updates window records when it looked, so the line above it
+  stops saying the last check was hours ago.
 - Turning mods on to match a save before loading it no longer leaves the safety
   backup claiming the new mod list. It records the one you had before, so
   matching that backup's mods puts you back where you started.
