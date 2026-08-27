@@ -45,10 +45,15 @@ public static class OptionsFile
 
     public const string LastGameVersionKey = "LastGameVersion";
 
-    private const string RecordSeparator = "<optA>";
-    private const string KeyValueSeparator = "<optB>";
-    private const string ListSeparator = "<optC>";
-    private const string PairSeparator = "<optD>";
+    /// <summary>Internal rather than private because <see cref="OptionsWriter"/> splices the same
+    /// stream these split, and the two must never drift apart.</summary>
+    internal const string RecordSeparator = "<optA>";
+
+    internal const string KeyValueSeparator = "<optB>";
+
+    internal const string ListSeparator = "<optC>";
+
+    internal const string PairSeparator = "<optD>";
 
     /// <summary>Never throws: a missing or damaged options file costs the answer, not the caller.</summary>
     public static OptionsRead Read(string? saveRoot)
