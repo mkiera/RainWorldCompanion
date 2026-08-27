@@ -2478,6 +2478,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         view.Match(recorded, name);
         window.ShowDialog();
 
+        // The window may have written the mod list, so the reading everything else compares
+        // against has to be taken again rather than reused.
+        _currentMods = service.ReadCurrent();
+        RebuildDetail();
+
         return DiffAgainstNow(recorded);
     }
 

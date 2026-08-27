@@ -24,7 +24,12 @@ public partial class ModDiffSection : UserControl
             return;
         }
 
-        view.Reload(view.FixMods());
+        // Null means nothing could be read again, which is not the same as nothing being wrong,
+        // so the section keeps what it was showing.
+        if (view.FixMods() is { } fresh)
+        {
+            view.Reload(fresh);
+        }
     }
 
     private void OnOpenWorkshopPage(object sender, RoutedEventArgs e)
