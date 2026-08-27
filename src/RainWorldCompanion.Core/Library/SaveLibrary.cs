@@ -256,7 +256,7 @@ public sealed class SaveLibrary
             SafetyNote: targetExists => targetExists
                 ? $"Automatic copy taken before the library save {quotedName} was loaded over {plan.Target.FileName} ({plan.Target.Describe()})."
                 : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.",
-            Extras: BuildExtras(entry, adoptSettingsFor));
+            Extras: SettingsToWrite(entry, adoptSettingsFor));
 
         var outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
 
@@ -287,7 +287,7 @@ public sealed class SaveLibrary
     /// The settings files to write, for the mods that were asked for. Grouping by mod is what makes
     /// writing a subset fall out: nothing in the writer knows what a mod is.
     /// </summary>
-    private static IReadOnlyList<ExtraFileWrite> BuildExtras(
+    public static IReadOnlyList<ExtraFileWrite> SettingsToWrite(
         LibraryEntry entry,
         IReadOnlyCollection<string> adoptSettingsFor)
     {
@@ -614,9 +614,20 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => LoadCampaignOntoSlot(entry, target, Array.Empty<string>(), progress, ct);
+
+    /// <param name="adoptSettingsFor">The mods whose settings to bring across, by id. Empty takes
+    /// none, the same as a whole slot load.</param>
+    public LibraryLoadResult LoadCampaignOntoSlot(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
 
         EnsureGameNotRunning();
 
@@ -632,7 +643,7 @@ public sealed class SaveLibrary
 
         ct.ThrowIfCancellationRequested();
 
-        var result = _backups.SlotWriter.Write(move, progress, ct);
+        var result = _backups.SlotWriter.Write(move, progress, ct, SettingsToWrite(entry, adoptSettingsFor));
         var warnings = move.Warnings.Concat(result.Warnings).ToArray();
 
         if (result.Success)
@@ -649,7 +660,10 @@ public sealed class SaveLibrary
             warnings,
             result.LiveFolderModified,
             result.BytesWritten,
-            plan);
+            plan)
+        {
+            SettingsWritten = result.SettingsWritten,
+        };
     }
 
     /// <summary>A whole slot is written over the target and a campaign is written into it, so a
@@ -661,7 +675,7 @@ public sealed class SaveLibrary
 
         // Attached here rather than in each branch: this is the one method the dialogs go through.
         var mods = _backups.TryDiffMods(entry.Manifest?.Mods);
-        var settings = BuildOffer(entry);
+        var settings = SettingsFor(entry);
 
         if (!entry.IsCampaign)
         {
@@ -684,7 +698,7 @@ public sealed class SaveLibrary
     }
 
     /// <summary>What this entry can bring across, or null when it carries no settings.</summary>
-    private ModConfigOffer? BuildOffer(LibraryEntry entry)
+    public ModConfigOffer? SettingsFor(LibraryEntry entry)
     {
         if (entry.Manifest?.Configs is not { Files.Count: > 0 } recorded)
         {
@@ -767,7 +781,7 @@ public sealed class SaveLibrary
         ArgumentNullException.ThrowIfNull(entry);
 
         return entry.IsCampaign
-            ? LoadCampaignOntoSlot(entry, target, progress, ct)
+            ? LoadCampaignOntoSlot(entry, target, adoptSettingsFor, progress, ct)
             : LoadEntry(entry, target, adoptSettingsFor, progress, ct);
     }
 

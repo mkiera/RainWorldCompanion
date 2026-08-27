@@ -28,6 +28,10 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 - A library save and a `.rwsave` carry the mod settings that were on with them.
   Loading one asks which mods' settings to take, and takes none unless you tick
   them.
+- Sending a campaign out of a backup or a library save offers its mod settings
+  the same way.
+- The panel has a SETTINGS section under MODS, showing which mods' settings a
+  save carries.
 - Backups now take everything under ModConfigs, so a mod that keeps its settings
   in a folder or a .json is covered too.
 - The window shows which version is running, under the folder paths in the

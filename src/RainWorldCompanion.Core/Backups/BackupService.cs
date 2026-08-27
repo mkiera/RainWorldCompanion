@@ -116,6 +116,126 @@ public sealed class BackupService
     public BackupScope Scope { get; }
 
     /// <summary>
+    /// The mod settings a snapshot holds, or null when it holds none. A snapshot is a faithful copy
+    /// of the save folder, so its ModConfigs sits at the same path it did there and the same rule
+    /// decides which of it travels.
+    /// </summary>
+    public Library.ModConfigOffer? SettingsFor(BackupSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (snapshot.Manifest is not { } manifest)
+        {
+            return null;
+        }
+
+        var recorded = new ModConfigSet { ReadTheFolder = true };
+
+        foreach (var file in manifest.Files)
+        {
+            var relative = file.RelativePath ?? "";
+            if (ModConfigReader.Travels(relative))
+            {
+                recorded.Files.Add(new ModConfigFile
+                {
+                    RelativePath = relative,
+                    ModId = ModConfigReader.ModIdFor(relative),
+                    SizeBytes = file.SizeBytes,
+                    Sha256 = file.Sha256,
+                });
+            }
+        }
+
+        if (recorded.Files.Count == 0)
+        {
+            return null;
+        }
+
+        var scan = ModConfigReader.Read(SaveRoot);
+        var live = new ModConfigSet
+        {
+            ReadTheFolder = scan.ReadTheFolder,
+            Note = scan.Note,
+            Files = scan.Files
+                .Select(file => new ModConfigFile { RelativePath = file.RelativePath, ModId = file.ModId })
+                .ToList(),
+        };
+
+        return new Library.ModConfigOffer(recorded, manifest.Mods, live, TryReadCurrentMods())
+        {
+            MachineSpecific = MachineSpecificIn(snapshot, recorded),
+        };
+    }
+
+    /// <summary>The settings files to write out of a snapshot, for the mods that were asked for.</summary>
+    public IReadOnlyList<ExtraFileWrite> SettingsToWrite(
+        BackupSnapshot snapshot,
+        IReadOnlyCollection<string> adoptSettingsFor)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
+
+        if (adoptSettingsFor.Count == 0 || snapshot.Manifest is not { } manifest)
+        {
+            return Array.Empty<ExtraFileWrite>();
+        }
+
+        var wanted = new HashSet<string>(adoptSettingsFor, StringComparer.OrdinalIgnoreCase);
+        var extras = new List<ExtraFileWrite>();
+
+        foreach (var file in manifest.Files)
+        {
+            var relative = file.RelativePath ?? "";
+
+            if (!ModConfigReader.Travels(relative)
+                || !wanted.Contains(ModConfigReader.ModIdFor(relative))
+                || !TryResolveInside(snapshot.DirectoryPath, relative, out var source))
+            {
+                continue;
+            }
+
+            extras.Add(new ExtraFileWrite(relative, source, file.Sha256, relative));
+        }
+
+        return extras;
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> MachineSpecificIn(
+        BackupSnapshot snapshot,
+        ModConfigSet recorded)
+    {
+        var found = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in recorded.Files)
+        {
+            if (!TryResolveInside(snapshot.DirectoryPath, file.RelativePath, out var path))
+            {
+                continue;
+            }
+
+            var keys = ModConfigNotes.MachineSpecificKeys(path);
+            if (keys.Count > 0)
+            {
+                found[file.RelativePath] = keys;
+            }
+        }
+
+        return found;
+    }
+
+    private CurrentMods? TryReadCurrentMods()
+    {
+        try
+        {
+            return _modListSource?.Invoke();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Copies every in-scope file into a new snapshot folder. The manifest is written last, so a
     /// folder without one is a snapshot that did not finish, and a failure leaves the folder there.
     /// </summary>

@@ -22,6 +22,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
     private SnapshotDetailViewModel(
         ModListSectionViewModel modsSection,
+        ModConfigSectionViewModel configsSection,
         bool isLive,
         string title,
         string subtitle,
@@ -40,6 +41,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         string sourceLabel = "")
     {
         Mods = modsSection;
+        Configs = configsSection;
         IsLive = isLive;
         Title = title;
         Subtitle = subtitle;
@@ -177,6 +179,9 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// <summary>Never null: "nothing was recorded" is itself a line worth drawing.</summary>
     public ModListSectionViewModel Mods { get; }
 
+    /// <summary>Which mods' settings this carries, beside the list of which mods were on.</summary>
+    public ModConfigSectionViewModel Configs { get; }
+
     /// <summary>meadow.json, or null when the folder holds no such file.</summary>
     public MeadowProfileViewModel? Meadow { get; }
 
@@ -189,10 +194,12 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         int fileCount,
         MeadowProfile? meadow,
         ISlugcatIconProvider icons,
-        CurrentMods? mods = null)
+        CurrentMods? mods = null,
+        ModConfigSet? configs = null)
     {
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForCurrent(mods),
+            configsSection: ModConfigSectionViewModel.ForCurrent(configs),
             isLive: true,
             title: "Live save",
             subtitle: savePath,
@@ -230,6 +237,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForRecorded(item.Entry.Manifest?.Mods, fromABackup: false),
+            configsSection: ModConfigSectionViewModel.ForRecorded(item.Entry.Manifest?.Configs, fromABackup: false),
             isLive: false,
             title: item.Name,
             subtitle: subtitle,
@@ -267,6 +275,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForRecorded(item.Snapshot.Manifest?.Mods, fromABackup: true),
+            configsSection: ModConfigSectionViewModel.ForBackup(item.Snapshot.Manifest?.Files),
             isLive: false,
             title: item.LabelText,
             subtitle: item.CreatedText + "    " + item.Snapshot.Id,

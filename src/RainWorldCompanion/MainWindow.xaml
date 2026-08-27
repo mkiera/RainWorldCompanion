@@ -1492,6 +1492,15 @@
             </DockPanel>
         </DataTemplate>
 
+        <DataTemplate x:Key="ModConfigRowTemplate">
+            <DockPanel Margin="0,2">
+                <TextBlock DockPanel.Dock="Right" Text="{Binding DetailText}"
+                           Style="{StaticResource Text.Muted}" Margin="10,0,0,0" />
+                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Name}" />
+            </DockPanel>
+        </DataTemplate>
+
         <DataTemplate x:Key="MeadowCharacterTemplate">
             <Border Style="{StaticResource Card}" Padding="12,10" Margin="0,0,0,8">
                 <StackPanel>
@@ -2503,6 +2512,31 @@
 
                                 <ItemsControl ItemsSource="{Binding Detail.Mods.Rows}"
                                               ItemTemplate="{StaticResource ModListRowTemplate}"
+                                              Margin="0,6,0,0" />
+                            </StackPanel>
+
+                            <!-- Which mods' settings came with it, which is not the same as which
+                                 mods were on: a settings file sits in ModConfigs whether its mod
+                                 is on or not. -->
+                            <StackPanel Margin="0,22,0,0">
+                                <DockPanel Margin="0,0,0,8">
+                                    <TextBlock DockPanel.Dock="Left" Text="SETTINGS" Margin="0,0,8,0"
+                                               Style="{StaticResource Text.SectionLabel}" />
+                                    <Border Height="1" Background="{StaticResource Brush.Border}"
+                                            VerticalAlignment="Center" />
+                                </DockPanel>
+
+                                <TextBlock Text="{Binding Detail.Configs.CountText}"
+                                           Style="{StaticResource Text.Muted}"
+                                           Visibility="{Binding Detail.Configs.HasCount, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="{Binding Detail.Configs.EmptyText}"
+                                           Style="{StaticResource Text.Muted}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding Detail.Configs.HasEmptyText, Converter={StaticResource BoolToVis}}" />
+
+                                <ItemsControl ItemsSource="{Binding Detail.Configs.Rows}"
+                                              ItemTemplate="{StaticResource ModConfigRowTemplate}"
                                               Margin="0,6,0,0" />
                             </StackPanel>
                         </StackPanel>

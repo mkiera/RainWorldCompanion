@@ -85,6 +85,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     /// <summary>The mods on this machine. Null before the first refresh.</summary>
     private CurrentMods? _currentMods;
+    private ModConfigSet? _liveConfigs;
 
     private RainMeadowPresence _meadow = RainMeadowPresence.Absent;
 
@@ -604,7 +605,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 _liveFileCount,
                 _liveMeadow,
                 _icons,
-                _currentMods);
+                _currentMods,
+                _liveConfigs);
         }
 
         if (SelectedLibraryEntry is { } entry)
@@ -1109,7 +1111,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 _meadow.Present,
                 // Live to live is one machine against itself, so there is nothing to compare.
                 source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null,
-                () => FixMods(RecordedModsOfSelection(), WhereItIs(source), sendDialog));
+                () => FixMods(RecordedModsOfSelection(), WhereItIs(source), sendDialog),
+                // Live to live is one machine against itself, so its settings are already here.
+                source.LiveSlot is null ? RecordedSettingsOfSelection() : null,
+                RecordedSettingsOfSelection);
         }
         catch (Exception ex)
         {
@@ -1132,8 +1137,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginBusy("Sending " + campaign.DisplayName + " to " + target.FileName, "Taking a safety snapshot");
         try
         {
+            var extras = SettingsToWrite(dialog.ChosenSettings);
+
             arrival = await Task.Run(() =>
-                writer.Write(writer.PlanPutCampaign(target, slice), progress, CancellationToken.None));
+                writer.Write(writer.PlanPutCampaign(target, slice), progress, CancellationToken.None, extras));
 
             if (arrival.Success && takeItOut && source.LiveSlot is { } from)
             {
@@ -1394,6 +1401,37 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     private ModListSnapshot? RecordedModsOfSelection()
         => SelectedBackup?.Snapshot.Manifest?.Mods ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
+
+    /// <summary>
+    /// The mod settings the thing the campaign came out of carries, whichever of the two it is. A
+    /// backup keeps them at the path the save folder had; a library entry keeps its own copy.
+    /// </summary>
+    private ModConfigOffer? RecordedSettingsOfSelection()
+    {
+        if (SelectedBackup is { } backup)
+        {
+            return _backupService?.SettingsFor(backup.Snapshot);
+        }
+
+        return SelectedLibraryEntry is { } entry ? _library?.SettingsFor(entry.Entry) : null;
+    }
+
+    private IReadOnlyList<ExtraFileWrite> SettingsToWrite(IReadOnlyCollection<string> chosen)
+    {
+        if (chosen.Count == 0)
+        {
+            return Array.Empty<ExtraFileWrite>();
+        }
+
+        if (SelectedBackup is { } backup)
+        {
+            return _backupService?.SettingsToWrite(backup.Snapshot, chosen) ?? Array.Empty<ExtraFileWrite>();
+        }
+
+        return SelectedLibraryEntry is { } entry
+            ? SaveLibrary.SettingsToWrite(entry.Entry, chosen)
+            : Array.Empty<ExtraFileWrite>();
+    }
 
     /// <summary>Null before the first refresh, which is the "no way to look" the plans mean.</summary>
     private ModListDiff? DiffAgainstNow(ModListSnapshot? recorded)
@@ -2759,11 +2797,27 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 // The "now" side of every mod comparison the app makes.
                 var mods = CurrentModsReader.Read(service.SaveRoot, _settings.GameInstallPath);
 
-                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods);
+                ModConfigScan scan = ModConfigReader.Read(service.SaveRoot);
+                var configs = new ModConfigSet
+                {
+                    ReadTheFolder = scan.ReadTheFolder,
+                    Note = scan.Note,
+                    Files = scan.Files
+                        .Select(file => new ModConfigFile
+                        {
+                            RelativePath = file.RelativePath,
+                            ModId = file.ModId,
+                            SizeBytes = file.Length,
+                        })
+                        .ToList(),
+                };
+
+                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods, Configs: configs);
             });
 
             _meadow = data.Meadow;
             _currentMods = data.Mods;
+            _liveConfigs = data.Configs;
             _liveSlotData = data.Slots;
             _liveSizeBytes = data.Size;
             _liveFileCount = data.Count;

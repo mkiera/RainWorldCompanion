@@ -132,9 +132,13 @@ internal sealed record SlotWriteJob(
 /// One more file to write into the save folder beside the slot, named the way a manifest names it:
 /// relative to the save folder, so the scope can be asked about it and a destination resolved from
 /// it with nothing in between.
+///
+/// <para>Public so a caller outside Core can name one. That grants no privilege: the writer holds
+/// every one of these to the scope, the safety snapshot, the link check and the recorded hash
+/// before it writes anything.</para>
 /// </summary>
 /// <param name="Label">What a warning calls this file when it could not be written.</param>
-internal sealed record ExtraFileWrite(
+public sealed record ExtraFileWrite(
     string RelativePath,
     string SourcePath,
     string? ExpectedSha256,
