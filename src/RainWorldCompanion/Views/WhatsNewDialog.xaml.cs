@@ -1,13 +1,14 @@
 using System.Windows;
+using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
 public partial class WhatsNewDialog : Window
 {
-    public WhatsNewDialog(string headline, string notes)
+    public WhatsNewDialog(string headline, IReadOnlyList<WhatsNewSection> sections)
     {
         Headline = headline;
-        Notes = notes;
+        Sections = sections;
 
         InitializeComponent();
         DataContext = this;
@@ -15,5 +16,7 @@ public partial class WhatsNewDialog : Window
 
     public string Headline { get; }
 
-    public string Notes { get; }
+    public IReadOnlyList<WhatsNewSection> Sections { get; }
+
+    public bool ShowVersions => Sections.Count > 1;
 }
