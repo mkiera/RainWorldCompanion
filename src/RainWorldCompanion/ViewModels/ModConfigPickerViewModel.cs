@@ -88,14 +88,29 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
         {
             // Indeterminate is a state the box reports, never one to apply: there is no sensible
             // set of rows to leave behind for it.
-            if (value is not { } wanted)
+            if (value is not { } wanted || _applying)
             {
                 return;
             }
 
-            foreach (var row in Rows)
+            // Held shut across the sweep and the one announcement that follows it. Announcing row
+            // by row would report indeterminate part way through, and a two state box answers that
+            // by writing back the opposite, which lands straight back here. Covering the
+            // announcement too means such a write back is ignored rather than recursing.
+            _applying = true;
+
+            try
             {
-                row.Take = wanted;
+                foreach (var row in Rows)
+                {
+                    row.Take = wanted;
+                }
+
+                OnPropertyChanged(nameof(TakeAll));
+            }
+            finally
+            {
+                _applying = false;
             }
         }
     }
@@ -167,9 +182,11 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
         }
     }
 
+    private bool _applying;
+
     private void OnRowChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ModConfigRowViewModel.Take))
+        if (!_applying && e.PropertyName is nameof(ModConfigRowViewModel.Take))
         {
             OnPropertyChanged(nameof(TakeAll));
         }

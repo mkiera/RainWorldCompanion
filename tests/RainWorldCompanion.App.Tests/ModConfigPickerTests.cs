@@ -161,6 +161,52 @@ public class ModConfigPickerTests
         Assert.Equal(new[] { Devourment }, picker.Chosen);
     }
 
+    /// <summary>
+    /// A two state box answers an indeterminate reading by writing back the opposite. Announcing
+    /// the sweep row by row would report exactly that half way through, and the write back would
+    /// land here and undo the sweep still running, leaving the box ticked over clear rows.
+    /// </summary>
+    [Fact]
+    public void Taking_all_never_reports_indeterminate_part_way_through()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(Set(
+            File(@"ModConfigs.txt", "a"), File(@"ModConfigs.txt", "b"), File(@"ModConfigs\c.txt", "c"))));
+
+        var seen = new List<bool?>();
+        picker.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ModConfigPickerViewModel.TakeAll))
+            {
+                seen.Add(picker.TakeAll);
+            }
+        };
+
+        picker.TakeAll = true;
+
+        Assert.Equal(new bool?[] { true }, seen);
+        Assert.Equal(3, picker.Chosen.Count);
+    }
+
+    /// <summary>What the box does when the write back arrives anyway: nothing.</summary>
+    [Fact]
+    public void A_write_back_arriving_during_the_sweep_does_not_undo_it()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(Set(
+            File(@"ModConfigs.txt", "a"), File(@"ModConfigs.txt", "b"))));
+
+        picker.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ModConfigPickerViewModel.TakeAll))
+            {
+                picker.TakeAll = false;
+            }
+        };
+
+        picker.TakeAll = true;
+
+        Assert.Equal(2, picker.Chosen.Count);
+    }
+
     /// <summary>One row is its own select all, so the control would be noise beside it.</summary>
     [Fact]
     public void One_row_is_offered_no_take_all()
