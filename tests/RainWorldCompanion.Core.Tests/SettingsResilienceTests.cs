@@ -1,3 +1,4 @@
+using System.Reflection;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.Updates;
 
@@ -167,4 +168,116 @@ public class SettingsResilienceTests
         Assert.False(settings.AutoCheckUpdates);
         Assert.Equal(stamp, settings.LastUpdateCheckUtc);
     }
+
+    [Fact]
+    public void The_last_seen_changelog_version_round_trips_through_a_save_and_a_load()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Save(new AppSettings { LastSeenChangelogVersion = "1.1.0" });
+
+        Assert.Equal("1.1.0", store.Load().LastSeenChangelogVersion);
+    }
+
+    [Fact]
+    public void The_window_geometry_round_trips_through_a_save_and_a_load()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Save(new AppSettings
+        {
+            WindowWidth = 1400,
+            WindowHeight = 900,
+            WindowLeft = 120,
+            WindowTop = 80,
+            WindowMaximized = true,
+        });
+
+        var settings = store.Load();
+
+        Assert.Equal(1400, settings.WindowWidth);
+        Assert.Equal(900, settings.WindowHeight);
+        Assert.Equal(120, settings.WindowLeft);
+        Assert.Equal(80, settings.WindowTop);
+        Assert.True(settings.WindowMaximized);
+    }
+
+    [Fact]
+    public void A_file_with_no_window_geometry_leaves_it_null()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Save(new AppSettings());
+
+        var settings = store.Load();
+
+        Assert.Null(settings.WindowWidth);
+        Assert.Null(settings.WindowHeight);
+        Assert.Null(settings.WindowLeft);
+        Assert.Null(settings.WindowTop);
+        Assert.False(settings.WindowMaximized);
+    }
+
+    [Fact]
+    public void TryReadWindowGeometry_reads_geometry_without_resolving_paths()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Save(new AppSettings { WindowWidth = 1234, WindowHeight = 567 });
+
+        var settings = store.TryReadWindowGeometry();
+
+        Assert.NotNull(settings);
+        Assert.Equal(1234, settings!.WindowWidth);
+        Assert.Equal(567, settings.WindowHeight);
+    }
+
+    [Fact]
+    public void TryReadWindowGeometry_is_null_when_there_is_no_settings_file()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        Assert.Null(store.TryReadWindowGeometry());
+    }
+
+    /// <summary>
+    /// Clone's own doc comment says a field left out of it silently reverts to default on every
+    /// save. LastSeenChangelogVersion once made the same mistake in FromJson; this catches Clone
+    /// dropping a future field the same way, without having to name each property here by hand.
+    /// </summary>
+    [Fact]
+    public void Clone_copies_every_settable_property()
+    {
+        var original = new AppSettings();
+        var properties = typeof(AppSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.CanWrite)
+            .ToList();
+
+        foreach (var property in properties)
+        {
+            property.SetValue(original, DistinctValueFor(property.PropertyType));
+        }
+
+        var clone = original.Clone();
+
+        foreach (var property in properties)
+        {
+            Assert.Equal(property.GetValue(original), property.GetValue(clone));
+        }
+    }
+
+    private static object DistinctValueFor(Type type) => type switch
+    {
+        _ when type == typeof(string) => "distinct-value",
+        _ when type == typeof(int) => 7,
+        _ when type == typeof(bool) => true,
+        _ when type == typeof(double?) => 12.5,
+        _ when type == typeof(DateTimeOffset?) => new DateTimeOffset(2026, 8, 25, 9, 30, 0, TimeSpan.Zero),
+        _ => throw new NotSupportedException($"Add a distinct value for {type} in this test."),
+    };
 }

@@ -11,7 +11,14 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 ## Unreleased
 
 - The window shows which version is running, under the folder paths in the
-  bottom left.
+  bottom left. An alpha build also names its commit; a beta or a stable
+  release is already named exactly by its version, so it does not.
+- The window opens at a size that fits the screen instead of a fixed small
+  one, and remembers a size or position dragged to, so it comes back the same
+  way next time.
+- The app says what changed in the version you are running, the first time
+  you run it. It could record having said so but never actually say it; now
+  it does both.
 
 ## 1.1.0-beta.1 - 2026-08-26
 

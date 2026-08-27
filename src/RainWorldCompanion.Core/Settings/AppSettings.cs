@@ -44,6 +44,20 @@ public sealed class AppSettings
     public string LastSeenChangelogVersion { get; set; } = "";
 
     /// <summary>
+    /// Null means never saved, which is not the same as a saved 0: a null leaves the window to
+    /// centre itself on the natural default size, a 0 would pin it to the screen edge.
+    /// </summary>
+    public double? WindowWidth { get; set; }
+
+    public double? WindowHeight { get; set; }
+
+    public double? WindowLeft { get; set; }
+
+    public double? WindowTop { get; set; }
+
+    public bool WindowMaximized { get; set; }
+
+    /// <summary>
     /// Every field belongs here. A new one left out is not a compile error: it silently reverts to
     /// its default whenever anything saves a modified copy.
     /// </summary>
@@ -58,6 +72,11 @@ public sealed class AppSettings
         AutoCheckUpdates = AutoCheckUpdates,
         LastUpdateCheckUtc = LastUpdateCheckUtc,
         LastSeenChangelogVersion = LastSeenChangelogVersion,
+        WindowWidth = WindowWidth,
+        WindowHeight = WindowHeight,
+        WindowLeft = WindowLeft,
+        WindowTop = WindowTop,
+        WindowMaximized = WindowMaximized,
     };
 
     public static string DefaultBackupRootPath => Path.Combine(

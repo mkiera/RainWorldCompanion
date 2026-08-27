@@ -68,6 +68,13 @@ public sealed class SettingsStore
         return settings;
     }
 
+    /// <summary>
+    /// The window geometry alone, read straight off disk with no path resolution, so it is safe to
+    /// call on the UI thread before the window is shown. <see cref="Load"/> instead runs
+    /// <see cref="SavePathResolver.FindSavePath"/> on a first-run file, which can stall.
+    /// </summary>
+    public AppSettings? TryReadWindowGeometry() => ReadFile();
+
     public void Save(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -144,6 +151,12 @@ public sealed class SettingsStore
         settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
         settings.LastUpdateCheckUtc = ReadTimestamp(root, "lastUpdateCheckUtc");
+        settings.LastSeenChangelogVersion = ReadString(root, "lastSeenChangelogVersion", settings.LastSeenChangelogVersion);
+        settings.WindowWidth = ReadDoubleOrNull(root, "windowWidth");
+        settings.WindowHeight = ReadDoubleOrNull(root, "windowHeight");
+        settings.WindowLeft = ReadDoubleOrNull(root, "windowLeft");
+        settings.WindowTop = ReadDoubleOrNull(root, "windowTop");
+        settings.WindowMaximized = ReadBool(root, "windowMaximized", settings.WindowMaximized);
 
         return settings;
     }
@@ -193,6 +206,13 @@ public sealed class SettingsStore
                 _ => fallback,
             }
             : fallback;
+
+    private static double? ReadDoubleOrNull(JsonElement root, string name)
+        => TryFind(root, name, out var value)
+            && value.ValueKind == JsonValueKind.Number
+            && value.TryGetDouble(out var number)
+            ? number
+            : null;
 
     private static DateTimeOffset? ReadTimestamp(JsonElement root, string name)
         => TryFind(root, name, out var value)
