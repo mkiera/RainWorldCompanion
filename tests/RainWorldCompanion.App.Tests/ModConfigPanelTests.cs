@@ -133,6 +133,23 @@ public class ModConfigPanelTests
         Assert.False(section.HasEmptyText);
     }
 
+    /// <summary>
+    /// A backup taken long before this app tracked mod settings still shows what it holds, because
+    /// ModConfigs has been in backup scope since the first version: nothing was added to it, this is
+    /// just the first time anything read what was always there.
+    /// </summary>
+    [Fact]
+    public void A_backup_older_than_the_feature_still_shows_what_it_holds()
+    {
+        var section = ModConfigSectionViewModel.ForBackup(new[]
+        {
+            Backed("sav"),
+            Backed(@"ModConfigs\devourment.txt"),
+        });
+
+        Assert.Equal("1 mod", section.CountText);
+    }
+
     [Fact]
     public void A_backup_with_no_manifest_says_it_recorded_nothing()
     {
