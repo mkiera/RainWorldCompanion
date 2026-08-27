@@ -131,7 +131,7 @@ public class ModListPanelTests
         ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("off")), now);
 
         Assert.False(new ModListDiffViewModel(diff).CanFixMods);
-        Assert.True(new ModListDiffViewModel(diff) { FixMods = () => { } }.CanFixMods);
+        Assert.True(new ModListDiffViewModel(diff) { FixMods = () => null }.CanFixMods);
     }
 
     [Fact]
@@ -139,7 +139,7 @@ public class ModListPanelTests
     {
         ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("a")), Current(null, Mod("a")));
 
-        Assert.False(new ModListDiffViewModel(diff) { FixMods = () => { } }.CanFixMods);
+        Assert.False(new ModListDiffViewModel(diff) { FixMods = () => null }.CanFixMods);
     }
 
     [Fact]
@@ -303,5 +303,46 @@ public class ModListPanelTests
 
         Assert.Contains("This backup was taken before", backup.Mods.EmptyText);
         Assert.Contains("No mod list was recorded when this save was stored", entry.Mods.EmptyText);
+    }
+
+    [Fact]
+    public void A_difference_has_to_be_acknowledged_before_the_save_can_be_written()
+    {
+        var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
+        var view = new ModListDiffViewModel(ModListDiff.Compare(Snapshot(null, Mod("off")), now));
+
+        Assert.True(view.NeedsAcknowledgement);
+        Assert.False(view.Settled);
+
+        view.Acknowledged = true;
+
+        Assert.True(view.Settled);
+    }
+
+    [Fact]
+    public void A_machine_that_matches_needs_no_acknowledgement()
+    {
+        var view = new ModListDiffViewModel(ModListDiff.Compare(Snapshot(null, Mod("a")), Current(null, Mod("a"))));
+
+        Assert.False(view.NeedsAcknowledgement);
+        Assert.True(view.Settled);
+    }
+
+    [Fact]
+    public void Turning_the_mod_on_and_reloading_drops_the_acknowledgement_and_the_button()
+    {
+        var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
+        var view = new ModListDiffViewModel(ModListDiff.Compare(Snapshot(null, Mod("off")), now))
+        {
+            FixMods = () => null,
+        };
+
+        Assert.True(view.CanFixMods);
+
+        view.Reload(ModListDiff.Compare(Snapshot(null, Mod("off")), Current(null, Mod("off"))));
+
+        Assert.False(view.NeedsAcknowledgement);
+        Assert.True(view.Settled);
+        Assert.False(view.CanFixMods);
     }
 }

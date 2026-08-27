@@ -1,5 +1,7 @@
 using System.Globalization;
 
+using CommunityToolkit.Mvvm.ComponentModel;
+
 using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.ViewModels;
@@ -11,10 +13,10 @@ public sealed record ModDiffRowViewModel(string Name, string DetailText, string 
 }
 
 /// <summary>
-/// Nothing here blocks anything, and nothing here writes: this says what moved. The Mods window
-/// is where a mod is turned on.
+/// Nothing here writes: this says what moved, and holds the tick that says the difference is
+/// understood. The Mods window is where a mod is actually turned on.
 /// </summary>
-public sealed class ModListDiffViewModel
+public sealed partial class ModListDiffViewModel : ObservableObject
 {
     /// <summary>
     /// The https address rather than a steam:// one, because the page opens on any machine while
@@ -26,7 +28,7 @@ public sealed class ModListDiffViewModel
 
     // Set by whoever builds the dialog. Null where there is nothing to open, which keeps the
     // button off rather than drawing it dead.
-    public Action? FixMods { get; init; }
+    public Func<ModListDiff?>? FixMods { get; init; }
 
     public bool CanFixMods => FixMods is not null && (TurnedOff.Count > 0 || Missing.Count > 0);
 
@@ -34,20 +36,51 @@ public sealed class ModListDiffViewModel
         ? $"Turn on {TurnedOff.Count}"
         : "Open the Mods window";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Settled))]
+    private bool acknowledged;
+
+    // True when the machine differs from the recording in a way somebody should say they know
+    // about before a save is written over.
+    public bool NeedsAcknowledgement { get; private set; }
+
+    public bool Settled => !NeedsAcknowledgement || Acknowledged;
+
+    public string AcknowledgeText => "Load it anyway. I know the mods do not match.";
+
     /// <param name="diff">Null when there was no way to look at all.</param>
     /// <param name="fromABackup">Changes only the wording for a snapshot that recorded nothing.</param>
     public ModListDiffViewModel(ModListDiff? diff, bool fromABackup = false)
     {
+        _fromABackup = fromABackup;
+        Reload(diff);
+    }
+
+    private readonly bool _fromABackup;
+
+    // Called again after the Mods window has been through, so the dialog that opened it shows what
+    // is true now rather than what was true when it opened.
+    public void Reload(ModListDiff? diff)
+    {
         if (diff is null)
         {
+            ShowSection = false;
+            NeedsAcknowledgement = false;
             HeadlineText = "";
             GroupNotes = Array.Empty<string>();
             Missing = TurnedOff = Changed = Extra = NoRows;
             MissingHeader = TurnedOffHeader = ChangedHeader = ExtraHeader = "";
+            OnPropertyChanged(string.Empty);
             return;
         }
 
         ShowSection = true;
+        NeedsAcknowledgement = diff.Compared && !diff.Matches;
+
+        if (!NeedsAcknowledgement)
+        {
+            Acknowledged = false;
+        }
 
         Missing = diff.Missing
             .Select(mod => new ModDiffRowViewModel(
@@ -88,34 +121,35 @@ public sealed class ModListDiffViewModel
         ChangedHeader = $"At a different version ({Changed.Count})";
         ExtraHeader = $"On now, but not recorded ({Extra.Count})";
 
-        HeadlineText = Headline(diff, fromABackup);
+        HeadlineText = Headline(diff, _fromABackup);
         GroupNotes = Notes(diff);
+        OnPropertyChanged(string.Empty);
     }
 
     /// <summary>False when nothing was compared and there is nothing worth drawing.</summary>
-    public bool ShowSection { get; }
+    public bool ShowSection { get; private set; }
 
-    public string HeadlineText { get; }
+    public string HeadlineText { get; private set; }
 
-    public IReadOnlyList<string> GroupNotes { get; }
+    public IReadOnlyList<string> GroupNotes { get; private set; }
 
     public bool HasNotes => GroupNotes.Count > 0;
 
-    public IReadOnlyList<ModDiffRowViewModel> Missing { get; }
+    public IReadOnlyList<ModDiffRowViewModel> Missing { get; private set; }
 
-    public IReadOnlyList<ModDiffRowViewModel> TurnedOff { get; }
+    public IReadOnlyList<ModDiffRowViewModel> TurnedOff { get; private set; }
 
-    public IReadOnlyList<ModDiffRowViewModel> Changed { get; }
+    public IReadOnlyList<ModDiffRowViewModel> Changed { get; private set; }
 
-    public IReadOnlyList<ModDiffRowViewModel> Extra { get; }
+    public IReadOnlyList<ModDiffRowViewModel> Extra { get; private set; }
 
-    public string MissingHeader { get; }
+    public string MissingHeader { get; private set; }
 
-    public string TurnedOffHeader { get; }
+    public string TurnedOffHeader { get; private set; }
 
-    public string ChangedHeader { get; }
+    public string ChangedHeader { get; private set; }
 
-    public string ExtraHeader { get; }
+    public string ExtraHeader { get; private set; }
 
     public bool HasMissing => Missing.Count > 0;
 

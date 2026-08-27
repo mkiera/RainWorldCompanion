@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
@@ -51,7 +52,7 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         LibraryLoadPlan plan,
         Func<LibraryEntry, SaveSlotRef, LibraryLoadPlan> replan,
         bool includeOnline,
-        Action? fixMods = null)
+        Func<ModListDiff?>? fixMods = null)
     {
         _replan = replan;
         _plan = plan;
@@ -117,7 +118,7 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
 
     public SaveSlotRef ChosenTarget => _selectedTarget.Ref;
 
-    public bool CanLoad => _plan.CanLoad;
+    public bool CanLoad => _plan.CanLoad && ModDiff.Settled;
 
     public string BlockedReason => string.Join("\n", _plan.Problems);
 
@@ -273,9 +274,10 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
     /// carries a different record. The target slot does not change it: the mods are the
     /// machine's, not the slot's.
     /// </summary>
-    public ModListDiffViewModel ModDiff => new(_plan.Mods) { FixMods = _fixMods };
+    public ModListDiffViewModel ModDiff => _modDiff;
 
-    private readonly Action? _fixMods;
+    private readonly Func<ModListDiff?>? _fixMods;
+    private ModListDiffViewModel _modDiff = new(null);
 
     private void Replan()
     {
@@ -288,6 +290,9 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         }
 
         _plan = cached;
+
+        _modDiff = new ModListDiffViewModel(_plan.Mods) { FixMods = _fixMods };
+        _modDiff.PropertyChanged += (_, _) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanLoad)));
 
         foreach (var name in new[]
                  {

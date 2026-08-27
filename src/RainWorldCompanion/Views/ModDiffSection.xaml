@@ -56,6 +56,12 @@
                     Visibility="{Binding CanFixMods, Converter={StaticResource BoolToVis}}"
                     AutomationProperties.HelpText="Open the Mods window on this save's mod list" />
 
+            <CheckBox Margin="0,8,0,0"
+                      IsChecked="{Binding Acknowledged, Mode=TwoWay}"
+                      Content="{Binding AcknowledgeText}"
+                      Visibility="{Binding NeedsAcknowledgement, Converter={StaticResource BoolToVis}}"
+                      AutomationProperties.Name="{Binding AcknowledgeText}" />
+
             <ItemsControl ItemsSource="{Binding GroupNotes}" ItemTemplate="{StaticResource NoteLine}"
                           Margin="0,6,0,0"
                           Visibility="{Binding HasNotes, Converter={StaticResource BoolToVis}}" />

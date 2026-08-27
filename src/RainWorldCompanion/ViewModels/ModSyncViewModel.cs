@@ -125,7 +125,11 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
     public bool HasRestorePoint => RestorePointText.Length > 0;
 
-    public bool CanLaunch => AppliedSomething;
+    public bool CanLaunch => AppliedSomething && OfferLaunch;
+
+    // False when a restore or a load is waiting behind this window. Starting the game there would
+    // play the save that is about to be replaced.
+    public bool OfferLaunch { get; init; } = true;
 
     public bool HasTurnOn => TurnOn.Count > 0;
 

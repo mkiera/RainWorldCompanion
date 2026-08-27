@@ -153,7 +153,8 @@
                    Text="A safety snapshot of the current save folder is taken first, so this restore can be undone by restoring that snapshot." />
 
         <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
-            <Button Content="Restore" Style="{StaticResource Button.Danger}" Margin="0,0,8,0" Click="OnRestore" />
+            <Button Content="Restore" Style="{StaticResource Button.Danger}" Margin="0,0,8,0" Click="OnRestore"
+                    IsEnabled="{Binding ModDiff.Settled}" />
             <Button x:Name="CancelButton" Content="Cancel" IsDefault="True" IsCancel="True" />
         </StackPanel>
     </Grid>

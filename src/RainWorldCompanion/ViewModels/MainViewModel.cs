@@ -2464,13 +2464,21 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     // Closes the window that asked, because the mod list it is showing stops being true the moment
     // this is acted on.
-    private void FixMods(ModListSnapshot? recorded, string name, Window? asking)
+    // Shown over the dialog that asked rather than instead of it, so pressing Restore is still the
+    // next thing that happens. The fresh diff goes back to that dialog.
+    private ModListDiff? FixMods(ModListSnapshot? recorded, string name, Window? asking)
     {
-        asking?.Close();
+        if (_modSync is not { } service)
+        {
+            return null;
+        }
 
-        // Queued rather than opened here, so the modal loop has unwound first. Opened inside it,
-        // the window comes up behind the main one.
-        Application.Current?.Dispatcher.BeginInvoke(() => ShowModSyncWindow()?.Match(recorded, name));
+        var view = new ModSyncViewModel(service) { OfferLaunch = false };
+        var window = new ModSyncDialog(view) { Owner = asking ?? OwnerWindow };
+        view.Match(recorded, name);
+        window.ShowDialog();
+
+        return DiffAgainstNow(recorded);
     }
 
     private void MatchSelectedMods()
