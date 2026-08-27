@@ -3,6 +3,7 @@
 using System.Globalization;
 
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.System;
@@ -237,7 +238,8 @@ public sealed class SaveSlotWriter
         SaveSlotRef target,
         IProgress<string>? progress,
         CancellationToken ct,
-        IReadOnlyList<ExtraFileWrite>? extras)
+        IReadOnlyList<ExtraFileWrite>? extras,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(target);
@@ -306,7 +308,8 @@ public sealed class SaveSlotWriter
                 SafetyLabel: $"Before editing {side.FileName}",
                 SafetyNote: _ => BuildSafetyNote(side.FileName, plan),
                 TargetExpectedSha256: plan.ExpectedFileSha256,
-                Extras: extras);
+                Extras: extras,
+                SafetyMods: modsBefore);
 
             SlotWriteOutcome outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
 
@@ -350,13 +353,14 @@ public sealed class SaveSlotWriter
         CampaignMovePlan plan,
         IProgress<string>? progress,
         CancellationToken ct,
-        IReadOnlyList<ExtraFileWrite>? extras)
+        IReadOnlyList<ExtraFileWrite>? extras,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
         return plan.Problems.Count > 0
             ? SaveWriteResult.Refused(plan.TargetFileName, plan.Problems.ToArray())
-            : Write(plan.Write, plan.Target, progress, ct, extras);
+            : Write(plan.Write, plan.Target, progress, ct, extras, modsBefore);
     }
 
     public CampaignSlice? ReadCampaign(SaveSlotRef source, string slugcatId)

@@ -1,6 +1,7 @@
 // RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.System;
@@ -126,7 +127,8 @@ internal sealed record SlotWriteJob(
     string SafetyLabel,
     Func<bool, string> SafetyNote,
     string? TargetExpectedSha256 = null,
-    IReadOnlyList<ExtraFileWrite>? Extras = null);
+    IReadOnlyList<ExtraFileWrite>? Extras = null,
+    ModListSnapshot? SafetyMods = null);
 
 /// <summary>
 /// One more file to write into the save folder beside the slot, named the way a manifest names it:
@@ -383,7 +385,13 @@ public sealed class SlotCopyService
         try
         {
             progress?.Report("Saving a copy of the current saves first");
-            safety = _backups.CreateBackup(job.SafetyLabel, job.SafetyNote(targetExistedBefore), BackupKind.PreRestoreSafety, progress, ct);
+            safety = _backups.CreateBackup(
+                job.SafetyLabel,
+                job.SafetyNote(targetExistedBefore),
+                BackupKind.PreRestoreSafety,
+                progress,
+                ct,
+                job.SafetyMods);
         }
         catch (GameRunningException)
         {

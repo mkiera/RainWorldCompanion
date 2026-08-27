@@ -1099,6 +1099,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // The dialog asks Core what each slot would do with the campaign, which means reading those
         // slots. A slot that will not read at all is a reason to say so rather than to open a window
         // that cannot describe anything.
+        ModListSnapshot? modsBefore = ModsBeforeThis();
+
         SendCampaignDialog? sendDialog = null;
         SendCampaignDialog dialog;
         try
@@ -1140,7 +1142,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             var extras = SettingsToWrite(dialog.ChosenSettings);
 
             arrival = await Task.Run(() =>
-                writer.Write(writer.PlanPutCampaign(target, slice), progress, CancellationToken.None, extras));
+                writer.Write(writer.PlanPutCampaign(target, slice), progress, CancellationToken.None, extras, modsBefore));
 
             if (arrival.Success && takeItOut && source.LiveSlot is { } from)
             {
@@ -1433,6 +1435,14 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             : Array.Empty<ExtraFileWrite>();
     }
 
+    /// <summary>
+    /// The mods on right now, read before a dialog opens so the safety copy that write takes can
+    /// record them. The Mods window can be opened from inside that dialog and change the machine
+    /// before the write happens, and a copy that recorded the new list would describe the state it
+    /// exists to undo rather than the one it came from.
+    /// </summary>
+    private ModListSnapshot? ModsBeforeThis() => _currentMods?.Enabled;
+
     /// <summary>Null before the first refresh, which is the "no way to look" the plans mean.</summary>
     private ModListDiff? DiffAgainstNow(ModListSnapshot? recorded)
         => _currentMods is null ? null : ModListDiff.Compare(recorded, _currentMods);
@@ -1583,6 +1593,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         // A plan that cannot run still opens the dialog, for the reason Copy Slot does: the pair
         // here is only where the pickers start.
+        ModListSnapshot? modsBefore = ModsBeforeThis();
+
         LoadSaveDialog? dialog = null;
         dialog = new LoadSaveDialog(
             entries,
@@ -1605,7 +1617,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         try
         {
             var settings = dialog.ChosenSettings;
-            result = await Task.Run(() => library.LoadAny(chosen, chosenTarget, settings, progress, CancellationToken.None));
+            result = await Task.Run(
+                () => library.LoadAny(chosen, chosenTarget, settings, progress, CancellationToken.None, modsBefore));
         }
         catch (Exception ex)
         {
@@ -2179,6 +2192,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
+        ModListSnapshot? modsBefore = ModsBeforeThis();
+
         RestoreConfirmDialog? dialog = null;
         dialog = new RestoreConfirmDialog(
             plan!,
@@ -2195,7 +2210,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginBusy("Restoring backup", "Taking a safety snapshot");
         try
         {
-            result = await Task.Run(() => service.RestoreBackup(item.Snapshot, progress, CancellationToken.None));
+            result = await Task.Run(
+                () => service.RestoreBackup(item.Snapshot, progress, CancellationToken.None, modsBefore));
         }
         catch (Exception ex)
         {

@@ -216,12 +216,15 @@ public sealed class SaveLibrary
     /// <param name="adoptSettingsFor">The mods whose settings to bring across, by id. Empty takes
     /// none, which is what a dialog opens on: somebody else's settings are not what a player asked
     /// for by asking to load a save.</param>
+    /// <param name="modsBefore">The mods that were on before the operation began. See
+    /// <see cref="BackupService.CreateBackup"/>.</param>
     public LibraryLoadResult LoadEntry(
         LibraryEntry entry,
         SaveSlotRef target,
         IReadOnlyCollection<string> adoptSettingsFor,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
@@ -256,7 +259,8 @@ public sealed class SaveLibrary
             SafetyNote: targetExists => targetExists
                 ? $"Automatic copy taken before the library save {quotedName} was loaded over {plan.Target.FileName} ({plan.Target.Describe()})."
                 : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.",
-            Extras: SettingsToWrite(entry, adoptSettingsFor));
+            Extras: SettingsToWrite(entry, adoptSettingsFor),
+            SafetyMods: modsBefore);
 
         var outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
 
@@ -623,7 +627,8 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IReadOnlyCollection<string> adoptSettingsFor,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
@@ -643,7 +648,8 @@ public sealed class SaveLibrary
 
         ct.ThrowIfCancellationRequested();
 
-        var result = _backups.SlotWriter.Write(move, progress, ct, SettingsToWrite(entry, adoptSettingsFor));
+        var result = _backups.SlotWriter.Write(
+            move, progress, ct, SettingsToWrite(entry, adoptSettingsFor), modsBefore);
         var warnings = move.Warnings.Concat(result.Warnings).ToArray();
 
         if (result.Success)
@@ -776,13 +782,14 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IReadOnlyCollection<string> adoptSettingsFor,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
 
         return entry.IsCampaign
-            ? LoadCampaignOntoSlot(entry, target, adoptSettingsFor, progress, ct)
-            : LoadEntry(entry, target, adoptSettingsFor, progress, ct);
+            ? LoadCampaignOntoSlot(entry, target, adoptSettingsFor, progress, ct, modsBefore)
+            : LoadEntry(entry, target, adoptSettingsFor, progress, ct, modsBefore);
     }
 
     /// <summary>The campaign an entry holds, or null when it holds a whole slot or will not read.</summary>

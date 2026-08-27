@@ -239,12 +239,19 @@ public sealed class BackupService
     /// Copies every in-scope file into a new snapshot folder. The manifest is written last, so a
     /// folder without one is a snapshot that did not finish, and a failure leaves the folder there.
     /// </summary>
+    /// <param name="mods">
+    /// The list to record instead of the one on the machine right now. A safety copy passes the
+    /// list from before the operation began: turning mods on to match a save happens between the
+    /// dialog opening and the write, and a snapshot that recorded the new list would describe the
+    /// state it exists to undo rather than the one it came from.
+    /// </param>
     public BackupSnapshot CreateBackup(
         string? label,
         string? note,
         BackupKind kind = BackupKind.Manual,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? mods = null)
     {
         EnsureGameNotRunning();
         ct.ThrowIfCancellationRequested();
@@ -265,7 +272,7 @@ public sealed class BackupService
             Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             Kind = kind,
-            Mods = TryReadMods(),
+            Mods = mods ?? TryReadMods(),
         };
 
         foreach (var skipped in scan.SkippedLinks)
@@ -567,10 +574,13 @@ public sealed class BackupService
     /// overwrite, remove in-scope files the snapshot does not hold, re-hash what landed. The
     /// deletion step runs only when every file in the manifest went back.
     /// </summary>
+    /// <param name="modsBefore">The mods that were on before the operation began. See
+    /// <see cref="CreateBackup"/>.</param>
     public RestoreResult RestoreBackup(
         BackupSnapshot snapshot,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -613,7 +623,7 @@ public sealed class BackupService
                 ? $"Automatic copy taken before restoring backup {snapshot.Id}."
                 : $"Automatic copy taken before restoring backup {snapshot.Id} (\"{manifest.Label}\").";
 
-            safety = CreateBackup(safetyLabel, safetyNote, BackupKind.PreRestoreSafety, progress, ct);
+            safety = CreateBackup(safetyLabel, safetyNote, BackupKind.PreRestoreSafety, progress, ct, modsBefore);
         }
         catch (GameRunningException)
         {
