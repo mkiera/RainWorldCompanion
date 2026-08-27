@@ -951,7 +951,12 @@ public sealed class SaveLibrary
                 $"\"{entry.Name}\" failed its checksum check, so it was not exported: " + string.Join("; ", verification.Problems));
         }
 
-        SaveBundle.Write(Path.GetFullPath(destinationPath), manifest, entry.ContentPath, entry.ContentFileName);
+        SaveBundle.Write(
+            Path.GetFullPath(destinationPath),
+            manifest,
+            entry.ContentPath,
+            entry.ContentFileName,
+            entry.ConfigsPath);
     }
 
     /// <summary>An import never writes into the save folder: it lands in the library and is loaded
@@ -986,7 +991,7 @@ public sealed class SaveLibrary
         {
             var manifest = kind switch
             {
-                BundleKind.Bundle => ImportBundle(full, directory),
+                BundleKind.Bundle => ImportBundle(full, directory, warnings),
                 BundleKind.BareCampaign => ImportBareCampaign(full, directory, warnings),
                 _ => ImportBareContainer(full, directory, warnings),
             };
@@ -1024,9 +1029,9 @@ public sealed class SaveLibrary
         }
     }
 
-    private static LibraryManifest ImportBundle(string sourcePath, string directory)
+    private static LibraryManifest ImportBundle(string sourcePath, string directory, List<string> warnings)
     {
-        var manifest = SaveBundle.Extract(sourcePath, directory);
+        var manifest = SaveBundle.Extract(sourcePath, directory, warnings);
 
         if (string.IsNullOrWhiteSpace(manifest.Name))
         {

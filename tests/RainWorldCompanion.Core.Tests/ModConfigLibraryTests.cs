@@ -250,25 +250,7 @@ public class ModConfigLibraryTests
         Assert.Contains("generation = 1", File.ReadAllText(Path.Combine(updated.PreviousConfigsPath, "devourment.txt")));
     }
 
-    // ---- exporting and importing ----
-
-    /// <summary>The bundle does not carry the settings files yet, so it must not carry a record of
-    /// them either: an entry claiming settings it does not hold is worse than one claiming none.</summary>
-    [Fact]
-    public void An_import_records_no_settings_while_a_bundle_carries_none()
-    {
-        using var source = new LibraryWorld();
-        using var elsewhere = new LibraryWorld();
-
-        LibraryEntry stored = source.Library.StoreSlot(Slot1, "a save", null);
-        string file = Path.Combine(source.LibraryRoot.Path, "carried.rwsave");
-        source.Library.ExportEntry(stored, file);
-
-        LibraryEntry imported = elsewhere.Library.ImportFile(file).Entry!;
-
-        Assert.Null(imported.Manifest!.Configs);
-        Assert.Null(imported.Manifest.PreviousConfigs);
-    }
+    // ---- importing ----
 
     [Fact]
     public void A_bare_save_file_imports_with_nothing_recorded()
