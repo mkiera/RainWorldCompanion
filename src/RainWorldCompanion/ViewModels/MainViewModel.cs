@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -2447,6 +2447,29 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private async Task OpenSettingsAsync() => await ShowSettingsAsync(null);
 
     private bool CanOpenSettings() => !IsBusy;
+
+    /// <summary>
+    /// Reading the notes counts as having seen them, so closing the window puts the banner away
+    /// the same way Got it does.
+    /// </summary>
+    [RelayCommand]
+    private void ShowWhatsNew()
+    {
+        if (Updates is not { HasWhatsNew: true } updates)
+        {
+            return;
+        }
+
+        var window = new WhatsNewDialog(updates.WhatsNewTitle, updates.WhatsNewNotes);
+
+        if (OwnerWindow is { } owner && !ReferenceEquals(owner, window))
+        {
+            window.Owner = owner;
+        }
+
+        window.ShowDialog();
+        updates.DismissWhatsNewCommand.Execute(null);
+    }
 
     /// <summary>
     /// Shown rather than shown as a dialog, so a download carries on while the user goes back to

@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.Updates;
@@ -109,6 +109,7 @@ public sealed partial class UpdateViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWhatsNew))]
+    [NotifyPropertyChangedFor(nameof(WhatsNewSummary))]
     private string whatsNewNotes = "";
 
     [ObservableProperty]
@@ -118,6 +119,36 @@ public sealed partial class UpdateViewModel : ObservableObject
     public bool HasWhatsNew => WhatsNewNotes.Length != 0;
 
     public string WhatsNewTitle => $"What's new in {WhatsNewVersion}";
+
+    public string WhatsNewSummary => CountEntries(WhatsNewNotes) switch
+    {
+        0 => "Read what this version changed.",
+        1 => "One change.",
+        var many => $"{many} changes.",
+    };
+
+    /// <summary>
+    /// A release body is a markdown list, and one entry can wrap onto lines that carry no marker,
+    /// so only the marked lines count. A body written some other way counts nothing, which is what
+    /// the summary's first case is for.
+    /// </summary>
+    private static readonly string[] NoteLineBreaks = ["\r\n", "\n"];
+
+    private static int CountEntries(string notes)
+    {
+        var entries = 0;
+        foreach (var line in notes.Split(NoteLineBreaks, StringSplitOptions.None))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("- ", StringComparison.Ordinal)
+                || trimmed.StartsWith("* ", StringComparison.Ordinal))
+            {
+                entries++;
+            }
+        }
+
+        return entries;
+    }
 
     public bool HasOffer => Offer is not null;
 
