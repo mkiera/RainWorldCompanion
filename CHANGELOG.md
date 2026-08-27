@@ -10,6 +10,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+## 1.2.0-beta.3 - 2026-08-27
+
 - The what's new banner covers every version between the one you last ran and the one
   you are on now, so skipping a release no longer skips what it changed.
 
