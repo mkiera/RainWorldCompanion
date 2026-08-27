@@ -2,24 +2,11 @@
 // body would bind "System" to that namespace instead of the BCL root.
 namespace RainWorldCompanion.Core.Mods;
 
-public enum ModSyncAction
-{
-    TurnOn,
-
-    TurnOff,
-
-    Install,
-
-    Matches,
-}
-
 public sealed class ModSyncRow
 {
     public required string Id { get; init; }
 
     public required string Name { get; init; }
-
-    public required ModSyncAction Action { get; init; }
 
     public string? Version { get; init; }
 
@@ -31,9 +18,23 @@ public sealed class ModSyncRow
 
     public ModEntry? OnDisk { get; init; }
 
-    public bool Include { get; set; } = true;
+    // False for a mod a recording names that is nowhere on this machine. Nothing can turn one on,
+    // so Wanted stays where it starts.
+    public required bool Installed { get; init; }
 
-    public bool IsChange => Action is ModSyncAction.TurnOn or ModSyncAction.TurnOff;
+    public required bool IsOn { get; init; }
+
+    // True when the recording had this mod, which is what separates a mod the save wanted from one
+    // that happens to be lying around.
+    public bool Recorded { get; init; }
+
+    public bool Wanted { get; set; }
+
+    public bool Changes => Installed && Wanted != IsOn;
+
+    public bool TurningOn => Changes && Wanted;
+
+    public bool TurningOff => Changes && !Wanted;
 }
 
 public sealed record ModSyncOutcome(
@@ -44,146 +45,184 @@ public sealed record ModSyncOutcome(
 
 public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Diff)
 {
-    public IEnumerable<ModSyncRow> Changes => Rows.Where(row => row.IsChange);
+    public IEnumerable<ModSyncRow> Installed => Rows.Where(row => row.Installed);
 
-    public IEnumerable<ModSyncRow> Missing => Rows.Where(row => row.Action == ModSyncAction.Install);
+    public IEnumerable<ModSyncRow> NotInstalled => Rows.Where(row => !row.Installed);
 
-    public bool NothingToDo => !Changes.Any(row => row.Include);
+    public IEnumerable<ModSyncRow> Changing => Rows.Where(row => row.Changes);
 
+    public int OnCount => Rows.Count(row => row.Installed && row.Wanted);
+
+    public bool NothingToDo => !Changing.Any();
+
+    // Wanted starts where the recording puts it, or at what is on now when there is no recording,
+    // so opening the window and pressing Apply without touching anything writes nothing.
     public static ModSyncPlan Build(ModListSnapshot? recorded, CurrentMods current)
     {
         ArgumentNullException.ThrowIfNull(current);
 
         ModListDiff diff = ModListDiff.Compare(recorded, current);
 
-        var installed = new Dictionary<string, ModEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (ModEntry mod in current.Installed)
-        {
-            installed.TryAdd(mod.Id, mod);
-        }
-
-        var recordedOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (ModEntry mod in recorded?.Mods ?? new List<ModEntry>())
-        {
-            if (mod.LoadOrder is { } position)
-            {
-                recordedOrder.TryAdd(mod.Id, position);
-            }
-        }
-
-        var rows = new List<ModSyncRow>();
-
-        foreach (ModEntry mod in diff.TurnedOff)
-        {
-            installed.TryGetValue(mod.Id, out ModEntry? local);
-            rows.Add(Row(mod, ModSyncAction.TurnOn, local, recordedOrder));
-        }
-
-        foreach (ModEntry mod in diff.Missing)
-        {
-            rows.Add(Row(mod, ModSyncAction.Install, null, recordedOrder));
-        }
-
-        foreach (ModEntry mod in diff.Extra)
-        {
-            installed.TryGetValue(mod.Id, out ModEntry? local);
-            rows.Add(Row(mod, ModSyncAction.TurnOff, local ?? mod, recordedOrder));
-        }
-
-        // A version that moved is still a mod that is on and was recorded, so it sits with the rest
-        // of the matches and carries both versions for the row to say so.
-        var moved = diff.Changed.ToDictionary(change => change.Id, StringComparer.OrdinalIgnoreCase);
-
+        var enabled = new Dictionary<string, ModEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (ModEntry mod in current.Enabled.Mods)
         {
-            if (rows.Any(row => string.Equals(row.Id, mod.Id, StringComparison.OrdinalIgnoreCase)))
+            enabled.TryAdd(mod.Id, mod);
+        }
+
+        var wasRecorded = new Dictionary<string, ModEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (ModEntry mod in recorded?.Mods ?? new List<ModEntry>())
+        {
+            wasRecorded.TryAdd(mod.Id, mod);
+        }
+
+        bool matching = recorded is { ReadTheEnabledList: true };
+        var rows = new List<ModSyncRow>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (ModEntry mod in current.Installed)
+        {
+            if (!seen.Add(mod.Id))
             {
                 continue;
             }
 
-            moved.TryGetValue(mod.Id, out ModVersionChange? change);
-            installed.TryGetValue(mod.Id, out ModEntry? local);
+            bool isOn = enabled.ContainsKey(mod.Id);
+            wasRecorded.TryGetValue(mod.Id, out ModEntry? was);
 
             rows.Add(new ModSyncRow
             {
                 Id = mod.Id,
                 Name = Pick(mod.Name, mod.Id),
-                Action = ModSyncAction.Matches,
                 Version = mod.Version,
-                RecordedVersion = change?.Recorded,
-                WorkshopId = mod.WorkshopId ?? local?.WorkshopId,
-                OnDisk = local ?? mod,
+                RecordedVersion = was?.Version,
+                WorkshopId = mod.WorkshopId,
+                RecordedLoadOrder = was?.LoadOrder,
+                OnDisk = mod,
+                Installed = true,
+                IsOn = isOn,
+                Recorded = was is not null,
+                Wanted = matching ? was is not null : isOn,
             });
         }
 
-        return new ModSyncPlan(rows, diff);
+        // A mod the game has on that is nowhere on disk. It cannot be turned on, but it can be
+        // taken out of the list, so it is a row rather than a silent omission.
+        foreach (ModEntry mod in current.Enabled.Mods)
+        {
+            if (!seen.Add(mod.Id))
+            {
+                continue;
+            }
+
+            rows.Add(new ModSyncRow
+            {
+                Id = mod.Id,
+                Name = Pick(mod.Name, mod.Id),
+                Version = mod.Version,
+                WorkshopId = mod.WorkshopId,
+                Installed = false,
+                IsOn = true,
+                Recorded = wasRecorded.ContainsKey(mod.Id),
+                Wanted = false,
+            });
+        }
+
+        foreach (ModEntry mod in recorded?.Mods ?? new List<ModEntry>())
+        {
+            if (!seen.Add(mod.Id))
+            {
+                continue;
+            }
+
+            rows.Add(new ModSyncRow
+            {
+                Id = mod.Id,
+                Name = Pick(mod.Name, mod.Id),
+                RecordedVersion = mod.Version,
+                WorkshopId = mod.WorkshopId,
+                RecordedLoadOrder = mod.LoadOrder,
+                Installed = false,
+                IsOn = false,
+                Recorded = true,
+                Wanted = false,
+            });
+        }
+
+        return new ModSyncPlan(
+            rows.OrderBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            diff);
     }
 
     public ModSyncOutcome Resolve(CurrentMods current)
     {
         ArgumentNullException.ThrowIfNull(current);
 
-        var enabled = new List<string>(current.Enabled.Mods.Select(mod => mod.Id));
-        var seen = new HashSet<string>(enabled, StringComparer.OrdinalIgnoreCase);
+        var wanted = new HashSet<string>(
+            Rows.Where(row => row.Installed && row.Wanted).Select(row => row.Id),
+            StringComparer.OrdinalIgnoreCase);
+
+        var enabled = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // What is on now keeps its place, so the options file rewrites the lines that moved and no
+        // others. A mod nothing installed is dropped, because the game cannot load it anyway.
+        foreach (ModEntry mod in current.Enabled.Mods)
+        {
+            if (wanted.Contains(mod.Id) && seen.Add(mod.Id))
+            {
+                enabled.Add(mod.Id);
+            }
+        }
+
+        foreach (ModSyncRow row in Rows.Where(row => row.Installed && row.Wanted))
+        {
+            if (seen.Add(row.Id))
+            {
+                enabled.Add(row.Id);
+            }
+        }
+
         var loadOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var turnOn = new List<ModEntry>();
         var turnOff = new List<ModEntry>();
 
         foreach (ModSyncRow row in Rows)
         {
-            if (!row.Include)
+            if (row.TurningOn && row.OnDisk is { } coming)
             {
-                continue;
+                turnOn.Add(coming);
+
+                if (row.RecordedLoadOrder is { } position)
+                {
+                    loadOrder[row.Id] = position;
+                }
             }
-
-            switch (row.Action)
+            else if (row.TurningOff && row.OnDisk is { } going)
             {
-                case ModSyncAction.TurnOn when row.OnDisk is { } mod:
-                    if (seen.Add(row.Id))
-                    {
-                        enabled.Add(row.Id);
-                    }
-
-                    if (row.RecordedLoadOrder is { } position)
-                    {
-                        loadOrder[row.Id] = position;
-                    }
-
-                    turnOn.Add(mod);
-                    break;
-
-                case ModSyncAction.TurnOff:
-                    enabled.RemoveAll(id => string.Equals(id, row.Id, StringComparison.OrdinalIgnoreCase));
-                    seen.Remove(row.Id);
-
-                    if (row.OnDisk is { } off)
-                    {
-                        turnOff.Add(off);
-                    }
-
-                    break;
+                turnOff.Add(going);
             }
         }
 
         return new ModSyncOutcome(enabled, loadOrder, turnOn, turnOff);
     }
 
-    private static ModSyncRow Row(
-        ModEntry mod,
-        ModSyncAction action,
-        ModEntry? local,
-        IReadOnlyDictionary<string, int> recordedOrder)
-        => new()
+    public void WantEverythingOnNow()
+    {
+        foreach (ModSyncRow row in Rows)
         {
-            Id = mod.Id,
-            Name = Pick(local?.Name, mod.Name, mod.Id),
-            Action = action,
-            Version = local?.Version ?? mod.Version,
-            RecordedVersion = mod.Version,
-            WorkshopId = local?.WorkshopId ?? mod.WorkshopId,
-            RecordedLoadOrder = recordedOrder.TryGetValue(mod.Id, out int position) ? position : mod.LoadOrder,
-            OnDisk = local,
-        };
+            row.Wanted = row.IsOn;
+        }
+    }
+
+    public void WantWhatTheSaveHad()
+    {
+        foreach (ModSyncRow row in Rows)
+        {
+            row.Wanted = row.Recorded && row.Installed;
+        }
+    }
 
     private static string Pick(params string?[] candidates)
         => candidates.FirstOrDefault(text => !string.IsNullOrWhiteSpace(text)) ?? "";

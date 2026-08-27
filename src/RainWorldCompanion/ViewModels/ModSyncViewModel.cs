@@ -12,23 +12,41 @@ namespace RainWorldCompanion.ViewModels;
 public sealed partial class ModSyncRowViewModel : ObservableObject
 {
     private readonly ModSyncRow _row;
+    private readonly Action _changed;
 
-    public ModSyncRowViewModel(ModSyncRow row)
+    public ModSyncRowViewModel(ModSyncRow row, Action changed)
     {
         _row = row;
-        include = row.Include;
+        _changed = changed;
+        wanted = row.Wanted;
     }
 
     [ObservableProperty]
-    private bool include;
+    [NotifyPropertyChangedFor(nameof(StateText))]
+    [NotifyPropertyChangedFor(nameof(IsChanging))]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    private bool wanted;
 
     public string Name => _row.Name;
 
     public string Id => _row.Id;
 
-    public ModSyncAction Action => _row.Action;
+    public bool Installed => _row.Installed;
 
-    public bool CanChoose => _row.IsChange;
+    public bool IsOn => _row.IsOn;
+
+    public bool Recorded => _row.Recorded;
+
+    public string DetailText
+    {
+        get
+        {
+            string version = _row.Version is { Length: > 0 } text ? text : "";
+            string origin = _row.WorkshopId is { Length: > 0 } ? "workshop" : "local mod";
+
+            return version.Length > 0 ? $"{version}, {origin}" : origin;
+        }
+    }
 
     public string WorkshopUrl => _row.WorkshopId is { Length: > 0 } id && id.All(char.IsAsciiDigit)
         ? ModListDiffViewModel.WorkshopUrlPrefix + id
@@ -36,40 +54,43 @@ public sealed partial class ModSyncRowViewModel : ObservableObject
 
     public bool HasWorkshopPage => WorkshopUrl.Length > 0;
 
-    public string DetailText => _row.Action switch
+    public string StateText
     {
-        ModSyncAction.TurnOn => Join("Off right now", VersionPart(_row.Version)),
-        ModSyncAction.TurnOff => Join("On right now, and this save did not use it", VersionPart(_row.Version)),
-        ModSyncAction.Install => Join("Not on this machine", VersionPart(_row.RecordedVersion, "the save used ")),
-        _ => MatchDetail(),
-    };
-
-    public string AccessibleName => $"{Name}, {DetailText}";
-
-    private string MatchDetail()
-    {
-        if (_row.RecordedVersion is { Length: > 0 } was
-            && _row.Version is { Length: > 0 } now
-            && !string.Equals(was, now, StringComparison.OrdinalIgnoreCase))
+        get
         {
-            return $"On at {now}, and the save used {was}.";
-        }
+            if (!Installed)
+            {
+                return _row.RecordedVersion is { Length: > 0 } was
+                    ? $"not on this machine, the save used {was}"
+                    : "not on this machine";
+            }
 
-        return Join("On", VersionPart(_row.Version));
+            if (Wanted == IsOn)
+            {
+                return "";
+            }
+
+            return Wanted ? "will be turned on" : "will be turned off";
+        }
     }
 
-    partial void OnIncludeChanged(bool value) => _row.Include = value;
+    public bool IsChanging => Installed && Wanted != IsOn;
 
-    private static string VersionPart(string? version, string prefix = "version ")
-        => version is { Length: > 0 } text ? prefix + text : "";
+    public string AccessibleName
+        => $"{Name}, {(Wanted ? "on" : "off")}{(StateText.Length > 0 ? ", " + StateText : "")}";
 
-    private static string Join(string lead, string tail)
-        => tail.Length == 0 ? lead + "." : lead + ", " + tail + ".";
+    partial void OnWantedChanged(bool value)
+    {
+        _row.Wanted = value;
+        _changed();
+    }
 }
 
 public sealed partial class ModSyncViewModel : ObservableObject
 {
     public const string SteamRunUrl = "steam://rungameid/" + CurrentModsReader.SteamAppId;
+
+    private const string FreeText = "Turn mods on and off. Open a backup or a library save to match what it was played with.";
 
     private readonly ModSyncService _service;
     private ModSyncPlan? _plan;
@@ -81,22 +102,20 @@ public sealed partial class ModSyncViewModel : ObservableObject
         Refresh();
     }
 
-    public ObservableCollection<ModSyncRowViewModel> TurnOn { get; } = new();
+    public ObservableCollection<ModSyncRowViewModel> Mods { get; } = new();
 
-    public ObservableCollection<ModSyncRowViewModel> TurnOff { get; } = new();
-
-    public ObservableCollection<ModSyncRowViewModel> Install { get; } = new();
-
-    public ObservableCollection<ModSyncRowViewModel> Matching { get; } = new();
+    public ObservableCollection<ModSyncRowViewModel> Missing { get; } = new();
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestorePreviousCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MatchTheSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RevertChangesCommand))]
     private bool isBusy;
 
     [ObservableProperty]
-    private string sourceText = "Your mods as they are now.";
+    private string sourceText = FreeText;
 
     [ObservableProperty]
     private string headlineText = "";
@@ -131,27 +150,41 @@ public sealed partial class ModSyncViewModel : ObservableObject
     // play the save that is about to be replaced.
     public bool OfferLaunch { get; init; } = true;
 
-    public bool HasTurnOn => TurnOn.Count > 0;
+    public bool HasMissing => Missing.Count > 0;
 
-    public bool HasTurnOff => TurnOff.Count > 0;
+    public string MissingHeader => $"Not installed ({Missing.Count})";
 
-    public bool HasInstall => Install.Count > 0;
+    public string ModsHeader => $"Installed ({Mods.Count})";
 
-    public bool HasMatching => Matching.Count > 0;
+    public bool IsMatchingASave => _recorded is not null;
 
-    public string TurnOnHeader => $"Turn on ({TurnOn.Count})";
+    public string ChangeText
+    {
+        get
+        {
+            if (_plan is null)
+            {
+                return "";
+            }
 
-    public string TurnOffHeader => $"Turn off ({TurnOff.Count})";
+            int on = _plan.Rows.Count(row => row.TurningOn);
+            int off = _plan.Rows.Count(row => row.TurningOff);
 
-    public string InstallHeader => $"Install first ({Install.Count})";
-
-    public string MatchingHeader => $"Already matching ({Matching.Count})";
+            return (on, off) switch
+            {
+                (0, 0) => $"{_plan.OnCount} on. Nothing to apply.",
+                ( > 0, 0) => $"{_plan.OnCount} on once applied. Turning on {on}.",
+                (0, > 0) => $"{_plan.OnCount} on once applied. Turning off {off}.",
+                _ => $"{_plan.OnCount} on once applied. Turning on {on}, turning off {off}.",
+            };
+        }
+    }
 
     public void Match(ModListSnapshot? recorded, string? sourceName)
     {
         _recorded = recorded;
         SourceText = recorded is null
-            ? "Your mods as they are now."
+            ? FreeText
             : $"Matching the mods {sourceName ?? "that save"} was played with.";
 
         ResultText = "";
@@ -164,29 +197,20 @@ public sealed partial class ModSyncViewModel : ObservableObject
         _plan = _service.BuildPlan(_recorded);
         ProblemText = _service.WhyNotNow() ?? "";
 
-        TurnOn.Clear();
-        TurnOff.Clear();
-        Install.Clear();
-        Matching.Clear();
+        Mods.Clear();
+        Missing.Clear();
 
         foreach (ModSyncRow row in _plan.Rows)
         {
-            var view = new ModSyncRowViewModel(row);
+            var view = new ModSyncRowViewModel(row, RaiseChangeStates);
 
-            switch (row.Action)
+            if (row.Installed)
             {
-                case ModSyncAction.TurnOn:
-                    TurnOn.Add(view);
-                    break;
-                case ModSyncAction.TurnOff:
-                    TurnOff.Add(view);
-                    break;
-                case ModSyncAction.Install:
-                    Install.Add(view);
-                    break;
-                default:
-                    Matching.Add(view);
-                    break;
+                Mods.Add(view);
+            }
+            else
+            {
+                Missing.Add(view);
             }
         }
 
@@ -196,6 +220,24 @@ public sealed partial class ModSyncViewModel : ObservableObject
     }
 
     private bool CanRefresh() => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanMatchTheSave))]
+    private void MatchTheSave()
+    {
+        _plan?.WantWhatTheSaveHad();
+        PullWantedFromPlan();
+    }
+
+    private bool CanMatchTheSave() => !IsBusy && IsMatchingASave;
+
+    [RelayCommand(CanExecute = nameof(CanRevertChanges))]
+    private void RevertChanges()
+    {
+        _plan?.WantEverythingOnNow();
+        PullWantedFromPlan();
+    }
+
+    private bool CanRevertChanges() => !IsBusy && _plan is { NothingToDo: false };
 
     [RelayCommand(CanExecute = nameof(CanApply))]
     private void Apply()
@@ -238,11 +280,8 @@ public sealed partial class ModSyncViewModel : ObservableObject
         finally
         {
             IsBusy = false;
-
-            // Back to showing the machine rather than the save just stepped away from, because the
-            // list on screen is no longer the one that was applied.
             _recorded = null;
-            SourceText = "Your mods as they are now.";
+            SourceText = FreeText;
             Refresh();
         }
     }
@@ -250,6 +289,26 @@ public sealed partial class ModSyncViewModel : ObservableObject
     private bool CanRestorePrevious() => !IsBusy && !HasProblem && _service.ReadRestorePoint() is { UsableForRestore: true };
 
     public void ReportLinkProblem(string message) => ResultText = "That link could not be opened: " + message;
+
+    private void PullWantedFromPlan()
+    {
+        if (_plan is null)
+        {
+            return;
+        }
+
+        var wanted = _plan.Rows.ToDictionary(row => row.Id, row => row.Wanted, StringComparer.OrdinalIgnoreCase);
+
+        foreach (ModSyncRowViewModel row in Mods.Concat(Missing))
+        {
+            if (wanted.TryGetValue(row.Id, out bool value))
+            {
+                row.Wanted = value;
+            }
+        }
+
+        RaiseChangeStates();
+    }
 
     private void Report(ModSyncResult result)
     {
@@ -270,7 +329,7 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
         if (_recorded is null)
         {
-            return $"{Matching.Count + TurnOff.Count} mods are on. Open a backup or a library save to match what it was played with.";
+            return "Tick a mod to turn it on, clear it to turn it off, then press Apply.";
         }
 
         if (_plan.Diff.NothingWasRecorded)
@@ -283,15 +342,9 @@ public sealed partial class ModSyncViewModel : ObservableObject
             return "That save recorded that it could not read which mods were on, so there is nothing to match.";
         }
 
-        if (_plan.NothingToDo && Install.Count == 0)
-        {
-            return "This machine already has the mods that save was played with.";
-        }
-
-        int changes = TurnOn.Count + TurnOff.Count;
-        string missing = Install.Count == 0 ? "" : $" {Install.Count} would need installing first.";
-
-        return $"{changes} mods would change to match that save.{missing} Clear any you would rather leave alone.";
+        return _plan.NothingToDo
+            ? "This machine already has the mods that save was played with."
+            : "Ticked to match that save. Change any you would rather leave alone, then press Apply.";
     }
 
     private string BuildRestorePointText()
@@ -305,20 +358,24 @@ public sealed partial class ModSyncViewModel : ObservableObject
         return $"Your previous list, {count} mods, saved {point.TakenAt.LocalDateTime:d MMM HH:mm}.";
     }
 
+    private void RaiseChangeStates()
+    {
+        OnPropertyChanged(nameof(ChangeText));
+        ApplyCommand.NotifyCanExecuteChanged();
+        RevertChangesCommand.NotifyCanExecuteChanged();
+    }
+
     private void RaiseListStates()
     {
-        OnPropertyChanged(nameof(HasTurnOn));
-        OnPropertyChanged(nameof(HasTurnOff));
-        OnPropertyChanged(nameof(HasInstall));
-        OnPropertyChanged(nameof(HasMatching));
-        OnPropertyChanged(nameof(TurnOnHeader));
-        OnPropertyChanged(nameof(TurnOffHeader));
-        OnPropertyChanged(nameof(InstallHeader));
-        OnPropertyChanged(nameof(MatchingHeader));
+        OnPropertyChanged(nameof(HasMissing));
+        OnPropertyChanged(nameof(MissingHeader));
+        OnPropertyChanged(nameof(ModsHeader));
         OnPropertyChanged(nameof(HasProblem));
         OnPropertyChanged(nameof(HasResult));
+        OnPropertyChanged(nameof(IsMatchingASave));
 
-        ApplyCommand.NotifyCanExecuteChanged();
+        MatchTheSaveCommand.NotifyCanExecuteChanged();
         RestorePreviousCommand.NotifyCanExecuteChanged();
+        RaiseChangeStates();
     }
 }

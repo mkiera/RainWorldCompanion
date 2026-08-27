@@ -4,154 +4,201 @@ namespace RainWorldCompanion.Tests;
 
 public class ModSyncPlanTests
 {
+    private static CurrentMods Machine(IEnumerable<ModEntry> on, params ModEntry[] installed)
+        => new(ModLists.Snapshot(null, on.ToArray()), installed);
+
+    private static ModSyncRow Row(ModSyncPlan plan, string id)
+        => Assert.Single(plan.Rows.Where(row => row.Id == id));
+
     [Fact]
-    public void Build_sorts_each_mod_into_turn_on_install_turn_off_or_matches()
+    public void Every_installed_mod_gets_a_row_whether_it_is_on_or_off()
     {
-        ModEntry offRecorded = ModLists.Mod("off.recorded");
-        ModEntry missingRecorded = ModLists.Mod("missing.recorded");
-        ModEntry matches = ModLists.Mod("matches");
-        ModEntry extraNow = ModLists.Mod("extra.now");
+        ModEntry on = ModLists.Mod("on");
+        ModEntry off = ModLists.Mod("off");
 
-        ModListSnapshot recorded = ModLists.Snapshot(null, offRecorded, missingRecorded, matches);
-        var current = new CurrentMods(
-            ModLists.Snapshot(null, matches, extraNow),
-            new[] { offRecorded, matches });
+        ModSyncPlan plan = ModSyncPlan.Build(null, Machine(new[] { on }, on, off));
 
-        ModSyncPlan plan = ModSyncPlan.Build(recorded, current);
-
-        Assert.Equal(ModSyncAction.TurnOn, RowFor(plan, "off.recorded").Action);
-        Assert.Equal(ModSyncAction.Install, RowFor(plan, "missing.recorded").Action);
-        Assert.Equal(ModSyncAction.TurnOff, RowFor(plan, "extra.now").Action);
-        Assert.Equal(ModSyncAction.Matches, RowFor(plan, "matches").Action);
+        Assert.Equal(new[] { "off", "on" }, plan.Rows.Select(row => row.Id));
+        Assert.True(Row(plan, "on").IsOn);
+        Assert.False(Row(plan, "off").IsOn);
     }
 
     [Fact]
-    public void Resolve_with_every_row_included_produces_the_recorded_enabled_set()
+    public void With_no_save_to_match_the_ticks_start_where_the_machine_is()
     {
-        ModEntry a = ModLists.Mod("a");
-        ModEntry b = ModLists.Mod("b");
-        ModEntry extra = ModLists.Mod("extra");
+        ModEntry on = ModLists.Mod("on");
+        ModEntry off = ModLists.Mod("off");
 
-        ModListSnapshot recorded = ModLists.Snapshot(null, a, b);
-        var current = new CurrentMods(ModLists.Snapshot(null, b, extra), new[] { a, b });
+        ModSyncPlan plan = ModSyncPlan.Build(null, Machine(new[] { on }, on, off));
 
-        ModSyncPlan plan = ModSyncPlan.Build(recorded, current);
-        ModSyncOutcome outcome = plan.Resolve(current);
-
-        Assert.Equal(new[] { "a", "b" }, outcome.EnabledIds.OrderBy(id => id));
-    }
-
-    // The cosmetic-mod case: unticking a TurnOff row must leave the mod on.
-    [Fact]
-    public void Clearing_include_on_a_turn_off_row_leaves_that_mod_in_the_resolved_enabled_ids()
-    {
-        ModEntry cosmetic = ModLists.Mod("cosmetic");
-        var current = new CurrentMods(ModLists.Snapshot(null, cosmetic), Array.Empty<ModEntry>());
-
-        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null), current);
-        ModSyncRow row = RowFor(plan, "cosmetic");
-        Assert.Equal(ModSyncAction.TurnOff, row.Action);
-
-        row.Include = false;
-        ModSyncOutcome outcome = plan.Resolve(current);
-
-        Assert.Contains("cosmetic", outcome.EnabledIds);
+        Assert.True(Row(plan, "on").Wanted);
+        Assert.False(Row(plan, "off").Wanted);
+        Assert.True(plan.NothingToDo);
     }
 
     [Fact]
-    public void Clearing_include_on_a_turn_on_row_leaves_it_out()
+    public void Turning_an_off_mod_on_by_hand_puts_it_in_the_list_and_in_the_loader()
     {
-        ModEntry off = ModLists.Mod("off.mod");
-        var current = new CurrentMods(ModLists.Snapshot(null), new[] { off });
+        ModEntry on = ModLists.Mod("on");
+        ModEntry off = ModLists.Mod("off");
+        CurrentMods machine = Machine(new[] { on }, on, off);
 
-        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, off), current);
-        ModSyncRow row = RowFor(plan, "off.mod");
-        Assert.Equal(ModSyncAction.TurnOn, row.Action);
+        ModSyncPlan plan = ModSyncPlan.Build(null, machine);
+        Row(plan, "off").Wanted = true;
 
-        row.Include = false;
-        ModSyncOutcome outcome = plan.Resolve(current);
+        Assert.True(Row(plan, "off").TurningOn);
+        Assert.False(plan.NothingToDo);
 
-        Assert.DoesNotContain("off.mod", outcome.EnabledIds);
-    }
+        ModSyncOutcome outcome = plan.Resolve(machine);
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void An_install_row_never_reaches_turn_on_or_turn_off_in_the_outcome(bool included)
-    {
-        ModEntry missing = ModLists.Mod("missing.mod");
-        var current = new CurrentMods(ModLists.Snapshot(null), Array.Empty<ModEntry>());
-
-        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, missing), current);
-        ModSyncRow row = RowFor(plan, "missing.mod");
-        Assert.Equal(ModSyncAction.Install, row.Action);
-        row.Include = included;
-
-        ModSyncOutcome outcome = plan.Resolve(current);
-
-        Assert.Empty(outcome.TurnOn);
+        Assert.Equal(new[] { "on", "off" }, outcome.EnabledIds);
+        Assert.Equal(new[] { "off" }, outcome.TurnOn.Select(mod => mod.Id));
         Assert.Empty(outcome.TurnOff);
-        Assert.DoesNotContain("missing.mod", outcome.EnabledIds);
     }
 
     [Fact]
-    public void A_turn_on_row_carries_the_recorded_load_order_into_the_outcome()
+    public void Turning_an_on_mod_off_by_hand_takes_it_out_of_both()
     {
-        ModEntry recordedMod = ModLists.Mod("ordered.mod");
-        recordedMod.LoadOrder = 5;
-        ModEntry installedMod = ModLists.Mod("ordered.mod");
+        ModEntry first = ModLists.Mod("first");
+        ModEntry second = ModLists.Mod("second");
+        CurrentMods machine = Machine(new[] { first, second }, first, second);
 
-        var current = new CurrentMods(ModLists.Snapshot(null), new[] { installedMod });
-        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, recordedMod), current);
+        ModSyncPlan plan = ModSyncPlan.Build(null, machine);
+        Row(plan, "first").Wanted = false;
 
-        Assert.Equal(5, RowFor(plan, "ordered.mod").RecordedLoadOrder);
+        Assert.True(Row(plan, "first").TurningOff);
 
-        ModSyncOutcome outcome = plan.Resolve(current);
+        ModSyncOutcome outcome = plan.Resolve(machine);
 
-        Assert.Equal(5, outcome.LoadOrder["ordered.mod"]);
+        Assert.Equal(new[] { "second" }, outcome.EnabledIds);
+        Assert.Equal(new[] { "first" }, outcome.TurnOff.Select(mod => mod.Id));
+        Assert.Empty(outcome.TurnOn);
     }
 
     [Fact]
-    public void Nothing_to_do_is_true_when_every_change_row_is_unticked()
+    public void Matching_a_save_ticks_what_that_save_had()
     {
-        ModEntry off = ModLists.Mod("off.mod");
-        ModEntry extra = ModLists.Mod("extra.mod");
-        var current = new CurrentMods(ModLists.Snapshot(null, extra), new[] { off });
+        ModEntry wanted = ModLists.Mod("wanted");
+        ModEntry extra = ModLists.Mod("extra");
+        CurrentMods machine = Machine(new[] { extra }, wanted, extra);
 
-        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, off), current);
-        Assert.NotEmpty(plan.Changes);
+        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, wanted), machine);
 
-        foreach (ModSyncRow row in plan.Changes)
-        {
-            row.Include = false;
-        }
+        Assert.True(Row(plan, "wanted").Wanted);
+        Assert.False(Row(plan, "extra").Wanted);
+        Assert.False(plan.NothingToDo);
+
+        ModSyncOutcome outcome = plan.Resolve(machine);
+
+        Assert.Equal(new[] { "wanted" }, outcome.EnabledIds);
+        Assert.Equal(new[] { "wanted" }, outcome.TurnOn.Select(mod => mod.Id));
+        Assert.Equal(new[] { "extra" }, outcome.TurnOff.Select(mod => mod.Id));
+    }
+
+    [Fact]
+    public void A_mod_left_ticked_on_purpose_stays_on_through_a_match()
+    {
+        ModEntry wanted = ModLists.Mod("wanted");
+        ModEntry cosmetic = ModLists.Mod("cosmetic");
+        CurrentMods machine = Machine(new[] { cosmetic }, wanted, cosmetic);
+
+        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, wanted), machine);
+        Row(plan, "cosmetic").Wanted = true;
+
+        ModSyncOutcome outcome = plan.Resolve(machine);
+
+        Assert.Equal(new[] { "cosmetic", "wanted" }, outcome.EnabledIds);
+        Assert.Empty(outcome.TurnOff);
+    }
+
+    [Fact]
+    public void A_mod_the_save_wanted_that_is_nowhere_here_is_listed_and_never_written()
+    {
+        ModEntry here = ModLists.Mod("here");
+        ModEntry gone = ModLists.Mod("gone", workshopId: "12345");
+        CurrentMods machine = Machine(new[] { here }, here);
+
+        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, here, gone), machine);
+        ModSyncRow row = Row(plan, "gone");
+
+        Assert.False(row.Installed);
+        Assert.Equal("12345", row.WorkshopId);
+
+        row.Wanted = true;
+
+        Assert.False(row.Changes);
+        Assert.DoesNotContain("gone", plan.Resolve(machine).EnabledIds);
+    }
+
+    [Fact]
+    public void A_mod_the_game_has_on_that_is_not_on_disk_can_still_be_taken_out()
+    {
+        ModEntry real = ModLists.Mod("real");
+        var machine = new CurrentMods(
+            ModLists.Snapshot(null, real, ModLists.Mod("ghost")),
+            new[] { real });
+
+        ModSyncPlan plan = ModSyncPlan.Build(null, machine);
+
+        Assert.False(Row(plan, "ghost").Installed);
+        Assert.Equal(new[] { "real" }, plan.Resolve(machine).EnabledIds);
+    }
+
+    [Fact]
+    public void Turning_a_mod_on_restores_the_place_the_save_had_it_in()
+    {
+        ModEntry off = ModLists.Mod("off");
+        CurrentMods machine = Machine(Array.Empty<ModEntry>(), off);
+
+        var recorded = ModLists.Snapshot(null, ModLists.Mod("off"));
+        recorded.Mods[0].LoadOrder = 4;
+
+        ModSyncPlan plan = ModSyncPlan.Build(recorded, machine);
+
+        Assert.Equal(4, plan.Resolve(machine).LoadOrder["off"]);
+    }
+
+    [Fact]
+    public void Undoing_the_changes_puts_every_tick_back_where_the_machine_has_it()
+    {
+        ModEntry on = ModLists.Mod("on");
+        ModEntry off = ModLists.Mod("off");
+        CurrentMods machine = Machine(new[] { on }, on, off);
+
+        ModSyncPlan plan = ModSyncPlan.Build(null, machine);
+        Row(plan, "off").Wanted = true;
+        Row(plan, "on").Wanted = false;
+
+        plan.WantEverythingOnNow();
 
         Assert.True(plan.NothingToDo);
+        Assert.True(Row(plan, "on").Wanted);
+        Assert.False(Row(plan, "off").Wanted);
     }
 
     [Fact]
-    public void Nothing_to_do_is_true_when_the_machine_already_matches()
+    public void Matching_again_after_hand_edits_goes_back_to_the_saves_list()
     {
-        CurrentMods current = ModLists.Current(null, ModLists.Mod("a"));
+        ModEntry wanted = ModLists.Mod("wanted");
+        ModEntry extra = ModLists.Mod("extra");
+        CurrentMods machine = Machine(new[] { extra }, wanted, extra);
 
-        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, ModLists.Mod("a")), current);
+        ModSyncPlan plan = ModSyncPlan.Build(ModLists.Snapshot(null, wanted), machine);
+        Row(plan, "extra").Wanted = true;
+        Row(plan, "wanted").Wanted = false;
 
-        Assert.Empty(plan.Changes);
-        Assert.True(plan.NothingToDo);
+        plan.WantWhatTheSaveHad();
+
+        Assert.True(Row(plan, "wanted").Wanted);
+        Assert.False(Row(plan, "extra").Wanted);
     }
 
     [Fact]
-    public void Build_against_a_null_recorded_snapshot_yields_only_matches_rows()
+    public void A_machine_that_already_matches_has_nothing_to_apply()
     {
-        CurrentMods current = ModLists.Current(null, ModLists.Mod("a"), ModLists.Mod("b"));
+        ModEntry mod = ModLists.Mod("a");
+        CurrentMods machine = Machine(new[] { mod }, mod);
 
-        ModSyncPlan plan = ModSyncPlan.Build(null, current);
-
-        Assert.NotEmpty(plan.Rows);
-        Assert.All(plan.Rows, row => Assert.Equal(ModSyncAction.Matches, row.Action));
-        Assert.True(plan.NothingToDo);
+        Assert.True(ModSyncPlan.Build(ModLists.Snapshot(null, mod), machine).NothingToDo);
     }
-
-    private static ModSyncRow RowFor(ModSyncPlan plan, string id)
-        => plan.Rows.Single(row => string.Equals(row.Id, id, StringComparison.OrdinalIgnoreCase));
 }
