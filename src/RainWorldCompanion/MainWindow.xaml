@@ -2242,6 +2242,8 @@
                         <Run Text="Library folder:" />
                         <Run Text="{Binding LibraryRootText, Mode=OneWay}" />
                     </TextBlock>
+                    <TextBlock Style="{StaticResource Text.Tiny}" Margin="0,4,0,0"
+                               Text="{Binding Updates.RunningVersionText, Mode=OneWay}" />
                 </StackPanel>
             </Grid>
 

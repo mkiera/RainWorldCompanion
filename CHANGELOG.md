@@ -10,6 +10,9 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- The window shows which version is running, under the folder paths in the
+  bottom left.
+
 ## 1.1.0-beta.1 - 2026-08-26
 
 - Every backup and library save records the mods and game version it was
