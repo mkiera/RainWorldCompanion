@@ -252,6 +252,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenModSyncCommand))]
     private bool isBusy;
 
     [ObservableProperty]
