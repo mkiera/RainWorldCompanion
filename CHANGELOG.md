@@ -10,6 +10,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+## 1.2.0-beta.2 - 2026-08-27
+
 - The what's new banner is one line with a count on it, and a Read it button that opens
   the full list in its own window, so a release with a lot in it no longer buries the app.
 
