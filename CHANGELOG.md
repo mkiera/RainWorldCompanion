@@ -10,6 +10,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+## 1.2.0-beta.1 - 2026-08-27
+
 - Turn Rain World's mods on and off from the app, without opening the game. The
   Mods window lists every mod you have with a tick beside it, and Apply writes
   what the game reads the next time it starts.
