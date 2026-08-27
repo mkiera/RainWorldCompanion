@@ -45,10 +45,15 @@ public static class OptionsFile
 
     public const string LastGameVersionKey = "LastGameVersion";
 
-    private const string RecordSeparator = "<optA>";
-    private const string KeyValueSeparator = "<optB>";
-    private const string ListSeparator = "<optC>";
-    private const string PairSeparator = "<optD>";
+    /// <summary>Internal rather than private because <see cref="OptionsWriter"/> splices the same
+    /// stream these split, and the two must never drift apart.</summary>
+    internal const string RecordSeparator = "<optA>";
+
+    internal const string KeyValueSeparator = "<optB>";
+
+    internal const string ListSeparator = "<optC>";
+
+    internal const string PairSeparator = "<optD>";
 
     /// <summary>Never throws: a missing or damaged options file costs the answer, not the caller.</summary>
     public static OptionsRead Read(string? saveRoot)
@@ -66,6 +71,18 @@ public static class OptionsFile
         catch (ArgumentException)
         {
             return OptionsRead.Failed("The save folder path is not usable, so which mods are on could not be read.");
+        }
+
+        return ReadFile(path);
+    }
+
+    /// <summary>Reads one options file by path. Used to check a copy staged beside the real one
+    /// before it replaces it, which is why it takes a file rather than the folder holding it.</summary>
+    public static OptionsRead ReadFile(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return OptionsRead.Failed("No options file path was given.");
         }
 
         if (!FileExistsSafe(path))

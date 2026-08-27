@@ -55,11 +55,13 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
         string sourceName,
         Func<SaveSlotRef, CampaignMovePlan> replan,
         bool includeOnline,
-        ModListDiff? mods = null)
+        ModListDiff? mods = null,
+        Func<ModListDiff?>? fixMods = null)
     {
         CampaignName = campaignName;
         SourceName = sourceName;
-        ModDiff = new ModListDiffViewModel(mods);
+        ModDiff = new ModListDiffViewModel(mods) { FixMods = fixMods };
+        ModDiff.PropertyChanged += (_, _) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSend)));
 
         _source = source;
         _replan = replan;
@@ -130,7 +132,7 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
 
     public bool ChosenToTakeItOut => _takeItOut && CanTakeItOut;
 
-    public bool CanSend => _plan.CanWrite && !SameAsTheSource;
+    public bool CanSend => _plan.CanWrite && !SameAsTheSource && ModDiff.Settled;
 
     public bool SameAsTheSource => _source is { } source
         && _selectedTarget.Ref.Realm == source.Realm

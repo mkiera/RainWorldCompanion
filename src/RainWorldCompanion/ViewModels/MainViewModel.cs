@@ -54,6 +54,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
     private SaveLibrary? _library;
 
+    private ModSyncService? _modSync;
+
     // One editor at a time: each holds a session over a whole slot file, so two would work from
     // bytes the other had already changed.
     private CampaignViewModel? _openEditor;
@@ -250,6 +252,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenModSyncCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -1094,17 +1097,19 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // The dialog asks Core what each slot would do with the campaign, which means reading those
         // slots. A slot that will not read at all is a reason to say so rather than to open a window
         // that cannot describe anything.
+        SendCampaignDialog? sendDialog = null;
         SendCampaignDialog dialog;
         try
         {
-            dialog = new SendCampaignDialog(
+            dialog = sendDialog = new SendCampaignDialog(
                 campaign.DisplayName,
                 source.LiveSlot,
                 WhereItIs(source),
                 target => writer.PlanPutCampaign(target, slice),
                 _meadow.Present,
                 // Live to live is one machine against itself, so there is nothing to compare.
-                source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null);
+                source.LiveSlot is null ? DiffAgainstNow(RecordedModsOfSelection()) : null,
+                () => FixMods(RecordedModsOfSelection(), WhereItIs(source), sendDialog));
         }
         catch (Exception ex)
         {
@@ -1540,7 +1545,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         // A plan that cannot run still opens the dialog, for the reason Copy Slot does: the pair
         // here is only where the pickers start.
-        var dialog = new LoadSaveDialog(entries, plan!, library.PlanAnyLoad, _meadow.Present);
+        LoadSaveDialog? dialog = null;
+        dialog = new LoadSaveDialog(
+            entries,
+            plan!,
+            library.PlanAnyLoad,
+            _meadow.Present,
+            () => FixMods(dialog?.SelectedEntry.Entry.Manifest?.Mods, dialog?.SourceName ?? "that save", dialog));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -2122,7 +2133,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        var dialog = new RestoreConfirmDialog(plan!, item.DisplayName);
+        RestoreConfirmDialog? dialog = null;
+        dialog = new RestoreConfirmDialog(
+            plan!,
+            item.DisplayName,
+            () => FixMods(item.Snapshot.Manifest?.Mods, item.DisplayName, dialog));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -2407,6 +2422,94 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     private UpdatesDialog? _updatesWindow;
 
+    // Shown rather than shown as a dialog: installing a missing mod means leaving for Steam and
+    // coming back to press Refresh.
+    [RelayCommand(CanExecute = nameof(CanOpenModSync))]
+    private void OpenModSync()
+    {
+        if (ShowModSyncWindow() is not null)
+        {
+            MatchSelectedMods();
+        }
+    }
+
+    private bool CanOpenModSync() => !IsBusy && _modSync is not null;
+
+    private ModSyncViewModel? ShowModSyncWindow()
+    {
+        if (_modSync is not { } service)
+        {
+            return null;
+        }
+
+        if (_modSyncWindow is { } already)
+        {
+            already.Activate();
+            return already.DataContext as ModSyncViewModel;
+        }
+
+        var view = new ModSyncViewModel(service);
+        var window = new ModSyncDialog(view);
+        _modSyncWindow = window;
+        window.Closed += (_, _) => _modSyncWindow = null;
+
+        if (OwnerWindow is { } owner && !ReferenceEquals(owner, window))
+        {
+            window.Owner = owner;
+        }
+
+        window.Show();
+        return view;
+    }
+
+    // Closes the window that asked, because the mod list it is showing stops being true the moment
+    // this is acted on.
+    // Shown over the dialog that asked rather than instead of it, so pressing Restore is still the
+    // next thing that happens. The fresh diff goes back to that dialog.
+    private ModListDiff? FixMods(ModListSnapshot? recorded, string name, Window? asking)
+    {
+        if (_modSync is not { } service)
+        {
+            return null;
+        }
+
+        var view = new ModSyncViewModel(service) { OfferLaunch = false };
+        var window = new ModSyncDialog(view) { Owner = asking ?? OwnerWindow };
+        view.Match(recorded, name);
+        window.ShowDialog();
+
+        // The window may have written the mod list, so the reading everything else compares
+        // against has to be taken again rather than reused.
+        _currentMods = service.ReadCurrent();
+        RebuildDetail();
+
+        return DiffAgainstNow(recorded);
+    }
+
+    private void MatchSelectedMods()
+    {
+        if (_modSyncWindow?.DataContext is not ModSyncViewModel view)
+        {
+            return;
+        }
+
+        if (IsLibraryTabSelected && SelectedLibraryEntry is { } entry)
+        {
+            view.Match(entry.Entry.Manifest?.Mods, entry.Name);
+            return;
+        }
+
+        if (!IsLibraryTabSelected && SelectedBackup is { } backup)
+        {
+            view.Match(backup.Snapshot.Manifest?.Mods, backup.LabelText);
+            return;
+        }
+
+        view.Match(null, null);
+    }
+
+    private ModSyncDialog? _modSyncWindow;
+
     private async Task ShowSettingsAsync(string? reason)
     {
         var viewModel = new SettingsViewModel(_settingsStore, _settings, reason);
@@ -2485,8 +2588,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private async Task ApplySettingsCoreAsync(string savePath, string backupRoot, string libraryRoot)
     {
-        // Never validated, because the install path only feeds the portraits. Probing it still
-        // touches disk, so it goes on the worker with the rest.
+        // Checked by ModSyncService before it writes into it. Probing touches disk, so it goes on
+        // the worker with the rest.
         var installPath = _settings.GameInstallPath;
         await Task.Run(() => _icons.UseInstall(installPath));
 
@@ -2527,6 +2630,22 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         _copyService = _backupService?.SlotCopies;
+
+        _modSync = null;
+        if (_backupService is { } forMods)
+        {
+            _modSync = await Task.Run<ModSyncService?>(() =>
+            {
+                try
+                {
+                    return new ModSyncService(savePath, installPath, _gameDetector, backups: forMods);
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            });
+        }
 
         // The library borrows the backup service's safety snapshot for its loads: no backup
         // service, no library.
@@ -2967,6 +3086,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         SendCampaignCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
         DeleteSlotCommand.NotifyCanExecuteChanged();
+        OpenModSyncCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()

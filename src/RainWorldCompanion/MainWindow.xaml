@@ -1942,6 +1942,10 @@
                 <Button DockPanel.Dock="Right" Content="Updates" Style="{StaticResource Button.Small}"
                         Margin="0,0,8,0"
                         Command="{Binding OpenUpdatesCommand}" />
+                <Button DockPanel.Dock="Right" Content="Mods" Style="{StaticResource Button.Small}"
+                        Margin="0,0,8,0"
+                        Command="{Binding OpenModSyncCommand}"
+                        AutomationProperties.HelpText="Turn mods on and off, and match what a save was played with" />
                 <Button DockPanel.Dock="Right" Content="Delete" Style="{StaticResource Button.Danger}"
                         Margin="0,0,8,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
                         Command="{Binding DeleteCommand}" />

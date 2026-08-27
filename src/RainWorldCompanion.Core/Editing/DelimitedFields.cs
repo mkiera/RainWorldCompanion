@@ -1,5 +1,6 @@
 // RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Editing;
@@ -24,6 +25,10 @@ internal sealed class DelimitedFields
 {
     public static readonly DelimitedFields Record =
         new(SavePayloadReader.FieldSeparator, SavePayloadReader.ValueSeparator);
+
+    /// <summary>The options file's settings stream, whose records carry the mod list.</summary>
+    public static readonly DelimitedFields Options =
+        new(OptionsFile.RecordSeparator, OptionsFile.KeyValueSeparator);
 
     public static readonly DelimitedFields DeathPersistent =
         new(DeathPersistentReader.FieldSeparator, DeathPersistentReader.ValueSeparator);
