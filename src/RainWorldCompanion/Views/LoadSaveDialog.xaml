@@ -6,7 +6,7 @@
         xmlns:views="clr-namespace:RainWorldCompanion.Views"
         mc:Ignorable="d"
         Title="Load a library save"
-        Width="760" Height="800" MinWidth="680" MinHeight="460"
+        Width="760" Height="1000" MinWidth="680" MinHeight="460"
         MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
