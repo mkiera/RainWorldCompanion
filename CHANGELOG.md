@@ -8,7 +8,7 @@ A pre-release takes a heading under its whole tag, as in `1.1.0-beta.1`. The
 release build looks the heading up by the exact version it was tagged with and
 fails when it finds none, so rename Unreleased before tagging, not after.
 
-## 1.1.0-beta.1 - 2026-08-26
+## 1.1.0 - 2026-08-26
 
 - Every backup and library save records the mods and game version it was
   played with, and carries that record inside a `.rwsave` when it is exported.
