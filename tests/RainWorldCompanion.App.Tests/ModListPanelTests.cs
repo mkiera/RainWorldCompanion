@@ -345,4 +345,27 @@ public class ModListPanelTests
         Assert.True(view.Settled);
         Assert.False(view.CanFixMods);
     }
+
+    [Fact]
+    public void A_mod_on_now_that_the_save_never_had_can_be_turned_off_from_here()
+    {
+        ModListDiff diff = ModListDiff.Compare(Snapshot(null), Current(null, Mod("devourment")));
+        var view = new ModListDiffViewModel(diff) { FixMods = () => null };
+
+        Assert.True(view.CanFixMods);
+        Assert.Equal("Turn off 1", view.FixModsText);
+        Assert.Contains("turn it off", Assert.Single(view.Extra).ActionText);
+    }
+
+    [Fact]
+    public void A_list_that_needs_both_says_both()
+    {
+        ModListDiff diff = ModListDiff.Compare(
+            Snapshot(null, Mod("wanted")),
+            new CurrentMods(Snapshot(null, Mod("extra")), new[] { Mod("wanted"), Mod("extra") }));
+
+        var view = new ModListDiffViewModel(diff) { FixMods = () => null };
+
+        Assert.Equal("Turn on 1, turn off 1", view.FixModsText);
+    }
 }

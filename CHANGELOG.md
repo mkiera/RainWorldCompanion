@@ -18,6 +18,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 - Restoring, loading or sending a save offers to turn its mods on there and
   then, instead of telling you to go and do it in the game's Remix menu. The
   Mods window opens over that one and hands you back to it when you close it.
+  That covers mods you have turned on that the save never used, not just the
+  ones it is missing.
 - Writing a save whose mods do not match this machine now asks you to tick that
   you know, before the button will do anything.
 - The window shows which version is running, under the folder paths in the

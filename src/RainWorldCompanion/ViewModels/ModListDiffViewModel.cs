@@ -30,11 +30,15 @@ public sealed partial class ModListDiffViewModel : ObservableObject
     // button off rather than drawing it dead.
     public Func<ModListDiff?>? FixMods { get; init; }
 
-    public bool CanFixMods => FixMods is not null && (TurnedOff.Count > 0 || Missing.Count > 0);
+    public bool CanFixMods => FixMods is not null && HasRows;
 
-    public string FixModsText => TurnedOff.Count > 0
-        ? $"Turn on {TurnedOff.Count}"
-        : "Open the Mods window";
+    public string FixModsText => (TurnedOff.Count, Extra.Count) switch
+    {
+        ( > 0, > 0) => $"Turn on {TurnedOff.Count}, turn off {Extra.Count}",
+        ( > 0, 0) => $"Turn on {TurnedOff.Count}",
+        (0, > 0) => $"Turn off {Extra.Count}",
+        _ => "Open the Mods window",
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Settled))]
@@ -112,7 +116,7 @@ public sealed partial class ModListDiffViewModel : ObservableObject
             .Select(mod => new ModDiffRowViewModel(
                 NameOf(mod),
                 "on now, and was not on when this was saved",
-                "",
+                "The Mods window can turn it off.",
                 UrlFor(mod.WorkshopId)))
             .ToList();
 
