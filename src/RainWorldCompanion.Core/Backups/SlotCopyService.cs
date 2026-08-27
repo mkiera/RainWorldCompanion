@@ -114,6 +114,8 @@ public sealed record SlotCopyResult(
 /// <param name="TargetExpectedSha256">The digest the target is held to under the lock, or null to
 /// write over whatever is there. An edit sets it, because writing it over a slot the game has since
 /// played would put back an edited copy of an older save.</param>
+/// <param name="Extras">Files written after the slot has landed and been proved, or null for none.
+/// The job still has exactly one target slot, and these are named as what they are.</param>
 internal sealed record SlotWriteJob(
     SlotSide Target,
     string SourcePath,
@@ -123,7 +125,20 @@ internal sealed record SlotWriteJob(
     string ProgressVerb,
     string SafetyLabel,
     Func<bool, string> SafetyNote,
-    string? TargetExpectedSha256 = null);
+    string? TargetExpectedSha256 = null,
+    IReadOnlyList<ExtraFileWrite>? Extras = null);
+
+/// <summary>
+/// One more file to write into the save folder beside the slot, named the way a manifest names it:
+/// relative to the save folder, so the scope can be asked about it and a destination resolved from
+/// it with nothing in between.
+/// </summary>
+/// <param name="Label">What a warning calls this file when it could not be written.</param>
+internal sealed record ExtraFileWrite(
+    string RelativePath,
+    string SourcePath,
+    string? ExpectedSha256,
+    string Label);
 
 internal sealed record SlotWriteOutcome(
     bool Success,
@@ -133,6 +148,10 @@ internal sealed record SlotWriteOutcome(
     bool LiveFolderModified,
     long BytesCopied)
 {
+    /// <summary>How many of <see cref="SlotWriteJob.Extras"/> landed. Deliberately outside
+    /// <see cref="Success"/>, which is about the slot.</summary>
+    internal int ExtrasWritten { get; init; }
+
     internal static SlotWriteOutcome Refused(
         BackupSnapshot? safety,
         IReadOnlyList<string> errors,
@@ -540,11 +559,21 @@ public sealed class SlotCopyService
                 errors.Add($"{targetName} could not be checked after the {job.OperationNoun}: {ex.Message}");
             }
 
+            // Only once the save itself is right. There is no sense adopting settings for a save
+            // that did not land, and once it has, a settings file that will not write is a warning
+            // rather than a reason to put everything back.
+            int extrasWritten = errors.Count == 0 && job.Extras is { Count: > 0 } extras
+                ? WriteExtras(extras, safety, warnings, progress)
+                : 0;
+
             bool success = errors.Count == 0;
             string finished = char.ToUpperInvariant(job.OperationNoun[0]) + job.OperationNoun[1..] + " finished";
             progress?.Report(success ? finished : finished + " with problems");
 
-            return new SlotWriteOutcome(success, safety, errors, warnings, true, bytesCopied);
+            return new SlotWriteOutcome(success, safety, errors, warnings, true, bytesCopied)
+            {
+                ExtrasWritten = extrasWritten,
+            };
         }
     }
 
@@ -640,18 +669,129 @@ public sealed class SlotCopyService
         }
     }
 
-    /// <summary>Whether the snapshot's manifest lists a root-level file by name.</summary>
-    private static bool SnapshotHolds(BackupSnapshot snapshot, string fileName)
+    /// <summary>
+    /// Writes the files a job carries beside its slot, and answers with how many landed. Each
+    /// failure is a warning naming the file and the reason, never an error: the save has already
+    /// landed by this point, and reporting a settings file as a failure would say it did not.
+    /// </summary>
+    private int WriteExtras(
+        IReadOnlyList<ExtraFileWrite> extras,
+        BackupSnapshot safety,
+        List<string> warnings,
+        IProgress<string>? progress)
+    {
+        int written = 0;
+
+        foreach (ExtraFileWrite extra in extras)
+        {
+            string? problem = WriteExtra(extra, safety, progress);
+
+            if (problem is null)
+            {
+                written++;
+            }
+            else
+            {
+                warnings.Add($"{extra.Label} was not written: {problem}.");
+            }
+        }
+
+        return written;
+    }
+
+    /// <summary>Why the file was not written, or null when it was.</summary>
+    private string? WriteExtra(ExtraFileWrite extra, BackupSnapshot safety, IProgress<string>? progress)
+    {
+        string relative = extra.RelativePath ?? "";
+
+        // Being in scope under today's rules is what makes this undoable: the safety snapshot was
+        // taken under those same rules, so restoring it puts the file back.
+        if (!_backups.Scope.IsInScope(relative))
+        {
+            return "it is not one of the files this app manages";
+        }
+
+        if (!BackupService.TryResolveInside(SaveRoot, relative, out string destination))
+        {
+            return "its name does not resolve to a file inside the save folder";
+        }
+
+        // Resolving is textual, and text cannot see a junction. A copy onto a link writes through
+        // it, over a file the safety snapshot never took.
+        if (CanonicalPath.LeadsThroughLink(SaveRoot, destination))
+        {
+            return "it is a link, so writing to it would land outside the save folder";
+        }
+
+        bool exists;
+        try
+        {
+            exists = File.Exists(destination);
+        }
+        catch (Exception)
+        {
+            exists = true;
+        }
+
+        // A file already there has to be in the safety snapshot, or overwriting it could not be
+        // undone. One that is not there needs no entry: restoring the snapshot deletes it.
+        if (exists && !SnapshotHolds(safety, relative))
+        {
+            return $"the safety copy {safety.Id} does not hold it, so overwriting it could not be undone";
+        }
+
+        try
+        {
+            var info = new FileInfo(extra.SourcePath);
+            if (!info.Exists)
+            {
+                return "it is not there any more";
+            }
+
+            string sourceHash = Hashing.ComputeFileSha256(extra.SourcePath);
+            if (extra.ExpectedSha256 is { Length: > 0 } expected && !HashComparer.Equals(sourceHash, expected))
+            {
+                return "it does not match the checksum recorded for it";
+            }
+
+            string? parent = Path.GetDirectoryName(destination);
+            if (!string.IsNullOrEmpty(parent))
+            {
+                Directory.CreateDirectory(parent);
+            }
+
+            progress?.Report($"Writing {extra.Label}");
+
+            ClearReadOnly(destination);
+            File.Copy(extra.SourcePath, destination, overwrite: true);
+
+            if (!HashComparer.Equals(Hashing.ComputeFileSha256(destination), sourceHash))
+            {
+                return "the copy does not match what it was copied from";
+            }
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether the snapshot's manifest lists a file, by its whole path below the save
+    /// folder.</summary>
+    private static bool SnapshotHolds(BackupSnapshot snapshot, string relativePath)
     {
         if (snapshot.Manifest is not { } manifest)
         {
             return false;
         }
 
+        string wanted = Flatten(relativePath);
+
         foreach (ManifestFileEntry file in manifest.Files)
         {
-            string relative = (file.RelativePath ?? "").Replace('/', '\\').Trim('\\');
-            if (string.Equals(relative, fileName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(Flatten(file.RelativePath ?? ""), wanted, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -659,6 +799,8 @@ public sealed class SlotCopyService
 
         return false;
     }
+
+    private static string Flatten(string relativePath) => relativePath.Replace('/', '\\').Trim('\\');
 
     /// <summary>File.Copy can truncate the destination and then fail, so "the copy threw" is not
     /// the same answer as "the save folder was not changed".</summary>

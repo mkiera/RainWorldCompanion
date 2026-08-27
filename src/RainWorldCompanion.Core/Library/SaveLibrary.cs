@@ -168,7 +168,40 @@ public sealed class SaveLibrary
                 : $"\"{entry.Name}\" holds no campaign, so this replaces {side.FileName} with an empty slot.");
         }
 
+        WarnAboutSettings(manifest, warnings);
+
         return new LibraryLoadPlan(entry, side, problems, warnings);
+    }
+
+    /// <summary>
+    /// Names any recorded settings file that could not be written where it says it goes, so it is
+    /// said in the dialog rather than after the user has agreed. Never a problem: a settings file
+    /// that will not land is no reason to refuse the save.
+    /// </summary>
+    private void WarnAboutSettings(LibraryManifest manifest, List<string> warnings)
+    {
+        if (manifest.Configs is not { } configs)
+        {
+            return;
+        }
+
+        foreach (var file in configs.Files)
+        {
+            var relative = file.RelativePath;
+
+            if (!_backups.Scope.IsInScope(relative))
+            {
+                warnings.Add($"{relative} is not one of the files this app manages, so those settings will not be written.");
+            }
+            else if (!ModConfigReader.Travels(relative))
+            {
+                warnings.Add($"{relative} is not a kind of mod settings file this version writes, so it will not be.");
+            }
+            else if (CanonicalPath.LeadsThroughLink(SaveRoot, Path.Combine(SaveRoot, relative)))
+            {
+                warnings.Add($"{relative} is a link in the save folder, so those settings will not be written over it.");
+            }
+        }
     }
 
     /// <summary>The entry's recorded digest goes down with it, so a save damaged since it was stored
@@ -178,9 +211,21 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => LoadEntry(entry, target, Array.Empty<string>(), progress, ct);
+
+    /// <param name="adoptSettingsFor">The mods whose settings to bring across, by id. Empty takes
+    /// none, which is what a dialog opens on: somebody else's settings are not what a player asked
+    /// for by asking to load a save.</param>
+    public LibraryLoadResult LoadEntry(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
 
         var errors = new List<string>();
 
@@ -210,7 +255,8 @@ public sealed class SaveLibrary
             SafetyLabel: $"Before loading {quotedName} into {plan.Target.FileName}",
             SafetyNote: targetExists => targetExists
                 ? $"Automatic copy taken before the library save {quotedName} was loaded over {plan.Target.FileName} ({plan.Target.Describe()})."
-                : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.");
+                : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.",
+            Extras: BuildExtras(entry, adoptSettingsFor));
 
         var outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
 
@@ -231,7 +277,43 @@ public sealed class SaveLibrary
             warnings,
             outcome.LiveFolderModified,
             outcome.BytesCopied,
-            plan);
+            plan)
+        {
+            SettingsWritten = outcome.ExtrasWritten,
+        };
+    }
+
+    /// <summary>
+    /// The settings files to write, for the mods that were asked for. Grouping by mod is what makes
+    /// writing a subset fall out: nothing in the writer knows what a mod is.
+    /// </summary>
+    private static IReadOnlyList<ExtraFileWrite> BuildExtras(
+        LibraryEntry entry,
+        IReadOnlyCollection<string> adoptSettingsFor)
+    {
+        if (adoptSettingsFor.Count == 0 || entry.Manifest?.Configs is not { } configs)
+        {
+            return Array.Empty<ExtraFileWrite>();
+        }
+
+        var wanted = new HashSet<string>(adoptSettingsFor, StringComparer.OrdinalIgnoreCase);
+        var extras = new List<ExtraFileWrite>();
+
+        foreach (var file in configs.Files)
+        {
+            if (!wanted.Contains(file.ModId))
+            {
+                continue;
+            }
+
+            var source = ConfigEntryPath(entry.DirectoryPath, file.RelativePath);
+            if (source is not null)
+            {
+                extras.Add(new ExtraFileWrite(file.RelativePath, source, file.Sha256, file.RelativePath));
+            }
+        }
+
+        return extras;
     }
 
     /// <summary>One slot, one claimant: the slot is taken away from whichever entry claimed it
@@ -579,10 +661,11 @@ public sealed class SaveLibrary
 
         // Attached here rather than in each branch: this is the one method the dialogs go through.
         var mods = _backups.TryDiffMods(entry.Manifest?.Mods);
+        var settings = BuildOffer(entry);
 
         if (!entry.IsCampaign)
         {
-            return PlanLoad(entry, target) with { Mods = mods };
+            return PlanLoad(entry, target) with { Mods = mods, Settings = settings };
         }
 
         var move = PlanCampaignLoad(entry, target);
@@ -596,7 +679,45 @@ public sealed class SaveLibrary
             move.Describe())
         {
             Mods = mods,
+            Settings = settings,
         };
+    }
+
+    /// <summary>What this entry can bring across, or null when it carries no settings.</summary>
+    private ModConfigOffer? BuildOffer(LibraryEntry entry)
+    {
+        if (entry.Manifest?.Configs is not { Files.Count: > 0 } recorded)
+        {
+            return null;
+        }
+
+        ModConfigSet? live = null;
+        try
+        {
+            var scan = ModConfigReader.Read(SaveRoot);
+            live = new ModConfigSet
+            {
+                ReadTheFolder = scan.ReadTheFolder,
+                Note = scan.Note,
+                Files = scan.Files
+                    .Select(file => new ModConfigFile { RelativePath = file.RelativePath, ModId = file.ModId })
+                    .ToList(),
+            };
+        }
+        catch (Exception)
+        {
+        }
+
+        CurrentMods? current = null;
+        try
+        {
+            current = _backups.ModListSource?.Invoke();
+        }
+        catch (Exception)
+        {
+        }
+
+        return new ModConfigOffer(recorded, entry.Manifest.Mods, live, current);
     }
 
     public LibraryLoadResult LoadAny(
@@ -604,12 +725,20 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => LoadAny(entry, target, Array.Empty<string>(), progress, ct);
+
+    public LibraryLoadResult LoadAny(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(entry);
 
         return entry.IsCampaign
             ? LoadCampaignOntoSlot(entry, target, progress, ct)
-            : LoadEntry(entry, target, progress, ct);
+            : LoadEntry(entry, target, adoptSettingsFor, progress, ct);
     }
 
     /// <summary>The campaign an entry holds, or null when it holds a whole slot or will not read.</summary>

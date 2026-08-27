@@ -20,6 +20,29 @@ public sealed record LibraryLoadPlan(
     /// <summary>How the mods recorded with this entry differ from the machine as it stands, or null
     /// when there was no way to look. Never lands in <see cref="Problems"/> and never stops a load.</summary>
     public ModListDiff? Mods { get; init; }
+
+    /// <summary>The mod settings this entry can bring across, or null when it carries none. Nothing
+    /// here is written unless it is asked for by mod id.</summary>
+    public ModConfigOffer? Settings { get; init; }
+}
+
+/// <summary>
+/// The mod settings a load can bring across, with what is needed to describe each one: the mods the
+/// save was played with, what is in the save folder now, and what is installed here. A picker joins
+/// them by <see cref="ModConfigFile.ModId"/>.
+/// </summary>
+/// <param name="Live">Null when the save folder could not be read, which is not the same answer as
+/// a folder holding no settings.</param>
+/// <param name="Current">Null when there is no way to look at what is installed.</param>
+public sealed record ModConfigOffer(
+    ModConfigSet Recorded,
+    ModListSnapshot? RecordedMods,
+    ModConfigSet? Live,
+    CurrentMods? Current)
+{
+    /// <summary>What a player picks by: a mod, not a file. Devourment owns both its settings file
+    /// and its whole preset folder, and ticking Devourment means both.</summary>
+    public IReadOnlyList<ModConfigGroup> ByMod() => Recorded.ByMod();
 }
 
 /// <summary><see cref="LiveFolderModified"/> is false only when the slot file is provably the same
@@ -33,6 +56,10 @@ public sealed record LibraryLoadResult(
     long BytesCopied,
     LibraryLoadPlan? Plan)
 {
+    /// <summary>How many mod settings files landed beside the save. Outside <see cref="Success"/>,
+    /// which is about the save.</summary>
+    public int SettingsWritten { get; init; }
+
     public string Headline()
     {
         var target = Plan?.Target.FileName ?? "the target slot";

@@ -1128,7 +1128,7 @@ public sealed class BackupService
     }
 
     /// <summary>A manifest is a file on disk, so its paths are treated as untrusted input.</summary>
-    private static bool TryResolveInside(string root, string relativePath, out string fullPath)
+    internal static bool TryResolveInside(string root, string relativePath, out string fullPath)
     {
         fullPath = "";
 
