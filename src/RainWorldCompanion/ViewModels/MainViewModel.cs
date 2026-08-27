@@ -54,6 +54,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
     private SaveLibrary? _library;
 
+    private ModSyncService? _modSync;
+
     // One editor at a time: each holds a session over a whole slot file, so two would work from
     // bytes the other had already changed.
     private CampaignViewModel? _openEditor;
@@ -2407,6 +2409,62 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     private UpdatesDialog? _updatesWindow;
 
+    // Shown rather than shown as a dialog: installing a missing mod means leaving for Steam and
+    // coming back to press Refresh.
+    [RelayCommand(CanExecute = nameof(CanOpenModSync))]
+    private void OpenModSync()
+    {
+        if (_modSync is not { } service)
+        {
+            return;
+        }
+
+        if (_modSyncWindow is { } already)
+        {
+            already.Activate();
+            MatchSelectedMods();
+            return;
+        }
+
+        var window = new ModSyncDialog(new ModSyncViewModel(service));
+        _modSyncWindow = window;
+        window.Closed += (_, _) => _modSyncWindow = null;
+
+        if (OwnerWindow is { } owner && !ReferenceEquals(owner, window))
+        {
+            window.Owner = owner;
+        }
+
+        window.Show();
+        MatchSelectedMods();
+    }
+
+    private bool CanOpenModSync() => !IsBusy && _modSync is not null;
+
+    private void MatchSelectedMods()
+    {
+        if (_modSyncWindow?.DataContext is not ModSyncViewModel view)
+        {
+            return;
+        }
+
+        if (IsLibraryTabSelected && SelectedLibraryEntry is { } entry)
+        {
+            view.Match(entry.Entry.Manifest?.Mods, entry.Name);
+            return;
+        }
+
+        if (!IsLibraryTabSelected && SelectedBackup is { } backup)
+        {
+            view.Match(backup.Snapshot.Manifest?.Mods, backup.LabelText);
+            return;
+        }
+
+        view.Match(null, null);
+    }
+
+    private ModSyncDialog? _modSyncWindow;
+
     private async Task ShowSettingsAsync(string? reason)
     {
         var viewModel = new SettingsViewModel(_settingsStore, _settings, reason);
@@ -2485,8 +2543,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private async Task ApplySettingsCoreAsync(string savePath, string backupRoot, string libraryRoot)
     {
-        // Never validated, because the install path only feeds the portraits. Probing it still
-        // touches disk, so it goes on the worker with the rest.
+        // Checked by ModSyncService before it writes into it. Probing touches disk, so it goes on
+        // the worker with the rest.
         var installPath = _settings.GameInstallPath;
         await Task.Run(() => _icons.UseInstall(installPath));
 
@@ -2527,6 +2585,22 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         _copyService = _backupService?.SlotCopies;
+
+        _modSync = null;
+        if (_backupService is { } forMods)
+        {
+            _modSync = await Task.Run<ModSyncService?>(() =>
+            {
+                try
+                {
+                    return new ModSyncService(savePath, installPath, _gameDetector, backups: forMods);
+                }
+                catch (Exception)
+                {
+                    return null;
+                }
+            });
+        }
 
         // The library borrows the backup service's safety snapshot for its loads: no backup
         // service, no library.
@@ -2967,6 +3041,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         SendCampaignCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
         DeleteSlotCommand.NotifyCanExecuteChanged();
+        OpenModSyncCommand.NotifyCanExecuteChanged();
     }
 
     private void RaiseListStates()

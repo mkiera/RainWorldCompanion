@@ -4,12 +4,6 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// The options file holds every keybind, volume and resolution the player has set, and the mod list
-/// is two records sitting among them. These pin that turning a mod on rewrites those two records and
-/// leaves the rest of the file alone, because the failure worth catching here is quietly losing
-/// somebody's controls on the way past.
-/// </summary>
 public class OptionsWriterTests
 {
     private static readonly Dictionary<string, int> NoOrder = new(StringComparer.OrdinalIgnoreCase);
@@ -137,8 +131,6 @@ public class OptionsWriterTests
 
     private static string BlobOf(byte[] bytes) => ContainerText.Load(bytes).GetValue(OptionsFile.ContainerKey);
 
-    /// <summary>Records other than the two this writer owns, in stored order. Keys repeat in this
-    /// file, so the comparison is a list rather than a map.</summary>
     private static List<string> OtherRecords(string blob)
         => blob.Split(OptionsFixture.RecordSeparator, StringSplitOptions.None)
             .Where(record => record.Length > 0)

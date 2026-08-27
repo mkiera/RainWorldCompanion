@@ -6,9 +6,9 @@ using Microsoft.Win32;
 namespace RainWorldCompanion.Core.System;
 
 /// <summary>
-/// Every method here answers null or false rather than throwing: the install is read for the
-/// portrait PNGs and nothing else, so a missing or locked install costs an icon. The PNGs belong
-/// to the game publisher and are read from the player's own install, never shipped with this app.
+/// Every method here answers null or false rather than throwing, so a missing or locked install
+/// costs an icon. The PNGs belong to the game publisher and are read from the player's own
+/// install, never shipped with this app.
 /// </summary>
 public static class GameInstallLocator
 {

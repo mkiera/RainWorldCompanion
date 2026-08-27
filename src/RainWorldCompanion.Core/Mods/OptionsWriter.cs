@@ -7,18 +7,8 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Core.Mods;
 
-/// <summary>
-/// Rewrites the two records that say which mods are on. The options file also holds every keybind,
-/// volume and resolution the player has set, so both edits are spliced by position and every other
-/// character in the file is carried across untouched.
-/// </summary>
 public static class OptionsWriter
 {
-    /// <param name="enabledIds">Mod ids to turn on, replacing the stored list entirely.</param>
-    /// <param name="loadOrder">Positions to set. Ids absent from this keep whatever position the
-    /// file already gave them, because the order outlives the mods it names and clearing it would
-    /// reshuffle mods this app never touched.</param>
-    /// <exception cref="SaveContainerException">The bytes are not an options file this can edit.</exception>
     public static byte[] Rewrite(
         byte[] optionsBytes,
         IReadOnlyList<string> enabledIds,
@@ -48,8 +38,6 @@ public static class OptionsWriter
         return container.WithValue(OptionsFile.ContainerKey, edited).ToBytes();
     }
 
-    /// <summary>Updates the pairs named and appends the ones not stored yet, leaving the rest in the
-    /// order the game wrote them so an unchanged order rewrites no bytes.</summary>
     private static string MergeLoadOrder(string stored, IReadOnlyDictionary<string, int> loadOrder)
     {
         var pending = new Dictionary<string, int>(loadOrder, StringComparer.OrdinalIgnoreCase);

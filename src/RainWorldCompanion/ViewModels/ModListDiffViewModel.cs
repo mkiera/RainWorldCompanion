@@ -11,8 +11,8 @@ public sealed record ModDiffRowViewModel(string Name, string DetailText, string 
 }
 
 /// <summary>
-/// Nothing here blocks anything. The app does not edit the game's own files, so enabling a mod is
-/// something it tells the user how to do rather than something it does.
+/// Nothing here blocks anything, and nothing here writes: this says what moved. The Mods window
+/// is where a mod is turned on.
 /// </summary>
 public sealed class ModListDiffViewModel
 {

@@ -4,24 +4,15 @@ namespace RainWorldCompanion.Core.Mods;
 
 public enum ModSyncAction
 {
-    /// <summary>Recorded, on disk, and off right now.</summary>
     TurnOn,
 
-    /// <summary>On right now and not in the recording.</summary>
     TurnOff,
 
-    /// <summary>Recorded and nowhere on this machine, so there is nothing to switch.</summary>
     Install,
 
-    /// <summary>On now and recorded, whatever the versions say.</summary>
     Matches,
 }
 
-/// <param name="Include">Whether applying the plan acts on this row. Mutable because the point of
-/// the list is that somebody can leave a mod alone, which is how a cosmetic mod stays on through a
-/// campaign that never knew about it.</param>
-/// <param name="OnDisk">The copy of this mod found on this machine, which is where its folder name
-/// and workshop id come from. Null for a row nothing local matches.</param>
 public sealed class ModSyncRow
 {
     public required string Id { get; init; }
@@ -36,39 +27,27 @@ public sealed class ModSyncRow
 
     public string? WorkshopId { get; init; }
 
-    /// <summary>Where the recording had this mod in the load order, restored when it is turned on.</summary>
     public int? RecordedLoadOrder { get; init; }
 
     public ModEntry? OnDisk { get; init; }
 
     public bool Include { get; set; } = true;
 
-    /// <summary>True for the rows applying does something about.</summary>
     public bool IsChange => Action is ModSyncAction.TurnOn or ModSyncAction.TurnOff;
 }
 
-/// <param name="EnabledIds">The whole list to write to the options file.</param>
-/// <param name="LoadOrder">Only the positions that move. Everything absent keeps what it has.</param>
-/// <param name="TurnOn">Local entries whose lines go into enabledMods.txt.</param>
 public sealed record ModSyncOutcome(
     IReadOnlyList<string> EnabledIds,
     IReadOnlyDictionary<string, int> LoadOrder,
     IReadOnlyList<ModEntry> TurnOn,
     IReadOnlyList<ModEntry> TurnOff);
 
-/// <summary>
-/// What matching a recorded mod list would change on this machine, as a row per mod that somebody
-/// can agree with one at a time. Built on <see cref="ModListDiff"/> rather than comparing again, so
-/// the window and the sentences shown before a restore never disagree about what moved.
-/// </summary>
 public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Diff)
 {
     public IEnumerable<ModSyncRow> Changes => Rows.Where(row => row.IsChange);
 
     public IEnumerable<ModSyncRow> Missing => Rows.Where(row => row.Action == ModSyncAction.Install);
 
-    /// <summary>True when applying would write nothing, either because the machine already matches
-    /// or because every row that could move has been left out.</summary>
     public bool NothingToDo => !Changes.Any(row => row.Include);
 
     public static ModSyncPlan Build(ModListSnapshot? recorded, CurrentMods current)
@@ -140,7 +119,6 @@ public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Dif
         return new ModSyncPlan(rows, diff);
     }
 
-    /// <summary>Folds the ticked rows into what the two files should hold. Nothing is written here.</summary>
     public ModSyncOutcome Resolve(CurrentMods current)
     {
         ArgumentNullException.ThrowIfNull(current);

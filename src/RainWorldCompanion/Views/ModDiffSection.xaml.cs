@@ -17,7 +17,6 @@ public partial class ModDiffSection : UserControl
         InitializeComponent();
     }
 
-    /// <summary>The app never installs or enables anything itself: the game's own files are the game's to write.</summary>
     private void OnOpenWorkshopPage(object sender, RoutedEventArgs e)
     {
         if ((sender as FrameworkElement)?.DataContext is not ModDiffRowViewModel row || !row.HasWorkshopPage)

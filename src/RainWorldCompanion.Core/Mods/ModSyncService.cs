@@ -8,7 +8,6 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Mods;
 
-/// <param name="Problem">Why nothing was written. Null on success.</param>
 public sealed record ModSyncResult(
     bool Applied,
     string? Problem,
@@ -18,7 +17,6 @@ public sealed record ModSyncResult(
 {
     public static ModSyncResult Refused(string problem) => new(false, problem, 0, 0, 0);
 
-    /// <summary>A sentence for the window, in the terms somebody would describe the result in.</summary>
     public string Headline => Applied
         ? string.Format(
             CultureInfo.CurrentCulture,
@@ -29,14 +27,6 @@ public sealed record ModSyncResult(
         : Problem ?? "Nothing was changed.";
 }
 
-/// <summary>
-/// Turns mods on and off the way the game's own Remix menu does, by writing the options file and the
-/// loader's list together. Writing only one of the two leaves the game and its loader disagreeing,
-/// which a player meets as the change not taking, so neither file moves unless both staged copies
-/// read back correctly.
-///
-/// This is the only place in the app that writes a file the game owns.
-/// </summary>
 public sealed class ModSyncService
 {
     private readonly IGameProcessDetector _gameDetector;
@@ -71,12 +61,8 @@ public sealed class ModSyncService
 
     public ModSyncPlan BuildPlan(ModListSnapshot? recorded) => ModSyncPlan.Build(recorded, ReadCurrent());
 
-    /// <summary>The list to go back to, or null when the app has not changed anything yet.</summary>
     public ModStateRestorePoint? ReadRestorePoint() => Store.Read();
 
-    /// <summary>
-    /// Names why applying would fail, before anything is offered. Null when it would work.
-    /// </summary>
     public string? WhyNotNow()
     {
         if (_gameDetector.IsGameRunning(out string? processName))
@@ -107,7 +93,6 @@ public sealed class ModSyncService
         return null;
     }
 
-    /// <exception cref="GameRunningException">Rain World started between the offer and the press.</exception>
     public ModSyncResult Apply(ModSyncPlan plan, string? because = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -128,8 +113,6 @@ public sealed class ModSyncService
         return Write(current, outcome, because ?? "matching a save's mods");
     }
 
-    /// <summary>Puts back the list from before the last apply, which is the way out of a campaign's
-    /// mods and back to your own.</summary>
     public ModSyncResult RestorePrevious()
     {
         ModStateRestorePoint? point = Store.Read();
@@ -246,8 +229,6 @@ public sealed class ModSyncService
             outcome.EnabledIds.Count);
     }
 
-    /// <summary>Writes both files beside the ones they replace and reads them back through the
-    /// ordinary readers. Returns the refusal, or null when both came out right.</summary>
     private string? Stage(
         string optionsStaged,
         string listStaged,
