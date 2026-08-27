@@ -1,5 +1,6 @@
 using System.Windows;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
@@ -12,10 +13,10 @@ namespace RainWorldCompanion.Views;
 /// </summary>
 public partial class RestoreConfirmDialog : Window
 {
-    public RestoreConfirmDialog(RestorePlan plan, string snapshotName)
+    public RestoreConfirmDialog(RestorePlan plan, string snapshotName, Func<ModListDiff?>? fixMods = null)
     {
         SnapshotName = snapshotName;
-        ModDiff = new ModListDiffViewModel(plan.Mods, fromABackup: true);
+        ModDiff = new ModListDiffViewModel(plan.Mods, fromABackup: true) { FixMods = fixMods };
         Added = plan.Added;
         Overwritten = plan.Overwritten;
         Unchanged = plan.Unchanged;

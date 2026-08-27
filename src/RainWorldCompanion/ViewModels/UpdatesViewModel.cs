@@ -330,6 +330,9 @@ public sealed partial class UpdatesViewModel : ObservableObject
         {
             _cachedReleases = await _updates.ListReleasesAsync(cancellationToken);
             _releasesFetchedAt = _now();
+
+            // After the await, so a fetch that never reached GitHub has not used its turn.
+            _updates.RecordCheck(_releasesFetchedAt);
         }
 
         var running = _updates.Build.ParsedVersion;
@@ -352,6 +355,7 @@ public sealed partial class UpdatesViewModel : ObservableObject
         {
             _cachedBranches = await _updates.ListBranchBuildsAsync(cancellationToken);
             _branchesFetchedAt = _now();
+            _updates.RecordCheck(_branchesFetchedAt);
         }
 
         Replace(BranchBuilds, _cachedBranches!.Select(build => new BranchRowViewModel(build)));

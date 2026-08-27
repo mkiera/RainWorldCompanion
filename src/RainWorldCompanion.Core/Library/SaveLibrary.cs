@@ -168,7 +168,40 @@ public sealed class SaveLibrary
                 : $"\"{entry.Name}\" holds no campaign, so this replaces {side.FileName} with an empty slot.");
         }
 
+        WarnAboutSettings(manifest, warnings);
+
         return new LibraryLoadPlan(entry, side, problems, warnings);
+    }
+
+    /// <summary>
+    /// Names any recorded settings file that could not be written where it says it goes, so it is
+    /// said in the dialog rather than after the user has agreed. Never a problem: a settings file
+    /// that will not land is no reason to refuse the save.
+    /// </summary>
+    private void WarnAboutSettings(LibraryManifest manifest, List<string> warnings)
+    {
+        if (manifest.Configs is not { } configs)
+        {
+            return;
+        }
+
+        foreach (var file in configs.Files)
+        {
+            var relative = file.RelativePath;
+
+            if (!_backups.Scope.IsInScope(relative))
+            {
+                warnings.Add($"{relative} is not one of the files this app manages, so those settings will not be written.");
+            }
+            else if (!ModConfigReader.Travels(relative))
+            {
+                warnings.Add($"{relative} is not a kind of mod settings file this version writes, so it will not be.");
+            }
+            else if (CanonicalPath.LeadsThroughLink(SaveRoot, Path.Combine(SaveRoot, relative)))
+            {
+                warnings.Add($"{relative} is a link in the save folder, so those settings will not be written over it.");
+            }
+        }
     }
 
     /// <summary>The entry's recorded digest goes down with it, so a save damaged since it was stored
@@ -178,9 +211,24 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => LoadEntry(entry, target, Array.Empty<string>(), progress, ct);
+
+    /// <param name="adoptSettingsFor">The mods whose settings to bring across, by id. Empty takes
+    /// none, which is what a dialog opens on: somebody else's settings are not what a player asked
+    /// for by asking to load a save.</param>
+    /// <param name="modsBefore">The mods that were on before the operation began. See
+    /// <see cref="BackupService.CreateBackup"/>.</param>
+    public LibraryLoadResult LoadEntry(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
 
         var errors = new List<string>();
 
@@ -210,7 +258,9 @@ public sealed class SaveLibrary
             SafetyLabel: $"Before loading {quotedName} into {plan.Target.FileName}",
             SafetyNote: targetExists => targetExists
                 ? $"Automatic copy taken before the library save {quotedName} was loaded over {plan.Target.FileName} ({plan.Target.Describe()})."
-                : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.");
+                : $"Automatic copy taken before the library save {quotedName} was loaded into {plan.Target.FileName}, which did not exist yet.",
+            Extras: SettingsToWrite(entry, adoptSettingsFor),
+            SafetyMods: modsBefore);
 
         var outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
 
@@ -231,7 +281,43 @@ public sealed class SaveLibrary
             warnings,
             outcome.LiveFolderModified,
             outcome.BytesCopied,
-            plan);
+            plan)
+        {
+            SettingsWritten = outcome.ExtrasWritten,
+        };
+    }
+
+    /// <summary>
+    /// The settings files to write, for the mods that were asked for. Grouping by mod is what makes
+    /// writing a subset fall out: nothing in the writer knows what a mod is.
+    /// </summary>
+    public static IReadOnlyList<ExtraFileWrite> SettingsToWrite(
+        LibraryEntry entry,
+        IReadOnlyCollection<string> adoptSettingsFor)
+    {
+        if (adoptSettingsFor.Count == 0 || entry.Manifest?.Configs is not { } configs)
+        {
+            return Array.Empty<ExtraFileWrite>();
+        }
+
+        var wanted = new HashSet<string>(adoptSettingsFor, StringComparer.OrdinalIgnoreCase);
+        var extras = new List<ExtraFileWrite>();
+
+        foreach (var file in configs.Files)
+        {
+            if (!wanted.Contains(file.ModId))
+            {
+                continue;
+            }
+
+            var source = ConfigEntryPath(entry.DirectoryPath, file.RelativePath);
+            if (source is not null)
+            {
+                extras.Add(new ExtraFileWrite(file.RelativePath, source, file.Sha256, file.RelativePath));
+            }
+        }
+
+        return extras;
     }
 
     /// <summary>One slot, one claimant: the slot is taken away from whichever entry claimed it
@@ -369,6 +455,7 @@ public sealed class SaveLibrary
             Sha256 = copied.Sha256,
             Metadata = metadata,
             Mods = _backups.TryReadMods(),
+            Configs = StoreConfigs(directory, SaveRoot),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
@@ -419,7 +506,7 @@ public sealed class SaveLibrary
                 $"{source.FileName} holds no {SlugcatCatalog.ForId(slugcatId).DisplayName} campaign, so there is nothing to store.");
 
         var entry = StoreCampaignFrom(
-            slice, source.FileName, source.Realm, source.Slot, trimmedName, note, _backups.TryReadMods());
+            slice, source.FileName, source.Realm, source.Slot, trimmedName, note, _backups.TryReadMods(), SaveRoot);
 
         progress?.Report("Stored");
         return entry;
@@ -429,6 +516,8 @@ public sealed class SaveLibrary
     /// lock and does not care whether the game is running, because it touches no save file.</summary>
     /// <param name="mods">The mods that were on when the campaign was taken. Passed in because a
     /// campaign pulled out of a backup carries that backup's record, not what is on right now.</param>
+    /// <param name="configsRoot">The folder holding the ModConfigs that go with those bytes, which
+    /// for a campaign out of a backup is that backup's folder. Null keeps no settings.</param>
     public LibraryEntry StoreCampaignFrom(
         CampaignSlice slice,
         string sourceFileName,
@@ -436,7 +525,8 @@ public sealed class SaveLibrary
         int sourceSlot,
         string name,
         string? note,
-        ModListSnapshot? mods = null)
+        ModListSnapshot? mods = null,
+        string? configsRoot = null)
     {
         ArgumentNullException.ThrowIfNull(slice);
 
@@ -469,6 +559,7 @@ public sealed class SaveLibrary
             Metadata = SaveMetadataExtractor.FromPayload(
                 payload, LibraryEntry.CampaignFileName, sourceSlot, sourceRealm),
             Mods = mods,
+            Configs = StoreConfigs(directory, configsRoot),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
@@ -527,9 +618,21 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => LoadCampaignOntoSlot(entry, target, Array.Empty<string>(), progress, ct);
+
+    /// <param name="adoptSettingsFor">The mods whose settings to bring across, by id. Empty takes
+    /// none, the same as a whole slot load.</param>
+    public LibraryLoadResult LoadCampaignOntoSlot(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(target);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
 
         EnsureGameNotRunning();
 
@@ -545,7 +648,8 @@ public sealed class SaveLibrary
 
         ct.ThrowIfCancellationRequested();
 
-        var result = _backups.SlotWriter.Write(move, progress, ct);
+        var result = _backups.SlotWriter.Write(
+            move, progress, ct, SettingsToWrite(entry, adoptSettingsFor), modsBefore);
         var warnings = move.Warnings.Concat(result.Warnings).ToArray();
 
         if (result.Success)
@@ -562,7 +666,10 @@ public sealed class SaveLibrary
             warnings,
             result.LiveFolderModified,
             result.BytesWritten,
-            plan);
+            plan)
+        {
+            SettingsWritten = result.SettingsWritten,
+        };
     }
 
     /// <summary>A whole slot is written over the target and a campaign is written into it, so a
@@ -574,10 +681,11 @@ public sealed class SaveLibrary
 
         // Attached here rather than in each branch: this is the one method the dialogs go through.
         var mods = _backups.TryDiffMods(entry.Manifest?.Mods);
+        var settings = SettingsFor(entry);
 
         if (!entry.IsCampaign)
         {
-            return PlanLoad(entry, target) with { Mods = mods };
+            return PlanLoad(entry, target) with { Mods = mods, Settings = settings };
         }
 
         var move = PlanCampaignLoad(entry, target);
@@ -591,7 +699,75 @@ public sealed class SaveLibrary
             move.Describe())
         {
             Mods = mods,
+            Settings = settings,
         };
+    }
+
+    /// <summary>What this entry can bring across, or null when it carries no settings.</summary>
+    public ModConfigOffer? SettingsFor(LibraryEntry entry)
+    {
+        if (entry.Manifest?.Configs is not { Files.Count: > 0 } recorded)
+        {
+            return null;
+        }
+
+        ModConfigSet? live = null;
+        try
+        {
+            var scan = ModConfigReader.Read(SaveRoot);
+            live = new ModConfigSet
+            {
+                ReadTheFolder = scan.ReadTheFolder,
+                Note = scan.Note,
+                Files = scan.Files
+                    .Select(file => new ModConfigFile { RelativePath = file.RelativePath, ModId = file.ModId })
+                    .ToList(),
+            };
+        }
+        catch (Exception)
+        {
+        }
+
+        CurrentMods? current = null;
+        try
+        {
+            current = _backups.ModListSource?.Invoke();
+        }
+        catch (Exception)
+        {
+        }
+
+        return new ModConfigOffer(recorded, entry.Manifest.Mods, live, current)
+        {
+            MachineSpecific = ReadMachineSpecific(entry, recorded),
+        };
+    }
+
+    /// <summary>
+    /// Which recorded settings hold a key naming something about the machine. Read from the entry's
+    /// own copy rather than the save folder's: what a picker warns about is what would be written.
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadMachineSpecific(
+        LibraryEntry entry,
+        ModConfigSet recorded)
+    {
+        var found = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in recorded.Files)
+        {
+            if (ConfigEntryPath(entry.DirectoryPath, file.RelativePath) is not { } path)
+            {
+                continue;
+            }
+
+            var keys = ModConfigNotes.MachineSpecificKeys(path);
+            if (keys.Count > 0)
+            {
+                found[file.RelativePath] = keys;
+            }
+        }
+
+        return found;
     }
 
     public LibraryLoadResult LoadAny(
@@ -599,12 +775,21 @@ public sealed class SaveLibrary
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => LoadAny(entry, target, Array.Empty<string>(), progress, ct);
+
+    public LibraryLoadResult LoadAny(
+        LibraryEntry entry,
+        SaveSlotRef target,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
 
         return entry.IsCampaign
-            ? LoadCampaignOntoSlot(entry, target, progress, ct)
-            : LoadEntry(entry, target, progress, ct);
+            ? LoadCampaignOntoSlot(entry, target, adoptSettingsFor, progress, ct, modsBefore)
+            : LoadEntry(entry, target, adoptSettingsFor, progress, ct, modsBefore);
     }
 
     /// <summary>The campaign an entry holds, or null when it holds a whole slot or will not read.</summary>
@@ -684,11 +869,13 @@ public sealed class SaveLibrary
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
+        manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
 
         manifest.SizeBytes = copied.SizeBytes;
         manifest.Sha256 = copied.Sha256;
         manifest.Metadata = metadata;
         manifest.Mods = _backups.TryReadMods();
+        manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -734,7 +921,9 @@ public sealed class SaveLibrary
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
+        manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
         manifest.Mods = _backups.TryReadMods();
+        manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
 
         manifest.SizeBytes = new FileInfo(entry.CampaignPath).Length;
         manifest.Sha256 = Hashing.ComputeFileSha256(entry.CampaignPath);
@@ -790,11 +979,19 @@ public sealed class SaveLibrary
 
         manifest.Mods = manifest.PreviousMods;
 
+        // A record that outlived the files it describes would be worse than none, so the settings
+        // only go back in the manifest if they went back on disk.
+        if (MoveConfigsBack(entry))
+        {
+            manifest.Configs = manifest.PreviousConfigs;
+        }
+
         manifest.PreviousSha256 = null;
         manifest.PreviousSizeBytes = null;
         manifest.PreviousReplacedUtc = null;
         manifest.PreviousMetadata = null;
         manifest.PreviousMods = null;
+        manifest.PreviousConfigs = null;
 
         manifest.UpdatedUtc = DateTime.UtcNow;
 
@@ -934,7 +1131,12 @@ public sealed class SaveLibrary
                 $"\"{entry.Name}\" failed its checksum check, so it was not exported: " + string.Join("; ", verification.Problems));
         }
 
-        SaveBundle.Write(Path.GetFullPath(destinationPath), manifest, entry.ContentPath, entry.ContentFileName);
+        SaveBundle.Write(
+            Path.GetFullPath(destinationPath),
+            manifest,
+            entry.ContentPath,
+            entry.ContentFileName,
+            entry.ConfigsPath);
     }
 
     /// <summary>An import never writes into the save folder: it lands in the library and is loaded
@@ -969,7 +1171,7 @@ public sealed class SaveLibrary
         {
             var manifest = kind switch
             {
-                BundleKind.Bundle => ImportBundle(full, directory),
+                BundleKind.Bundle => ImportBundle(full, directory, warnings),
                 BundleKind.BareCampaign => ImportBareCampaign(full, directory, warnings),
                 _ => ImportBareContainer(full, directory, warnings),
             };
@@ -989,9 +1191,11 @@ public sealed class SaveLibrary
             manifest.PreviousReplacedUtc = null;
             manifest.PreviousMetadata = null;
             manifest.PreviousMods = null;
+            manifest.PreviousConfigs = null;
 
-            // manifest.Mods is deliberately left standing: it describes the machine the save was
-            // played on, which is what a load onto this machine is compared against.
+            // manifest.Mods and manifest.Configs are deliberately left standing: they describe the
+            // machine the save was played on, which is what a load onto this machine is compared
+            // against and what its settings are offered from.
 
             TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
             WriteManifest(directory, manifest);
@@ -1005,9 +1209,9 @@ public sealed class SaveLibrary
         }
     }
 
-    private static LibraryManifest ImportBundle(string sourcePath, string directory)
+    private static LibraryManifest ImportBundle(string sourcePath, string directory, List<string> warnings)
     {
-        var manifest = SaveBundle.Extract(sourcePath, directory);
+        var manifest = SaveBundle.Extract(sourcePath, directory, warnings);
 
         if (string.IsNullOrWhiteSpace(manifest.Name))
         {
@@ -1091,6 +1295,137 @@ public sealed class SaveLibrary
             Sha256 = copied.Sha256,
             Metadata = metadata,
         };
+    }
+
+    /// <summary>
+    /// Where one settings file sits inside an entry: ModConfigs\DvrmentConfs\current.json is kept
+    /// at configs\DvrmentConfs\current.json. Null for a path that is not one of the ones that
+    /// travel, rather than a guessed destination for a path this does not recognise.
+    /// </summary>
+    private static string? ConfigEntryPath(string entryDirectory, string relativePath)
+    {
+        if (ModConfigReader.PathBelowFolder(relativePath) is not { Length: > 0 } below)
+        {
+            return null;
+        }
+
+        var root = Path.Combine(entryDirectory, LibraryEntry.ConfigsFolderName);
+        var candidate = Path.GetFullPath(Path.Combine(root, below));
+
+        return CanonicalPath.IsInside(root, candidate) ? candidate : null;
+    }
+
+    /// <summary>
+    /// Moves the settings an update is replacing into configs.previous, following save.previous.bin
+    /// exactly: one generation, and the next update replaces it. False when the folder would not
+    /// move, which is the caller's cue not to record a previous generation the folder does not hold.
+    /// </summary>
+    private static bool MoveConfigsAside(LibraryEntry entry)
+    {
+        try
+        {
+            TryDeleteDirectory(entry.PreviousConfigsPath);
+
+            if (Directory.Exists(entry.ConfigsPath))
+            {
+                Directory.Move(entry.ConfigsPath, entry.PreviousConfigsPath);
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Puts the earlier settings back. False leaves the newer ones in place and configs.previous
+    /// where it is: the next update clears it, and nothing is lost in the meantime.
+    /// </summary>
+    private static bool MoveConfigsBack(LibraryEntry entry)
+    {
+        try
+        {
+            if (!Directory.Exists(entry.PreviousConfigsPath))
+            {
+                TryDeleteDirectory(entry.ConfigsPath);
+                return true;
+            }
+
+            TryDeleteDirectory(entry.ConfigsPath);
+            Directory.Move(entry.PreviousConfigsPath, entry.ConfigsPath);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>The settings in a save folder, or null when there is no folder to read them from.</summary>
+    private static ModConfigSet? StoreConfigs(string entryDirectory, string? configsRoot)
+        => string.IsNullOrWhiteSpace(configsRoot)
+            ? null
+            : CopyConfigsInto(entryDirectory, ModConfigReader.Read(configsRoot));
+
+    /// <summary>
+    /// Copies mod settings into an entry, proving each one the way the save itself is proved. One
+    /// that cannot be proved is left out of the record and named in the note rather than throwing:
+    /// losing the save because a mod rewrote its settings mid-copy would be the wrong trade.
+    /// </summary>
+    private static ModConfigSet CopyConfigsInto(string entryDirectory, ModConfigScan scan)
+    {
+        var set = new ModConfigSet { ReadTheFolder = scan.ReadTheFolder, Note = scan.Note };
+
+        if (!scan.ReadTheFolder)
+        {
+            return set;
+        }
+
+        var missed = new List<string>();
+
+        foreach (var file in scan.Files)
+        {
+            var destination = ConfigEntryPath(entryDirectory, file.RelativePath);
+            if (destination is null)
+            {
+                missed.Add(file.RelativePath);
+                continue;
+            }
+
+            try
+            {
+                var parent = Path.GetDirectoryName(destination);
+                if (!string.IsNullOrEmpty(parent))
+                {
+                    Directory.CreateDirectory(parent);
+                }
+
+                var copied = CopyProving(file.FullPath, destination, file.RelativePath, progress: null);
+
+                set.Files.Add(new ModConfigFile
+                {
+                    RelativePath = file.RelativePath,
+                    ModId = file.ModId,
+                    SizeBytes = copied.SizeBytes,
+                    Sha256 = copied.Sha256,
+                });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                TryDelete(destination);
+                missed.Add(file.RelativePath);
+            }
+        }
+
+        if (missed.Count > 0)
+        {
+            var line = "These mod settings were not kept with the save: " + string.Join(", ", missed) + ".";
+            set.Note = string.IsNullOrWhiteSpace(set.Note) ? line : set.Note + " " + line;
+        }
+
+        return set;
     }
 
     /// <summary>A file that moves under the copy is copied again, and one that will not sit still

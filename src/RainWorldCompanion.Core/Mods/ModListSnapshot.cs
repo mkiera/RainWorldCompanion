@@ -28,6 +28,11 @@ public sealed class ModEntry
     /// link is built from. Null for a local mod.</summary>
     public string? WorkshopId { get; set; }
 
+    /// <summary>The folder the mod sits in, which is not the id: Devourment ships in a folder called
+    /// Devourment-mod. This is what enabledMods.txt names a local mod by. Null on a snapshot recorded
+    /// before this was kept, and on a mod that was never found on disk.</summary>
+    public string? FolderName { get; set; }
+
     /// <summary>Position in the game's load order, lower loading earlier. Null when unrecorded.</summary>
     public int? LoadOrder { get; set; }
 

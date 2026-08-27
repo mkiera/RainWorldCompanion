@@ -20,6 +20,44 @@ public class UpdatesWindowTests
         return world;
     }
 
+    /// <summary>
+    /// The window reaches the same server the banner's check does, so a refresh there is a check.
+    /// Without this it went on saying it last looked hours ago while it was looking just now.
+    /// </summary>
+    [Fact]
+    public async Task Checking_from_the_window_records_when_it_looked()
+    {
+        var world = WorldWithReleases();
+        UpdateViewModel updates = world.Build("1.0.0");
+        var window = Window(world, updates);
+
+        await window.InitializeAsync(CancellationToken.None);
+
+        world.Now = world.Now.AddHours(6);
+        await window.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(world.Now, updates.LastCheckedUtc);
+        Assert.Equal("Checked just now", window.LastCheckedText);
+    }
+
+    /// <summary>A fetch that never reached GitHub has not used its turn.</summary>
+    [Fact]
+    public async Task A_check_that_could_not_reach_the_server_records_nothing()
+    {
+        var world = WorldWithReleases();
+        UpdateViewModel updates = world.Build("1.0.0");
+        var window = Window(world, updates);
+
+        await window.InitializeAsync(CancellationToken.None);
+        DateTimeOffset? looked = updates.LastCheckedUtc;
+
+        world.Now = world.Now.AddHours(6);
+        world.Source.Throws = new InvalidOperationException("no network");
+        await window.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Equal(looked, updates.LastCheckedUtc);
+    }
+
     [Fact]
     public async Task Stable_hides_the_prereleases()
     {

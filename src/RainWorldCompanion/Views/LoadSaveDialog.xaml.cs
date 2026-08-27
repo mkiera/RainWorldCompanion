@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
@@ -50,10 +51,22 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
         IReadOnlyList<LibraryEntry> entries,
         LibraryLoadPlan plan,
         Func<LibraryEntry, SaveSlotRef, LibraryLoadPlan> replan,
-        bool includeOnline)
+        bool includeOnline,
+        Func<ModListDiff?>? fixMods = null)
     {
         _replan = replan;
         _plan = plan;
+
+        // Wrapped rather than passed straight through: the Mods window can turn a mod on, and what
+        // the settings rows say about a mod depends on whether it is installed.
+        _fixMods = fixMods is null
+            ? null
+            : () =>
+            {
+                ModListDiff? fresh = fixMods();
+                ReloadSettings();
+                return fresh;
+            };
 
         Entries = BuildEntries(entries);
         Slots = BuildSlots(includeOnline);
@@ -115,7 +128,7 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
 
     public SaveSlotRef ChosenTarget => _selectedTarget.Ref;
 
-    public bool CanLoad => _plan.CanLoad;
+    public bool CanLoad => _plan.CanLoad && ModDiff.Settled;
 
     public string BlockedReason => string.Join("\n", _plan.Problems);
 
@@ -271,7 +284,33 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
     /// carries a different record. The target slot does not change it: the mods are the
     /// machine's, not the slot's.
     /// </summary>
-    public ModListDiffViewModel ModDiff => new(_plan.Mods);
+    public ModListDiffViewModel ModDiff => _modDiff;
+
+    /// <summary>
+    /// Unlike <see cref="ModDiff"/> this holds what the user has ticked, so it is kept per entry
+    /// rather than rebuilt: moving the slot picker away and back must not clear the ticks. The
+    /// target does not change what is offered, because the settings are the entry's.
+    /// </summary>
+    public ModConfigPickerViewModel Settings => _settings;
+
+    private readonly Func<ModListDiff?>? _fixMods;
+    private readonly Dictionary<string, ModConfigPickerViewModel> _pickers = new(StringComparer.OrdinalIgnoreCase);
+    private ModListDiffViewModel _modDiff = new(null);
+    private ModConfigPickerViewModel _settings = new(null);
+
+    /// <summary>What the user ticked, read after the dialog closes.</summary>
+    public IReadOnlyCollection<string> ChosenSettings => _settings.Chosen;
+
+    /// <summary>
+    /// Called once the Mods window has been through. A mod turned on there changes what a row says
+    /// about itself, and the offer this was built from was read before that happened.
+    /// </summary>
+    internal void ReloadSettings()
+    {
+        _plans.Remove((_selectedEntry.Entry.Id, _selectedTarget.Ref));
+        _settings.Reload(_replan(_selectedEntry.Entry, _selectedTarget.Ref).Settings);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Settings)));
+    }
 
     private void Replan()
     {
@@ -285,13 +324,24 @@ public partial class LoadSaveDialog : Window, INotifyPropertyChanged
 
         _plan = cached;
 
+        _modDiff = new ModListDiffViewModel(_plan.Mods) { FixMods = _fixMods };
+        _modDiff.PropertyChanged += (_, _) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanLoad)));
+
+        if (!_pickers.TryGetValue(_selectedEntry.Entry.Id, out var picker))
+        {
+            picker = new ModConfigPickerViewModel(_plan.Settings);
+            _pickers[_selectedEntry.Entry.Id] = picker;
+        }
+
+        _settings = picker;
+
         foreach (var name in new[]
                  {
                      nameof(SelectedEntry), nameof(SelectedTarget), nameof(CanLoad), nameof(BlockedReason),
                      nameof(HeadlineText), nameof(DirectionText), nameof(ReplaceWarningText),
                      nameof(SourceName), nameof(TargetName), nameof(SourceSummary), nameof(TargetSummary),
                      nameof(SourceCampaigns), nameof(TargetCampaigns), nameof(Warnings), nameof(WarningsVisibility),
-                     nameof(ModDiff),
+                     nameof(ModDiff), nameof(Settings),
                  })
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));

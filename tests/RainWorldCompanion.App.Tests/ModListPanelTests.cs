@@ -112,17 +112,34 @@ public class ModListPanelTests
         Assert.Contains("local mod", local.ActionText);
     }
 
-    /// <summary>The app does not write the game's files, so this is advice rather than a button.</summary>
     [Fact]
-    public void A_mod_that_is_only_turned_off_is_pointed_at_the_remix_menu()
+    public void A_mod_that_is_only_turned_off_is_pointed_at_the_mods_window()
     {
         var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
         ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("off")), now);
 
         ModDiffRowViewModel row = Assert.Single(new ModListDiffViewModel(diff).TurnedOff);
 
-        Assert.Contains("Remix menu", row.ActionText);
+        Assert.Contains("Mods window", row.ActionText);
         Assert.Contains("turned off", row.DetailText);
+    }
+
+    [Fact]
+    public void The_button_that_opens_the_mods_window_appears_only_when_there_is_one_to_open()
+    {
+        var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
+        ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("off")), now);
+
+        Assert.False(new ModListDiffViewModel(diff).CanFixMods);
+        Assert.True(new ModListDiffViewModel(diff) { FixMods = () => null }.CanFixMods);
+    }
+
+    [Fact]
+    public void Nothing_to_sort_out_means_no_button_even_when_one_could_be_opened()
+    {
+        ModListDiff diff = ModListDiff.Compare(Snapshot(null, Mod("a")), Current(null, Mod("a")));
+
+        Assert.False(new ModListDiffViewModel(diff) { FixMods = () => null }.CanFixMods);
     }
 
     [Fact]
@@ -286,5 +303,69 @@ public class ModListPanelTests
 
         Assert.Contains("This backup was taken before", backup.Mods.EmptyText);
         Assert.Contains("No mod list was recorded when this save was stored", entry.Mods.EmptyText);
+    }
+
+    [Fact]
+    public void A_difference_has_to_be_acknowledged_before_the_save_can_be_written()
+    {
+        var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
+        var view = new ModListDiffViewModel(ModListDiff.Compare(Snapshot(null, Mod("off")), now));
+
+        Assert.True(view.NeedsAcknowledgement);
+        Assert.False(view.Settled);
+
+        view.Acknowledged = true;
+
+        Assert.True(view.Settled);
+    }
+
+    [Fact]
+    public void A_machine_that_matches_needs_no_acknowledgement()
+    {
+        var view = new ModListDiffViewModel(ModListDiff.Compare(Snapshot(null, Mod("a")), Current(null, Mod("a"))));
+
+        Assert.False(view.NeedsAcknowledgement);
+        Assert.True(view.Settled);
+    }
+
+    [Fact]
+    public void Turning_the_mod_on_and_reloading_drops_the_acknowledgement_and_the_button()
+    {
+        var now = new CurrentMods(Snapshot(null), new[] { Mod("off") });
+        var view = new ModListDiffViewModel(ModListDiff.Compare(Snapshot(null, Mod("off")), now))
+        {
+            FixMods = () => null,
+        };
+
+        Assert.True(view.CanFixMods);
+
+        view.Reload(ModListDiff.Compare(Snapshot(null, Mod("off")), Current(null, Mod("off"))));
+
+        Assert.False(view.NeedsAcknowledgement);
+        Assert.True(view.Settled);
+        Assert.False(view.CanFixMods);
+    }
+
+    [Fact]
+    public void A_mod_on_now_that_the_save_never_had_can_be_turned_off_from_here()
+    {
+        ModListDiff diff = ModListDiff.Compare(Snapshot(null), Current(null, Mod("devourment")));
+        var view = new ModListDiffViewModel(diff) { FixMods = () => null };
+
+        Assert.True(view.CanFixMods);
+        Assert.Equal("Turn off 1", view.FixModsText);
+        Assert.Contains("turn it off", Assert.Single(view.Extra).ActionText);
+    }
+
+    [Fact]
+    public void A_list_that_needs_both_says_both()
+    {
+        ModListDiff diff = ModListDiff.Compare(
+            Snapshot(null, Mod("wanted")),
+            new CurrentMods(Snapshot(null, Mod("extra")), new[] { Mod("wanted"), Mod("extra") }));
+
+        var view = new ModListDiffViewModel(diff) { FixMods = () => null };
+
+        Assert.Equal("Turn on 1, turn off 1", view.FixModsText);
     }
 }

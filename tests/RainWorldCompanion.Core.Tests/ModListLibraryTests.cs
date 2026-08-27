@@ -172,6 +172,43 @@ public class ModListLibraryTests
         Assert.False(mods.Compared);
     }
 
+    /// <summary>
+    /// Turning mods on to match a save happens between the dialog opening and the write, so a safety
+    /// copy that read the machine at copy time would record the list it exists to undo. It records
+    /// the one it was handed instead.
+    /// </summary>
+    [Fact]
+    public void A_safety_copy_records_the_mods_from_before_the_operation_not_the_ones_on_now()
+    {
+        var version = "before";
+        using var world = new LibraryWorld(modListSource: () => Version(version));
+        LibraryEntry entry = world.Library.StoreSlot(Slot1, "a save", null);
+
+        ModListSnapshot wasOn = world.Backups.ModListSource!().Enabled;
+
+        // Stands in for the Mods window having been through while the dialog was open.
+        version = "after";
+
+        LibraryLoadResult result = world.Library.LoadAny(
+            entry, new SaveSlotRef(SaveRealm.Local, 3), Array.Empty<string>(), null, default, wasOn);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+        Assert.Equal("before", result.SafetySnapshot!.Manifest!.Mods!.Mods[0].Version);
+    }
+
+    /// <summary>Nothing handed in still means the machine as it stands, which is what a backup
+    /// taken on its own wants.</summary>
+    [Fact]
+    public void A_safety_copy_told_nothing_still_records_the_machine_as_it_stands()
+    {
+        using var world = new LibraryWorld(modListSource: () => Version("now"));
+        LibraryEntry entry = world.Library.StoreSlot(Slot1, "a save", null);
+
+        LibraryLoadResult result = world.Library.LoadAny(entry, new SaveSlotRef(SaveRealm.Local, 3));
+
+        Assert.Equal("now", result.SafetySnapshot!.Manifest!.Mods!.Mods[0].Version);
+    }
+
     [Fact]
     public void A_library_with_nowhere_to_read_mods_plans_loads_with_no_comparison()
     {

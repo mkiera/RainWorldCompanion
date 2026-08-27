@@ -451,6 +451,13 @@ public sealed partial class UpdateViewModel : ObservableObject
         _persist(settings => settings.AutoCheckUpdates = enabled);
     }
 
+    /// <summary>
+    /// Records that the list was fetched from GitHub. The Updates window reaches the same server
+    /// the banner's own check does, so a refresh there counts as a check: without this the window
+    /// would go on saying it last looked hours ago while it was looking just now.
+    /// </summary>
+    public void RecordCheck(DateTimeOffset at) => Stamp(at);
+
     private void Stamp(DateTimeOffset? at)
     {
         LastCheckedUtc = at;

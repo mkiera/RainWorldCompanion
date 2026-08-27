@@ -172,8 +172,45 @@ public class ScopeWideningTests
     [Fact]
     public void The_current_scope_version_is_past_the_first_one()
     {
-        // The whole fix rests on the two rule sets being distinguishable.
+        // The whole fix rests on the rule sets being distinguishable.
         Assert.True(BackupScope.CurrentScopeVersion > 1);
+        Assert.True(BackupScope.CurrentScopeVersion > BackupScope.WiderModDataScopeVersion);
+    }
+
+    /// <summary>
+    /// A settings file a mod keeps in a folder of its own is in scope today and was not at version
+    /// 2, so restoring a version 2 snapshot must leave it alone rather than read its absence from
+    /// that manifest as the player having deleted it.
+    /// </summary>
+    [Fact]
+    public void Restoring_a_version_two_snapshot_leaves_a_mod_settings_folder_alone()
+    {
+        using var world = new WideWorld();
+        var snapshot = world.MediumService.CreateBackup("under version 2", null);
+
+        Assert.DoesNotContain(
+            snapshot.Manifest!.Files,
+            f => SaveTree.Normalize(f.RelativePath) == @"ModConfigs\MapOptions\cache.json");
+
+        var result = world.Service.RestoreBackup(snapshot);
+
+        Assert.True(result.Success);
+        Assert.True(
+            world.Live.FileExists(@"ModConfigs\MapOptions\cache.json"),
+            "a mod settings folder the version 2 scope never covered was deleted");
+    }
+
+    [Fact]
+    public void A_version_two_scope_takes_the_settings_files_it_knew_and_not_the_folder()
+    {
+        using var world = new WideWorld();
+
+        var found = SaveTree.Sorted(
+            world.MediumService.Scope.Enumerate().Select(e => e.RelativePath));
+
+        Assert.Contains(@"ModConfigs\moreslugcats.txt", found);
+        Assert.Contains(@"ModConfigs\DvrmentConfs\current.json", found);
+        Assert.DoesNotContain(@"ModConfigs\MapOptions\cache.json", found);
     }
 
     [Fact]
@@ -389,6 +426,12 @@ internal sealed class WideWorld : IDisposable
         WideSaveTree.Populate(Live);
         Detector = FakeGameDetector.NotRunning();
         Service = new BackupService(Live.Path, BackupRoot.Path, Detector, "1.0.0-test");
+        MediumService = new BackupService(
+            Live.Path,
+            BackupRoot.Path,
+            Detector,
+            "1.0.0-test",
+            new BackupScope(Live.Path, BackupScope.WiderModDataScopeVersion));
         NarrowService = new BackupService(
             Live.Path,
             BackupRoot.Path,
@@ -405,6 +448,10 @@ internal sealed class WideWorld : IDisposable
 
     /// <summary>The service the app uses, on the current scope rules.</summary>
     public BackupService Service { get; }
+
+    /// <summary>A service pinned to scope version 2, which is where mod settings were the .txt
+    /// files and DvrmentConfs rather than the whole folder.</summary>
+    public BackupService MediumService { get; }
 
     /// <summary>A service pinned to scope version 1, standing in for the version already shipped.</summary>
     public BackupService NarrowService { get; }
@@ -445,6 +492,7 @@ internal static class WideSaveTree
         @"ModConfigs\habbit.karmacontrol.txt",
         @"ModConfigs\henpemaz_rainmeadow.txt",
         @"ModConfigs\MapOptions.txt",
+        @"ModConfigs\MapOptions\cache.json",
         @"ModConfigs\moreslugcats.txt",
         @"ModConfigs\randombuff.txt",
         @"ModConfigs\SBCameraScroll.txt",
@@ -476,6 +524,7 @@ internal static class WideSaveTree
         // Steam's own sync manifests, one per folder it syncs.
         "steam_autocloud.vdf",
         @"ModConfigs\steam_autocloud.vdf",
+        @"ModConfigs\MapOptions\steam_autocloud.vdf",
         @"SJ_0\steam_autocloud.vdf",
         @"cloud\steam_autocloud.vdf",
 
@@ -526,6 +575,11 @@ internal static class WideSaveTree
         directory.WriteText(@"ModConfigs\MapOptions.txt", "MapOptions<optB>1");
         directory.WriteText(@"ModConfigs\moreslugcats.txt", "SomeOtherMod<optB>1");
         directory.WriteText(@"ModConfigs\randombuff.txt", "RandomBuff<optB>1");
+
+        // A mod that keeps a folder of its own rather than one settings file, which the
+        // rules before version 3 did not reach.
+        directory.WriteText(@"ModConfigs\MapOptions\cache.json", "{\"zoom\":2}");
+        directory.WriteText(@"ModConfigs\MapOptions\steam_autocloud.vdf", "\"RootPaths\"\n{\n}\n");
         directory.WriteText(@"ModConfigs\SBCameraScroll.txt", "SBCameraScroll<optB>1");
         directory.WriteText(@"ModConfigs\willowwisp.bellyplus.txt", "BellyPlus<optB>1");
         directory.WriteText(@"ModConfigs\DvrmentConfs\current.json", "{\"preset\":\"default\",\"struggle\":0.5}");

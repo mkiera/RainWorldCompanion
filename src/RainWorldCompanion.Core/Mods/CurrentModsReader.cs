@@ -125,6 +125,7 @@ public static class CurrentModsReader
                     Id = match.Id,
                     Name = match.Name,
                     Version = match.Version,
+                    FolderName = match.FolderName,
                     WorkshopId = match.WorkshopId,
                     Origin = match.Origin,
                 }
@@ -220,6 +221,7 @@ public static class CurrentModsReader
         {
             Id = folderName,
             Name = folderName,
+            FolderName = folderName,
             WorkshopId = workshopId,
             Origin = origin,
         };

@@ -10,6 +10,37 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- Turn Rain World's mods on and off from the app, without opening the game. The
+  Mods window lists every mod you have with a tick beside it, and Apply writes
+  what the game reads the next time it starts.
+- The Mods window can match what a backup or library save was played with in one
+  press, and put your own list back afterwards. Any mod you would rather leave
+  alone stays where you put it.
+- A mod a save needs but you do not have gets a button to its Steam Workshop
+  page, and Refresh picks it up once you have subscribed.
+- Restoring, loading or sending a save offers to turn its mods on there and
+  then, instead of telling you to go and do it in the game's Remix menu. The
+  Mods window opens over that one and hands you back to it when you close it.
+  That covers mods you have turned on that the save never used, not just the
+  ones it is missing.
+- Writing a save whose mods do not match this machine now asks you to tick that
+  you know, before the button will do anything.
+- A library save and a `.rwsave` carry the mod settings that were on with them.
+  Loading one asks which mods' settings to take, and takes none unless you tick
+  them.
+- Sending a campaign out of a backup or a library save offers its mod settings
+  the same way.
+- The panel has a SETTINGS section under MODS, showing which mods' settings a
+  save carries.
+- Steam Workshop links open in Steam where it is installed, so Subscribe is
+  there without signing in to the site.
+- Check now in the Updates window records when it looked, so the line above it
+  stops saying the last check was hours ago.
+- Turning mods on to match a save before loading it no longer leaves the safety
+  backup claiming the new mod list. It records the one you had before, so
+  matching that backup's mods puts you back where you started.
+- Backups now take everything under ModConfigs, so a mod that keeps its settings
+  in a folder or a .json is covered too.
 - The window shows which version is running, under the folder paths in the
   bottom left. Alpha builds also show their commit.
 - The window opens at a size that fits your screen instead of a fixed small

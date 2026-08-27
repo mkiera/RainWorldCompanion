@@ -44,7 +44,7 @@ public class ManifestCompatibilityTests
         Assert.Equal(1, snapshot.Manifest!.SchemaVersion);
         Assert.Equal("before the update", snapshot.Label);
         Assert.Equal(BackupKind.Manual, snapshot.Kind);
-        Assert.Equal(SaveTree.InScope.Length, snapshot.Manifest.Files.Count);
+        Assert.Equal(SaveTree.VersionOneInScope.Length, snapshot.Manifest.Files.Count);
     }
 
     [Fact]
@@ -81,10 +81,16 @@ public class ManifestCompatibilityTests
 
         var plan = world.Service.PlanRestore(Load(world));
 
-        Assert.Equal(SaveTree.InScope.Length, plan.Unchanged.Count);
+        Assert.Equal(SaveTree.VersionOneInScope.Length, plan.Unchanged.Count);
         Assert.Empty(plan.Added);
         Assert.Empty(plan.Overwritten);
+
+        // The files today's rules cover and version 1's did not are left alone rather than deleted:
+        // their absence from a version 1 manifest says nothing about whether the player wants them.
         Assert.Empty(plan.Deleted);
+        Assert.Equal(
+            SaveTree.Sorted(SaveTree.InScope.Except(SaveTree.VersionOneInScope)),
+            SaveTree.Sorted(plan.LeftAlone));
     }
 
     [Fact]
@@ -364,12 +370,17 @@ public class ManifestCompatibilityTests
         world.BackupRoot.WriteText(V1SnapshotId + @"\manifest.json", json.ToString());
     }
 
-    /// <summary>Writes the manifest.json the shipped version 1 wrote: only the seven per-campaign fields it knew.</summary>
+    /// <summary>
+    /// Writes the manifest.json the shipped version 1 wrote: only the seven per-campaign fields it
+    /// knew, and only the files its rules covered. The file list is the frozen one rather than
+    /// today's, so widening the scope does not quietly make this fixture claim files version 1
+    /// could never have held.
+    /// </summary>
     private static void WriteVersionOneSnapshot(BackupWorld world, bool includeSlots = true)
     {
         var files = new List<string>();
 
-        foreach (var relative in SaveTree.InScope)
+        foreach (var relative in SaveTree.VersionOneInScope)
         {
             var source = world.Live.Resolve(relative);
             var copied = world.BackupRoot.CopyFrom(source, V1SnapshotId + "\\" + relative);
