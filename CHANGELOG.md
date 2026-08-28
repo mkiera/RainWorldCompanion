@@ -10,10 +10,13 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+## 1.2.0-beta.4 - 2026-08-28
+
 - Take settings takes a library save's mod settings on their own, with no slot written and
   no campaign touched. It picks per mod the same way loading one does.
-- A whole slot in a backup can go to the library, every campaign in it at once, instead of
-  one campaign at a time. The button is on the slot heading.
+- A whole slot in a backup can go to the library, every campaign in it at once, rather than
+  only one campaign at a time. Save slot to library sits on the slot heading, in a backup and
+  in the live save folder alike.
 - Every place mod settings are listed says whether they are the same as the ones you have,
   different, or new to you. Ticking ones you already have says so before you apply them.
 - A backup or library save says which of its slots and campaigns differ from the ones in the
