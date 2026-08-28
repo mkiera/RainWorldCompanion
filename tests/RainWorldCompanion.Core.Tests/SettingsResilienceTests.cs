@@ -260,12 +260,12 @@ public class SettingsResilienceTests
     [Theory]
     [InlineData("dark", AppTheme.Dark)]
     [InlineData("light", AppTheme.Light)]
-    [InlineData("LIGHT", AppTheme.Light)]
-    [InlineData("  light  ", AppTheme.Light)]
-    [InlineData("chartreuse", AppTheme.Dark)]
-    [InlineData("", AppTheme.Dark)]
-    [InlineData(null, AppTheme.Dark)]
-    public void An_unreadable_theme_reads_as_dark(string? stored, AppTheme expected)
+    [InlineData("DARK", AppTheme.Dark)]
+    [InlineData("  dark  ", AppTheme.Dark)]
+    [InlineData("chartreuse", AppTheme.Light)]
+    [InlineData("", AppTheme.Light)]
+    [InlineData(null, AppTheme.Light)]
+    public void An_unreadable_theme_reads_as_light(string? stored, AppTheme expected)
         => Assert.Equal(expected, AppThemes.Parse(stored));
 
     [Theory]
@@ -283,7 +283,7 @@ public class SettingsResilienceTests
 
     /// <summary>Which is every file written before the toggle existed.</summary>
     [Fact]
-    public void A_file_with_no_theme_loads_as_dark()
+    public void A_file_with_no_theme_loads_as_light()
     {
         using var dir = new TempDirectory();
         var store = StoreWith(dir, """
@@ -294,7 +294,7 @@ public class SettingsResilienceTests
         }
         """);
 
-        Assert.Equal(AppTheme.Dark, AppThemes.Parse(store.Load().Theme));
+        Assert.Equal(AppTheme.Light, AppThemes.Parse(store.Load().Theme));
     }
 
     /// <summary>

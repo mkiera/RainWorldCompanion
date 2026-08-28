@@ -15,7 +15,7 @@ public static class ThemeManager
     private static readonly Uri LightPalette = new("Themes/Palette.Light.xaml", UriKind.Relative);
     private static readonly Uri DarkPalette = new("Themes/Palette.Dark.xaml", UriKind.Relative);
 
-    public static AppTheme Current { get; private set; } = AppTheme.Dark;
+    public static AppTheme Current { get; private set; } = AppTheme.Light;
 
     public static void Apply(AppTheme theme)
     {
