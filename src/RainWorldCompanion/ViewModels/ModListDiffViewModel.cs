@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -64,6 +65,10 @@ public sealed partial class ModListDiffViewModel : ObservableObject
 
     // Called again after the Mods window has been through, so the dialog that opened it shows what
     // is true now rather than what was true when it opened.
+    [MemberNotNull(
+        nameof(HeadlineText), nameof(GroupNotes),
+        nameof(Missing), nameof(TurnedOff), nameof(Changed), nameof(Extra),
+        nameof(MissingHeader), nameof(TurnedOffHeader), nameof(ChangedHeader), nameof(ExtraHeader))]
     public void Reload(ModListDiff? diff)
     {
         if (diff is null)

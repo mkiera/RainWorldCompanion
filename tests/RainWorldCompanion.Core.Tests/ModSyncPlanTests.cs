@@ -8,7 +8,7 @@ public class ModSyncPlanTests
         => new(ModLists.Snapshot(null, on.ToArray()), installed);
 
     private static ModSyncRow Row(ModSyncPlan plan, string id)
-        => Assert.Single(plan.Rows.Where(row => row.Id == id));
+        => Assert.Single(plan.Rows, row => row.Id == id);
 
     [Fact]
     public void Every_installed_mod_gets_a_row_whether_it_is_on_or_off()
