@@ -16,6 +16,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
   one campaign at a time. The button is on the slot heading.
 - Every place mod settings are listed says whether they are the same as the ones you have,
   different, or new to you. Ticking ones you already have says so before you apply them.
+- A backup or library save says which of its slots and campaigns differ from the ones in the
+  game now. Opening a campaign marks the values that are not what the live slot holds.
 
 ## 1.2.0-beta.3 - 2026-08-27
 

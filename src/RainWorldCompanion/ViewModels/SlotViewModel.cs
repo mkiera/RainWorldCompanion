@@ -37,7 +37,8 @@ public sealed class SlotViewModel
         string sourceDirectory = "",
         string sourceLabel = "",
         string sourceFileOverride = "",
-        bool storable = false)
+        bool storable = false,
+        SlotMetadata? live = null)
     {
         Metadata = slot;
         SlotNumber = slot.Slot;
@@ -66,9 +67,14 @@ public sealed class SlotViewModel
         Source = source;
         Storable = storable;
 
+        // Matched by slugcat inside the slot this one would be written over. A campaign the live
+        // slot does not hold has nothing to compare against, so its tiles stay unmarked.
         Campaigns = slot.Campaigns
-            .Select(campaign => new CampaignViewModel(campaign, icons, source))
+            .Select(campaign => new CampaignViewModel(campaign, icons, source, LiveCampaign(live, campaign.SlugcatId)))
             .ToList();
+
+        ComparedToLive = live is not null;
+        _liveCampaignCount = live?.Campaigns.Count ?? 0;
         Portraits = BuildPortraits(slot, icons);
 
         HasParseError = slot.ParseError is not null;
@@ -79,6 +85,28 @@ public sealed class SlotViewModel
     }
 
     public SlotMetadata Metadata { get; }
+
+    /// <summary>Whether a live slot of the same number was found to compare against.</summary>
+    public bool ComparedToLive { get; }
+
+    /// <summary>
+    /// Different if any campaign it shares with the live slot differs, or if the two do not hold
+    /// the same set of campaigns at all. A campaign this slot has and the live one does not is a
+    /// difference between the slots even though that campaign has nothing to compare against.
+    /// </summary>
+    public bool DiffersFromLive =>
+        ComparedToLive
+        && (Campaigns.Any(campaign => campaign.DiffersFromLive)
+            || Campaigns.Any(campaign => !campaign.ComparedToLive)
+            || _liveCampaignCount != Campaigns.Count);
+
+    /// <summary>Empty unless there was a live slot to compare against.</summary>
+    public string LiveComparisonText =>
+        !ComparedToLive ? "" : DiffersFromLive ? "Differs from live" : "Same as live";
+
+    public bool HasLiveComparisonText => LiveComparisonText.Length > 0;
+
+    private readonly int _liveCampaignCount;
 
     /// <summary>Where this slot's bytes are, which a library save already holds a copy of.</summary>
     public CampaignSource? Source { get; }
@@ -161,6 +189,24 @@ public sealed class SlotViewModel
     /// A backup's panel is filled from its manifest, so the campaigns can be described without the
     /// snapshot folder being there. Taking one out needs the file: no folder, no source, no buttons.
     /// </summary>
+    private static CampaignSummary? LiveCampaign(SlotMetadata? live, string slugcatId)
+    {
+        if (live is null)
+        {
+            return null;
+        }
+
+        foreach (var campaign in live.Campaigns)
+        {
+            if (string.Equals(campaign.SlugcatId, slugcatId, StringComparison.OrdinalIgnoreCase))
+            {
+                return campaign;
+            }
+        }
+
+        return null;
+    }
+
     private static CampaignSource? BuildSource(
         SlotMetadata slot,
         SaveSlotRef? editableSlot,

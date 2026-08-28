@@ -38,7 +38,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         MeadowProfile? meadow,
         ISlugcatIconProvider icons,
         string sourceDirectory = "",
-        string sourceLabel = "")
+        string sourceLabel = "",
+        IReadOnlyList<SlotMetadata>? liveSlots = null)
     {
         Mods = modsSection;
         Configs = configsSection;
@@ -64,7 +65,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 entry.Entry.Manifest?.SourceFileName,
                 sourceDirectory: entry.Entry.DirectoryPath,
                 sourceLabel: "the library save \"" + entry.Name + "\"",
-                sourceFileOverride: entry.Entry.ContentFileName)
+                sourceFileOverride: entry.Entry.ContentFileName,
+                liveSlots: liveSlots)
             : BuildSlots(
                 allSlots.Where(slot => slot.Realm != SaveRealm.Online),
                 icons,
@@ -72,7 +74,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
                 sourceLabel: sourceLabel,
-                storable: true);
+                storable: true,
+                liveSlots: liveSlots);
         _onlineSlots = entry is not null
             ? Array.Empty<SlotViewModel>()
             : BuildSlots(
@@ -82,7 +85,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
                 sourceLabel: sourceLabel,
-                storable: true);
+                storable: true,
+                liveSlots: liveSlots);
 
         SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots);
         OnlineCountText = FormatFileCount(_onlineSlots.Count, "online save");
@@ -226,7 +230,10 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// anything. Null leaves them unlabelled.
     /// </param>
     public static SnapshotDetailViewModel ForLibraryEntry(
-        LibraryEntryViewModel item, ISlugcatIconProvider icons, ModConfigSet? live = null)
+        LibraryEntryViewModel item,
+        ISlugcatIconProvider icons,
+        ModConfigSet? live = null,
+        IReadOnlyList<SlotMetadata>? liveSlots = null)
     {
         var metadata = item.Entry.Manifest?.Metadata;
 
@@ -259,14 +266,16 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             entry: item,
             allSlots: metadata is null ? Array.Empty<SlotMetadata>() : new[] { metadata },
             meadow: null,
-            icons: icons);
+            icons: icons,
+            liveSlots: liveSlots);
     }
 
     public static SnapshotDetailViewModel ForBackup(
         BackupItemViewModel item,
         MeadowProfile? meadow,
         ISlugcatIconProvider icons,
-        ModConfigSet? live = null)
+        ModConfigSet? live = null,
+        IReadOnlyList<SlotMetadata>? liveSlots = null)
     {
         var source = item.Snapshot.Manifest?.Slots;
 
@@ -322,15 +331,48 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         string sourceDirectory = "",
         string sourceLabel = "",
         string sourceFileOverride = "",
-        bool storable = false)
+        bool storable = false,
+        IReadOnlyList<SlotMetadata>? liveSlots = null)
     {
         return slots
             .OrderBy(slot => slot.Slot == 0 ? int.MaxValue : slot.Slot)
             .ThenBy(slot => slot.FileName, StringComparer.OrdinalIgnoreCase)
             .Select(slot => new SlotViewModel(
                 slot, icons, fileNameOverride, nameRealm, editable, sourceDirectory, sourceLabel,
-                sourceFileOverride, storable))
+                sourceFileOverride, storable, LiveSlot(liveSlots, slot)))
             .ToList();
+    }
+
+    /// <summary>
+    /// The live slot these bytes would be written over, matched by realm and number. Slot zero is
+    /// a file with no numbered slot, and two of those cannot be told apart by number, so they are
+    /// matched by file name instead.
+    /// </summary>
+    private static SlotMetadata? LiveSlot(IReadOnlyList<SlotMetadata>? liveSlots, SlotMetadata slot)
+    {
+        if (liveSlots is null)
+        {
+            return null;
+        }
+
+        foreach (var live in liveSlots)
+        {
+            if (live.Realm != slot.Realm)
+            {
+                continue;
+            }
+
+            var matches = slot.Slot > 0
+                ? live.Slot == slot.Slot
+                : string.Equals(live.FileName, slot.FileName, StringComparison.OrdinalIgnoreCase);
+
+            if (matches)
+            {
+                return live;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>A row with nothing on either side still shows which online slots are empty.</summary>
