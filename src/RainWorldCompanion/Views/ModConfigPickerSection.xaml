@@ -42,12 +42,12 @@
     </UserControl.Resources>
 
     <Border CornerRadius="4" Padding="12,10"
-            Background="{StaticResource Brush.PanelAlt}"
-            BorderBrush="{StaticResource Brush.Border}"
+            Background="{DynamicResource Brush.PanelAlt}"
+            BorderBrush="{DynamicResource Brush.Border}"
             BorderThickness="1">
         <StackPanel>
             <TextBlock Text="SETTINGS" FontWeight="Bold" FontSize="11"
-                       Foreground="{StaticResource Brush.TextMuted}" />
+                       Foreground="{DynamicResource Brush.TextMuted}" />
 
             <TextBlock Text="{Binding HeadlineText}" TextWrapping="Wrap" Margin="0,6,0,0" />
 
@@ -63,7 +63,7 @@
 
             <TextBlock Text="{Binding SameAsYoursText}"
                        TextWrapping="Wrap" Margin="0,8,0,0"
-                       Foreground="{StaticResource Brush.Text}"
+                       Foreground="{DynamicResource Brush.Text}"
                        Visibility="{Binding HasSameAsYoursText, Converter={StaticResource BoolToVis}}" />
 
             <TextBlock Text="{Binding FooterText}" Style="{StaticResource Text.Muted}"

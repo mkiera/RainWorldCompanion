@@ -11,8 +11,8 @@
         MinHeight="300"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Brush.Window}"
-        Foreground="{StaticResource Brush.Text}"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Segoe UI"
         FontSize="13">
@@ -51,7 +51,7 @@
                                                             Converter={StaticResource BoolToVis}}" />
                             <TextBlock Text="{Binding Notes}"
                                        TextWrapping="Wrap"
-                                       Foreground="{StaticResource Brush.Text}" />
+                                       Foreground="{DynamicResource Brush.Text}" />
                         </StackPanel>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>

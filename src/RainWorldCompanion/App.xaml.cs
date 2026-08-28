@@ -6,6 +6,7 @@ using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
 using RainWorldCompanion.Core.Updates;
 using RainWorldCompanion.Services;
+using RainWorldCompanion.Theming;
 using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion;
@@ -69,8 +70,13 @@ public partial class App : Application
             // Queued, because this runs from inside the update, which has a line or two left.
             () => Dispatcher.BeginInvoke(Shutdown)));
 
+        // Before Show, so the window is painted in the right colours once rather than opening
+        // light and turning dark a moment later.
+        var startup = settingsStore.ReadForStartup();
+        ThemeManager.Apply(AppThemes.Parse(startup?.Theme));
+
         var window = new MainWindow { DataContext = viewModel };
-        window.ApplyStartupGeometry(settingsStore);
+        window.ApplyStartupGeometry(startup);
         MainWindow = window;
         window.Show();
     }

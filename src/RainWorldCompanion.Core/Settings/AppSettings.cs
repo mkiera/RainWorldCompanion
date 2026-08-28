@@ -1,4 +1,4 @@
-using RainWorldCompanion.Core.System;
+﻿using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Settings;
 
@@ -35,6 +35,13 @@ public sealed class AppSettings
     /// </summary>
     public bool AutoCheckUpdates { get; set; } = true;
 
+    /// <summary>
+    /// "light" or "dark", text rather than the enum for the same reason as
+    /// <see cref="UpdateChannel"/>. Anything else reads as dark, so a file written before the
+    /// toggle existed opens dark along with a fresh one.
+    /// </summary>
+    public string Theme { get; set; } = "dark";
+
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }
 
     /// <summary>
@@ -70,6 +77,7 @@ public sealed class AppSettings
         GameInstallPath = GameInstallPath,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
+        Theme = Theme,
         LastUpdateCheckUtc = LastUpdateCheckUtc,
         LastSeenChangelogVersion = LastSeenChangelogVersion,
         WindowWidth = WindowWidth,

@@ -11,8 +11,8 @@
         MinHeight="440"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Brush.Window}"
-        Foreground="{StaticResource Brush.Text}"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Segoe UI"
         FontSize="13">
@@ -22,14 +22,15 @@
              target: the description is the part that says what picking it means, so it has to
              be clickable too. -->
         <Style x:Key="ChannelCard" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="Shell"
-                                Background="{StaticResource Brush.Panel}"
-                                BorderBrush="{StaticResource Brush.Border}"
+                                Background="{DynamicResource Brush.Panel}"
+                                BorderBrush="{DynamicResource Brush.Border}"
                                 BorderThickness="1"
                                 CornerRadius="6"
                                 Padding="12,9">
@@ -37,11 +38,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <DataTrigger Binding="{Binding IsSelected}" Value="True">
-                                <Setter TargetName="Shell" Property="Background" Value="{StaticResource Brush.Selection}" />
-                                <Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                                <Setter TargetName="Shell" Property="Background" Value="{DynamicResource Brush.Selection}" />
+                                <Setter TargetName="Shell" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                             </DataTrigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Shell" Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+                                <Setter TargetName="Shell" Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -50,8 +51,8 @@
         </Style>
 
         <Style x:Key="RowShell" TargetType="Border">
-            <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+            <Setter Property="Background" Value="{DynamicResource Brush.Panel}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Padding" Value="12,10" />
@@ -127,7 +128,7 @@
             <Border Style="{StaticResource Banner.Warn}"
                     Visibility="{Binding IsProblem, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
-                           Foreground="{StaticResource Brush.Warn}" />
+                           Foreground="{DynamicResource Brush.Warn}" />
             </Border>
 
             <TextBlock Text="{Binding Updates.StatusMessage}"
@@ -203,15 +204,15 @@
                                      no markdown renderer. -->
                                 <Border Margin="0,10,0,0"
                                         Padding="12,10"
-                                        Background="{StaticResource Brush.PanelAlt}"
-                                        BorderBrush="{StaticResource Brush.Border}"
+                                        Background="{DynamicResource Brush.PanelAlt}"
+                                        BorderBrush="{DynamicResource Brush.Border}"
                                         BorderThickness="1"
                                         CornerRadius="4"
                                         Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
                                         <TextBlock Text="{Binding Notes}"
                                                    TextWrapping="Wrap"
-                                                   Foreground="{StaticResource Brush.Text}"
+                                                   Foreground="{DynamicResource Brush.Text}"
                                                    Visibility="{Binding HasNotes, Converter={StaticResource BoolToVis}}" />
 
                                         <!-- A release can carry no body at all, and an empty box
@@ -234,7 +235,7 @@
                                 <TextBlock Text="{Binding ConfirmationText}"
                                            TextWrapping="Wrap"
                                            Margin="0,8,0,0"
-                                           Foreground="{StaticResource Brush.Warn}"
+                                           Foreground="{DynamicResource Brush.Warn}"
                                            Visibility="{Binding IsArmed, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </Border>

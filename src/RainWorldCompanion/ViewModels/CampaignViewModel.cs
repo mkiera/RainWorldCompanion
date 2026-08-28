@@ -76,7 +76,6 @@ public sealed record CampaignSource(
 public sealed class PortraitViewModel
 {
     private static readonly Brush FallbackAccent = Freeze(Color.FromRgb(0x9E, 0x9E, 0x9E));
-    private static readonly Brush FallbackAccentSoft = Freeze(Color.FromRgb(0xF0, 0xF0, 0xEE));
 
     public PortraitViewModel(SlugcatInfo info, ImageSource image, string? toolTipText = null)
     {
@@ -86,7 +85,6 @@ public sealed class PortraitViewModel
 
         var colour = ParseColour(info.ColorHex);
         Accent = colour is null ? FallbackAccent : Freeze(colour.Value);
-        AccentSoft = colour is null ? FallbackAccentSoft : Freeze(Soften(colour.Value));
         ToolTipText = toolTipText ?? DefaultToolTip(info);
     }
 
@@ -98,8 +96,6 @@ public sealed class PortraitViewModel
     public ImageSource Image { get; }
 
     public Brush Accent { get; }
-
-    public Brush AccentSoft { get; }
 
     public string ToolTipText { get; }
 
@@ -120,11 +116,6 @@ public sealed class PortraitViewModel
             return null;
         }
     }
-
-    private static Color Soften(Color colour) => Color.FromRgb(
-        (byte)(colour.R + ((255 - colour.R) * 0.82)),
-        (byte)(colour.G + ((255 - colour.G) * 0.82)),
-        (byte)(colour.B + ((255 - colour.B) * 0.82)));
 
     private static Brush Freeze(Color colour)
     {

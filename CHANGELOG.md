@@ -10,6 +10,9 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- The window comes in dark colours, which is now what it opens with. Settings has a Dark mode
+  tick to turn it off, and the choice is kept for next time.
+
 ## 1.2.0-beta.4 - 2026-08-28
 
 - Take settings takes a library save's mod settings on their own, with no slot written and

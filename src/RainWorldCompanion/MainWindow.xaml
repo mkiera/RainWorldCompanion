@@ -10,8 +10,8 @@
         Title="{x:Static local:AppInfo.DisplayName}"
         Height="720" Width="1150" MinHeight="560" MinWidth="900"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource Brush.Window}"
-        Foreground="{StaticResource Brush.Text}"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Segoe UI"
         FontSize="13">
@@ -34,7 +34,7 @@
                             <!-- Colour alone would be the whole signal, so the dot beside the
                                  label carries it too. -->
                             <DataTrigger Binding="{Binding DiffersFromLive}" Value="True">
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -45,7 +45,7 @@
                                    FontSize="8"
                                    VerticalAlignment="Center"
                                    Margin="4,0,0,0"
-                                   Foreground="{StaticResource Brush.Accent}"
+                                   Foreground="{DynamicResource Brush.Accent}"
                                    ToolTip="This is not what the live slot holds."
                                    Visibility="{Binding DiffersFromLive, Converter={StaticResource BoolToVis}}" />
                         <TextBlock Text="{Binding Label}"
@@ -66,7 +66,7 @@
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Value}">
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsMissing}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                             <Setter Property="FontWeight" Value="Normal" />
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -86,17 +86,17 @@
             <Border Margin="0,0,5,5" CornerRadius="3" Padding="8,3" BorderThickness="1" SnapsToDevicePixels="True">
                 <Border.Style>
                     <Style TargetType="Border">
-                        <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                        <Setter Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding On}" Value="True">
-                                <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                                <Setter Property="Background" Value="{DynamicResource Brush.OkSoft}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
                             </DataTrigger>
                             <!-- Last, so it wins over the on colour: whether this badge matches the
                                  live slot is the thing being asked here. -->
                             <DataTrigger Binding="{Binding DiffersFromLive}" Value="True">
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -104,11 +104,11 @@
                 <TextBlock Text="{Binding Text}" FontSize="11">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                             <Setter Property="FontSize" Value="11" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding On}" Value="True">
-                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                     <Setter Property="FontWeight" Value="SemiBold" />
                                 </DataTrigger>
                             </Style.Triggers>
@@ -121,9 +121,9 @@
         <DataTemplate x:Key="ChipTemplate">
             <Border Style="{StaticResource Chip}">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{StaticResource Brush.Text}" />
+                    <TextBlock Text="{Binding Text}" FontSize="11" Foreground="{DynamicResource Brush.Text}" />
                     <TextBlock Text="{Binding Detail}" FontSize="11" Margin="5,0,0,0"
-                               Foreground="{StaticResource Brush.TextMuted}"
+                               Foreground="{DynamicResource Brush.TextMuted}"
                                Visibility="{Binding Detail, Converter={StaticResource StringToVis}}" />
                 </StackPanel>
             </Border>
@@ -138,12 +138,12 @@
                     <Style TargetType="Border" BasedOn="{StaticResource Chip}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding Spent}" Value="True">
-                                <Setter Property="Background" Value="{StaticResource Brush.Selection}" />
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                                <Setter Property="Background" Value="{DynamicResource Brush.Selection}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding Available}" Value="True">
-                                <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                                <Setter Property="Background" Value="{DynamicResource Brush.OkSoft}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -153,13 +153,13 @@
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                 <Setter Property="FontSize" Value="11" />
-                                <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Spent}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding Available}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                         <Setter Property="FontWeight" Value="SemiBold" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -167,7 +167,7 @@
                         </TextBlock.Style>
                     </TextBlock>
                     <TextBlock Text="{Binding ProgressText}" FontSize="11" Margin="5,0,0,0"
-                               Foreground="{StaticResource Brush.TextMuted}"
+                               Foreground="{DynamicResource Brush.TextMuted}"
                                Visibility="{Binding ProgressText, Converter={StaticResource StringToVis}}" />
                 </StackPanel>
             </Border>
@@ -176,9 +176,9 @@
         <DataTemplate x:Key="KillTemplate">
             <Border Style="{StaticResource Chip}" ToolTip="{Binding CreatureId}">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Name}" FontSize="11" Foreground="{StaticResource Brush.Text}" />
+                    <TextBlock Text="{Binding Name}" FontSize="11" Foreground="{DynamicResource Brush.Text}" />
                     <TextBlock Text="{Binding CountText}" FontSize="11" FontWeight="SemiBold" Margin="6,0,0,0"
-                               Foreground="{StaticResource Brush.Accent}" />
+                               Foreground="{DynamicResource Brush.Accent}" />
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -186,6 +186,7 @@
         <!-- The chevron on a node that is carrying something. Bare so it reads as an outline
              marker rather than a button in the middle of a table. -->
         <Style x:Key="TreeToggle" TargetType="ToggleButton">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Width" Value="14" />
@@ -198,7 +199,7 @@
                     <ControlTemplate TargetType="ToggleButton">
                         <Border Background="Transparent">
                             <Path x:Name="Arrow" Data="M 0 0 L 4 4 L 0 8 Z"
-                                  Fill="{StaticResource Brush.TextMuted}"
+                                  Fill="{DynamicResource Brush.TextMuted}"
                                   HorizontalAlignment="Center" VerticalAlignment="Center"
                                   RenderTransformOrigin="0.4,0.5" />
                         </Border>
@@ -211,7 +212,7 @@
                                 </Setter>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Arrow" Property="Fill" Value="{StaticResource Brush.Text}" />
+                                <Setter TargetName="Arrow" Property="Fill" Value="{DynamicResource Brush.Text}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -265,12 +266,12 @@
                                 Visibility="{Binding HasKind, Converter={StaticResource BoolToVis}}">
                             <Border.Style>
                                 <Style TargetType="Border">
-                                    <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                    <Setter Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsItem}" Value="True">
-                                            <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
-                                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                            <Setter Property="Background" Value="{DynamicResource Brush.WarnSoft}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warn}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -287,7 +288,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <Ellipse Width="7" Height="7" VerticalAlignment="Center"
                                          Fill="{Binding PearlBrush}"
-                                         Stroke="{StaticResource Brush.Border}" StrokeThickness="0.5" />
+                                         Stroke="{DynamicResource Brush.Border}" StrokeThickness="0.5" />
                                 <TextBlock Text="{Binding PearlLabel}" Style="{StaticResource Text.Tiny}"
                                            FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center" />
                             </StackPanel>
@@ -297,12 +298,12 @@
                              value beside it, because a creature can like the player completely
                              and still not be tamed. -->
                         <Border Style="{StaticResource Chip}" Margin="6,0,0,0" Padding="4,0"
-                                Background="{StaticResource Brush.OkSoft}"
-                                BorderBrush="{StaticResource Brush.Ok}"
+                                Background="{DynamicResource Brush.OkSoft}"
+                                BorderBrush="{DynamicResource Brush.Ok}"
                                 VerticalAlignment="Center"
                                 Visibility="{Binding IsTamedFriend, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="tamed" FontSize="10"
-                                       Foreground="{StaticResource Brush.Ok}" FontWeight="SemiBold" />
+                                       Foreground="{DynamicResource Brush.Ok}" FontWeight="SemiBold" />
                         </Border>
 
                         <TextBlock Text="{Binding SocialText}"
@@ -313,7 +314,7 @@
                                     <Setter Property="FontSize" Value="10" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding DislikesPlayer}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.Warn}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Warn}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -327,12 +328,12 @@
                         </Border>
 
                         <Border Style="{StaticResource Chip}" Margin="6,0,0,0" Padding="4,0"
-                                Background="{StaticResource Brush.WarnSoft}"
-                                BorderBrush="{StaticResource Brush.Warn}"
+                                Background="{DynamicResource Brush.WarnSoft}"
+                                BorderBrush="{DynamicResource Brush.Warn}"
                                 VerticalAlignment="Center"
                                 Visibility="{Binding HasSpear, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="{Binding SpearText}" FontSize="10"
-                                       Foreground="{StaticResource Brush.Warn}" FontWeight="SemiBold" />
+                                       Foreground="{DynamicResource Brush.Warn}" FontWeight="SemiBold" />
                         </Border>
 
                         <TextBlock Text="{Binding ContentsSummary}" Style="{StaticResource Text.Tiny}"
@@ -341,7 +342,7 @@
 
                         <TextBlock Text="loops back" Style="{StaticResource Text.Tiny}"
                                    FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.Warn}"
+                                   Foreground="{DynamicResource Brush.Warn}"
                                    Visibility="{Binding RepeatsAncestor, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
 
@@ -349,7 +350,7 @@
                                TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="2" Text="{Binding FoodText}" FontSize="12"
                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.TextMuted}" />
+                               Foreground="{DynamicResource Brush.TextMuted}" />
                 </Grid>
 
                 <ItemsControl ItemsSource="{Binding Contents}"
@@ -359,6 +360,7 @@
 
         <!-- The header strip of a campaign card. Clicking it opens and closes the card. -->
         <Style x:Key="CampaignHeaderButton" TargetType="Button">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Padding" Value="12,10" />
@@ -376,7 +378,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -424,7 +426,7 @@
 
         <!-- One echo, as three states. Never seen takes it out of the save entirely. -->
         <DataTemplate x:Key="EchoEditTemplate">
-            <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,5">
+            <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,5">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="150" />
@@ -473,7 +475,7 @@
             that has to be able to show a field this app has never heard of.
         -->
         <DataTemplate x:Key="RawFieldTemplate">
-            <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,4">
+            <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,0,0,1" Padding="0,4">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="184" />
@@ -491,7 +493,7 @@
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsChanged}" Value="True">
                                         <Setter Property="FontWeight" Value="SemiBold" />
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -545,8 +547,8 @@
                     <Style TargetType="Button" BasedOn="{StaticResource Button.Small}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding Available}" Value="False">
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
-                                <Setter Property="Foreground" Value="{StaticResource Brush.Warn}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warn}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Warn}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -554,7 +556,7 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
                     <TextBlock Text="!" Margin="4,0,0,0" FontWeight="Bold" VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Warn}"
+                               Foreground="{DynamicResource Brush.Warn}"
                                Visibility="{Binding Available, Converter={StaticResource NotBoolToVis}}" />
                 </StackPanel>
             </Button>
@@ -570,8 +572,8 @@
                     <Style TargetType="Button" BasedOn="{StaticResource Button.Small}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding Available}" Value="False">
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
-                                <Setter Property="Foreground" Value="{StaticResource Brush.Warn}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warn}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Warn}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -579,7 +581,7 @@
                 <StackPanel Orientation="Horizontal">
                     <TextBlock Text="{Binding DisplayName}" VerticalAlignment="Center" />
                     <TextBlock Text="!" Margin="4,0,0,0" FontWeight="Bold" VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Warn}"
+                               Foreground="{DynamicResource Brush.Warn}"
                                Visibility="{Binding Available, Converter={StaticResource NotBoolToVis}}" />
                 </StackPanel>
             </Button>
@@ -638,11 +640,11 @@
 
                             <Border CornerRadius="2" Padding="4,0" Margin="6,0,0,0" BorderThickness="1"
                                     VerticalAlignment="Center"
-                                    Background="{StaticResource Brush.Selection}"
-                                    BorderBrush="{StaticResource Brush.Accent}"
+                                    Background="{DynamicResource Brush.Selection}"
+                                    BorderBrush="{DynamicResource Brush.Accent}"
                                     Visibility="{Binding IsTamed, Converter={StaticResource BoolToVis}}">
                                 <TextBlock Text="tamed" Style="{StaticResource Text.Tiny}" FontSize="10"
-                                           Foreground="{StaticResource Brush.Accent}" />
+                                           Foreground="{DynamicResource Brush.Accent}" />
                             </Border>
 
                             <TextBlock Text="{Binding ContentsSummary}" Style="{StaticResource Text.Tiny}"
@@ -670,15 +672,15 @@
                                    Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}" />
                         <TextBlock Grid.Column="3" Text="{Binding Food}" FontSize="12"
                                    VerticalAlignment="Center"
-                                   Foreground="{StaticResource Brush.TextMuted}"
+                                   Foreground="{DynamicResource Brush.TextMuted}"
                                    Visibility="{Binding IsSwallowed, Converter={StaticResource BoolToVis}}" />
                     </Grid>
                 </Border>
 
                 <!-- The deeper edits, for the one row that asked for them. -->
                 <Border Margin="{Binding Indent}" Padding="10,8,10,2" CornerRadius="4"
-                        Background="{StaticResource Brush.PanelAlt}"
-                        BorderBrush="{StaticResource Brush.Border}" BorderThickness="1"
+                        Background="{DynamicResource Brush.PanelAlt}"
+                        BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1"
                         Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
                     <StackPanel Margin="18,0,0,0">
                         <WrapPanel>
@@ -725,7 +727,7 @@
                                    Visibility="{Binding IsRoot, Converter={StaticResource BoolToVis}}" />
 
                         <TextBlock Style="{StaticResource Text.Tiny}" TextWrapping="Wrap" Margin="0,0,0,8"
-                                   Foreground="{StaticResource Brush.Warn}"
+                                   Foreground="{DynamicResource Brush.Warn}"
                                    Text="This field is not in a shape this app can read, so it is left exactly as it is."
                                    Visibility="{Binding IsWellFormed, Converter={StaticResource NotBoolToVis}}" />
                     </StackPanel>
@@ -738,16 +740,16 @@
             <DataTemplate.Triggers>
                 <Trigger SourceName="Row" Property="IsMouseOver" Value="True">
                     <Setter TargetName="Tools" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="Row" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
                 </Trigger>
                 <DataTrigger Binding="{Binding IsEditing}" Value="True">
                     <Setter TargetName="Tools" Property="Visibility" Value="Visible" />
-                    <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                    <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding (behaviors:ListDragDropBehavior.IsDropTarget), ElementName=Row}"
                              Value="True">
-                    <Setter TargetName="Row" Property="Background" Value="{StaticResource Brush.Selection}" />
-                    <Setter TargetName="Row" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                    <Setter TargetName="Row" Property="Background" Value="{DynamicResource Brush.Selection}" />
+                    <Setter TargetName="Row" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
@@ -755,7 +757,7 @@
 
         <DataTemplate x:Key="WarningTemplate">
             <TextBlock Text="{Binding}" Style="{StaticResource Text.Body}" TextWrapping="Wrap"
-                       Margin="0,0,0,3" Foreground="{StaticResource Brush.Warn}" />
+                       Margin="0,0,0,3" Foreground="{DynamicResource Brush.Warn}" />
         </DataTemplate>
 
         <!--
@@ -780,7 +782,7 @@
                 <DockPanel Margin="0,10,0,7">
                     <TextBlock DockPanel.Dock="Left" Text="RUN" Margin="0,0,8,0"
                                Style="{StaticResource Text.SectionLabel}" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <WrapPanel>
@@ -838,7 +840,7 @@
                 <DockPanel Margin="0,12,0,7">
                     <TextBlock DockPanel.Dock="Left" Text="KARMA" Margin="0,0,8,0"
                                Style="{StaticResource Text.SectionLabel}" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <WrapPanel>
@@ -866,7 +868,7 @@
                 <DockPanel Margin="0,12,0,7">
                     <TextBlock DockPanel.Dock="Left" Text="PROGRESS" Margin="0,0,8,0"
                                Style="{StaticResource Text.SectionLabel}" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <WrapPanel>
@@ -890,7 +892,7 @@
                 <DockPanel Margin="0,12,0,7">
                     <TextBlock DockPanel.Dock="Left" Text="ECHOES" Margin="0,0,8,0"
                                Style="{StaticResource Text.SectionLabel}" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <ItemsControl ItemsSource="{Binding Echoes}" ItemTemplate="{StaticResource EchoEditTemplate}" />
@@ -898,7 +900,7 @@
                 <DockPanel Margin="0,12,0,7">
                     <TextBlock DockPanel.Dock="Left" Text="GATES" Margin="0,0,8,0"
                                Style="{StaticResource Text.SectionLabel}" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <ItemsControl ItemsSource="{Binding Gates}" ItemTemplate="{StaticResource GateEditTemplate}"
@@ -919,13 +921,13 @@
                     <TextBlock DockPanel.Dock="Right" Text="{Binding Devourment.CountText}"
                                Style="{StaticResource Text.Tiny}" VerticalAlignment="Center"
                                Margin="8,0,0,0" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
                            Text="What is inside what. Drag a row onto a creature to put it inside that one, use the arrows to reorder it where it is, and press Edit on a row for its values." />
 
-                <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="4"
                         Padding="9,4,9,6"
                         Visibility="{Binding Devourment.HasRows, Converter={StaticResource BoolToVis}}">
                     <StackPanel DataContext="{Binding Devourment}">
@@ -986,7 +988,7 @@
                                 Command="{Binding AddCommand}" />
                     </WrapPanel>
 
-                    <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                    <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="4"
                             Padding="8,8,8,4">
                         <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
                             <Grid>
@@ -1006,7 +1008,7 @@
                 <DockPanel Margin="0,14,0,7">
                     <TextBlock DockPanel.Dock="Left" Text="ALL FIELDS" Margin="0,0,8,0"
                                Style="{StaticResource Text.SectionLabel}" />
-                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                 </DockPanel>
 
                 <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
@@ -1020,7 +1022,7 @@
                              ToolTip="Searches the field names and what they hold." />
                 </DockPanel>
 
-                <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="4"
                         Padding="9,0,9,0">
                     <ScrollViewer MaxHeight="340" VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding VisibleRawFields}"
@@ -1055,8 +1057,8 @@
         <!-- One campaign: a scannable line, and four groups of detail behind it -->
         <DataTemplate x:Key="CampaignCardTemplate">
             <Border CornerRadius="5" Margin="0,0,0,8"
-                    Background="{StaticResource Brush.Panel}"
-                    BorderBrush="{StaticResource Brush.Border}"
+                    Background="{DynamicResource Brush.Panel}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     BorderThickness="1"
                     SnapsToDevicePixels="True">
                 <Grid>
@@ -1115,7 +1117,7 @@
                                         <Style TargetType="Border" BasedOn="{StaticResource Chip}">
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding KarmaStoredOutOfRange}" Value="True">
-                                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -1130,7 +1132,7 @@
                                                     <Setter Property="FontWeight" Value="SemiBold" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding HasKarma}" Value="False">
-                                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                                             <Setter Property="FontWeight" Value="Normal" />
                                                         </DataTrigger>
                                                     </Style.Triggers>
@@ -1150,25 +1152,25 @@
 
                                 <Border Grid.Column="4" CornerRadius="3" Padding="7,2" BorderThickness="1"
                                         Margin="0,0,6,0" VerticalAlignment="Center"
-                                        Background="{StaticResource Brush.Selection}"
-                                        BorderBrush="{StaticResource Brush.Accent}"
+                                        Background="{DynamicResource Brush.Selection}"
+                                        BorderBrush="{DynamicResource Brush.Accent}"
                                         Visibility="{Binding HasDevourment, Converter={StaticResource BoolToVis}}">
                                     <TextBlock Text="{Binding DevourmentChipText}" FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource Brush.Accent}" />
+                                               Foreground="{DynamicResource Brush.Accent}" />
                                 </Border>
 
                                 <Grid Grid.Column="5" Width="12" Height="8" VerticalAlignment="Center" Margin="4,0,0,0">
                                     <Path Data="M 1,1 L 6,6 L 11,1"
-                                          Stroke="{StaticResource Brush.TextMuted}" StrokeThickness="1.6"
+                                          Stroke="{DynamicResource Brush.TextMuted}" StrokeThickness="1.6"
                                           Visibility="{Binding IsExpanded, Converter={StaticResource NotBoolToVis}}" />
                                     <Path Data="M 1,6 L 6,1 L 11,6"
-                                          Stroke="{StaticResource Brush.TextMuted}" StrokeThickness="1.6"
+                                          Stroke="{DynamicResource Brush.TextMuted}" StrokeThickness="1.6"
                                           Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}" />
                                 </Grid>
                             </Grid>
                         </Button>
 
-                        <Border BorderBrush="{StaticResource Brush.Border}" BorderThickness="0,1,0,0"
+                        <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="0,1,0,0"
                                 Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                             <StackPanel Margin="14,4,14,12">
 
@@ -1218,10 +1220,10 @@
                                     <StackPanel Orientation="Horizontal"
                                                 Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
                                         <Border Style="{StaticResource Chip}" VerticalAlignment="Center"
-                                                Background="{StaticResource Brush.Selection}"
-                                                BorderBrush="{StaticResource Brush.Accent}">
+                                                Background="{DynamicResource Brush.Selection}"
+                                                BorderBrush="{DynamicResource Brush.Accent}">
                                             <TextBlock Text="EDITING" FontSize="11" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource Brush.Accent}" />
+                                                       Foreground="{DynamicResource Brush.Accent}" />
                                         </Border>
                                         <TextBlock Text="{Binding Edit.ChangeCountText}"
                                                    Style="{StaticResource Text.Muted}"
@@ -1252,7 +1254,7 @@
                                 <DockPanel Margin="0,10,0,7">
                                     <TextBlock DockPanel.Dock="Left" Text="RUN" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                                 </DockPanel>
                                 <ItemsControl ItemsSource="{Binding RunStats}"
                                               ItemTemplate="{StaticResource StatTileTemplate}"
@@ -1261,7 +1263,7 @@
                                 <DockPanel Margin="0,10,0,7">
                                     <TextBlock DockPanel.Dock="Left" Text="KARMA" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                                 </DockPanel>
                                 <ItemsControl ItemsSource="{Binding KarmaStats}"
                                               ItemTemplate="{StaticResource StatTileTemplate}"
@@ -1274,7 +1276,7 @@
                                 <DockPanel Margin="0,10,0,7">
                                     <TextBlock DockPanel.Dock="Left" Text="PROGRESS" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                                 </DockPanel>
                                 <ItemsControl ItemsSource="{Binding ProgressStats}"
                                               ItemTemplate="{StaticResource StatTileTemplate}"
@@ -1313,7 +1315,7 @@
                                 <DockPanel Margin="0,10,0,7">
                                     <TextBlock DockPanel.Dock="Left" Text="DEVOURMENT" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}" VerticalAlignment="Center" />
+                                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                                 </DockPanel>
 
                                 <StackPanel Visibility="{Binding HasDevourmentRows, Converter={StaticResource BoolToVis}}">
@@ -1376,8 +1378,8 @@
             <StackPanel Margin="0,0,0,6">
                 <DockPanel Margin="0,10,0,8">
                     <Border DockPanel.Dock="Left" Width="24" Height="24" CornerRadius="4"
-                            Background="{StaticResource Brush.PanelAlt}"
-                            BorderBrush="{StaticResource Brush.BorderStrong}"
+                            Background="{DynamicResource Brush.PanelAlt}"
+                            BorderBrush="{DynamicResource Brush.BorderStrong}"
                             BorderThickness="1">
                         <TextBlock Text="{Binding NumberText}" FontSize="12" FontWeight="SemiBold"
                                    HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -1426,7 +1428,7 @@
                 <Border Style="{StaticResource Banner.Warn}" Margin="0,0,0,8"
                         Visibility="{Binding ChecksumBad, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="The checksum stored in this save file did not recompute. The game discards a save in that state."
-                               TextWrapping="Wrap" Foreground="{StaticResource Brush.Warn}" />
+                               TextWrapping="Wrap" Foreground="{DynamicResource Brush.Warn}" />
                 </Border>
 
                 <ItemsControl ItemsSource="{Binding Campaigns}"
@@ -1444,8 +1446,8 @@
              starting from. -->
         <DataTemplate x:Key="SlotPairSideTemplate">
             <Border Padding="10,8" CornerRadius="5" BorderThickness="1"
-                    Background="{StaticResource Brush.PanelAlt}"
-                    BorderBrush="{StaticResource Brush.Border}"
+                    Background="{DynamicResource Brush.PanelAlt}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     SnapsToDevicePixels="True">
                 <Border.Style>
                     <Style TargetType="Border">
@@ -1477,7 +1479,7 @@
 
                     <TextBlock Text="checksum did not recompute" Margin="0,4,0,0"
                                FontSize="11" FontWeight="SemiBold"
-                               Foreground="{StaticResource Brush.Warn}"
+                               Foreground="{DynamicResource Brush.Warn}"
                                Visibility="{Binding ChecksumBad, Converter={StaticResource BoolToVis}}" />
                 </StackPanel>
             </Border>
@@ -1496,14 +1498,14 @@
             <GroupBox Template="{StaticResource BareGroupTemplate}"
                       AutomationProperties.Name="{Binding AccessibleName}">
             <Border Margin="0,0,0,8" Padding="12,10" CornerRadius="5" BorderThickness="1"
-                    Background="{StaticResource Brush.Panel}"
-                    BorderBrush="{StaticResource Brush.Border}"
+                    Background="{DynamicResource Brush.Panel}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     SnapsToDevicePixels="True">
                 <StackPanel>
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,9">
                         <Border Width="24" Height="24" CornerRadius="4"
-                                Background="{StaticResource Brush.PanelAlt}"
-                                BorderBrush="{StaticResource Brush.BorderStrong}"
+                                Background="{DynamicResource Brush.PanelAlt}"
+                                BorderBrush="{DynamicResource Brush.BorderStrong}"
                                 BorderThickness="1">
                             <TextBlock Text="{Binding NumberText}" FontSize="12" FontWeight="SemiBold"
                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -1524,7 +1526,7 @@
                                           ContentTemplate="{StaticResource SlotPairSideTemplate}" />
 
                         <Border Grid.Column="1" Width="1" Margin="10,2,10,2"
-                                Background="{StaticResource Brush.Border}" />
+                                Background="{DynamicResource Brush.Border}" />
 
                         <ContentPresenter Grid.Column="2" Margin="5,0,0,0"
                                           Content="{Binding Online}"
@@ -1572,12 +1574,12 @@
                 <StackPanel>
                     <DockPanel>
                         <Border DockPanel.Dock="Right" Style="{StaticResource Chip}"
-                                Background="{StaticResource Brush.Selection}"
-                                BorderBrush="{StaticResource Brush.Accent}"
+                                Background="{DynamicResource Brush.Selection}"
+                                BorderBrush="{DynamicResource Brush.Accent}"
                                 VerticalAlignment="Center"
                                 Visibility="{Binding IsSelected, Converter={StaticResource BoolToVis}}">
                             <TextBlock Text="selected in the menu" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource Brush.Accent}" />
+                                       Foreground="{DynamicResource Brush.Accent}" />
                         </Border>
                         <TextBlock Text="{Binding Name}" Style="{StaticResource Text.Title}"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
@@ -1633,8 +1635,9 @@
         <!-- The live save card is selected the same way a backup row is, so the panel on the
              right shows the save folder in the same shape as a snapshot. -->
         <Style x:Key="LiveCardButton" TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
-            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="Background" Value="{DynamicResource Brush.Panel}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Padding" Value="11,10" />
             <Setter Property="MinWidth" Value="0" />
@@ -1660,12 +1663,12 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
                             </Trigger>
                             <DataTrigger Binding="{Binding IsLiveSelected}" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.Selection}" />
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
-                                <Setter TargetName="Marker" Property="Background" Value="{StaticResource Brush.Accent}" />
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Selection}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                                <Setter TargetName="Marker" Property="Background" Value="{DynamicResource Brush.Accent}" />
                             </DataTrigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -1681,7 +1684,7 @@
         <Style x:Key="Segment.Base" TargetType="RadioButton">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="15,5" />
@@ -1700,7 +1703,7 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -1714,8 +1717,8 @@
         <Style x:Key="Segment.Local" TargetType="RadioButton" BasedOn="{StaticResource Segment.Base}">
             <Style.Triggers>
                 <Trigger Property="IsChecked" Value="True">
-                    <Setter Property="Background" Value="{StaticResource Brush.Accent}" />
-                    <Setter Property="Foreground" Value="{StaticResource Brush.AccentText}" />
+                    <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.AccentText}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -1724,14 +1727,15 @@
         <Style x:Key="Segment.Online" TargetType="RadioButton" BasedOn="{StaticResource Segment.Base}">
             <Style.Triggers>
                 <Trigger Property="IsChecked" Value="True">
-                    <Setter Property="Background" Value="{StaticResource Brush.Meadow}" />
-                    <Setter Property="Foreground" Value="{StaticResource Brush.AccentText}" />
+                    <Setter Property="Background" Value="{DynamicResource Brush.Meadow}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.AccentText}" />
                 </Trigger>
             </Style.Triggers>
         </Style>
 
         <!-- One of the two list tabs. A RadioButton so the pair is exclusive on its own. -->
         <Style x:Key="ListTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
             <Setter Property="Cursor" Value="Hand" />
             <Setter Property="Focusable" Value="True" />
             <Setter Property="SnapsToDevicePixels" Value="True" />
@@ -1744,10 +1748,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
                             </Trigger>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -1760,7 +1764,7 @@
             <Setter Property="VerticalAlignment" Value="Center" />
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
-                    <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
                 </DataTrigger>
             </Style.Triggers>
         </Style>
@@ -1814,13 +1818,13 @@
                     <Ellipse DockPanel.Dock="Left" Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource Brush.BorderStrong}" />
+                                <Setter Property="Fill" Value="{DynamicResource Brush.BorderStrong}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsVerified}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsProblem}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -1832,13 +1836,13 @@
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                 <Setter Property="FontSize" Value="11" />
-                                <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsVerified}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsProblem}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                         <Setter Property="FontWeight" Value="SemiBold" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -1851,11 +1855,11 @@
                      The prompt to update the entry rather than lose the run. -->
                 <Border Style="{StaticResource Chip}" Padding="6,1" Margin="0,5,0,0"
                         HorizontalAlignment="Left"
-                        Background="{StaticResource Brush.Selection}"
-                        BorderBrush="{StaticResource Brush.Accent}"
+                        Background="{DynamicResource Brush.Selection}"
+                        BorderBrush="{DynamicResource Brush.Accent}"
                         Visibility="{Binding HasSlotBadge, Converter={StaticResource BoolToVis}}">
                     <TextBlock Text="{Binding SlotBadgeText}" FontSize="10"
-                               Foreground="{StaticResource Brush.Accent}" />
+                               Foreground="{DynamicResource Brush.Accent}" />
                 </Border>
             </StackPanel>
         </DataTemplate>
@@ -1899,12 +1903,12 @@
                             Margin="0,0,8,0" VerticalAlignment="Center">
                         <Border.Style>
                             <Style TargetType="Border">
-                                <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+                                <Setter Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsSafetyBackup}" Value="True">
-                                        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
-                                        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+                                        <Setter Property="Background" Value="{DynamicResource Brush.WarnSoft}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warn}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -1915,13 +1919,13 @@
                     <Ellipse DockPanel.Dock="Left" Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center">
                         <Ellipse.Style>
                             <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource Brush.BorderStrong}" />
+                                <Setter Property="Fill" Value="{DynamicResource Brush.BorderStrong}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsVerified}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsProblem}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -1933,13 +1937,13 @@
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                 <Setter Property="FontSize" Value="11" />
-                                <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsVerified}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding IsProblem}" Value="True">
-                                        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                         <Setter Property="FontWeight" Value="SemiBold" />
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -1961,21 +1965,21 @@
 
         <!-- Top bar: whether the game is running, and every command -->
         <Border Grid.Row="0"
-                Background="{StaticResource Brush.Panel}"
-                BorderBrush="{StaticResource Brush.Border}"
+                Background="{DynamicResource Brush.Panel}"
+                BorderBrush="{DynamicResource Brush.Border}"
                 BorderThickness="0,0,0,1"
                 Padding="16,10">
             <DockPanel LastChildFill="False">
                 <Border DockPanel.Dock="Left" CornerRadius="3" Padding="10,5" VerticalAlignment="Center">
                     <Border.Style>
                         <Style TargetType="Border">
-                            <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
-                            <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                            <Setter Property="Background" Value="{DynamicResource Brush.OkSoft}" />
+                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
                             <Setter Property="BorderThickness" Value="1" />
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                    <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
-                                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />
+                                    <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -1984,10 +1988,10 @@
                         <Ellipse Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
                             <Ellipse.Style>
                                 <Style TargetType="Ellipse">
-                                    <Setter Property="Fill" Value="{StaticResource Brush.Ok}" />
+                                    <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                            <Setter Property="Fill" Value="{StaticResource Brush.Danger}" />
+                                            <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -1996,10 +2000,10 @@
                         <TextBlock Text="{Binding GameStatusText}" FontWeight="SemiBold" VerticalAlignment="Center">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
@@ -2061,7 +2065,7 @@
                                Text="{Binding ConfigProblem}"
                                TextWrapping="Wrap"
                                VerticalAlignment="Center"
-                               Foreground="{StaticResource Brush.Warn}" />
+                               Foreground="{DynamicResource Brush.Warn}" />
                     <Button Grid.Column="1"
                             Content="Open Settings"
                             Style="{StaticResource Button.Small}"
@@ -2087,7 +2091,7 @@
                     <StackPanel Grid.Column="0" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Updates.BannerText}"
                                    TextWrapping="Wrap"
-                                   Foreground="{StaticResource Brush.Text}" />
+                                   Foreground="{DynamicResource Brush.Text}" />
                         <TextBlock Text="{Binding Updates.StatusMessage}"
                                    TextWrapping="Wrap"
                                    Margin="0,4,0,0"
@@ -2140,7 +2144,7 @@
                         <TextBlock Text="{Binding Updates.WhatsNewTitle}"
                                    TextWrapping="Wrap"
                                    FontWeight="SemiBold"
-                                   Foreground="{StaticResource Brush.Text}" />
+                                   Foreground="{DynamicResource Brush.Text}" />
                         <TextBlock Text="{Binding Updates.WhatsNewSummary}"
                                    TextWrapping="Wrap"
                                    Margin="0,2,12,0"
@@ -2171,7 +2175,7 @@
                 <TextBlock Text="{Binding Updates.StatusMessage}"
                            TextWrapping="Wrap"
                            VerticalAlignment="Center"
-                           Foreground="{StaticResource Brush.Warn}" />
+                           Foreground="{DynamicResource Brush.Warn}" />
             </Border>
 
         </StackPanel>
@@ -2282,6 +2286,7 @@
                             <ListBox.ItemContainerStyle>
                                 <!-- Without this a row announces itself as the view model type name. -->
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
                                     <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
                                 </Style>
                             </ListBox.ItemContainerStyle>
@@ -2302,6 +2307,7 @@
                                  ItemTemplate="{StaticResource LibraryRowTemplate}">
                             <ListBox.ItemContainerStyle>
                                 <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
                                     <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
                                 </Style>
                             </ListBox.ItemContainerStyle>
@@ -2341,8 +2347,8 @@
 
             <!-- Detail panel: whatever is selected, slot by slot and campaign by campaign -->
             <Border Grid.Column="1" Margin="16,0,0,0"
-                    Background="{StaticResource Brush.Panel}"
-                    BorderBrush="{StaticResource Brush.Border}"
+                    Background="{DynamicResource Brush.Panel}"
+                    BorderBrush="{DynamicResource Brush.Border}"
                     BorderThickness="1"
                     CornerRadius="5">
                 <Grid>
@@ -2399,14 +2405,14 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                             <Setter Property="FontSize" Value="12" />
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Detail.Backup.IsVerified}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                                     <Setter Property="FontWeight" Value="SemiBold" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Detail.Backup.IsProblem}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                                     <Setter Property="FontWeight" Value="SemiBold" />
                                                 </DataTrigger>
                                             </Style.Triggers>
@@ -2427,14 +2433,14 @@
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                             <Setter Property="FontSize" Value="12" />
-                                            <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding Detail.Entry.IsVerified}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Ok}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                                     <Setter Property="FontWeight" Value="SemiBold" />
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Detail.Entry.IsProblem}" Value="True">
-                                                    <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                                     <Setter Property="FontWeight" Value="SemiBold" />
                                                 </DataTrigger>
                                             </Style.Triggers>
@@ -2443,7 +2449,7 @@
                                 </TextBlock>
                             </Grid>
 
-                            <Border Height="1" Background="{StaticResource Brush.Border}" Margin="0,14,0,0" />
+                            <Border Height="1" Background="{DynamicResource Brush.Border}" Margin="0,14,0,0" />
 
                             <!-- Which set of saves the sections below are for. Rain Meadow gives a
                                  slot number two files, and both hold a full campaign, so both need
@@ -2457,8 +2463,8 @@
                                            VerticalAlignment="Center" Margin="0,0,10,0" />
                                 <Border HorizontalAlignment="Left"
                                         CornerRadius="4" BorderThickness="1"
-                                        BorderBrush="{StaticResource Brush.Border}"
-                                        Background="{StaticResource Brush.PanelAlt}"
+                                        BorderBrush="{DynamicResource Brush.Border}"
+                                        Background="{DynamicResource Brush.PanelAlt}"
                                         Padding="2"
                                         SnapsToDevicePixels="True">
                                     <!-- Checked state is what changes the realm, bound two way. A
@@ -2497,25 +2503,25 @@
                                  file with no slot pairs to draw. There is no foldout: if the mod is
                                  here, its saves are part of what this app manages. -->
                             <Border Margin="0,22,0,0" CornerRadius="4"
-                                    Background="{StaticResource Brush.MeadowSoft}"
-                                    BorderBrush="{StaticResource Brush.Meadow}"
+                                    Background="{DynamicResource Brush.MeadowSoft}"
+                                    BorderBrush="{DynamicResource Brush.Meadow}"
                                     BorderThickness="1"
                                     Visibility="{Binding Detail.ShowMeadowSection, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
                                     <!-- The band across the top is the divider. It carries the
                                          section colour so the break reads before any text does. -->
-                                    <Border Background="{StaticResource Brush.Meadow}"
+                                    <Border Background="{DynamicResource Brush.Meadow}"
                                             CornerRadius="3,3,0,0" Padding="12,7">
                                         <DockPanel>
                                             <TextBlock DockPanel.Dock="Right"
                                                        Text="{Binding Detail.MeadowVersionText}"
-                                                       Foreground="White" FontSize="11" Opacity="0.85"
+                                                       Foreground="{DynamicResource Brush.AccentText}" FontSize="11" Opacity="0.85"
                                                        VerticalAlignment="Center" />
-                                            <TextBlock Text="RAIN MEADOW" Foreground="White"
+                                            <TextBlock Text="RAIN MEADOW" Foreground="{DynamicResource Brush.AccentText}"
                                                        FontWeight="SemiBold" FontSize="11"
                                                        VerticalAlignment="Center" />
                                             <TextBlock Text="{Binding Detail.OnlineCountText}"
-                                                       Foreground="White" Opacity="0.85" FontSize="11"
+                                                       Foreground="{DynamicResource Brush.AccentText}" Opacity="0.85" FontSize="11"
                                                        Margin="10,0,0,0" VerticalAlignment="Center" />
                                         </DockPanel>
                                     </Border>
@@ -2537,7 +2543,7 @@
                                             <DockPanel Margin="0,0,0,8">
                                                 <TextBlock DockPanel.Dock="Left" Text="PROFILE" Margin="0,0,8,0"
                                                            Style="{StaticResource Text.SectionLabel}" />
-                                                <Border Height="1" Background="{StaticResource Brush.Border}"
+                                                <Border Height="1" Background="{DynamicResource Brush.Border}"
                                                         VerticalAlignment="Center" />
                                             </DockPanel>
 
@@ -2576,7 +2582,7 @@
                                     <TextBlock DockPanel.Dock="Right" Text="{Binding Detail.Mods.GameVersionText}"
                                                Style="{StaticResource Text.Muted}" Margin="8,0,0,0"
                                                VerticalAlignment="Center" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}"
+                                    <Border Height="1" Background="{DynamicResource Brush.Border}"
                                             VerticalAlignment="Center" />
                                 </DockPanel>
 
@@ -2601,7 +2607,7 @@
                                 <DockPanel Margin="0,0,0,8">
                                     <TextBlock DockPanel.Dock="Left" Text="SETTINGS" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
-                                    <Border Height="1" Background="{StaticResource Brush.Border}"
+                                    <Border Height="1" Background="{DynamicResource Brush.Border}"
                                             VerticalAlignment="Center" />
                                 </DockPanel>
 
@@ -2635,7 +2641,7 @@
         <!-- Busy overlay -->
         <Border Grid.Row="0" Grid.RowSpan="3"
                 Panel.ZIndex="10"
-                Background="{StaticResource Brush.Overlay}"
+                Background="{DynamicResource Brush.Overlay}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">
             <Border Style="{StaticResource Card}"
                     Width="400"
@@ -2645,9 +2651,9 @@
                 <StackPanel>
                     <TextBlock Text="{Binding BusyTitle}" Style="{StaticResource Text.Title}" />
                     <ProgressBar IsIndeterminate="True" Height="6" Margin="0,14,0,12"
-                                 Background="{StaticResource Brush.PanelAlt}"
+                                 Background="{DynamicResource Brush.PanelAlt}"
                                  BorderThickness="0"
-                                 Foreground="{StaticResource Brush.Accent}" />
+                                 Foreground="{DynamicResource Brush.Accent}" />
                     <TextBlock Text="{Binding BusyMessage}"
                                Style="{StaticResource Text.Muted}"
                                TextWrapping="Wrap"
