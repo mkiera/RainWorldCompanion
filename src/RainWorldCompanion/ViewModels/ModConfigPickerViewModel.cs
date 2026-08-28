@@ -107,6 +107,7 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
                 }
 
                 OnPropertyChanged(nameof(TakeAll));
+                OnPropertyChanged(nameof(HasAnyTaken));
             }
             finally
             {
@@ -124,7 +125,24 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
     /// </summary>
     public string FooterText =>
         "Mod settings can hold things that belong to one machine, such as a window size. " +
-        "Whatever you take is put back by restoring the safety copy this load makes.";
+        "Whatever you take is put back by restoring the safety copy taken first.";
+
+    /// <summary>Whether anything at all is ticked, which is what gates a settings-only take.</summary>
+    public bool HasAnyTaken
+    {
+        get
+        {
+            foreach (var row in Rows)
+            {
+                if (row.Take)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 
     /// <summary>The mods whose settings were ticked, which is what a load is given.</summary>
     public IReadOnlyCollection<string> Chosen
@@ -189,6 +207,7 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
         if (!_applying && e.PropertyName is nameof(ModConfigRowViewModel.Take))
         {
             OnPropertyChanged(nameof(TakeAll));
+            OnPropertyChanged(nameof(HasAnyTaken));
         }
     }
 

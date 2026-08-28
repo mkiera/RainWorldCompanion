@@ -146,6 +146,21 @@ public sealed record ExtraFileWrite(
     string? ExpectedSha256,
     string Label);
 
+/// <summary>
+/// What came of writing settings on their own, with no slot involved. Separate from
+/// <see cref="SlotWriteOutcome"/> because there is no target file here: every field of that record
+/// about the slot would be a zero standing for nothing.
+/// </summary>
+public sealed record SettingsWriteResult(
+    bool Success,
+    BackupSnapshot? SafetySnapshot,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Warnings,
+    int SettingsWritten)
+{
+    public bool LiveFolderModified => SettingsWritten > 0;
+}
+
 internal sealed record SlotWriteOutcome(
     bool Success,
     BackupSnapshot? SafetySnapshot,
@@ -348,6 +363,104 @@ public sealed class SlotCopyService
             outcome.LiveFolderModified,
             outcome.BytesCopied,
             plan);
+    }
+
+    /// <summary>
+    /// Writes settings and nothing else. The same ladder <see cref="CopyOntoSlot"/> climbs, minus
+    /// every rung about a target file: a safety snapshot first, the operation lock, the game
+    /// checked again once the snapshot is done, then the same per-file writer. A snapshot is taken
+    /// here for the same reason it is taken for a slot, because these files are being overwritten
+    /// in the player's own folder and restoring that snapshot is what undoes it.
+    /// </summary>
+    /// <param name="safetyNote">Given the count of files about to be written.</param>
+    public SettingsWriteResult WriteSettings(
+        IReadOnlyList<ExtraFileWrite> settings,
+        string safetyLabel,
+        Func<int, string> safetyNote,
+        ModListSnapshot? safetyMods = null,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(safetyNote);
+
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        EnsureGameNotRunning();
+
+        if (settings.Count == 0)
+        {
+            errors.Add("No settings were chosen, so nothing was changed.");
+            return new SettingsWriteResult(false, null, errors, warnings, 0);
+        }
+
+        BackupSnapshot safety;
+        try
+        {
+            progress?.Report("Saving a copy of the current saves first");
+            safety = _backups.CreateBackup(
+                safetyLabel,
+                safetyNote(settings.Count),
+                BackupKind.PreRestoreSafety,
+                progress,
+                ct,
+                safetyMods);
+        }
+        catch (GameRunningException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"The safety copy of the current saves failed ({ex.Message}), so nothing was changed.");
+            return new SettingsWriteResult(false, null, errors, warnings, 0);
+        }
+
+        if (!safety.IsComplete)
+        {
+            errors.Add($"The safety copy {safety.Id} did not finish ({safety.Problem}), so nothing was changed.");
+            return new SettingsWriteResult(false, safety, errors, warnings, 0);
+        }
+
+        IDisposable operationLock;
+        try
+        {
+            operationLock = _backups.AcquireOperationLock();
+        }
+        catch (BackupBusyException ex)
+        {
+            errors.Add(ex.Message);
+            return new SettingsWriteResult(false, safety, errors, warnings, 0);
+        }
+        catch (Exception ex)
+        {
+            errors.Add($"The backup folder could not be held while the settings were written ({ex.Message}), so nothing was changed.");
+            return new SettingsWriteResult(false, safety, errors, warnings, 0);
+        }
+
+        using (operationLock)
+        {
+            // The snapshot took several seconds, and nothing has been written yet, so a game
+            // started during it can still be refused outright.
+            EnsureGameNotRunning();
+
+            int written = WriteExtras(settings, safety, warnings, progress);
+
+            // Every file that would not write already named itself in a warning. Nothing landing at
+            // all is the one case that is not a partial success.
+            if (written == 0)
+            {
+                errors.Add("None of the chosen settings could be written.");
+            }
+
+            progress?.Report(written == settings.Count ? "Settings written" : "Settings written with problems");
+            return new SettingsWriteResult(errors.Count == 0, safety, errors, warnings, written);
+        }
     }
 
     /// <summary>

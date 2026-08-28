@@ -10,6 +10,11 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- Take settings takes a library save's mod settings on their own, with no slot written and
+  no campaign touched. It picks per mod the same way loading one does.
+- A whole slot in a backup can go to the library, every campaign in it at once, instead of
+  one campaign at a time. The button is on the slot heading.
+
 ## 1.2.0-beta.3 - 2026-08-27
 
 - The what's new banner covers every version between the one you last ran and the one

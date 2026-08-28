@@ -1,4 +1,4 @@
-// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+﻿// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using System.Text;
@@ -288,6 +288,34 @@ public sealed class SaveLibrary
     }
 
     /// <summary>
+    /// Takes an entry's settings without touching a slot. The save this entry holds stays in the
+    /// library: what lands is the settings files of the mods named, over the ones in the save
+    /// folder now, and restoring the safety snapshot puts those back.
+    /// </summary>
+    public SettingsWriteResult AdoptSettings(
+        LibraryEntry entry,
+        IReadOnlyCollection<string> adoptSettingsFor,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
+
+        return _backups.SlotCopies.WriteSettings(
+            SettingsToWrite(entry, adoptSettingsFor),
+            $"Before taking settings from \"{entry.Name}\"",
+            count => $"Taken automatically before {DescribeFileCount(count)} from \"{entry.Name}\" " +
+                     "replaced the ones in the save folder.",
+            modsBefore,
+            progress,
+            ct);
+    }
+
+    private static string DescribeFileCount(int count) =>
+        count == 1 ? "one settings file" : $"{count} settings files";
+
+    /// <summary>
     /// The settings files to write, for the mods that were asked for. Grouping by mod is what makes
     /// writing a subset fall out: nothing in the writer knows what a mod is.
     /// </summary>
@@ -456,6 +484,73 @@ public sealed class SaveLibrary
             Metadata = metadata,
             Mods = _backups.TryReadMods(),
             Configs = StoreConfigs(directory, SaveRoot),
+        };
+
+        TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);
+        WriteManifest(directory, manifest);
+
+        progress?.Report("Stored");
+        return LibraryEntry.Load(directory);
+    }
+
+    /// <summary>
+    /// Stores a whole slot file that is not in the live save folder, which is what a backup's copy
+    /// of one is. No operation lock and no game check, for the reason
+    /// <see cref="StoreCampaignFrom"/> needs neither: a snapshot folder is nobody else's to
+    /// rewrite while this reads it.
+    /// </summary>
+    public LibraryEntry StoreSlotFrom(
+        string sourcePath,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string? note,
+        ModListSnapshot? mods = null,
+        string? configsRoot = null,
+        IProgress<string>? progress = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+
+        var trimmedName = (name ?? "").Trim();
+        if (trimmedName.Length == 0)
+        {
+            throw new ArgumentException("A library save needs a name.", nameof(name));
+        }
+
+        if (!File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException($"{sourceFileName} is not there any more, so there is nothing to store.", sourcePath);
+        }
+
+        if (CanonicalPath.IsLink(sourcePath))
+        {
+            throw new IOException($"{sourceFileName} is a link, and this app copies only real files.");
+        }
+
+        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+        var savePath = Path.Combine(directory, LibraryEntry.SaveFileName);
+
+        var copied = CopyProving(sourcePath, savePath, sourceFileName, progress);
+
+        progress?.Report($"Reading what is in {sourceFileName}");
+        var metadata = SaveMetadataExtractor.Extract(savePath, sourceSlot, sourceRealm);
+
+        var manifest = new LibraryManifest
+        {
+            SchemaVersion = LibraryManifest.CurrentSchemaVersion,
+            Name = trimmedName,
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            CreatedUtc = DateTime.UtcNow,
+            AppVersion = _appVersion,
+            SourceFileName = sourceFileName ?? "",
+            SourceRealm = sourceRealm,
+            SourceSlot = sourceSlot,
+            SizeBytes = copied.SizeBytes,
+            Sha256 = copied.Sha256,
+            Metadata = metadata,
+            Mods = mods,
+            Configs = StoreConfigs(directory, configsRoot),
         };
 
         TimestampedFolders.ReleaseClaim(directory, LibraryEntry.ClaimFileName);

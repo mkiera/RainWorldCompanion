@@ -1363,6 +1363,18 @@
                                       RelativeSource={RelativeSource AncestorType=Window}}"
                             CommandParameter="{Binding}" />
 
+                    <!-- The whole slot, not one campaign. Shown for the live folder and for a
+                         backup; a library save already holds its slot, so there is nothing to
+                         take there. -->
+                    <Button DockPanel.Dock="Right" Content="Save slot to library" Margin="10,0,0,0"
+                            Style="{StaticResource Button.Small}"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding CanStoreToLibrary, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Keeps this whole slot, every campaign in it, in the library under a name."
+                            Command="{Binding DataContext.StoreWholeSlotCommand,
+                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}" />
+
                     <TextBlock Text="{Binding FileName}" Style="{StaticResource Text.Tiny}"
                                HorizontalAlignment="Right" VerticalAlignment="Center" />
                 </DockPanel>
@@ -2195,6 +2207,9 @@
                     <Button Content="Undo take" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding UndoUpdateCommand}"
                             ToolTip="Go back to the save this held before the last take from a slot." />
+                    <Button Content="Take settings" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding TakeSettingsCommand}"
+                            ToolTip="Mod settings only. Writes the settings this save carries over the ones you have, and leaves every slot alone." />
                     <Button Content="Rename" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding RenameEntryCommand}" />
                     <Button Content="Import" Style="{StaticResource Button.Small}" Margin="0,0,6,6"

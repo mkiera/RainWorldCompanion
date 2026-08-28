@@ -1,4 +1,4 @@
-// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
+﻿// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using RainWorldCompanion.Core.Saves;
@@ -71,7 +71,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 nameRealm: true,
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
-                sourceLabel: sourceLabel);
+                sourceLabel: sourceLabel,
+                storable: true);
         _onlineSlots = entry is not null
             ? Array.Empty<SlotViewModel>()
             : BuildSlots(
@@ -80,7 +81,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 nameRealm: true,
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
-                sourceLabel: sourceLabel);
+                sourceLabel: sourceLabel,
+                storable: true);
 
         SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots);
         OnlineCountText = FormatFileCount(_onlineSlots.Count, "online save");
@@ -313,13 +315,15 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         bool editable = false,
         string sourceDirectory = "",
         string sourceLabel = "",
-        string sourceFileOverride = "")
+        string sourceFileOverride = "",
+        bool storable = false)
     {
         return slots
             .OrderBy(slot => slot.Slot == 0 ? int.MaxValue : slot.Slot)
             .ThenBy(slot => slot.FileName, StringComparer.OrdinalIgnoreCase)
             .Select(slot => new SlotViewModel(
-                slot, icons, fileNameOverride, nameRealm, editable, sourceDirectory, sourceLabel, sourceFileOverride))
+                slot, icons, fileNameOverride, nameRealm, editable, sourceDirectory, sourceLabel,
+                sourceFileOverride, storable))
             .ToList();
     }
 

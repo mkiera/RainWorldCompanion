@@ -1,4 +1,4 @@
-// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+﻿// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
 using RainWorldCompanion.Core.Backups;
