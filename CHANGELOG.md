@@ -12,6 +12,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## 1.2.0-beta.6 - 2026-08-28
 
+- Turning a mod on in the Mods window turns on the mods it needs, the way the game's own
+  Remix menu does. One a mod needs that you do not have is named instead.
 - Campaigns from Steam Workshop slugcat mods show the mod's own portrait instead of a grey
   placeholder, so Pearlcat and The DroneMaster look like themselves in the panel.
 

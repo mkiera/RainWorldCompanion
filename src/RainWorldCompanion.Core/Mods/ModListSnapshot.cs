@@ -1,4 +1,4 @@
-// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+﻿// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 namespace RainWorldCompanion.Core.Mods;
 
@@ -39,6 +39,21 @@ public sealed class ModEntry
     /// <summary><see cref="InstallOrigin"/>, <see cref="WorkshopOrigin"/>, or empty for a mod the
     /// game had turned on but that was not found anywhere on disk.</summary>
     public string Origin { get; set; } = "";
+
+    /// <summary>
+    /// The ids from modinfo.json's requirements array: the mods the game turns on with this one.
+    /// Never null, including after deserialisation, for the reason every other collection here is
+    /// guarded: an explicit JSON null defeats a plain field initialiser and readers walk this
+    /// without a guard. Empty on a snapshot recorded before this was read, which reads the same as
+    /// a mod that requires nothing, and that is why nothing warns from its being empty.
+    /// </summary>
+    public List<string> Requirements
+    {
+        get => _requirements;
+        set => _requirements = value ?? new List<string>();
+    }
+
+    private List<string> _requirements = new();
 }
 
 /// <summary>The three "did we look" flags matter as much as the list, because an empty list has to
