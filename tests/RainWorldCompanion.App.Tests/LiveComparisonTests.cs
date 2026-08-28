@@ -1,4 +1,4 @@
-using RainWorldCompanion.Core.Saves;
+﻿using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.ViewModels;
 
@@ -146,6 +146,62 @@ public class LiveComparisonTests
         var view = View(Slot(1, Campaign("White")), Slot(1, Campaign("White"), Campaign("Yellow")));
 
         Assert.True(view.DiffersFromLive);
+    }
+
+    // ---- every panel that shows stored bytes ----
+
+    /// <summary>
+    /// Both panels ask the same question of the same live folder, so both have to be handed it.
+    /// A factory that takes the live slots and then forgets to pass them on shows nothing, which
+    /// is exactly what an unlabelled row looks like when there is genuinely nothing to compare.
+    /// </summary>
+    [Fact]
+    public void A_backup_panel_marks_the_slot_that_differs()
+    {
+        using var root = new TempDirectory("backups");
+
+        var panel = Panels.Backup(
+            root,
+            new[] { Slot(1, Campaign(cycle: 10)) },
+            Slot(1, Campaign(cycle: 87)));
+
+        var slot = Assert.Single(panel.Slots);
+        Assert.Equal("Differs from live", slot.LiveComparisonText);
+        Assert.True(Assert.Single(slot.Campaigns).DiffersFromLive);
+    }
+
+    [Fact]
+    public void A_backup_panel_says_so_when_a_slot_matches()
+    {
+        using var root = new TempDirectory("backups");
+
+        var panel = Panels.Backup(root, new[] { Slot(1, Campaign()) }, Slot(1, Campaign()));
+
+        Assert.Equal("Same as live", Assert.Single(panel.Slots).LiveComparisonText);
+    }
+
+    [Fact]
+    public void A_library_panel_marks_the_slot_that_differs()
+    {
+        using var root = new TempDirectory("library");
+
+        var panel = Panels.Entry(
+            root,
+            Slot(1, Campaign(cycle: 87)),
+            liveSlots: new[] { Slot(1, Campaign(cycle: 10)) });
+
+        var slot = Assert.Single(panel.Slots);
+        Assert.Equal("Differs from live", slot.LiveComparisonText);
+    }
+
+    [Fact]
+    public void A_panel_handed_no_live_folder_labels_nothing()
+    {
+        using var root = new TempDirectory("backups");
+
+        var panel = Panels.Backup(root, Slot(1, Campaign()));
+
+        Assert.False(Assert.Single(panel.Slots).HasLiveComparisonText);
     }
 
     // ---- the live panel itself ----

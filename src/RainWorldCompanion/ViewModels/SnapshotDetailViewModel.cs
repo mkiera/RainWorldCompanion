@@ -310,7 +310,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             // The panel is filled from the manifest, but taking a campaign out needs the file, so
             // the folder the snapshot is in comes along too.
             sourceDirectory: item.Snapshot.DirectoryPath,
-            sourceLabel: "backup " + item.Snapshot.Id);
+            sourceLabel: "backup " + item.Snapshot.Id,
+            liveSlots: liveSlots);
     }
 
     /// <param name="fileNameOverride">
