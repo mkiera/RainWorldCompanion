@@ -309,12 +309,13 @@ public class WhatsNewTests
     [Fact]
     public async Task Putting_the_banner_away_clears_every_section_with_it()
     {
+        // Landing on a pre-release, because only those carry more than one section.
         var world = new UpdateWorld();
         world.Source.Releases.Add(UpdateWorld.Release("v1.1.0", notes: UpdateWorld.Body("- Old news.")));
         world.Source.Releases.Add(
-            UpdateWorld.Release("v1.2.0", notes: UpdateWorld.Body("- Newer news.")));
+            UpdateWorld.Release("v1.2.0-beta.1", prerelease: true, notes: UpdateWorld.Body("- Newer news.")));
 
-        var updates = world.Build(runningVersion: "1.2.0");
+        var updates = world.Build(runningVersion: "1.2.0-beta.1");
         updates.Adopt(Seen("1.0.0"));
         await updates.CheckForWhatsNewAsync(CancellationToken.None);
         Assert.Equal(2, updates.WhatsNewSections.Count);
@@ -324,5 +325,52 @@ public class WhatsNewTests
         Assert.False(updates.HasWhatsNew);
         Assert.Empty(updates.WhatsNewSections);
         Assert.Equal("", updates.WhatsNewSince);
+    }
+
+    /// <summary>
+    /// A stable release's changelog section already collects what its own pre-releases brought, so
+    /// spanning would print every one of those lists again under the summary of itself. This is the
+    /// 1.1.0 to 1.2.0 jump, with six betas published in between.
+    /// </summary>
+    [Fact]
+    public async Task Landing_on_a_stable_release_shows_only_its_own_notes()
+    {
+        var world = new UpdateWorld();
+        world.Source.Releases.Add(UpdateWorld.Release("v1.1.0", notes: UpdateWorld.Body("- Old news.")));
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.2.0-beta.1", prerelease: true, notes: UpdateWorld.Body("- A beta thing.")));
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.2.0-beta.2", prerelease: true, notes: UpdateWorld.Body("- Another beta thing.")));
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.2.0", notes: UpdateWorld.Body("- A beta thing.\r\n- Another beta thing.")));
+
+        var updates = world.Build(runningVersion: "1.2.0");
+        updates.Adopt(Seen("1.1.0"));
+
+        await updates.CheckForWhatsNewAsync(CancellationToken.None);
+
+        Assert.Equal(["1.2.0"], updates.WhatsNewSections.Select(section => section.Version));
+        Assert.Equal("What's new in 1.2.0", updates.WhatsNewTitle);
+        Assert.Equal("2 changes.", updates.WhatsNewSummary);
+    }
+
+    /// <summary>Between two pre-releases the span holds: nothing there collects anything.</summary>
+    [Fact]
+    public async Task Landing_on_a_pre_release_still_spans()
+    {
+        var world = new UpdateWorld();
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.2.0-beta.1", prerelease: true, notes: UpdateWorld.Body("- One.")));
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.2.0-beta.2", prerelease: true, notes: UpdateWorld.Body("- Two.")));
+
+        var updates = world.Build(runningVersion: "1.2.0-beta.2");
+        updates.Adopt(Seen("1.1.0"));
+
+        await updates.CheckForWhatsNewAsync(CancellationToken.None);
+
+        Assert.Equal(
+            ["1.2.0-beta.2", "1.2.0-beta.1"],
+            updates.WhatsNewSections.Select(section => section.Version));
     }
 }

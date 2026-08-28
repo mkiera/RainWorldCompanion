@@ -1,4 +1,4 @@
-<p align="center">
+﻿<p align="center">
   <img src="docs/icon.png" width="140" alt="" />
 </p>
 
@@ -16,6 +16,9 @@ another before you restore it.
 It also keeps a library of named saves outside the game's three slots, so twenty runs can sit
 ready to load into any slot. It can copy one slot onto another, lift a single campaign out, and
 it reads Rain Meadow's online saves beside the local ones.
+
+It turns mods on and off too, without opening the game, and every save it keeps records the mods
+and settings it was played with so a run can be put back the way it was.
 
 ![The main window](docs/screenshots/01-main.png)
 
@@ -54,6 +57,7 @@ library.** Delete those folders yourself when you want them gone.
 ## Contents
 
 - [What it manages](#what-it-manages)
+- [Mods](#mods)
 - [Supported mods](#supported-mods)
 - [Copying a slot](#copying-a-slot)
 - [The library](#the-library)
@@ -73,22 +77,57 @@ in the save folder:
 - `exp<n>` and `expCore<n>` (expedition state)
 - `online_sav`, `online_sav2`, `online_sav3` (Rain Meadow), the `online_sav-<n>` names a lobby
   joined from an Expedition slot writes, and `meadow.json`
-- `buffMain<n>` and `buffsave<n>` (RandomBuff), and every `.txt` sitting directly in `ModConfigs\`
-- the `dvrmentSaveStates\`, `ModConfigs\DvrmentConfs\`, `dressmyslugcat\`, `RandomBuff\` and
-  `Warp\` folders, with everything inside them
+- `buffMain<n>` and `buffsave<n>` (RandomBuff)
+- the whole `ModConfigs\` folder, so a mod that keeps its settings in a `.json` or a subfolder
+  of its own is covered as well as one that writes a plain `.txt`
+- the `dvrmentSaveStates\`, `dressmyslugcat\`, `RandomBuff\` and `Warp\` folders, with
+  everything inside them
 
-Anything the game or Steam rewrites on its own stays out of scope: `options` and
-`localoptions.txt`, the `SJ_<n>` karma screenshots, `steam_autocloud.vdf`, Steam's `cloud\` and
-the game's own `backup\`. The name match is exact, so files like `sav - Copy` and `sav.bak` are
-not touched, and nothing is copied through a junction or symlink.
+Anything the game or Steam rewrites on its own stays out of scope: `localoptions.txt`, the
+`SJ_<n>` karma screenshots, `steam_autocloud.vdf`, Steam's `cloud\` and the game's own
+`backup\`. The name match is exact, so files like `sav - Copy` and `sav.bak` are not touched,
+and nothing is copied through a junction or symlink.
+
+`options` and `enabledMods.txt` are the one exception, and only the [Mods](#mods) window writes
+them. They are deliberately outside the backup scope: they hold which mods are on rather than
+anything about a run, so a restore leaves your mod list alone. The Mods window keeps its own
+record of the list you had before it changed anything.
+
+---
+
+## Mods
+
+The Mods window turns Rain World's mods on and off without opening the game. It lists every mod
+you have with a tick beside it, and Apply writes what the game reads the next time it starts.
+
+Turning a mod on turns on the mods it needs, the way the game's own Remix menu does. It follows
+the chain to the end, so a requirement that has requirements of its own comes too. A requirement
+you do not have is named instead, because that is the reason the mod may still not work.
+
+Every backup and library save records the mods and game version it was played with, and carries
+that record inside a `.rwsave` when it is exported. Restoring, loading or sending a save says how
+this machine has moved since those bytes were written: what is missing, what is turned off, and
+what sits at another version. None of it blocks the operation. The Mods window can take that list
+in one press with Match the save, and put yours back afterwards with Restore my previous mods. A
+mod you do not have gets a button to its Steam Workshop page, which opens in Steam where it is
+installed.
+
+Mod settings travel too. A library save and a `.rwsave` carry the settings that were in
+`ModConfigs\` when the bytes were taken, and loading one asks which mods' settings to take, per
+mod, taking none unless you tick them. Take settings does the same without writing a slot.
+Every list of them says whether they are the same as the ones you have, different, or new to you.
+
+Writing settings over your own is undone the same way every other write is: by restoring the
+safety backup taken first.
 
 ---
 
 ## Supported mods
 
 Everything here is optional: a mod that is not installed leaves no trace, and the app shows
-nothing about it. Mod settings are covered for all of them, because every `.txt` sitting directly
-in `ModConfigs\` is backed up.
+nothing about it. Mod settings are covered for all of them, and for mods this list has never
+heard of, because the whole `ModConfigs\` folder is backed up. The sections below are the mods
+whose saves the app reads and shows in detail.
 
 <details>
 <summary><b>Rain Meadow</b>: online saves read and shown beside the local ones</summary>
@@ -230,6 +269,10 @@ to `%LOCALAPPDATA%\RainWorldCompanion\backups`, library saves to
 `%LOCALAPPDATA%\RainWorldCompanion\library`, and settings to
 `%LOCALAPPDATA%\RainWorldCompanion\settings.json`. All three folders can be pointed elsewhere in
 Settings, and none of them may sit inside another.
+
+The mod list you had before the Mods window last changed it is kept at
+`%LOCALAPPDATA%\RainWorldCompanion\modstate`, which is what Restore my previous mods reads. It is a
+record of which mods were on, not a save, so nothing in it is ever written into a slot.
 
 Each backup is one folder named for the moment it was taken, for example `2026-08-24_19-31-07`,
 holding the copied files in the same layout they have in the save folder plus a `manifest.json`

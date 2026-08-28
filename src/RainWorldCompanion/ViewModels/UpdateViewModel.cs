@@ -294,9 +294,13 @@ public sealed partial class UpdateViewModel : ObservableObject
             // Everything between the version last seen and the one now running, so somebody who
             // skipped two betas reads both rather than only the one they landed on. A last-seen
             // version that will not parse narrows this to the running release alone.
-            var spanned = SemVer.TryParse(_lastSeenChangelog, out var seen)
-                ? known.Where(offer => offer.Version > seen && offer.Version <= version)
-                : known.Where(offer => offer.Version == version);
+            //
+            // A stable release is the exception: its changelog section already collects what its
+            // own pre-releases brought, so spanning would show every one of those lists again
+            // under the summary of itself.
+            var spanned = !version.IsPreRelease || !SemVer.TryParse(_lastSeenChangelog, out var seen)
+                ? known.Where(offer => offer.Version == version)
+                : known.Where(offer => offer.Version > seen && offer.Version <= version);
 
             var sections = spanned
                 .Where(offer => offer.HasNotes)
