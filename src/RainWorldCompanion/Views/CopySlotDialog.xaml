@@ -8,8 +8,8 @@
         Width="760" Height="560" MinWidth="680" MinHeight="460"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Brush.Window}"
-        Foreground="{StaticResource Brush.Text}"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Segoe UI"
         FontSize="13">
@@ -22,7 +22,7 @@
 
         <DataTemplate x:Key="WarningLine">
             <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,2"
-                       Foreground="{StaticResource Brush.Warn}" />
+                       Foreground="{DynamicResource Brush.Warn}" />
         </DataTemplate>
     </Window.Resources>
 
@@ -44,7 +44,7 @@
 
         <Border Grid.Row="1" Style="{StaticResource Banner.Danger}" Margin="0,14,0,0">
             <TextBlock Text="{Binding ReplaceWarningText}" TextWrapping="Wrap"
-                       Foreground="{StaticResource Brush.Danger}" />
+                       Foreground="{DynamicResource Brush.Danger}" />
         </Border>
 
         <!-- Source on the left, the file being written over on the right and drawn loud -->
@@ -85,11 +85,11 @@
 
             <TextBlock Grid.Column="1" Text="&#x2192;" FontSize="22" Margin="10,0,10,0"
                        VerticalAlignment="Center"
-                       Foreground="{StaticResource Brush.TextMuted}" />
+                       Foreground="{DynamicResource Brush.TextMuted}" />
 
             <Border Grid.Column="2" CornerRadius="5" Padding="12,10"
-                    Background="{StaticResource Brush.DangerSoft}"
-                    BorderBrush="{StaticResource Brush.Danger}"
+                    Background="{DynamicResource Brush.DangerSoft}"
+                    BorderBrush="{DynamicResource Brush.Danger}"
                     BorderThickness="2">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -104,11 +104,11 @@
                                   SelectedItem="{Binding SelectedTarget, Mode=TwoWay}"
                                   AutomationProperties.Name="Replaces" />
                         <TextBlock Text="REPLACES" Style="{StaticResource Text.SectionLabel}"
-                                   Foreground="{StaticResource Brush.Danger}" VerticalAlignment="Center" />
+                                   Foreground="{DynamicResource Brush.Danger}" VerticalAlignment="Center" />
                     </DockPanel>
                     <TextBlock Grid.Row="1" Text="{Binding TargetName}" Style="{StaticResource Text.Title}"
                                Margin="0,6,0,0" TextTrimming="CharacterEllipsis"
-                               Foreground="{StaticResource Brush.Danger}" />
+                               Foreground="{DynamicResource Brush.Danger}" />
                     <TextBlock Grid.Row="2" Text="{Binding TargetSummary}" Style="{StaticResource Text.Muted}"
                                Margin="0,2,0,0" TextWrapping="Wrap" />
                     <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Margin="0,8,0,0">
@@ -138,7 +138,7 @@
                 <Button x:Name="CancelButton" Content="Cancel" IsDefault="True" IsCancel="True" />
             </StackPanel>
             <TextBlock Text="{Binding BlockedReason}" TextWrapping="Wrap" VerticalAlignment="Center"
-                       Foreground="{StaticResource Brush.Danger}"
+                       Foreground="{DynamicResource Brush.Danger}"
                        Visibility="{Binding BlockedReason, Converter={StaticResource StringToVis}}" />
         </DockPanel>
     </Grid>

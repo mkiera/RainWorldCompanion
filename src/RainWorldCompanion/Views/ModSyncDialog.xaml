@@ -12,8 +12,8 @@
         MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Brush.Window}"
-        Foreground="{StaticResource Brush.Text}"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Segoe UI"
         FontSize="13">
@@ -39,7 +39,7 @@
                     <TextBlock Text="{Binding DetailText}" Style="{StaticResource Text.Muted}"
                                TextWrapping="Wrap" />
                     <TextBlock Text="{Binding StateText}" TextWrapping="Wrap"
-                               Foreground="{StaticResource Brush.Accent}"
+                               Foreground="{DynamicResource Brush.Accent}"
                                Visibility="{Binding StateText, Converter={StaticResource StringToVis}}" />
                 </StackPanel>
 
@@ -98,7 +98,7 @@
                 <StackPanel Visibility="{Binding HasMissing, Converter={StaticResource BoolToVis}}"
                             Margin="0,0,0,12">
                     <TextBlock Text="{Binding MissingHeader}" FontWeight="SemiBold"
-                               Foreground="{StaticResource Brush.Warn}" />
+                               Foreground="{DynamicResource Brush.Warn}" />
                     <TextBlock Text="Subscribe in Steam, then press Refresh to pick them up."
                                Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding Missing}" ItemTemplate="{StaticResource ModToggleRow}"
@@ -106,7 +106,7 @@
                 </StackPanel>
 
                 <TextBlock Text="{Binding ModsHeader}" FontWeight="SemiBold"
-                           Foreground="{StaticResource Brush.TextMuted}" />
+                           Foreground="{DynamicResource Brush.TextMuted}" />
                 <ItemsControl ItemsSource="{Binding Mods}" ItemTemplate="{StaticResource ModToggleRow}"
                               Margin="0,2,0,0" />
             </StackPanel>

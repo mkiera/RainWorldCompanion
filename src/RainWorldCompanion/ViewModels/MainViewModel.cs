@@ -18,6 +18,7 @@ using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
 using RainWorldCompanion.Core.Updates;
 using RainWorldCompanion.Services;
+using RainWorldCompanion.Theming;
 using RainWorldCompanion.Views;
 
 namespace RainWorldCompanion.ViewModels;
@@ -162,11 +163,18 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         : null;
 
     /// <summary>
+    /// App.OnStartup applies the stored theme before the window is shown, off its own read of the
+    /// file. This runs it again for the value that arrives through the full load, and for the one
+    /// the settings dialog just wrote.
+    /// </summary>
+    private void AdoptTheme() => ThemeManager.Apply(AppThemes.Parse(_settings.Theme));
+
+    /// <summary>
     /// The updater is given this rather than the store, so there is one writer to settings.json.
     /// Written on a worker from a copy taken on the dispatcher, so the write cannot see a
     /// half-applied change.
     /// </summary>
-    private void PersistUpdateSetting(Action<AppSettings> change)
+    private void PersistSetting(Action<AppSettings> change)
     {
         change(_settings);
         var snapshot = _settings.Clone();
@@ -184,7 +192,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>
-    /// Written synchronously, unlike <see cref="PersistUpdateSetting"/>: this runs from the
+    /// Written synchronously, unlike <see cref="PersistSetting"/>: this runs from the
     /// window's Closed handler, moments before the process exits, so a background write could
     /// lose the race and never land.
     /// </summary>
@@ -211,7 +219,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         IInstallerDownloader downloader,
         IInstallerLauncher launcher,
         Action requestShutdown) =>
-        new(build, source, downloader, launcher, this, PersistUpdateSetting, requestShutdown);
+        new(build, source, downloader, launcher, this, PersistSetting, requestShutdown);
 
     public ObservableCollection<SlotViewModel> LiveSlots { get; } = new();
 
@@ -430,6 +438,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             ShowMessage("The settings file could not be read, so defaults are in use.\n\n" + ex.Message,
                 "Settings", MessageBoxImage.Warning);
         }
+
+        AdoptTheme();
 
         await FillInMissingPathsAsync();
         await ApplySettingsAsync();
@@ -2803,6 +2813,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         _settings = viewModel.Result;
+        AdoptTheme();
         await ApplySettingsAsync();
         await ReloadAsync();
     }

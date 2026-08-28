@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.Updates;
 
@@ -222,14 +222,14 @@ public class SettingsResilienceTests
     }
 
     [Fact]
-    public void TryReadWindowGeometry_reads_geometry_without_resolving_paths()
+    public void ReadForStartup_reads_geometry_without_resolving_paths()
     {
         using var dir = new TempDirectory();
         var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
 
         store.Save(new AppSettings { WindowWidth = 1234, WindowHeight = 567 });
 
-        var settings = store.TryReadWindowGeometry();
+        var settings = store.ReadForStartup();
 
         Assert.NotNull(settings);
         Assert.Equal(1234, settings!.WindowWidth);
@@ -237,12 +237,64 @@ public class SettingsResilienceTests
     }
 
     [Fact]
-    public void TryReadWindowGeometry_is_null_when_there_is_no_settings_file()
+    public void ReadForStartup_is_null_when_there_is_no_settings_file()
     {
         using var dir = new TempDirectory();
         var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
 
-        Assert.Null(store.TryReadWindowGeometry());
+        Assert.Null(store.ReadForStartup());
+    }
+
+    /// <summary>App.OnStartup paints the window from this, before the full load has run.</summary>
+    [Fact]
+    public void ReadForStartup_reads_the_theme()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Save(new AppSettings { Theme = "dark" });
+
+        Assert.Equal(AppTheme.Dark, AppThemes.Parse(store.ReadForStartup()?.Theme));
+    }
+
+    [Theory]
+    [InlineData("dark", AppTheme.Dark)]
+    [InlineData("light", AppTheme.Light)]
+    [InlineData("LIGHT", AppTheme.Light)]
+    [InlineData("  light  ", AppTheme.Light)]
+    [InlineData("chartreuse", AppTheme.Dark)]
+    [InlineData("", AppTheme.Dark)]
+    [InlineData(null, AppTheme.Dark)]
+    public void An_unreadable_theme_reads_as_dark(string? stored, AppTheme expected)
+        => Assert.Equal(expected, AppThemes.Parse(stored));
+
+    [Theory]
+    [InlineData(AppTheme.Light)]
+    [InlineData(AppTheme.Dark)]
+    public void A_saved_theme_survives_the_round_trip(AppTheme theme)
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Save(new AppSettings { Theme = theme.ToStorageString() });
+
+        Assert.Equal(theme, AppThemes.Parse(store.Load().Theme));
+    }
+
+    /// <summary>Which is every file written before the toggle existed.</summary>
+    [Fact]
+    public void A_file_with_no_theme_loads_as_dark()
+    {
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, """
+        {
+          "schemaVersion": 1,
+          "gameSavePath": "C:\saves",
+          "backupRootPath": "C:\backups"
+        }
+        """);
+
+        Assert.Equal(AppTheme.Dark, AppThemes.Parse(store.Load().Theme));
     }
 
     /// <summary>

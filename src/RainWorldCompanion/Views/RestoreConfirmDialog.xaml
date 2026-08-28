@@ -10,8 +10,8 @@
         MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Background="{StaticResource Brush.Window}"
-        Foreground="{StaticResource Brush.Text}"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
         FontFamily="Segoe UI"
         FontSize="13">
@@ -45,14 +45,14 @@
             <!-- The rule is stated as the snapshot's own rules, not as today's. A backup taken
                  before the app covered a kind of file does not reconcile that file either way,
                  and the panel below this lists exactly which ones. -->
-            <TextBlock TextWrapping="Wrap" Foreground="{StaticResource Brush.Danger}"
+            <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Brush.Danger}"
                        Text="Restoring makes the files this backup's own rules covered exactly match the snapshot. Files those rules covered that are not in the snapshot are removed from the save folder." />
         </Border>
 
         <!-- The dangerous group comes first and stays visually loud -->
         <Border Grid.Row="2" Margin="0,14,0,0" CornerRadius="4" Padding="12,10"
-                Background="{StaticResource Brush.DangerSoft}"
-                BorderBrush="{StaticResource Brush.Danger}"
+                Background="{DynamicResource Brush.DangerSoft}"
+                BorderBrush="{DynamicResource Brush.Danger}"
                 BorderThickness="2">
             <Grid>
                 <Grid.RowDefinitions>
@@ -60,7 +60,7 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
                 <TextBlock Grid.Row="0" Text="{Binding DeletedHeader}" FontWeight="Bold"
-                           Foreground="{StaticResource Brush.Danger}" />
+                           Foreground="{DynamicResource Brush.Danger}" />
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0"
                               Visibility="{Binding DeletionListVisibility}">
                     <ItemsControl ItemsSource="{Binding Deleted}" ItemTemplate="{StaticResource FileLine}" />
@@ -75,8 +75,8 @@
         <!-- Where this restore stops short of an exact match. Hidden entirely when it does not,
              so an ordinary restore reads as it always did. -->
         <Border Grid.Row="3" Margin="0,12,0,0" CornerRadius="4" Padding="12,10"
-                Background="{StaticResource Brush.PanelAlt}"
-                BorderBrush="{StaticResource Brush.Border}"
+                Background="{DynamicResource Brush.PanelAlt}"
+                BorderBrush="{DynamicResource Brush.Border}"
                 BorderThickness="1"
                 Visibility="{Binding ExceptionsVisibility}">
             <StackPanel>
@@ -139,7 +139,7 @@
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <TextBlock Grid.Row="0" Text="{Binding UnchangedHeader}" FontWeight="SemiBold"
-                               Foreground="{StaticResource Brush.TextMuted}" />
+                               Foreground="{DynamicResource Brush.TextMuted}" />
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,6,0,0">
                         <ItemsControl ItemsSource="{Binding Unchanged}" ItemTemplate="{StaticResource FileLine}" />
                     </ScrollViewer>

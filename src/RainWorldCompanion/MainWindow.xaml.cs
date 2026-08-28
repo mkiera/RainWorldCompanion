@@ -24,10 +24,9 @@ public partial class MainWindow : Window
     /// visible flash. A saved size restores exactly; otherwise the default scales with the
     /// screen so a big monitor is not left with the same size that suited a small one.
     /// </summary>
-    public void ApplyStartupGeometry(SettingsStore settingsStore)
+    /// <param name="saved">What <see cref="SettingsStore.ReadForStartup"/> found, or null.</param>
+    public void ApplyStartupGeometry(AppSettings? saved)
     {
-        var saved = settingsStore.TryReadWindowGeometry();
-
         if (saved is { WindowWidth: { } width, WindowHeight: { } height, WindowLeft: { } left, WindowTop: { } top }
             && IsOnScreen(left, top, width, height))
         {

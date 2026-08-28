@@ -1,0 +1,35 @@
+<!--
+    Every brush the styles paint with. Palette.Dark.xaml answers key for key, and ThemeManager
+    swaps one file for the other, so a key added here without a twin there goes missing the moment
+    the user turns dark mode on.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Muted neutrals with one slate accent, plus green/red/amber for state -->
+    <SolidColorBrush x:Key="Brush.Window" Color="#FFF2F2F0" />
+    <SolidColorBrush x:Key="Brush.Panel" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Brush.PanelAlt" Color="#FFF8F8F6" />
+    <SolidColorBrush x:Key="Brush.Border" Color="#FFD9D9D3" />
+    <SolidColorBrush x:Key="Brush.BorderStrong" Color="#FFBDBDB5" />
+    <SolidColorBrush x:Key="Brush.Text" Color="#FF23262B" />
+    <SolidColorBrush x:Key="Brush.TextMuted" Color="#FF6C7079" />
+    <SolidColorBrush x:Key="Brush.Accent" Color="#FF4B6E7F" />
+    <!-- The label on a filled pill or band, so it reads against Accent and Meadow both. -->
+    <SolidColorBrush x:Key="Brush.AccentText" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Brush.Danger" Color="#FFA33A34" />
+    <SolidColorBrush x:Key="Brush.DangerSoft" Color="#FFFBEDEC" />
+    <SolidColorBrush x:Key="Brush.Ok" Color="#FF2E7D50" />
+    <SolidColorBrush x:Key="Brush.OkSoft" Color="#FFEDF6F0" />
+    <SolidColorBrush x:Key="Brush.Warn" Color="#FF8A6D1F" />
+    <SolidColorBrush x:Key="Brush.WarnSoft" Color="#FFFBF4E2" />
+    <!-- Rain Meadow. A colour of its own so the online block reads as a different category at a
+         glance rather than as more of the local saves above it. Kept in the same muted family as
+         the rest, and away from Ok, Warn and Danger, which all mean a state here. -->
+    <SolidColorBrush x:Key="Brush.Meadow" Color="#FF5A6E4B" />
+    <SolidColorBrush x:Key="Brush.MeadowSoft" Color="#FFF2F5EE" />
+
+    <SolidColorBrush x:Key="Brush.Selection" Color="#FFE1EAEE" />
+    <SolidColorBrush x:Key="Brush.Overlay" Color="#66202225" />
+
+</ResourceDictionary>
