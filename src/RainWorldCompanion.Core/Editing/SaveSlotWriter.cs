@@ -3,6 +3,7 @@
 using System.Globalization;
 
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.System;
@@ -18,6 +19,10 @@ public sealed record SaveWriteResult(
     long BytesWritten,
     string TargetFileName)
 {
+    /// <summary>How many mod settings files landed beside it. Outside <see cref="Success"/>, which
+    /// is about the save.</summary>
+    public int SettingsWritten { get; init; }
+
     public string Headline()
     {
         if (Success)
@@ -224,6 +229,17 @@ public sealed class SaveSlotWriter
         SaveSlotRef target,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => Write(plan, target, progress, ct, extras: null);
+
+    /// <param name="extras">Mod settings to write beside the slot once it has landed, or null for
+    /// none. Handed to the same rung a whole slot load uses.</param>
+    public SaveWriteResult Write(
+        SaveWritePlan plan,
+        SaveSlotRef target,
+        IProgress<string>? progress,
+        CancellationToken ct,
+        IReadOnlyList<ExtraFileWrite>? extras,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(target);
@@ -291,7 +307,9 @@ public sealed class SaveSlotWriter
                 ProgressVerb: "Saving",
                 SafetyLabel: $"Before editing {side.FileName}",
                 SafetyNote: _ => BuildSafetyNote(side.FileName, plan),
-                TargetExpectedSha256: plan.ExpectedFileSha256);
+                TargetExpectedSha256: plan.ExpectedFileSha256,
+                Extras: extras,
+                SafetyMods: modsBefore);
 
             SlotWriteOutcome outcome = _backups.SlotCopies.CopyOntoSlot(job, progress, ct);
 
@@ -302,7 +320,10 @@ public sealed class SaveSlotWriter
                 outcome.Warnings,
                 outcome.LiveFolderModified,
                 outcome.BytesCopied,
-                side.FileName);
+                side.FileName)
+            {
+                SettingsWritten = outcome.ExtrasWritten,
+            };
         }
         finally
         {
@@ -326,12 +347,20 @@ public sealed class SaveSlotWriter
         CampaignMovePlan plan,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
+        => Write(plan, progress, ct, extras: null);
+
+    public SaveWriteResult Write(
+        CampaignMovePlan plan,
+        IProgress<string>? progress,
+        CancellationToken ct,
+        IReadOnlyList<ExtraFileWrite>? extras,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
         return plan.Problems.Count > 0
             ? SaveWriteResult.Refused(plan.TargetFileName, plan.Problems.ToArray())
-            : Write(plan.Write, plan.Target, progress, ct);
+            : Write(plan.Write, plan.Target, progress, ct, extras, modsBefore);
     }
 
     public CampaignSlice? ReadCampaign(SaveSlotRef source, string slugcatId)

@@ -141,8 +141,11 @@ public class ModListCompatibilityTests
 
         foreach (JsonElement mod in mods.GetProperty("mods").EnumerateArray())
         {
+            // folderName joined the record so a local mod can be turned back on by the folder the
+            // loader names it by, which is not its id: Devourment ships in Devourment-mod.
+            // requirements joined it so turning a mod on can turn on what it needs.
             Assert.Equal(
-                new[] { "id", "name", "version", "workshopId", "loadOrder", "origin" },
+                new[] { "id", "name", "version", "workshopId", "folderName", "loadOrder", "origin", "requirements" },
                 mod.EnumerateObject().Select(property => property.Name));
         }
     }

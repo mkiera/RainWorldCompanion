@@ -1,0 +1,30 @@
+<!-- Key for key with Palette.Light.xaml. See the note at the top of that file. -->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Window, Panel and PanelAlt climb rather than fall, so a card still reads as sitting on
+         top of the window the way it does in light. -->
+    <SolidColorBrush x:Key="Brush.Window" Color="#FF16181A" />
+    <SolidColorBrush x:Key="Brush.Panel" Color="#FF1F2225" />
+    <SolidColorBrush x:Key="Brush.PanelAlt" Color="#FF282C30" />
+    <SolidColorBrush x:Key="Brush.Border" Color="#FF383D42" />
+    <SolidColorBrush x:Key="Brush.BorderStrong" Color="#FF565C63" />
+    <SolidColorBrush x:Key="Brush.Text" Color="#FFE6E7E4" />
+    <SolidColorBrush x:Key="Brush.TextMuted" Color="#FF9BA1A9" />
+    <SolidColorBrush x:Key="Brush.Accent" Color="#FF7FA9BE" />
+    <SolidColorBrush x:Key="Brush.AccentText" Color="#FF12242C" />
+    <SolidColorBrush x:Key="Brush.Danger" Color="#FFE38078" />
+    <SolidColorBrush x:Key="Brush.DangerSoft" Color="#FF3A2321" />
+    <SolidColorBrush x:Key="Brush.Ok" Color="#FF6FC08F" />
+    <SolidColorBrush x:Key="Brush.OkSoft" Color="#FF1C3026" />
+    <SolidColorBrush x:Key="Brush.Warn" Color="#FFDCB65F" />
+    <SolidColorBrush x:Key="Brush.WarnSoft" Color="#FF352C17" />
+    <SolidColorBrush x:Key="Brush.Meadow" Color="#FF9FBC87" />
+    <SolidColorBrush x:Key="Brush.MeadowSoft" Color="#FF242B1F" />
+
+    <SolidColorBrush x:Key="Brush.Selection" Color="#FF2C3E48" />
+    <!-- Heavier than the light one: the panel it dims is already dark, so the same 40% would
+         leave the dialog behind it looking live. -->
+    <SolidColorBrush x:Key="Brush.Overlay" Color="#99000000" />
+
+</ResourceDictionary>

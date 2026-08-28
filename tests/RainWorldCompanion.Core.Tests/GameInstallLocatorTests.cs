@@ -16,6 +16,13 @@ public class GameInstallLocatorTests
     private const string MoreSlugcats = StreamingAssets + @"\mods\moreslugcats\illustrations";
     private const string WatcherMod = StreamingAssets + @"\mods\watcher\illustrations";
 
+    // Workshop downloads are found by walking up from the install, so those tests need the real
+    // steamapps\common\Rain World shape rather than a bare folder.
+    private const string SteamInstall = @"steamapps\common\Rain World";
+
+    private static readonly byte[] PngSignature =
+        { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+
     [Fact]
     public void An_empty_folder_does_not_look_like_an_install()
     {
@@ -84,6 +91,51 @@ public class GameInstallLocatorTests
         var expected = WritePortrait(temp, WatcherMod, "multiplayerportrait41-watcher.png");
 
         Assert.Equal(expected, GameInstallLocator.FindPortraitFile(temp.Path, "Watcher"), ignoreCase: true);
+    }
+
+    [Fact]
+    public void A_portrait_from_a_workshop_mod_is_found()
+    {
+        using var temp = new TempDirectory("install");
+        var expected = temp.WriteBytes(
+            SteamInstall + @"\..\..\workshop\content\312520\3013739512\illustrations\multiplayerportrait41-pearlcat.png",
+            PngSignature);
+
+        Assert.Equal(
+            Path.GetFullPath(expected),
+            GameInstallLocator.FindPortraitFile(temp.Resolve(SteamInstall), "Pearlcat"),
+            ignoreCase: true);
+    }
+
+    /// <summary>
+    /// The DroneMaster ships no colour-4 portrait, so the search has to fall through to the white
+    /// one rather than giving up on the id.
+    /// </summary>
+    [Fact]
+    public void A_workshop_mod_without_the_own_colour_variant_still_resolves()
+    {
+        using var temp = new TempDirectory("install");
+        var expected = temp.WriteBytes(
+            SteamInstall + @"\..\..\workshop\content\312520\2947594650\illustrations\multiplayerportrait01-TheDroneMaster.png",
+            PngSignature);
+
+        Assert.Equal(
+            Path.GetFullPath(expected),
+            GameInstallLocator.FindPortraitFile(temp.Resolve(SteamInstall), "thedronemaster"),
+            ignoreCase: true);
+    }
+
+    /// <summary>An install outside a steamapps\common tree has no Workshop folder to reach for.</summary>
+    [Fact]
+    public void A_non_steam_install_ignores_the_workshop_layout()
+    {
+        using var temp = new TempDirectory("install");
+        temp.CreateSubdirectory(StreamingAssets);
+        temp.WriteBytes(
+            @"..\..\workshop\content\312520\3013739512\illustrations\multiplayerportrait41-pearlcat.png",
+            PngSignature);
+
+        Assert.Null(GameInstallLocator.FindPortraitFile(temp.Path, "Pearlcat"));
     }
 
     [Fact]
@@ -221,7 +273,5 @@ public class GameInstallLocatorTests
 
     /// <summary>Writes a file with a PNG signature. The locator matches on names, not pixels.</summary>
     private static string WritePortrait(TempDirectory temp, string folder, string fileName)
-        => temp.WriteBytes(
-            folder + "\\" + fileName,
-            new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A });
+        => temp.WriteBytes(folder + "\\" + fileName, PngSignature);
 }

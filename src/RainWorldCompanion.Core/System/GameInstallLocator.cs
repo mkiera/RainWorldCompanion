@@ -6,9 +6,9 @@ using Microsoft.Win32;
 namespace RainWorldCompanion.Core.System;
 
 /// <summary>
-/// Every method here answers null or false rather than throwing: the install is read for the
-/// portrait PNGs and nothing else, so a missing or locked install costs an icon. The PNGs belong
-/// to the game publisher and are read from the player's own install, never shipped with this app.
+/// Every method here answers null or false rather than throwing, so a missing or locked install
+/// costs an icon. The PNGs belong to the game publisher and are read from the player's own
+/// install, never shipped with this app.
 /// </summary>
 public static class GameInstallLocator
 {
@@ -21,6 +21,9 @@ public static class GameInstallLocator
     private const string StreamingAssetsFolder = "StreamingAssets";
     private const string IllustrationsFolder = "illustrations";
     private const string ModsFolder = "mods";
+    private const string WorkshopFolder = "workshop";
+    private const string ContentFolder = "content";
+    private const string RainWorldAppId = "312520";
 
     public static string SteamDefaultInstallPath { get; } =
         Path.Combine(SteamDefaultRoot, SteamAppsFolder, "common", GameFolder);
@@ -79,7 +82,7 @@ public static class GameInstallLocator
 
     /// <summary>
     /// Inv has no portrait at all, so null is a normal answer. The base illustrations folder is
-    /// searched first, then every mods\*\illustrations folder.
+    /// searched first, then every mods\*\illustrations folder, then the Steam Workshop ones.
     /// </summary>
     public static string? FindPortraitFile(string installPath, string slugcatId)
     {
@@ -161,29 +164,57 @@ public static class GameInstallLocator
                 folders.Add(baseFolder);
             }
 
-            var mods = Path.Combine(streamingAssets, ModsFolder);
-            if (!Directory.Exists(mods))
-            {
-                return folders;
-            }
-
-            var modFolders = Directory.EnumerateDirectories(mods).ToList();
-            modFolders.Sort(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var mod in modFolders)
-            {
-                var modIllustrations = Path.Combine(mod, IllustrationsFolder);
-                if (Directory.Exists(modIllustrations))
-                {
-                    folders.Add(modIllustrations);
-                }
-            }
+            AddModIllustrations(folders, Path.Combine(streamingAssets, ModsFolder));
+            AddModIllustrations(folders, WorkshopContentPath(installPath));
         }
         catch (Exception)
         {
         }
 
         return folders;
+    }
+
+    /// <summary>
+    /// A Workshop mod is loaded from where Steam downloaded it, so its art never appears under
+    /// StreamingAssets\mods. The install sits at steamapps\common\Rain World, which puts the
+    /// downloads two levels up at steamapps\workshop\content\312520.
+    /// </summary>
+    private static string? WorkshopContentPath(string installPath)
+    {
+        try
+        {
+            var steamApps = Directory.GetParent(installPath)?.Parent;
+            if (steamApps is null || !steamApps.Name.Equals(SteamAppsFolder, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return Path.Combine(steamApps.FullName, WorkshopFolder, ContentFolder, RainWorldAppId);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private static void AddModIllustrations(List<string> folders, string? modsRoot)
+    {
+        if (modsRoot is null || !Directory.Exists(modsRoot))
+        {
+            return;
+        }
+
+        var modFolders = EnumerateDirectories(modsRoot);
+        modFolders.Sort(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var mod in modFolders)
+        {
+            var modIllustrations = Path.Combine(mod, IllustrationsFolder);
+            if (Directory.Exists(modIllustrations))
+            {
+                folders.Add(modIllustrations);
+            }
+        }
     }
 
     private static IEnumerable<string> CandidateInstallPaths()
@@ -330,6 +361,18 @@ public static class GameInstallLocator
         try
         {
             return Directory.EnumerateFiles(folder, pattern).ToList();
+        }
+        catch (Exception)
+        {
+            return new List<string>();
+        }
+    }
+
+    private static List<string> EnumerateDirectories(string folder)
+    {
+        try
+        {
+            return Directory.EnumerateDirectories(folder).ToList();
         }
         catch (Exception)
         {

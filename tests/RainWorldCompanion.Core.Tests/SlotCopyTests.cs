@@ -98,6 +98,24 @@ public class SlotCopyTests
         SnapshotLayout.AssertBytesEqual(source, world.Live.ReadBytes("sav2"), "sav2");
     }
 
+    /// <summary>
+    /// A slot copy carries no extra files, and gaining the ability to carry them gained it no
+    /// behaviour of its own: one slot moves and nothing else in the folder does.
+    /// </summary>
+    [Fact]
+    public void A_slot_copy_touches_the_one_slot_it_names_and_nothing_else()
+    {
+        using var world = new SlotWorld();
+        var before = world.Live.ReadTree();
+
+        var result = world.Service.CopySlot(LocalTwo, OnlineTwo);
+
+        Assert.True(result.Success, string.Join("; ", result.Errors));
+
+        before["online_sav2"] = world.Live.ReadBytes("online_sav2");
+        SnapshotLayout.AssertTreeUnchanged(before, world.Live.ReadTree());
+    }
+
     [Fact]
     public void The_copy_still_parses_and_its_checksum_still_verifies()
     {

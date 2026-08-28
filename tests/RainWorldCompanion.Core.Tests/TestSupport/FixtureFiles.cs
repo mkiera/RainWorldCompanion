@@ -331,6 +331,27 @@ public static class SaveTree
         "online_sav",
         @"ModConfigs\devourment.txt",
         @"ModConfigs\moreslugcats.txt",
+        @"ModConfigs\willowwisp.bellyplus.json",
+        @"ModConfigs\DvrmentConfs\current.json",
+        @"ModConfigs\MapOptions\cache.json",
+        @"dvrmentSaveStates\contents_0_White_story.txt",
+        @"dvrmentSaveStates\contents_2_White_story.txt",
+    };
+
+    /// <summary>
+    /// What version 1's rules covered, and nothing else. Frozen: ManifestCompatibilityTests builds
+    /// its hand-written version 1 manifest from this, and widening <see cref="InScope"/> must not
+    /// quietly make that fixture claim files version 1 never held.
+    /// </summary>
+    public static readonly string[] VersionOneInScope =
+    {
+        "sav",
+        "sav2",
+        "sav3",
+        "exp1",
+        "expCore1",
+        "online_sav",
+        @"ModConfigs\devourment.txt",
         @"ModConfigs\DvrmentConfs\current.json",
         @"dvrmentSaveStates\contents_0_White_story.txt",
         @"dvrmentSaveStates\contents_2_White_story.txt",
@@ -345,6 +366,7 @@ public static class SaveTree
         "options",
         "steam_autocloud.vdf",
         @"ModConfigs\steam_autocloud.vdf",
+        @"ModConfigs\MapOptions\steam_autocloud.vdf",
         @"backup\2026-08-24_120000\sav",
     };
 
@@ -369,6 +391,13 @@ public static class SaveTree
         directory.WriteText(@"ModConfigs\steam_autocloud.vdf", "\"RootPaths\"\n{\n}\n");
         directory.WriteText(@"ModConfigs\devourment.txt", "PredatorMode<optB>true<optA>Difficulty<optB>2");
         directory.WriteText(@"ModConfigs\moreslugcats.txt", "SomeOtherMod<optB>1");
+
+        // Two shapes the rules before version 3 did not cover: a settings file beside the .txt ones
+        // that is not a .txt, and a mod that keeps its own folder rather than one file.
+        directory.WriteText(@"ModConfigs\willowwisp.bellyplus.json", "{\"bpDifficulty\":-3.323608}");
+        directory.WriteText(@"ModConfigs\MapOptions\cache.json", "{\"zoom\":2}");
+        directory.WriteText(@"ModConfigs\MapOptions\steam_autocloud.vdf", "\"RootPaths\"\n{\n}\n");
+
         directory.WriteText(@"ModConfigs\DvrmentConfs\current.json", "{\"preset\":\"default\",\"struggle\":0.5}");
         directory.WriteText(@"dvrmentSaveStates\contents_0_White_story.txt", "White|Slugcat|0|stomach");
         directory.WriteBytes(EmptyStoryFile, Array.Empty<byte>());

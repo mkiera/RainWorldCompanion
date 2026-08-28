@@ -21,7 +21,11 @@ public class BackupScope
 
     public const int WiderModDataScopeVersion = 2;
 
-    public const int CurrentScopeVersion = WiderModDataScopeVersion;
+    /// <summary>Takes ModConfigs whole rather than its .txt files and DvrmentConfs alone, so a mod
+    /// that keeps its settings in a folder or a .json is covered too.</summary>
+    public const int WholeModConfigsScopeVersion = 3;
+
+    public const int CurrentScopeVersion = WholeModConfigsScopeVersion;
 
     /// <summary>Anchored on purpose: the live save folder holds "sav - Copy" next to "sav", and a
     /// "sav*" glob would put those in scope for a restore to delete.</summary>
@@ -70,17 +74,34 @@ public class BackupScope
         "Warp",
     ];
 
-    private static readonly string[] CurrentRecursiveFolderList =
+    /// <summary>ModConfigs\DvrmentConfs stays in the version 1 list above rather than being folded
+    /// into this one, because version 1's rules are frozen. A version 3 walk therefore reaches those
+    /// files from two roots, and the seen set in <see cref="Scan"/> drops the second sighting.</summary>
+    private static readonly string[] WholeModConfigsRecursiveFolderList = [ModConfigsFolder];
+
+    private static readonly string[] VersionTwoRecursiveFolderList =
         [.. OriginalRecursiveFolderList, .. WiderModDataRecursiveFolderList];
 
-    private static readonly string[] TopLevelFileFolderList = [ModConfigsFolder];
+    private static readonly string[] CurrentRecursiveFolderList =
+        [.. VersionTwoRecursiveFolderList, .. WholeModConfigsRecursiveFolderList];
+
+    /// <summary>Walked for their files alone, without descending. Empty from version 3 on, where
+    /// ModConfigs moved into the recursive list: walking it in both would walk it twice.</summary>
+    private static readonly string[] OriginalTopLevelFileFolderList = [ModConfigsFolder];
 
     public static IReadOnlyList<string> RecursiveFolders => CurrentRecursiveFolderList;
 
     /// <summary>The folders taken whole under one rules version. A version above
     /// <see cref="CurrentScopeVersion"/> gets today's list, as <see cref="IsInScope(string, int)"/> does.</summary>
     public static IReadOnlyList<string> RecursiveFoldersAt(int scopeVersion) =>
-        scopeVersion >= WiderModDataScopeVersion ? CurrentRecursiveFolderList : OriginalRecursiveFolderList;
+        scopeVersion >= WholeModConfigsScopeVersion ? CurrentRecursiveFolderList
+        : scopeVersion >= WiderModDataScopeVersion ? VersionTwoRecursiveFolderList
+        : OriginalRecursiveFolderList;
+
+    private static IReadOnlyList<string> TopLevelFileFoldersAt(int scopeVersion) =>
+        scopeVersion >= WholeModConfigsScopeVersion
+            ? Array.Empty<string>()
+            : OriginalTopLevelFileFolderList;
 
     public BackupScope(string saveRoot)
         : this(saveRoot, CurrentScopeVersion)
@@ -126,7 +147,9 @@ public class BackupScope
             }
         }
 
-        foreach (var folder in TopLevelFileFolderList)
+        // Both lists come from this instance's version, not today's, for the reason the recursive
+        // loop below gives. ModConfigs moves from one list to the other at version 3.
+        foreach (var folder in TopLevelFileFoldersAt(Version))
         {
             AddTopLevelFiles(results, skipped, seen, folder);
         }
@@ -162,8 +185,8 @@ public class BackupScope
         "Rain Meadow's online containers: online_sav<n>, and the online_sav-<n> form a lobby joined from an Expedition slot writes",
         "Rain Meadow character progression: meadow.json",
         "RandomBuff save data: buffMain<n> and buffsave<n>",
-        @"Every .txt file directly inside ModConfigs\, which is where mods keep their settings",
-        @"dvrmentSaveStates\, ModConfigs\DvrmentConfs\, dressmyslugcat\, RandomBuff\ and Warp\, with everything inside them at any depth",
+        @"ModConfigs\, which is where mods keep their settings, with everything inside it at any depth",
+        @"dvrmentSaveStates\, dressmyslugcat\, RandomBuff\ and Warp\, with everything inside them at any depth",
         "steam_autocloud.vdf is left out wherever it sits, because it is Steam's own sync manifest",
         "Matched on exact file names, so copies such as \"sav - Copy\" are left alone",
         @"Everything else is excluded: options and localoptions.txt are game settings rather than save data, SJ_0 to SJ_2 are karma screenshots the game redraws by itself, and backup\ and cloud\ belong to the game and to Steam",
@@ -202,8 +225,19 @@ public class BackupScope
             return true;
         }
 
-        return scopeVersion >= WiderModDataScopeVersion && MatchesWiderModDataRules(segments);
+        if (scopeVersion >= WiderModDataScopeVersion && MatchesWiderModDataRules(segments))
+        {
+            return true;
+        }
+
+        return scopeVersion >= WholeModConfigsScopeVersion && MatchesWholeModConfigsRules(segments);
     }
+
+    /// <summary>Everything under ModConfigs at any depth, which is where mods keep their settings.
+    /// The version 1 and version 2 rules above still name their own corners of it, and are left
+    /// alone: what an old snapshot may delete is decided by the rules it was taken under.</summary>
+    private static bool MatchesWholeModConfigsRules(string[] segments) =>
+        segments.Length >= 2 && NameComparer.Equals(segments[0], ModConfigsFolder);
 
     /// <summary>The rules exactly as they were at version 1. Frozen: a change here changes what
     /// restoring an old snapshot is allowed to delete.</summary>

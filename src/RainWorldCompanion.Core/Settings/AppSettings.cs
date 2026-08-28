@@ -1,4 +1,4 @@
-using RainWorldCompanion.Core.System;
+﻿using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Settings;
 
@@ -35,6 +35,13 @@ public sealed class AppSettings
     /// </summary>
     public bool AutoCheckUpdates { get; set; } = true;
 
+    /// <summary>
+    /// "light" or "dark", text rather than the enum for the same reason as
+    /// <see cref="UpdateChannel"/>. Anything else reads as light, so a file written before the
+    /// toggle existed opens the way it always has.
+    /// </summary>
+    public string Theme { get; set; } = "light";
+
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }
 
     /// <summary>
@@ -42,6 +49,20 @@ public sealed class AppSettings
     /// records what it is running and says nothing.
     /// </summary>
     public string LastSeenChangelogVersion { get; set; } = "";
+
+    /// <summary>
+    /// Null means never saved, which is not the same as a saved 0: a null leaves the window to
+    /// centre itself on the natural default size, a 0 would pin it to the screen edge.
+    /// </summary>
+    public double? WindowWidth { get; set; }
+
+    public double? WindowHeight { get; set; }
+
+    public double? WindowLeft { get; set; }
+
+    public double? WindowTop { get; set; }
+
+    public bool WindowMaximized { get; set; }
 
     /// <summary>
     /// Every field belongs here. A new one left out is not a compile error: it silently reverts to
@@ -56,8 +77,14 @@ public sealed class AppSettings
         GameInstallPath = GameInstallPath,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
+        Theme = Theme,
         LastUpdateCheckUtc = LastUpdateCheckUtc,
         LastSeenChangelogVersion = LastSeenChangelogVersion,
+        WindowWidth = WindowWidth,
+        WindowHeight = WindowHeight,
+        WindowLeft = WindowLeft,
+        WindowTop = WindowTop,
+        WindowMaximized = WindowMaximized,
     };
 
     public static string DefaultBackupRootPath => Path.Combine(

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Windows;
 
 using RainWorldCompanion.Core.Editing;
+using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.ViewModels;
@@ -55,11 +56,34 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
         string sourceName,
         Func<SaveSlotRef, CampaignMovePlan> replan,
         bool includeOnline,
-        ModListDiff? mods = null)
+        ModListDiff? mods = null,
+        Func<ModListDiff?>? fixMods = null,
+        ModConfigOffer? settings = null,
+        Func<ModConfigOffer?>? reloadSettings = null)
     {
         CampaignName = campaignName;
         SourceName = sourceName;
-        ModDiff = new ModListDiffViewModel(mods);
+        Settings = new ModConfigPickerViewModel(settings);
+
+        // Wrapped rather than passed straight through: the Mods window can turn a mod on, and what
+        // a settings row says about a mod depends on whether it is installed.
+        ModDiff = new ModListDiffViewModel(mods)
+        {
+            FixMods = fixMods is null
+                ? null
+                : () =>
+                {
+                    ModListDiff? fresh = fixMods();
+                    if (reloadSettings is not null)
+                    {
+                        Settings.Reload(reloadSettings());
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Settings)));
+                    }
+
+                    return fresh;
+                },
+        };
+        ModDiff.PropertyChanged += (_, _) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CanSend)));
 
         _source = source;
         _replan = replan;
@@ -84,6 +108,15 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
     /// than to the slot, so nothing rebuilds it when the picker moves.
     /// </summary>
     public ModListDiffViewModel ModDiff { get; }
+
+    /// <summary>
+    /// Out of RaiseAll for the reason ModDiff is: the target slot does not change what a campaign
+    /// carries, and rebuilding this would clear what the user ticked.
+    /// </summary>
+    public ModConfigPickerViewModel Settings { get; }
+
+    /// <summary>What the user ticked, read after the dialog closes.</summary>
+    public IReadOnlyCollection<string> ChosenSettings => Settings.Chosen;
 
     public string SourceName { get; }
 
@@ -130,7 +163,7 @@ public partial class SendCampaignDialog : Window, INotifyPropertyChanged
 
     public bool ChosenToTakeItOut => _takeItOut && CanTakeItOut;
 
-    public bool CanSend => _plan.CanWrite && !SameAsTheSource;
+    public bool CanSend => _plan.CanWrite && !SameAsTheSource && ModDiff.Settled;
 
     public bool SameAsTheSource => _source is { } source
         && _selectedTarget.Ref.Realm == source.Realm

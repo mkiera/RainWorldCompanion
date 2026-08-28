@@ -33,6 +33,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         backupRootPath = current.BackupRootPath ?? "";
         libraryRootPath = current.LibraryRootPath ?? "";
         gameInstallPath = current.GameInstallPath ?? "";
+        isDarkTheme = AppThemes.Parse(current.Theme) == AppTheme.Dark;
         introMessage = reason ?? "";
         Revalidate();
         _ = CheckInstallAsync(gameInstallPath, debounce: false);
@@ -56,6 +57,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string libraryRootPath;
+
+    [ObservableProperty]
+    private bool isDarkTheme;
 
     /// <summary>Only the portraits read this, so a blank or wrong value never blocks Save.</summary>
     [ObservableProperty]
@@ -291,7 +295,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         var installPath = GameInstallPath.Trim();
 
-        // Built from what was loaded, so only the four fields this dialog owns are overwritten. A
+        // Built from what was loaded, so only the fields this dialog owns are overwritten. A
         // fresh object would reset the update channel, the auto-check choice and the last-check
         // stamp to their initialisers every time.
         var settings = _current.Clone();
@@ -299,6 +303,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         settings.BackupRootPath = BackupRootPath.Trim();
         settings.LibraryRootPath = LibraryRootPath.Trim();
         settings.GameInstallPath = installPath.Length == 0 ? null : installPath;
+        settings.Theme = (IsDarkTheme ? AppTheme.Dark : AppTheme.Light).ToStorageString();
 
         IsBusy = true;
         try

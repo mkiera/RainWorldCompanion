@@ -28,6 +28,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A DynamicResource that resolves to nothing paints nothing and throws nothing, so the two
+         palettes agreeing key for key is checked against the markup rather than at runtime. -->
+    <None Include="..\..\src\RainWorldCompanion\**\*.xaml"
+          Link="Xaml\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\RainWorldCompanion\RainWorldCompanion.csproj" />
   </ItemGroup>
 

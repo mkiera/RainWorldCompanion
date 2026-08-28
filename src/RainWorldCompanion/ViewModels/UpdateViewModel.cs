@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.Updates;
@@ -15,6 +15,9 @@ public interface IBusyGuard
     /// <summary>A sentence explaining why not, or null when there is no reason not to.</summary>
     string? WhyNotNow();
 }
+
+/// <summary>One release's notes, kept apart so the reader can see which version brought what.</summary>
+public sealed record WhatsNewSection(string Version, string Notes);
 
 /// <summary>
 /// No message box and no timer, because App.Tests never constructs a Window, an Application or a
@@ -63,9 +66,15 @@ public sealed partial class UpdateViewModel : ObservableObject
 
     public BuildStamp Build { get; }
 
-    public string RunningVersionText => Build.ShortSha.Length == 0
-        ? $"Running {Build.Version}"
-        : $"Running {Build.Version}, commit {Build.ShortSha}";
+    /// <summary>
+    /// The commit only shows for a branch build: a beta or a stable release is already named
+    /// exactly by its tag, so the commit would only repeat what the version already says.
+    /// </summary>
+    public string VersionText => Build.IsBranchBuild && Build.ShortSha.Length > 0
+        ? $"{Build.Version}, commit {Build.ShortSha}"
+        : Build.Version;
+
+    public string RunningVersionText => $"Running {VersionText}";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasOffer))]
@@ -103,15 +112,59 @@ public sealed partial class UpdateViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasWhatsNew))]
+    [NotifyPropertyChangedFor(nameof(WhatsNewSummary))]
     private string whatsNewNotes = "";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WhatsNewTitle))]
     private string whatsNewVersion = "";
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WhatsNewTitle))]
+    private string whatsNewSince = "";
+
+    [ObservableProperty]
+    private IReadOnlyList<WhatsNewSection> whatsNewSections = [];
+
     public bool HasWhatsNew => WhatsNewNotes.Length != 0;
 
-    public string WhatsNewTitle => $"What's new in {WhatsNewVersion}";
+    /// <summary>
+    /// Skipping releases is normal on the beta channel, so the version alone would name only the
+    /// last of several the reader is about to be shown.
+    /// </summary>
+    public string WhatsNewTitle => WhatsNewSince.Length == 0
+        ? $"What's new in {WhatsNewVersion}"
+        : $"What's new since {WhatsNewSince}";
+
+    public string WhatsNewSummary => CountEntries(WhatsNewNotes) switch
+    {
+        0 => "Read what this version changed.",
+        1 => "One change.",
+        var many => $"{many} changes.",
+    };
+
+    private static readonly string[] NoteLineBreaks = ["\r\n", "\n"];
+
+    /// <summary>
+    /// A release body is a markdown list, and one entry can wrap onto lines that carry no marker,
+    /// so only the marked lines count. A body written some other way counts nothing, which is what
+    /// the summary's first case is for.
+    /// </summary>
+    private static int CountEntries(string notes)
+    {
+        var entries = 0;
+        foreach (var line in notes.Split(NoteLineBreaks, StringSplitOptions.None))
+        {
+            var trimmed = line.TrimStart();
+            if (trimmed.StartsWith("- ", StringComparison.Ordinal)
+                || trimmed.StartsWith("* ", StringComparison.Ordinal))
+            {
+                entries++;
+            }
+        }
+
+        return entries;
+    }
 
     public bool HasOffer => Offer is not null;
 
@@ -234,21 +287,37 @@ public sealed partial class UpdateViewModel : ObservableObject
         {
             var releases = await _source.GetReleasesAsync(cancellationToken);
 
-            // The widest list, then an exact match, because the running build may be a
-            // pre-release and the stable list would not hold it.
-            var match = UpdatePicker
-                .ForChannel(releases, UpdateChannel.Prerelease)
-                .FirstOrDefault(offer => offer.Version == version);
+            // The widest list, because the running build may be a pre-release and the stable list
+            // would not hold it. Already newest first.
+            var known = UpdatePicker.ForChannel(releases, UpdateChannel.Prerelease);
 
-            if (match is null || !match.HasNotes)
+            // Everything between the version last seen and the one now running, so somebody who
+            // skipped a release reads what it changed rather than only the one they landed on. A
+            // last-seen version that will not parse narrows this to the running release alone.
+            //
+            // A stable landing leaves out the pre-release sections in the span, because a stable
+            // release's own section already collects what its pre-releases brought.
+            var spanned = SemVer.TryParse(_lastSeenChangelog, out var seen)
+                ? known.Where(offer => offer.Version > seen && offer.Version <= version
+                    && (version.IsPreRelease || !offer.Version.IsPreRelease))
+                : known.Where(offer => offer.Version == version);
+
+            var sections = spanned
+                .Where(offer => offer.HasNotes)
+                .Select(offer => new WhatsNewSection(offer.VersionText, offer.Notes))
+                .ToList();
+
+            if (sections.Count == 0)
             {
                 // A branch build has no release of its own, and a release can carry no body.
                 RememberChangelogSeen(running);
                 return;
             }
 
-            WhatsNewVersion = match.VersionText;
-            WhatsNewNotes = match.Notes;
+            WhatsNewSections = sections;
+            WhatsNewVersion = sections[0].Version;
+            WhatsNewSince = sections.Count > 1 ? _lastSeenChangelog : "";
+            WhatsNewNotes = string.Join("\n\n", sections.Select(section => section.Notes));
         }
         catch (OperationCanceledException)
         {
@@ -265,6 +334,8 @@ public sealed partial class UpdateViewModel : ObservableObject
         RememberChangelogSeen(Build.Version);
         WhatsNewNotes = "";
         WhatsNewVersion = "";
+        WhatsNewSince = "";
+        WhatsNewSections = [];
     }
 
     private void RememberChangelogSeen(string version)
@@ -444,6 +515,13 @@ public sealed partial class UpdateViewModel : ObservableObject
         AutoCheck = enabled;
         _persist(settings => settings.AutoCheckUpdates = enabled);
     }
+
+    /// <summary>
+    /// Records that the list was fetched from GitHub. The Updates window reaches the same server
+    /// the banner's own check does, so a refresh there counts as a check: without this the window
+    /// would go on saying it last looked hours ago while it was looking just now.
+    /// </summary>
+    public void RecordCheck(DateTimeOffset at) => Stamp(at);
 
     private void Stamp(DateTimeOffset? at)
     {

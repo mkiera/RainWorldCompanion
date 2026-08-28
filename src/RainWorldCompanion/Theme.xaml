@@ -6,46 +6,21 @@
     <conv:NotBooleanToVisibilityConverter x:Key="NotBoolToVis" />
     <conv:StringToVisibilityConverter x:Key="StringToVis" />
 
-    <!-- Palette: muted neutrals with one slate accent, plus green/red/amber for state -->
-    <SolidColorBrush x:Key="Brush.Window" Color="#FFF2F2F0" />
-    <SolidColorBrush x:Key="Brush.Panel" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="Brush.PanelAlt" Color="#FFF8F8F6" />
-    <SolidColorBrush x:Key="Brush.Border" Color="#FFD9D9D3" />
-    <SolidColorBrush x:Key="Brush.BorderStrong" Color="#FFBDBDB5" />
-    <SolidColorBrush x:Key="Brush.Text" Color="#FF23262B" />
-    <SolidColorBrush x:Key="Brush.TextMuted" Color="#FF6C7079" />
-    <SolidColorBrush x:Key="Brush.Accent" Color="#FF4B6E7F" />
-    <SolidColorBrush x:Key="Brush.AccentText" Color="#FFFFFFFF" />
-    <SolidColorBrush x:Key="Brush.Danger" Color="#FFA33A34" />
-    <SolidColorBrush x:Key="Brush.DangerSoft" Color="#FFFBEDEC" />
-    <SolidColorBrush x:Key="Brush.Ok" Color="#FF2E7D50" />
-    <SolidColorBrush x:Key="Brush.OkSoft" Color="#FFEDF6F0" />
-    <SolidColorBrush x:Key="Brush.Warn" Color="#FF8A6D1F" />
-    <SolidColorBrush x:Key="Brush.WarnSoft" Color="#FFFBF4E2" />
-    <!-- Rain Meadow. A colour of its own so the online block reads as a different category at a
-         glance rather than as more of the local saves above it. Kept in the same muted family as
-         the rest, and away from Ok, Warn and Danger, which all mean a state here. -->
-    <SolidColorBrush x:Key="Brush.Meadow" Color="#FF5A6E4B" />
-    <SolidColorBrush x:Key="Brush.MeadowSoft" Color="#FFF2F5EE" />
-
-    <SolidColorBrush x:Key="Brush.Selection" Color="#FFE1EAEE" />
-    <SolidColorBrush x:Key="Brush.Overlay" Color="#66202225" />
-
     <!-- Text. These are keyed on purpose: an implicit TextBlock style would also repaint
          the text inside button and header templates. -->
     <Style x:Key="Text.Body" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="TextOptions.TextFormattingMode" Value="Display" />
     </Style>
 
     <Style x:Key="Text.Muted" TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
         <Setter Property="FontSize" Value="12" />
     </Style>
 
     <Style x:Key="Text.SectionLabel" TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
@@ -63,15 +38,15 @@
     </Style>
 
     <Style x:Key="Text.Tiny" TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-        <Setter Property="Foreground" Value="{StaticResource Brush.TextMuted}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}" />
         <Setter Property="FontSize" Value="11" />
     </Style>
 
     <!-- Buttons -->
     <Style x:Key="Button.Base" TargetType="Button">
-        <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
-        <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Panel}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="12,6" />
         <Setter Property="MinWidth" Value="94" />
@@ -101,7 +76,7 @@
                             <Setter TargetName="Root" Property="Opacity" Value="0.74" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Root" Property="Opacity" Value="0.42" />
@@ -116,16 +91,16 @@
     <Style TargetType="Button" BasedOn="{StaticResource Button.Base}" />
 
     <Style x:Key="Button.Accent" TargetType="Button" BasedOn="{StaticResource Button.Base}">
-        <Setter Property="Background" Value="{StaticResource Brush.Accent}" />
-        <Setter Property="Foreground" Value="{StaticResource Brush.AccentText}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.AccentText}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
         <Setter Property="FontWeight" Value="SemiBold" />
     </Style>
 
     <Style x:Key="Button.Danger" TargetType="Button" BasedOn="{StaticResource Button.Base}">
-        <Setter Property="Foreground" Value="{StaticResource Brush.Danger}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />
-        <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
     </Style>
 
     <Style x:Key="Button.Small" TargetType="Button" BasedOn="{StaticResource Button.Base}">
@@ -149,9 +124,9 @@
         ControlTemplate from Button to ToggleButton.
     -->
     <Style x:Key="Button.SmallToggle" TargetType="ToggleButton">
-        <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
-        <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Panel}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,2" />
         <Setter Property="MinWidth" Value="52" />
@@ -173,15 +148,15 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.Selection}" />
-                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
-                            <Setter Property="Foreground" Value="{StaticResource Brush.Accent}" />
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Selection}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                            <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Root" Property="Opacity" Value="0.88" />
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -191,27 +166,27 @@
 
     <!-- Inputs -->
     <Style TargetType="TextBox">
-        <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
-        <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.BorderStrong}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Panel}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.BorderStrong}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="7,5" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="SelectionBrush" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource Brush.Accent}" />
     </Style>
 
     <!-- Cards and banners -->
     <Style x:Key="Card" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource Brush.Panel}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Panel}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="5" />
         <Setter Property="Padding" Value="14" />
     </Style>
 
     <Style x:Key="Banner.Warn" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource Brush.WarnSoft}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Warn}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.WarnSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Warn}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="12,9" />
@@ -221,16 +196,16 @@
          same amber as a misconfigured save folder would say "problem" about it, especially when
          both are on screen at once. -->
     <Style x:Key="Banner.Info" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource Brush.Selection}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Selection}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="12,9" />
     </Style>
 
     <Style x:Key="Banner.Danger" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource Brush.DangerSoft}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Danger}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="12,9" />
@@ -238,35 +213,43 @@
 
     <!-- Slugcat portraits. The art is 84x84 pixel art, so it is drawn with nearest neighbour at
          every size. Bilinear turns the faces to mush. The image itself is never null: a slugcat
-         with no art in the install gets a drawn head in the same colour. -->
+         with no art in the install gets a drawn head in the same colour.
+
+         The backing is the slugcat's own colour laid over the panel at low opacity rather than a
+         tint mixed in the view model, so the same square reads as pale on a light panel and deep
+         on a dark one without either theme naming a colour per slugcat. -->
     <DataTemplate x:Key="Portrait.Small">
         <Border Width="24" Height="24" Margin="0,0,4,0" CornerRadius="4"
-                Background="{Binding AccentSoft}"
                 BorderBrush="{Binding Accent}"
                 BorderThickness="1"
                 SnapsToDevicePixels="True"
                 ToolTip="{Binding ToolTipText}">
-            <Image Source="{Binding Image}" Width="20" Height="20"
-                   RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            <Grid>
+                <Border CornerRadius="3" Background="{Binding Accent}" Opacity="0.18" />
+                <Image Source="{Binding Image}" Width="20" Height="20"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            </Grid>
         </Border>
     </DataTemplate>
 
     <DataTemplate x:Key="Portrait.Large">
         <Border Width="46" Height="46" CornerRadius="5"
-                Background="{Binding AccentSoft}"
                 BorderBrush="{Binding Accent}"
                 BorderThickness="1"
                 SnapsToDevicePixels="True"
                 ToolTip="{Binding ToolTipText}">
-            <Image Source="{Binding Image}" Width="40" Height="40"
-                   RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            <Grid>
+                <Border CornerRadius="4" Background="{Binding Accent}" Opacity="0.18" />
+                <Image Source="{Binding Image}" Width="40" Height="40"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor" />
+            </Grid>
         </Border>
     </DataTemplate>
 
     <!-- Small pills: gate names, echo counts, swallowed items -->
     <Style x:Key="Chip" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="3" />
         <Setter Property="Padding" Value="7,2" />
@@ -277,8 +260,8 @@
     <!-- One labelled value in a detail group -->
     <Style x:Key="StatTile" TargetType="Border">
         <Setter Property="Width" Value="136" />
-        <Setter Property="Background" Value="{StaticResource Brush.PanelAlt}" />
-        <Setter Property="BorderBrush" Value="{StaticResource Brush.Border}" />
+        <Setter Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="4" />
         <Setter Property="Padding" Value="9,6" />
@@ -288,6 +271,7 @@
 
     <!-- Rows in the backup list. The strip down the left marks the selected one. -->
     <Style x:Key="ListItem.Card" TargetType="ListBoxItem">
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="Margin" Value="0,0,0,6" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -297,8 +281,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">
                     <Border x:Name="Root"
-                            Background="{StaticResource Brush.Panel}"
-                            BorderBrush="{StaticResource Brush.Border}"
+                            Background="{DynamicResource Brush.Panel}"
+                            BorderBrush="{DynamicResource Brush.Border}"
                             BorderThickness="1"
                             CornerRadius="5"
                             SnapsToDevicePixels="True">
@@ -310,12 +294,12 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.PanelAlt}" />
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.PanelAlt}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Root" Property="Background" Value="{StaticResource Brush.Selection}" />
-                            <Setter TargetName="Root" Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
-                            <Setter TargetName="Marker" Property="Background" Value="{StaticResource Brush.Accent}" />
+                            <Setter TargetName="Root" Property="Background" Value="{DynamicResource Brush.Selection}" />
+                            <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                            <Setter TargetName="Marker" Property="Background" Value="{DynamicResource Brush.Accent}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -327,7 +311,7 @@
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
-        <Setter Property="Foreground" Value="{StaticResource Brush.Text}" />
+        <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
         <Setter Property="ItemContainerStyle" Value="{StaticResource ListItem.Card}" />

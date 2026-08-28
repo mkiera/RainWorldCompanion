@@ -116,15 +116,142 @@ public sealed class BackupService
     public BackupScope Scope { get; }
 
     /// <summary>
+    /// The mod settings a snapshot holds, or null when it holds none. A snapshot is a faithful copy
+    /// of the save folder, so its ModConfigs sits at the same path it did there and the same rule
+    /// decides which of it travels.
+    /// </summary>
+    public Library.ModConfigOffer? SettingsFor(BackupSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (snapshot.Manifest is not { } manifest)
+        {
+            return null;
+        }
+
+        var recorded = new ModConfigSet { ReadTheFolder = true };
+
+        foreach (var file in manifest.Files)
+        {
+            var relative = file.RelativePath ?? "";
+            if (ModConfigReader.Travels(relative))
+            {
+                recorded.Files.Add(new ModConfigFile
+                {
+                    RelativePath = relative,
+                    ModId = ModConfigReader.ModIdFor(relative),
+                    SizeBytes = file.SizeBytes,
+                    Sha256 = file.Sha256,
+                });
+            }
+        }
+
+        if (recorded.Files.Count == 0)
+        {
+            return null;
+        }
+
+        var scan = ModConfigReader.Read(SaveRoot);
+        var live = new ModConfigSet
+        {
+            ReadTheFolder = scan.ReadTheFolder,
+            Note = scan.Note,
+            Files = scan.Files
+                .Select(file => new ModConfigFile { RelativePath = file.RelativePath, ModId = file.ModId })
+                .ToList(),
+        };
+
+        return new Library.ModConfigOffer(recorded, manifest.Mods, live, TryReadCurrentMods())
+        {
+            MachineSpecific = MachineSpecificIn(snapshot, recorded),
+        };
+    }
+
+    /// <summary>The settings files to write out of a snapshot, for the mods that were asked for.</summary>
+    public IReadOnlyList<ExtraFileWrite> SettingsToWrite(
+        BackupSnapshot snapshot,
+        IReadOnlyCollection<string> adoptSettingsFor)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(adoptSettingsFor);
+
+        if (adoptSettingsFor.Count == 0 || snapshot.Manifest is not { } manifest)
+        {
+            return Array.Empty<ExtraFileWrite>();
+        }
+
+        var wanted = new HashSet<string>(adoptSettingsFor, StringComparer.OrdinalIgnoreCase);
+        var extras = new List<ExtraFileWrite>();
+
+        foreach (var file in manifest.Files)
+        {
+            var relative = file.RelativePath ?? "";
+
+            if (!ModConfigReader.Travels(relative)
+                || !wanted.Contains(ModConfigReader.ModIdFor(relative))
+                || !TryResolveInside(snapshot.DirectoryPath, relative, out var source))
+            {
+                continue;
+            }
+
+            extras.Add(new ExtraFileWrite(relative, source, file.Sha256, relative));
+        }
+
+        return extras;
+    }
+
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> MachineSpecificIn(
+        BackupSnapshot snapshot,
+        ModConfigSet recorded)
+    {
+        var found = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var file in recorded.Files)
+        {
+            if (!TryResolveInside(snapshot.DirectoryPath, file.RelativePath, out var path))
+            {
+                continue;
+            }
+
+            var keys = ModConfigNotes.MachineSpecificKeys(path);
+            if (keys.Count > 0)
+            {
+                found[file.RelativePath] = keys;
+            }
+        }
+
+        return found;
+    }
+
+    private CurrentMods? TryReadCurrentMods()
+    {
+        try
+        {
+            return _modListSource?.Invoke();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Copies every in-scope file into a new snapshot folder. The manifest is written last, so a
     /// folder without one is a snapshot that did not finish, and a failure leaves the folder there.
     /// </summary>
+    /// <param name="mods">
+    /// The list to record instead of the one on the machine right now. A safety copy passes the
+    /// list from before the operation began: turning mods on to match a save happens between the
+    /// dialog opening and the write, and a snapshot that recorded the new list would describe the
+    /// state it exists to undo rather than the one it came from.
+    /// </param>
     public BackupSnapshot CreateBackup(
         string? label,
         string? note,
         BackupKind kind = BackupKind.Manual,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? mods = null)
     {
         EnsureGameNotRunning();
         ct.ThrowIfCancellationRequested();
@@ -145,7 +272,7 @@ public sealed class BackupService
             Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             Kind = kind,
-            Mods = TryReadMods(),
+            Mods = mods ?? TryReadMods(),
         };
 
         foreach (var skipped in scan.SkippedLinks)
@@ -447,10 +574,13 @@ public sealed class BackupService
     /// overwrite, remove in-scope files the snapshot does not hold, re-hash what landed. The
     /// deletion step runs only when every file in the manifest went back.
     /// </summary>
+    /// <param name="modsBefore">The mods that were on before the operation began. See
+    /// <see cref="CreateBackup"/>.</param>
     public RestoreResult RestoreBackup(
         BackupSnapshot snapshot,
         IProgress<string>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -493,7 +623,7 @@ public sealed class BackupService
                 ? $"Automatic copy taken before restoring backup {snapshot.Id}."
                 : $"Automatic copy taken before restoring backup {snapshot.Id} (\"{manifest.Label}\").";
 
-            safety = CreateBackup(safetyLabel, safetyNote, BackupKind.PreRestoreSafety, progress, ct);
+            safety = CreateBackup(safetyLabel, safetyNote, BackupKind.PreRestoreSafety, progress, ct, modsBefore);
         }
         catch (GameRunningException)
         {
@@ -1128,7 +1258,7 @@ public sealed class BackupService
     }
 
     /// <summary>A manifest is a file on disk, so its paths are treated as untrusted input.</summary>
-    private static bool TryResolveInside(string root, string relativePath, out string fullPath)
+    internal static bool TryResolveInside(string root, string relativePath, out string fullPath)
     {
         fullPath = "";
 

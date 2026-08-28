@@ -93,6 +93,14 @@ public sealed class LibraryManifest
     /// cleared on import.</summary>
     public ModListSnapshot? PreviousMods { get; set; }
 
+    /// <summary>The mod settings that were in the save folder when these bytes were taken, kept in
+    /// the entry's configs folder. Null when nothing was recorded, which covers entries stored
+    /// before this existed and bare files that arrived with nothing but their bytes.</summary>
+    public ModConfigSet? Configs { get; set; }
+
+    /// <summary>Follows <see cref="PreviousMods"/> exactly.</summary>
+    public ModConfigSet? PreviousConfigs { get; set; }
+
     public SaveSlotRef? LastLoadedSlotRef =>
         LastLoadedRealm is { } realm && LastLoadedSlot is { } slot
             ? new SaveSlotRef(realm, slot)
@@ -122,6 +130,11 @@ public sealed class LibraryEntry
     public const string PreviousSaveFileName = "save.previous.bin";
 
     public const string PreviousCampaignFileName = "campaign.previous.bin";
+
+    /// <summary>Holds the mod settings, laid out under it the way they sit under ModConfigs.</summary>
+    public const string ConfigsFolderName = "configs";
+
+    public const string PreviousConfigsFolderName = "configs.previous";
 
     internal const string ClaimFileName = ".creating";
 
@@ -185,6 +198,12 @@ public sealed class LibraryEntry
     /// <summary>Whether an update can be undone, which needs both the file and its recorded hash.</summary>
     public bool HasPrevious =>
         Manifest?.PreviousSha256 is { Length: > 0 } && File.Exists(PreviousContentPath);
+
+    public string ConfigsPath => Path.Combine(DirectoryPath, ConfigsFolderName);
+
+    public string PreviousConfigsPath => Path.Combine(DirectoryPath, PreviousConfigsFolderName);
+
+    public bool HasConfigs => Manifest?.Configs is { Files.Count: > 0 };
 
     /// <summary>Never throws: a folder that cannot be read comes back with a Problem set.</summary>
     public static LibraryEntry Load(string directoryPath)
