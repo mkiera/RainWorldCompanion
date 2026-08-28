@@ -1,4 +1,4 @@
-// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
+﻿// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -21,9 +21,19 @@ public sealed record StatTile(
     bool Footnoted = false)
 {
     public string HoverText => Detail.Length == 0 ? Value : Detail;
+
+    /// <summary>
+    /// This value is not what the live slot holds. False when there was no live campaign to
+    /// compare against, which is why <see cref="CampaignViewModel.ComparedToLive"/> exists: a
+    /// campaign nobody compared must not read as one that matched.
+    /// </summary>
+    public bool DiffersFromLive { get; init; }
 }
 
-public sealed record BadgeTile(string Text, bool On);
+public sealed record BadgeTile(string Text, bool On)
+{
+    public bool DiffersFromLive { get; init; }
+}
 
 public sealed record ChipTile(string Text, string Detail);
 
@@ -137,7 +147,15 @@ public sealed partial class CampaignViewModel : ObservableObject
     private const int TopKillCount = 8;
 
     /// <param name="source">Null when nothing can be done with this campaign.</param>
-    public CampaignViewModel(CampaignSummary campaign, ISlugcatIconProvider icons, CampaignSource? source = null)
+    /// <param name="live">
+    /// The same slugcat's campaign in the live slot this one would be written over, so each tile
+    /// can say whether it differs. Null means there was nothing to compare against.
+    /// </param>
+    public CampaignViewModel(
+        CampaignSummary campaign,
+        ISlugcatIconProvider icons,
+        CampaignSource? source = null,
+        CampaignSummary? live = null)
     {
         Summary = campaign;
         Source = source;
@@ -169,10 +187,20 @@ public sealed partial class CampaignViewModel : ObservableObject
         HasDevourment = campaign.DevourmentStateCount > 0;
         DevourmentChipText = "Devourment " + Number(campaign.DevourmentStateCount);
 
-        RunStats = BuildRunStats(campaign, CycleToolTip, FoodToolTip);
-        KarmaStats = BuildKarmaStats(campaign, KarmaToolTip);
-        Badges = BuildBadges(campaign);
-        ProgressStats = BuildProgressStats(campaign);
+        // Built for both sides and compared by what they say, rather than by a second list of
+        // field comparisons kept beside them. A tile marked as differing is then differing in
+        // exactly the way the reader can see.
+        ComparedToLive = live is not null;
+
+        RunStats = Mark(
+            BuildRunStats(campaign, CycleToolTip, FoodToolTip),
+            live is null ? null : BuildRunStats(live, "", ""));
+        KarmaStats = Mark(
+            BuildKarmaStats(campaign, KarmaToolTip),
+            live is null ? null : BuildKarmaStats(live, ""));
+        Badges = Mark(BuildBadges(campaign), live is null ? null : BuildBadges(live));
+        ProgressStats = Mark(
+            BuildProgressStats(campaign), live is null ? null : BuildProgressStats(live));
 
         Echoes = campaign.Echoes.Select(BuildEchoTile).ToList();
         Gates = campaign.UnlockedGates.Select(gate => new ChipTile(gate, "")).ToList();
@@ -259,6 +287,25 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     public bool IsEditing => Edit is not null;
 
+    /// <summary>
+    /// Whether a live campaign was found to compare against. Without it every tile reads as
+    /// matching, which would be a claim nobody checked.
+    /// </summary>
+    public bool ComparedToLive { get; }
+
+    /// <summary>Any tile or badge that is not what the live slot holds.</summary>
+    public bool DiffersFromLive =>
+        ComparedToLive
+        && (RunStats.Any(tile => tile.DiffersFromLive)
+            || KarmaStats.Any(tile => tile.DiffersFromLive)
+            || ProgressStats.Any(tile => tile.DiffersFromLive)
+            || Badges.Any(badge => badge.DiffersFromLive));
+
+    /// <summary>Said only when it differs, the same way a slot's is.</summary>
+    public string LiveComparisonText => DiffersFromLive ? "Differs from live" : "";
+
+    public bool HasLiveComparisonText => LiveComparisonText.Length > 0;
+
     public IReadOnlyList<StatTile> RunStats { get; }
 
     public IReadOnlyList<StatTile> KarmaStats { get; }
@@ -322,6 +369,48 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;
+
+    private static IReadOnlyList<StatTile> Mark(
+        IReadOnlyList<StatTile> mine, IReadOnlyList<StatTile>? live)
+    {
+        if (live is null)
+        {
+            return mine;
+        }
+
+        var theirs = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var tile in live)
+        {
+            theirs[tile.Label] = tile.Value;
+        }
+
+        return mine
+            .Select(tile => theirs.TryGetValue(tile.Label, out var value) && !string.Equals(value, tile.Value, StringComparison.Ordinal)
+                ? tile with { DiffersFromLive = true }
+                : tile)
+            .ToList();
+    }
+
+    private static IReadOnlyList<BadgeTile> Mark(
+        IReadOnlyList<BadgeTile> mine, IReadOnlyList<BadgeTile>? live)
+    {
+        if (live is null)
+        {
+            return mine;
+        }
+
+        var theirs = new Dictionary<string, bool>(StringComparer.Ordinal);
+        foreach (var badge in live)
+        {
+            theirs[badge.Text] = badge.On;
+        }
+
+        return mine
+            .Select(badge => theirs.TryGetValue(badge.Text, out var on) && on != badge.On
+                ? badge with { DiffersFromLive = true }
+                : badge)
+            .ToList();
+    }
 
     private static IReadOnlyList<StatTile> BuildRunStats(
         CampaignSummary campaign, string cycleToolTip, string foodToolTip) => new[]

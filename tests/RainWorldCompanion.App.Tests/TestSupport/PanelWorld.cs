@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text.Json;
 using System.Windows.Media;
 using RainWorldCompanion.Core.Backups;
@@ -94,6 +94,11 @@ internal static class Panels
     /// all the panel reads.
     /// </summary>
     public static SnapshotDetailViewModel Backup(TempDirectory root, params SlotMetadata[] slots)
+        => Backup(root, null, slots);
+
+    /// <param name="liveSlots">What is in the save folder now, for the differs-from-live chips.</param>
+    public static SnapshotDetailViewModel Backup(
+        TempDirectory root, IReadOnlyList<SlotMetadata>? liveSlots, params SlotMetadata[] slots)
     {
         var directory = Directory.CreateDirectory(Path.Combine(root.Path, "2026-01-01_00-00-00")).FullName;
 
@@ -111,7 +116,7 @@ internal static class Panels
             JsonSerializer.Serialize(manifest, BackupJson.Options));
 
         var item = new BackupItemViewModel(BackupSnapshot.Load(directory), new FakeIcons());
-        return SnapshotDetailViewModel.ForBackup(item, null, new FakeIcons());
+        return SnapshotDetailViewModel.ForBackup(item, null, new FakeIcons(), liveSlots: liveSlots);
     }
 
     /// <param name="folderNameSuffix">
@@ -166,8 +171,10 @@ internal static class Panels
         SlotMetadata metadata,
         string name = "a stored save",
         string? sourceFileName = null,
-        string folderNameSuffix = "") =>
+        string folderNameSuffix = "",
+        IReadOnlyList<SlotMetadata>? liveSlots = null) =>
         SnapshotDetailViewModel.ForLibraryEntry(
             EntryRow(root, metadata, name, sourceFileName, folderNameSuffix),
-            new FakeIcons());
+            new FakeIcons(),
+            liveSlots: liveSlots);
 }

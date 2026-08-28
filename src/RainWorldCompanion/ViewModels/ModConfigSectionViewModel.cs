@@ -1,11 +1,18 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.ViewModels;
 
-public sealed record ModConfigRowSummary(string Name, string DetailText);
+public sealed record ModConfigRowSummary(string Name, string DetailText, ModConfigMatch Match)
+{
+    /// <summary>Empty when there was nothing to compare against, which says nothing rather than
+    /// claiming a difference.</summary>
+    public string MatchText => ModConfigMatching.Describe(Match);
+
+    public bool HasMatchText => MatchText.Length > 0;
+}
 
 /// <summary>
 /// Which mods' settings a save carries, for the panel rather than a dialog. Read only: the picker
@@ -43,23 +50,31 @@ public sealed class ModConfigSectionViewModel
 
     /// <summary>What is in the save folder now.</summary>
     public static ModConfigSectionViewModel ForCurrent(ModConfigSet? configs)
-        => Build(configs, "Mod settings in the save folder could not be read.", "");
+        => Build(configs, "Mod settings in the save folder could not be read.", "", null);
 
     /// <param name="fromABackup">Only changes the wording of the nothing-recorded case.</param>
-    public static ModConfigSectionViewModel ForRecorded(ModConfigSet? configs, bool fromABackup)
+    /// <param name="live">
+    /// What is in the save folder now, so a row can say whether it differs from it. Null leaves
+    /// every row unlabelled, which is what the panel showing the live folder itself wants: nothing
+    /// there is being compared to anything.
+    /// </param>
+    public static ModConfigSectionViewModel ForRecorded(
+        ModConfigSet? configs, bool fromABackup, ModConfigSet? live = null)
         => Build(
             configs,
             "The mod settings could not be read when this was saved.",
             fromABackup
                 ? "This backup was taken before this app recorded mod settings."
-                : "No mod settings were recorded when this save was stored.");
+                : "No mod settings were recorded when this save was stored.",
+            live);
 
     /// <summary>
     /// A backup holds the settings files themselves and lists them in its manifest, so its section
     /// is derived from that list through the same rule the reader uses. A second index could only
     /// disagree with the first.
     /// </summary>
-    public static ModConfigSectionViewModel ForBackup(IReadOnlyList<ManifestFileEntry>? files)
+    public static ModConfigSectionViewModel ForBackup(
+        IReadOnlyList<ManifestFileEntry>? files, ModConfigSet? live = null)
     {
         if (files is null)
         {
@@ -81,14 +96,16 @@ public sealed class ModConfigSectionViewModel
                     RelativePath = relative,
                     ModId = ModConfigReader.ModIdFor(relative),
                     SizeBytes = file.SizeBytes,
+                    Sha256 = file.Sha256 ?? "",
                 });
             }
         }
 
-        return Build(carried, "", "");
+        return Build(carried, "", "", live);
     }
 
-    private static ModConfigSectionViewModel Build(ModConfigSet? configs, string unreadable, string nothingRecorded)
+    private static ModConfigSectionViewModel Build(
+        ModConfigSet? configs, string unreadable, string nothingRecorded, ModConfigSet? live)
     {
         if (configs is null)
         {
@@ -110,14 +127,16 @@ public sealed class ModConfigSectionViewModel
             return new ModConfigSectionViewModel("No mod settings", Array.Empty<ModConfigRowSummary>(), "");
         }
 
-        return new ModConfigSectionViewModel(Count(groups.Count), BuildRows(groups), "");
+        return new ModConfigSectionViewModel(Count(groups.Count), BuildRows(groups, live), "");
     }
 
-    private static List<ModConfigRowSummary> BuildRows(IReadOnlyList<ModConfigGroup> groups)
+    private static List<ModConfigRowSummary> BuildRows(
+        IReadOnlyList<ModConfigGroup> groups, ModConfigSet? live)
         => groups
             .Select(group => new ModConfigRowSummary(
                 group.ModId.Length > 0 ? group.ModId : "settings with no mod name",
-                Detail(group)))
+                Detail(group),
+                ModConfigMatching.For(group, live)))
             .ToList();
 
     private static string Detail(ModConfigGroup group)

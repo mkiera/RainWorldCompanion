@@ -1,4 +1,4 @@
-using RainWorldCompanion.Core.Library;
+﻿using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.ViewModels;
 
@@ -296,20 +296,77 @@ public class ModConfigPickerTests
     // ---- what a row warns about ----
 
     [Fact]
-    public void A_mod_you_already_have_settings_for_says_they_are_replaced()
+    public void A_mod_whose_settings_you_already_have_exactly_says_so()
+    {
+        // Same path, same digest, so taking it would write the bytes that are already there.
+        var picker = new ModConfigPickerViewModel(Offer(
+            live: Set(File(@"ModConfigs\devourment.txt", Devourment))));
+
+        var row = Assert.Single(picker.Rows);
+        Assert.Equal("Same as yours", row.MatchText);
+        Assert.True(row.IsSameAsYours);
+    }
+
+    [Fact]
+    public void A_mod_you_have_different_settings_for_says_so()
+    {
+        var mine = File(@"ModConfigs\devourment.txt", Devourment);
+        mine.Sha256 = new string('b', 64);
+
+        var picker = new ModConfigPickerViewModel(Offer(live: Set(mine)));
+
+        var row = Assert.Single(picker.Rows);
+        Assert.Equal("Different from yours", row.MatchText);
+        Assert.False(row.IsSameAsYours);
+    }
+
+    [Fact]
+    public void A_mod_you_have_no_settings_for_is_new_to_you()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(live: Set()));
+
+        Assert.Equal("New to you", Assert.Single(picker.Rows).MatchText);
+    }
+
+    /// <summary>A folder nobody could read is not a difference, so the row wears no label.</summary>
+    [Fact]
+    public void A_row_says_nothing_when_there_was_nothing_to_compare_against()
+    {
+        var picker = new ModConfigPickerViewModel(Offer(live: null));
+
+        var row = Assert.Single(picker.Rows);
+        Assert.Equal("", row.MatchText);
+        Assert.False(row.HasMatchText);
+    }
+
+    /// <summary>
+    /// Said before the button is pressed rather than after. A row's own label is easy to miss in a
+    /// long list, and writing your own settings over themselves is worth knowing about first.
+    /// </summary>
+    [Fact]
+    public void Ticking_settings_you_already_have_says_taking_them_changes_nothing()
     {
         var picker = new ModConfigPickerViewModel(Offer(
             live: Set(File(@"ModConfigs\devourment.txt", Devourment))));
 
-        Assert.Contains(Assert.Single(picker.Rows).Notes, note => note.Contains("Replaces the settings you have"));
+        Assert.False(picker.HasSameAsYoursText);
+
+        picker.Rows[0].Take = true;
+
+        Assert.True(picker.HasSameAsYoursText);
+        Assert.Contains("changes nothing", picker.SameAsYoursText);
     }
 
     [Fact]
-    public void A_mod_you_have_no_settings_for_says_nothing_about_replacing()
+    public void Ticking_settings_that_differ_says_nothing_of_the_kind()
     {
-        var picker = new ModConfigPickerViewModel(Offer(live: Set()));
+        var mine = File(@"ModConfigs\devourment.txt", Devourment);
+        mine.Sha256 = new string('b', 64);
 
-        Assert.DoesNotContain(Assert.Single(picker.Rows).Notes, note => note.Contains("Replaces"));
+        var picker = new ModConfigPickerViewModel(Offer(live: Set(mine)));
+        picker.Rows[0].Take = true;
+
+        Assert.False(picker.HasSameAsYoursText);
     }
 
     [Fact]

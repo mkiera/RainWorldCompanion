@@ -275,6 +275,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(UndoUpdateCommand))]
     [NotifyCanExecuteChangedFor(nameof(RenameEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TakeSettingsCommand))]
     private LibraryEntryViewModel? selectedLibraryEntry;
 
     /// <summary>
@@ -611,11 +612,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (SelectedLibraryEntry is { } entry)
         {
-            return SnapshotDetailViewModel.ForLibraryEntry(entry, _icons);
+            return SnapshotDetailViewModel.ForLibraryEntry(entry, _icons, _liveConfigs, _liveSlotData);
         }
 
         return SelectedBackup is { } item
-            ? SnapshotDetailViewModel.ForBackup(item, FindMeadow(item.Id), _icons)
+            ? SnapshotDetailViewModel.ForBackup(item, FindMeadow(item.Id), _icons, _liveConfigs, _liveSlotData)
             : null;
     }
 
@@ -1464,6 +1465,98 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             ? (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Online, 1))
             : (new SaveSlotRef(SaveRealm.Local, 1), new SaveSlotRef(SaveRealm.Local, 2));
 
+    /// <summary>
+    /// One whole slot into the library, from wherever the panel is showing. A live slot goes
+    /// through StoreSlot, which reads the save folder under the operation lock; a backup's copy
+    /// goes through StoreSlotFrom, because a snapshot folder is nobody else's to rewrite.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanActOnSlot))]
+    private async Task StoreWholeSlotAsync(SlotViewModel? slot)
+    {
+        SaveLibrary? library = _library;
+
+        if (library is null || slot is not { CanStoreToLibrary: true } || slot.Source is not { } source
+            || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        var dialog = new RenameEntryDialog(
+            SuggestSlotName(slot),
+            "",
+            "Save " + slot.HeaderText.ToLowerInvariant() + " to the library",
+            "Every campaign in this slot is stored, as one save. " + WhereItIs(source) + " is not touched.",
+            "Save it");
+
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        string name = dialog.EntryName;
+        string? note = dialog.EntryNote;
+
+        // A slot taken out of a backup carries that snapshot's mod list and its settings rather
+        // than what is on right now. The bytes are from then, so the record has to be too.
+        ModListSnapshot? recorded = RecordedModsOfSelection();
+        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath;
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        LibraryEntry? stored = null;
+        Exception? failure = null;
+
+        BeginBusy("Storing " + slot.FileName, name);
+        try
+        {
+            stored = source.LiveSlot is { } live
+                ? await Task.Run(() => library.StoreSlot(live, name, note, progress, CancellationToken.None))
+                : await Task.Run(() => library.StoreSlotFrom(
+                    source.FilePath,
+                    source.FileName.Length > 0 ? source.FileName : slot.FileName,
+                    slot.Realm,
+                    slot.SlotNumber,
+                    name,
+                    note,
+                    recorded,
+                    configsRoot,
+                    progress));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report(slot.FileName + " could not be stored.", failure);
+            return;
+        }
+
+        ShowLibrarySave(stored!.Id);
+    }
+
+    private bool CanActOnSlot(SlotViewModel? slot) =>
+        !IsBusy && !IsGameRunning && _library is not null && slot is { CanStoreToLibrary: true };
+
+    /// <summary>
+    /// Where the name box starts. A backup's own label beats its timestamp, since that is what the
+    /// user called it.
+    /// </summary>
+    private string SuggestSlotName(SlotViewModel slot)
+    {
+        string where = SelectedBackup is { } backup
+            ? (string.IsNullOrWhiteSpace(backup.Snapshot.Label) ? backup.Snapshot.Id : backup.Snapshot.Label!)
+            : "";
+
+        return where.Length > 0 ? where + " " + slot.FileName : slot.FileName;
+    }
+
     /// <summary>Nothing in the save folder is written, so there is no safety snapshot.</summary>
     [RelayCommand(CanExecute = nameof(CanStoreSlot))]
     private async Task StoreSlotAsync()
@@ -1642,6 +1735,111 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanLoadSave() =>
         !IsBusy && !IsGameRunning && _library is not null && LibraryEntries.Any(item => item.IsComplete);
+
+    /// <summary>
+    /// The settings a library save carries, with no slot written at all. The save stays where it
+    /// is: what lands is the ModConfigs files of the mods ticked, over the ones in the save folder.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanTakeSettings))]
+    private async Task TakeSettingsAsync()
+    {
+        var library = _library;
+        var item = SelectedLibraryEntry;
+
+        if (library is null || item is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        var offer = library.SettingsFor(item.Entry);
+        if (offer is null || offer.Recorded.Files.Count == 0)
+        {
+            ShowMessage(
+                $"\"{item.Name}\" carries no mod settings, so there is nothing to take.",
+                "Take mod settings",
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        // Read before the dialog, for the reason every other write reads it there: the Mods window
+        // can be opened over this one, and the safety copy has to record the list from before.
+        ModListSnapshot? modsBefore = ModsBeforeThis();
+
+        var dialog = new TakeSettingsDialog(item.Name, offer);
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        var chosen = dialog.Chosen;
+        var progress = new Progress<string>(message => BusyMessage = message);
+
+        SettingsWriteResult? result = null;
+        Exception? failure = null;
+
+        BeginBusy("Taking settings from " + item.Name, "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(
+                () => library.AdoptSettings(item.Entry, chosen, progress, CancellationToken.None, modsBefore));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The settings could not be taken.", failure);
+            return;
+        }
+
+        ReportSettingsResult(result!, item.Name);
+    }
+
+    private bool CanTakeSettings() =>
+        !IsBusy && !IsGameRunning && _library is not null && SelectedLibraryEntry is { Entry.HasConfigs: true };
+
+    private void ReportSettingsResult(SettingsWriteResult result, string sourceName)
+    {
+        var text = new StringBuilder();
+
+        if (result.Success)
+        {
+            text.Append(result.SettingsWritten == 1
+                ? $"1 mod settings file was taken from \"{sourceName}\"."
+                : $"{result.SettingsWritten} mod settings files were taken from \"{sourceName}\".");
+
+            if (result.SafetySnapshot is { } safety)
+            {
+                text.Append("\n\nSafety snapshot of your previous saves: ").Append(safety.Id);
+                text.Append("\n\nRestoring it puts the settings you had back.");
+            }
+
+            if (result.Warnings.Count > 0)
+            {
+                text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+            }
+
+            ShowMessage(text.ToString(), "Take mod settings", MessageBoxImage.Information);
+            return;
+        }
+
+        text.Append(FormatList(result.Errors));
+
+        if (result.Warnings.Count > 0)
+        {
+            text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+        }
+
+        ShowMessage(text.ToString(), "Take mod settings", MessageBoxImage.Error);
+    }
 
     /// <summary>The bytes being replaced are kept, so this can be undone.</summary>
     [RelayCommand(CanExecute = nameof(CanUpdateEntry))]
@@ -3178,6 +3376,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         LoadSaveCommand.NotifyCanExecuteChanged();
         UpdateEntryCommand.NotifyCanExecuteChanged();
         UndoUpdateCommand.NotifyCanExecuteChanged();
+        TakeSettingsCommand.NotifyCanExecuteChanged();
         RenameEntryCommand.NotifyCanExecuteChanged();
         ImportSaveCommand.NotifyCanExecuteChanged();
         ExportSaveCommand.NotifyCanExecuteChanged();
@@ -3187,6 +3386,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         SendCampaignCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
         DeleteSlotCommand.NotifyCanExecuteChanged();
+        StoreWholeSlotCommand.NotifyCanExecuteChanged();
         OpenModSyncCommand.NotifyCanExecuteChanged();
     }
 

@@ -27,11 +27,31 @@
              muted, so a gap in the data reads as a gap rather than as a missing control. -->
         <DataTemplate x:Key="StatTileTemplate">
             <!-- The tooltip sits on the whole tile so the label and the padding hover too. -->
-            <Border Style="{StaticResource StatTile}" ToolTip="{Binding HoverText}">
+            <Border ToolTip="{Binding HoverText}">
+                <Border.Style>
+                    <Style TargetType="Border" BasedOn="{StaticResource StatTile}">
+                        <Style.Triggers>
+                            <!-- Colour alone would be the whole signal, so the dot beside the
+                                 label carries it too. -->
+                            <DataTrigger Binding="{Binding DiffersFromLive}" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <StackPanel>
-                    <TextBlock Text="{Binding Label}"
-                               Style="{StaticResource Text.SectionLabel}"
-                               TextTrimming="CharacterEllipsis" />
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="&#x25CF;"
+                                   FontSize="8"
+                                   VerticalAlignment="Center"
+                                   Margin="4,0,0,0"
+                                   Foreground="{StaticResource Brush.Accent}"
+                                   ToolTip="This is not what the live slot holds."
+                                   Visibility="{Binding DiffersFromLive, Converter={StaticResource BoolToVis}}" />
+                        <TextBlock Text="{Binding Label}"
+                                   Style="{StaticResource Text.SectionLabel}"
+                                   TextTrimming="CharacterEllipsis" />
+                    </DockPanel>
                     <!-- The value, and the asterisk a tile carries when it shows a number the
                          game derived rather than the one on disk. A Grid rather than a horizontal
                          StackPanel, which measures the value with unbounded width and so leaves
@@ -72,6 +92,11 @@
                             <DataTrigger Binding="{Binding On}" Value="True">
                                 <Setter Property="Background" Value="{StaticResource Brush.OkSoft}" />
                                 <Setter Property="BorderBrush" Value="{StaticResource Brush.Ok}" />
+                            </DataTrigger>
+                            <!-- Last, so it wins over the on colour: whether this badge matches the
+                                 live slot is the thing being asked here. -->
+                            <DataTrigger Binding="{Binding DiffersFromLive}" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource Brush.Accent}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
@@ -1061,8 +1086,19 @@
                                                   VerticalAlignment="Center" />
 
                                 <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding DisplayName}" Style="{StaticResource Text.Title}"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding DisplayName}" Style="{StaticResource Text.Title}"
+                                                   TextTrimming="CharacterEllipsis" />
+
+                                        <!-- Whether this campaign is what the live slot holds, so the
+                                             card can be read without opening it. Absent for the live
+                                             folder itself, which has nothing to be compared with. -->
+                                        <Border Style="{StaticResource Chip}" Margin="8,0,0,0"
+                                                VerticalAlignment="Center"
+                                                Visibility="{Binding HasLiveComparisonText, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="{Binding LiveComparisonText}" Style="{StaticResource Text.Tiny}" />
+                                        </Border>
+                                    </StackPanel>
                                     <TextBlock Text="{Binding SlugcatId}" Style="{StaticResource Text.Tiny}"
                                                Margin="0,1,0,0"
                                                TextTrimming="CharacterEllipsis"
@@ -1351,6 +1387,14 @@
                     <TextBlock DockPanel.Dock="Left" Text="{Binding CampaignCountText}"
                                Style="{StaticResource Text.Muted}" Margin="10,0,0,0" VerticalAlignment="Center" />
 
+                    <!-- The whole slot against the live one of the same number, so a save can be
+                         told apart from what is in the game right now without opening a card. -->
+                    <Border DockPanel.Dock="Left" Style="{StaticResource Chip}" Margin="10,0,0,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding HasLiveComparisonText, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{Binding LiveComparisonText}" Style="{StaticResource Text.Tiny}" />
+                    </Border>
+
                     <!-- Only the live save folder, and only a slot with something in it. A backup
                          and a library save are copies taken at a moment, and a slot already empty
                          has nothing to take. -->
@@ -1360,6 +1404,18 @@
                             Visibility="{Binding CanDelete, Converter={StaticResource BoolToVis}}"
                             ToolTip="Deletes every campaign in this slot. The file stays, and so do the map and the progression record unless you ask for them."
                             Command="{Binding DataContext.DeleteSlotCommand,
+                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                            CommandParameter="{Binding}" />
+
+                    <!-- The whole slot, not one campaign. Shown for the live folder and for a
+                         backup; a library save already holds its slot, so there is nothing to
+                         take there. -->
+                    <Button DockPanel.Dock="Right" Content="Save slot to library" Margin="10,0,0,0"
+                            Style="{StaticResource Button.Small}"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding CanStoreToLibrary, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Keeps this whole slot, every campaign in it, in the library under a name."
+                            Command="{Binding DataContext.StoreWholeSlotCommand,
                                       RelativeSource={RelativeSource AncestorType=Window}}"
                             CommandParameter="{Binding}" />
 
@@ -1496,6 +1552,16 @@
             <DockPanel Margin="0,2">
                 <TextBlock DockPanel.Dock="Right" Text="{Binding DetailText}"
                            Style="{StaticResource Text.Muted}" Margin="10,0,0,0" />
+
+                <!-- Whether this differs from the settings in the save folder now, so it can be
+                     read off the panel without opening a dialog. The same three words appear on
+                     the picker's rows. -->
+                <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Margin="10,0,0,0"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding HasMatchText, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding MatchText}" Style="{StaticResource Text.Tiny}" />
+                </Border>
+
                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Name}" />
             </DockPanel>
@@ -2195,6 +2261,9 @@
                     <Button Content="Undo take" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding UndoUpdateCommand}"
                             ToolTip="Go back to the save this held before the last take from a slot." />
+                    <Button Content="Take settings" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding TakeSettingsCommand}"
+                            ToolTip="Mod settings only. Writes the settings this save carries over the ones you have, and leaves every slot alone." />
                     <Button Content="Rename" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding RenameEntryCommand}" />
                     <Button Content="Import" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
