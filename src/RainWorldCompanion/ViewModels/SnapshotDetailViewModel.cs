@@ -221,7 +221,12 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     }
 
     /// <summary>Filled from the manifest written beside it, so selecting a row costs no disk read.</summary>
-    public static SnapshotDetailViewModel ForLibraryEntry(LibraryEntryViewModel item, ISlugcatIconProvider icons)
+    /// <param name="live">
+    /// The settings in the save folder now, so a row can say whether taking it would change
+    /// anything. Null leaves them unlabelled.
+    /// </param>
+    public static SnapshotDetailViewModel ForLibraryEntry(
+        LibraryEntryViewModel item, ISlugcatIconProvider icons, ModConfigSet? live = null)
     {
         var metadata = item.Entry.Manifest?.Metadata;
 
@@ -239,7 +244,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForRecorded(item.Entry.Manifest?.Mods, fromABackup: false),
-            configsSection: ModConfigSectionViewModel.ForRecorded(item.Entry.Manifest?.Configs, fromABackup: false),
+            configsSection: ModConfigSectionViewModel.ForRecorded(item.Entry.Manifest?.Configs, fromABackup: false, live),
             isLive: false,
             title: item.Name,
             subtitle: subtitle,
@@ -260,7 +265,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     public static SnapshotDetailViewModel ForBackup(
         BackupItemViewModel item,
         MeadowProfile? meadow,
-        ISlugcatIconProvider icons)
+        ISlugcatIconProvider icons,
+        ModConfigSet? live = null)
     {
         var source = item.Snapshot.Manifest?.Slots;
 
@@ -277,7 +283,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
 
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForRecorded(item.Snapshot.Manifest?.Mods, fromABackup: true),
-            configsSection: ModConfigSectionViewModel.ForBackup(item.Snapshot.Manifest?.Files),
+            configsSection: ModConfigSectionViewModel.ForBackup(item.Snapshot.Manifest?.Files, live),
             isLive: false,
             title: item.LabelText,
             subtitle: item.CreatedText + "    " + item.Snapshot.Id,

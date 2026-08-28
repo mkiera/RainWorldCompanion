@@ -14,6 +14,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
   no campaign touched. It picks per mod the same way loading one does.
 - A whole slot in a backup can go to the library, every campaign in it at once, instead of
   one campaign at a time. The button is on the slot heading.
+- Every place mod settings are listed says whether they are the same as the ones you have,
+  different, or new to you. Ticking ones you already have says so before you apply them.
 
 ## 1.2.0-beta.3 - 2026-08-27
 

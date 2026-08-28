@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Globalization;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -35,6 +35,17 @@ public sealed partial class ModConfigRowViewModel : ObservableObject
     public required IReadOnlyList<string> Notes { get; init; }
 
     public bool HasNotes => Notes.Count > 0;
+
+    /// <summary>How these stand against the settings in the save folder now.</summary>
+    public required ModConfigMatch Match { get; init; }
+
+    /// <summary>Empty when the folder could not be read, which is a state to say nothing about.</summary>
+    public string MatchText => ModConfigMatching.Describe(Match);
+
+    public bool HasMatchText => MatchText.Length > 0;
+
+    /// <summary>Ticking one of these is allowed and does nothing, which is worth showing.</summary>
+    public bool IsSameAsYours => Match == ModConfigMatch.Same;
 }
 
 /// <summary>
@@ -108,6 +119,8 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
 
                 OnPropertyChanged(nameof(TakeAll));
                 OnPropertyChanged(nameof(HasAnyTaken));
+                OnPropertyChanged(nameof(SameAsYoursText));
+                OnPropertyChanged(nameof(HasSameAsYoursText));
             }
             finally
             {
@@ -126,6 +139,52 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
     public string FooterText =>
         "Mod settings can hold things that belong to one machine, such as a window size. " +
         "Whatever you take is put back by restoring the safety copy taken first.";
+
+    /// <summary>
+    /// Said only about what is ticked, and only when some of it would change nothing. Somebody
+    /// about to write settings over their own should be told before they press the button, not
+    /// after, and a row's own chip is easy to miss in a long list.
+    /// </summary>
+    public string SameAsYoursText
+    {
+        get
+        {
+            var taken = 0;
+            var same = 0;
+
+            foreach (var row in Rows)
+            {
+                if (!row.Take)
+                {
+                    continue;
+                }
+
+                taken++;
+                if (row.IsSameAsYours)
+                {
+                    same++;
+                }
+            }
+
+            if (same == 0)
+            {
+                return "";
+            }
+
+            if (same == taken)
+            {
+                return taken == 1
+                    ? "This is already exactly what you have, so taking it changes nothing."
+                    : "All " + Number(taken) + " of these are already exactly what you have, so taking them changes nothing.";
+            }
+
+            return same == 1
+                ? "1 of the " + Number(taken) + " you ticked is already exactly what you have."
+                : Number(same) + " of the " + Number(taken) + " you ticked are already exactly what you have.";
+        }
+    }
+
+    public bool HasSameAsYoursText => SameAsYoursText.Length > 0;
 
     /// <summary>Whether anything at all is ticked, which is what gates a settings-only take.</summary>
     public bool HasAnyTaken
@@ -208,6 +267,8 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
         {
             OnPropertyChanged(nameof(TakeAll));
             OnPropertyChanged(nameof(HasAnyTaken));
+            OnPropertyChanged(nameof(SameAsYoursText));
+            OnPropertyChanged(nameof(HasSameAsYoursText));
         }
     }
 
@@ -237,6 +298,7 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
                 Name = NameFor(group.ModId, mod),
                 DetailText = Detail(group),
                 Notes = Notes(offer, group, mod),
+                Match = ModConfigMatching.For(group, offer.Live),
             });
         }
 
@@ -282,11 +344,6 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
     {
         var notes = new List<string>();
 
-        if (Replaces(offer.Live, group.ModId))
-        {
-            notes.Add("Replaces the settings you have for this mod.");
-        }
-
         // A settings file sits in ModConfigs whether its mod is on or not, so a save can carry
         // settings for a mod its own list never named.
         if (mod is null && offer.RecordedMods is not null)
@@ -308,24 +365,6 @@ public sealed partial class ModConfigPickerViewModel : ObservableObject
         }
 
         return notes;
-    }
-
-    private static bool Replaces(ModConfigSet? live, string modId)
-    {
-        if (live is not { ReadTheFolder: true })
-        {
-            return false;
-        }
-
-        foreach (var file in live.Files)
-        {
-            if (string.Equals(file.ModId, modId, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>

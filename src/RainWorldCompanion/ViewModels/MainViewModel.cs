@@ -275,6 +275,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(UndoUpdateCommand))]
     [NotifyCanExecuteChangedFor(nameof(RenameEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TakeSettingsCommand))]
     private LibraryEntryViewModel? selectedLibraryEntry;
 
     /// <summary>
@@ -611,11 +612,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (SelectedLibraryEntry is { } entry)
         {
-            return SnapshotDetailViewModel.ForLibraryEntry(entry, _icons);
+            return SnapshotDetailViewModel.ForLibraryEntry(entry, _icons, _liveConfigs);
         }
 
         return SelectedBackup is { } item
-            ? SnapshotDetailViewModel.ForBackup(item, FindMeadow(item.Id), _icons)
+            ? SnapshotDetailViewModel.ForBackup(item, FindMeadow(item.Id), _icons, _liveConfigs)
             : null;
     }
 

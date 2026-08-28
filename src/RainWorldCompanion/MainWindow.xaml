@@ -1508,6 +1508,16 @@
             <DockPanel Margin="0,2">
                 <TextBlock DockPanel.Dock="Right" Text="{Binding DetailText}"
                            Style="{StaticResource Text.Muted}" Margin="10,0,0,0" />
+
+                <!-- Whether this differs from the settings in the save folder now, so it can be
+                     read off the panel without opening a dialog. The same three words appear on
+                     the picker's rows. -->
+                <Border DockPanel.Dock="Right" Style="{StaticResource Chip}" Margin="10,0,0,0"
+                        VerticalAlignment="Center"
+                        Visibility="{Binding HasMatchText, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding MatchText}" Style="{StaticResource Text.Tiny}" />
+                </Border>
+
                 <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Name}" />
             </DockPanel>

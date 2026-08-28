@@ -1,4 +1,4 @@
-<UserControl x:Class="RainWorldCompanion.Views.ModConfigPickerSection"
+﻿<UserControl x:Class="RainWorldCompanion.Views.ModConfigPickerSection"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -13,8 +13,18 @@
             <CheckBox Margin="0,4" IsChecked="{Binding Take, Mode=TwoWay}"
                       AutomationProperties.Name="{Binding Name}">
                 <StackPanel Margin="4,0,0,0">
-                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis" />
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis" />
+
+                        <!-- Whether taking this would change anything, said where the eye already
+                             is. The same three words appear in the panel, so a row reads the same
+                             wherever it is met. -->
+                        <Border Style="{StaticResource Chip}" Margin="8,0,0,0"
+                                Visibility="{Binding HasMatchText, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding MatchText}" />
+                        </Border>
+                    </StackPanel>
                     <TextBlock Text="{Binding DetailText}" Style="{StaticResource Text.Muted}"
                                TextWrapping="Wrap" />
                     <ItemsControl ItemsSource="{Binding Notes}"
@@ -50,6 +60,11 @@
             <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="200" Margin="0,8,0,0">
                 <ItemsControl ItemsSource="{Binding Rows}" ItemTemplate="{StaticResource SettingsRow}" />
             </ScrollViewer>
+
+            <TextBlock Text="{Binding SameAsYoursText}"
+                       TextWrapping="Wrap" Margin="0,8,0,0"
+                       Foreground="{StaticResource Brush.Text}"
+                       Visibility="{Binding HasSameAsYoursText, Converter={StaticResource BoolToVis}}" />
 
             <TextBlock Text="{Binding FooterText}" Style="{StaticResource Text.Muted}"
                        TextWrapping="Wrap" Margin="0,8,0,0" />
