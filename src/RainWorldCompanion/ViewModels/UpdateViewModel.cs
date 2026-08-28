@@ -292,15 +292,15 @@ public sealed partial class UpdateViewModel : ObservableObject
             var known = UpdatePicker.ForChannel(releases, UpdateChannel.Prerelease);
 
             // Everything between the version last seen and the one now running, so somebody who
-            // skipped two betas reads both rather than only the one they landed on. A last-seen
-            // version that will not parse narrows this to the running release alone.
+            // skipped a release reads what it changed rather than only the one they landed on. A
+            // last-seen version that will not parse narrows this to the running release alone.
             //
-            // A stable release is the exception: its changelog section already collects what its
-            // own pre-releases brought, so spanning would show every one of those lists again
-            // under the summary of itself.
-            var spanned = !version.IsPreRelease || !SemVer.TryParse(_lastSeenChangelog, out var seen)
-                ? known.Where(offer => offer.Version == version)
-                : known.Where(offer => offer.Version > seen && offer.Version <= version);
+            // A stable landing leaves out the pre-release sections in the span, because a stable
+            // release's own section already collects what its pre-releases brought.
+            var spanned = SemVer.TryParse(_lastSeenChangelog, out var seen)
+                ? known.Where(offer => offer.Version > seen && offer.Version <= version
+                    && (version.IsPreRelease || !offer.Version.IsPreRelease))
+                : known.Where(offer => offer.Version == version);
 
             var sections = spanned
                 .Where(offer => offer.HasNotes)
