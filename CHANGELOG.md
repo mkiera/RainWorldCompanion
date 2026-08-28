@@ -10,6 +10,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+## 1.2.0-beta.6 - 2026-08-28
+
 - Campaigns from Steam Workshop slugcat mods show the mod's own portrait instead of a grey
   placeholder, so Pearlcat and The DroneMaster look like themselves in the panel.
 
