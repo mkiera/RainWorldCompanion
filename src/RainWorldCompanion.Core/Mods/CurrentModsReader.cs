@@ -1,4 +1,4 @@
-// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
+﻿// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 using System.Text.Json;
 
@@ -249,6 +249,7 @@ public static class CurrentModsReader
             mod.Id = ReadString(document.RootElement, "id") ?? folderName;
             mod.Name = ReadString(document.RootElement, "name") ?? mod.Id;
             mod.Version = ReadString(document.RootElement, "version");
+            mod.Requirements = ReadStringArray(document.RootElement, "requirements");
         }
         catch (JsonException)
         {
@@ -267,6 +268,7 @@ public static class CurrentModsReader
         mod.Id = LooseString(text, "id") ?? folderName;
         mod.Name = LooseString(text, "name") ?? mod.Id;
         mod.Version = LooseString(text, "version");
+        mod.Requirements = LooseStringArray(text, "requirements");
     }
 
     private static string? LooseString(string text, string key)
@@ -297,6 +299,81 @@ public static class CurrentModsReader
 
         string value = text[(open + 1)..close].Trim();
         return value.Length == 0 ? null : value;
+    }
+
+    /// <summary>Empty for a missing key, a null, or anything that is not an array of strings.</summary>
+    private static List<string> ReadStringArray(JsonElement root, string name)
+    {
+        var values = new List<string>();
+
+        if (!root.TryGetProperty(name, out JsonElement array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return values;
+        }
+
+        foreach (JsonElement item in array.EnumerateArray())
+        {
+            if (item.ValueKind == JsonValueKind.String && item.GetString() is { Length: > 0 } text
+                && text.Trim() is { Length: > 0 } trimmed)
+            {
+                values.Add(trimmed);
+            }
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// The requirements array off a file the strict parser refused. Read between the first bracket
+    /// after the key and the one that closes it, which is enough because these hold plain strings
+    /// and never a nested array.
+    /// </summary>
+    private static List<string> LooseStringArray(string text, string key)
+    {
+        var values = new List<string>();
+
+        int at = text.IndexOf('"' + key + '"', StringComparison.OrdinalIgnoreCase);
+        if (at < 0)
+        {
+            return values;
+        }
+
+        int open = text.IndexOf('[', at + key.Length + 2);
+        if (open < 0)
+        {
+            return values;
+        }
+
+        int close = text.IndexOf(']', open + 1);
+        if (close < 0)
+        {
+            return values;
+        }
+
+        int cursor = open + 1;
+        while (cursor < close)
+        {
+            int quote = text.IndexOf('"', cursor);
+            if (quote < 0 || quote > close)
+            {
+                break;
+            }
+
+            int end = text.IndexOf('"', quote + 1);
+            if (end < 0 || end > close)
+            {
+                break;
+            }
+
+            if (text[(quote + 1)..end].Trim() is { Length: > 0 } value)
+            {
+                values.Add(value);
+            }
+
+            cursor = end + 1;
+        }
+
+        return values;
     }
 
     private static string? ReadString(JsonElement root, string name)

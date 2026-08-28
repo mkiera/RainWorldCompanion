@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Linq;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,9 +12,9 @@ namespace RainWorldCompanion.ViewModels;
 public sealed partial class ModSyncRowViewModel : ObservableObject
 {
     private readonly ModSyncRow _row;
-    private readonly Action _changed;
+    private readonly Action<ModSyncRowViewModel> _changed;
 
-    public ModSyncRowViewModel(ModSyncRow row, Action changed)
+    public ModSyncRowViewModel(ModSyncRow row, Action<ModSyncRowViewModel> changed)
     {
         _row = row;
         _changed = changed;
@@ -79,10 +79,14 @@ public sealed partial class ModSyncRowViewModel : ObservableObject
     public string AccessibleName
         => $"{Name}, {(Wanted ? "on" : "off")}{(StateText.Length > 0 ? ", " + StateText : "")}";
 
+    /// <summary>What this mod needs, from its own modinfo.json. Empty for a mod not on disk.</summary>
+    public IReadOnlyList<string> Requirements =>
+        _row.OnDisk is { } mod ? mod.Requirements : Array.Empty<string>();
+
     partial void OnWantedChanged(bool value)
     {
         _row.Wanted = value;
-        _changed();
+        _changed(this);
     }
 }
 
@@ -202,7 +206,7 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
         foreach (ModSyncRow row in _plan.Rows)
         {
-            var view = new ModSyncRowViewModel(row, RaiseChangeStates);
+            var view = new ModSyncRowViewModel(row, OnRowWanted);
 
             if (row.Installed)
             {
@@ -356,6 +360,71 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
         int count = point.Mods?.Mods.Count ?? 0;
         return $"Your previous list, {count} mods, saved {point.TakenAt.LocalDateTime:d MMM HH:mm}.";
+    }
+
+    /// <summary>
+    /// Turning a mod on turns on what it needs, which is what the game's own Remix menu does. Held
+    /// shut while it sweeps, because setting Wanted on each one lands straight back here.
+    /// </summary>
+    private void OnRowWanted(ModSyncRowViewModel row)
+    {
+        if (!_cascading && row.Wanted)
+        {
+            _cascading = true;
+
+            try
+            {
+                TurnOnWhatItNeeds(row);
+            }
+            finally
+            {
+                _cascading = false;
+            }
+        }
+
+        RaiseChangeStates();
+    }
+
+    private bool _cascading;
+
+    private void TurnOnWhatItNeeds(ModSyncRowViewModel row)
+    {
+        var installed = _plan?.Rows
+            .Where(candidate => candidate.OnDisk is not null)
+            .Select(candidate => candidate.OnDisk!)
+            .ToList();
+
+        var required = ModRequirements.Closure(row.Id, installed);
+        if (required.Count == 0)
+        {
+            return;
+        }
+
+        var byId = Mods.ToDictionary(candidate => candidate.Id, StringComparer.OrdinalIgnoreCase);
+        var turnedOn = new List<string>();
+
+        foreach (var id in required)
+        {
+            // A requirement nothing on this machine provides sits in Missing, where nothing can be
+            // turned on. It is named anyway, so the reason the mod may still not work is said.
+            if (!byId.TryGetValue(id, out ModSyncRowViewModel? needed))
+            {
+                turnedOn.Add(id + " (not installed)");
+                continue;
+            }
+
+            if (!needed.Wanted)
+            {
+                needed.Wanted = true;
+                turnedOn.Add(needed.Name);
+            }
+        }
+
+        if (turnedOn.Count > 0)
+        {
+            ResultText = $"{row.Name} needs {string.Join(", ", turnedOn)}, so " +
+                (turnedOn.Count == 1 ? "it was turned on too." : "they were turned on too.");
+        }
     }
 
     private void RaiseChangeStates()

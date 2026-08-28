@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 using RainWorldCompanion.Core.Mods;
 
@@ -449,5 +449,77 @@ public class CurrentModsReaderTests
 
         Assert.False(read.Enabled.ReadTheEnabledList);
         Assert.Empty(read.Installed);
+    }
+
+    // ---- what a mod says it needs ----
+
+    [Fact]
+    public void The_requirements_a_modinfo_lists_are_read()
+    {
+        using var machine = new Machine();
+        machine.InstallMod(
+            "pearlcat",
+            """{"id": "pearlcat", "requirements": ["slime-cubed.slugbase", "fisobs"]}""");
+
+        ModEntry mod = Assert.Single(machine.Read().Installed);
+        Assert.Equal(new[] { "slime-cubed.slugbase", "fisobs" }, mod.Requirements);
+    }
+
+    [Fact]
+    public void An_empty_requirements_array_reads_as_needing_nothing()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("healthbars", """{"id": "healthbars", "requirements": []}""");
+
+        Assert.Empty(Assert.Single(machine.Read().Installed).Requirements);
+    }
+
+    /// <summary>Older mods ship without the key at all, which is not the same as a broken file.</summary>
+    [Fact]
+    public void A_modinfo_with_no_requirements_key_reads_as_needing_nothing()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("plain", Info("plain", "1.0"));
+
+        Assert.Empty(Assert.Single(machine.Read().Installed).Requirements);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("\"one\"")]
+    [InlineData("42")]
+    [InlineData("{}")]
+    public void A_requirements_key_that_is_not_an_array_reads_as_needing_nothing(string value)
+    {
+        using var machine = new Machine();
+        machine.InstallMod("odd", "{\"id\": \"odd\", \"requirements\": " + value + "}");
+
+        Assert.Empty(Assert.Single(machine.Read().Installed).Requirements);
+    }
+
+    [Fact]
+    public void Entries_in_the_array_that_are_not_strings_are_skipped()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("odd", """{"id": "odd", "requirements": ["good", 7, null, ""]}""");
+
+        Assert.Equal(new[] { "good" }, Assert.Single(machine.Read().Installed).Requirements);
+    }
+
+    /// <summary>
+    /// The same fallback the id, name and version take. A real mod ships a modinfo.json with a
+    /// comma missing and the game still loads it, so the requirements have to survive that too.
+    /// </summary>
+    [Fact]
+    public void Requirements_are_read_off_a_modinfo_the_strict_parser_refuses()
+    {
+        using var machine = new Machine();
+        machine.InstallMod(
+            "broken",
+            """{"id": "broken" "requirements": ["moreslugcats", "expedition"]}""");
+
+        ModEntry mod = Assert.Single(machine.Read().Installed);
+        Assert.Equal("broken", mod.Id);
+        Assert.Equal(new[] { "moreslugcats", "expedition" }, mod.Requirements);
     }
 }

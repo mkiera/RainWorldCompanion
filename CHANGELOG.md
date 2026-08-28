@@ -10,6 +10,9 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## Unreleased
 
+- Turning a mod on in the Mods window turns on the mods it needs, the way the game's own
+  Remix menu does. One a mod needs that you do not have is named instead.
+
 ## 1.2.0-beta.5 - 2026-08-28
 
 - Settings has a Dark mode tick that repaints the window and every dialog in dark colours. It
