@@ -12,8 +12,8 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 ## 1.2.0-beta.5 - 2026-08-28
 
-- The window comes in dark colours, which is now what it opens with. Settings has a Dark mode
-  tick to turn it off, and the choice is kept for next time.
+- Settings has a Dark mode tick that repaints the window and every dialog in dark colours. It
+  is off unless you turn it on, and the choice is kept for next time.
 
 ## 1.2.0-beta.4 - 2026-08-28
 

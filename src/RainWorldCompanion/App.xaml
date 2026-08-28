@@ -7,7 +7,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <!-- First, and swapped in place by ThemeManager. Theme.xaml reaches every colour
                      through DynamicResource, so replacing this entry repaints the open windows. -->
-                <ResourceDictionary Source="Themes/Palette.Dark.xaml" />
+                <ResourceDictionary Source="Themes/Palette.Light.xaml" />
                 <ResourceDictionary Source="Themes/Controls.xaml" />
                 <ResourceDictionary Source="Theme.xaml" />
             </ResourceDictionary.MergedDictionaries>

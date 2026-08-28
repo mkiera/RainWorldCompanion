@@ -37,10 +37,10 @@ public sealed class AppSettings
 
     /// <summary>
     /// "light" or "dark", text rather than the enum for the same reason as
-    /// <see cref="UpdateChannel"/>. Anything else reads as dark, so a file written before the
-    /// toggle existed opens dark along with a fresh one.
+    /// <see cref="UpdateChannel"/>. Anything else reads as light, so a file written before the
+    /// toggle existed opens the way it always has.
     /// </summary>
-    public string Theme { get; set; } = "dark";
+    public string Theme { get; set; } = "light";
 
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }
 
