@@ -65,17 +65,22 @@ public class LiveComparisonTests
 
     // ---- the same ----
 
+    /// <summary>
+    /// A slot that matches wears no chip at all. Labelling agreement everywhere would bury the one
+    /// row that disagrees, which is the row worth finding.
+    /// </summary>
     [Fact]
-    public void The_same_values_read_as_the_same_as_live()
+    public void A_slot_that_matches_says_nothing()
     {
         var view = View(Slot(1, Campaign()), Slot(1, Campaign()));
 
         Assert.True(view.ComparedToLive);
         Assert.False(view.DiffersFromLive);
-        Assert.Equal("Same as live", view.LiveComparisonText);
+        Assert.Equal("", view.LiveComparisonText);
+        Assert.False(view.HasLiveComparisonText);
 
         var campaign = Assert.Single(view.Campaigns);
-        Assert.Equal("Same as live", campaign.LiveComparisonText);
+        Assert.False(campaign.HasLiveComparisonText);
         Assert.DoesNotContain(campaign.RunStats, tile => tile.DiffersFromLive);
         Assert.DoesNotContain(campaign.Badges, badge => badge.DiffersFromLive);
     }
@@ -170,14 +175,20 @@ public class LiveComparisonTests
         Assert.True(Assert.Single(slot.Campaigns).DiffersFromLive);
     }
 
+    /// <summary>
+    /// A matching slot shows nothing, which is also what an unwired panel shows, so this asserts
+    /// the comparison happened rather than what it printed.
+    /// </summary>
     [Fact]
-    public void A_backup_panel_says_so_when_a_slot_matches()
+    public void A_backup_panel_compares_a_slot_that_matches_and_shows_nothing()
     {
         using var root = new TempDirectory("backups");
 
         var panel = Panels.Backup(root, new[] { Slot(1, Campaign()) }, Slot(1, Campaign()));
 
-        Assert.Equal("Same as live", Assert.Single(panel.Slots).LiveComparisonText);
+        var slot = Assert.Single(panel.Slots);
+        Assert.True(slot.ComparedToLive);
+        Assert.False(slot.HasLiveComparisonText);
     }
 
     [Fact]
@@ -201,14 +212,16 @@ public class LiveComparisonTests
 
         var panel = Panels.Backup(root, Slot(1, Campaign()));
 
-        Assert.False(Assert.Single(panel.Slots).HasLiveComparisonText);
+        var slot = Assert.Single(panel.Slots);
+        Assert.False(slot.ComparedToLive);
+        Assert.False(slot.HasLiveComparisonText);
     }
 
     // ---- the live panel itself ----
 
     /// <summary>
-    /// The live folder is not compared with itself: every row would read "Same as live", which is
-    /// noise standing where a real signal goes elsewhere.
+    /// The live folder is not compared with itself, so nothing in it is ever marked as differing
+    /// from itself.
     /// </summary>
     [Fact]
     public void The_live_panel_labels_nothing()

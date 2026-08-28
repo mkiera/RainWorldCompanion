@@ -100,9 +100,11 @@ public sealed class SlotViewModel
             || Campaigns.Any(campaign => !campaign.ComparedToLive)
             || _liveCampaignCount != Campaigns.Count);
 
-    /// <summary>Empty unless there was a live slot to compare against.</summary>
-    public string LiveComparisonText =>
-        !ComparedToLive ? "" : DiffersFromLive ? "Differs from live" : "Same as live";
+    /// <summary>
+    /// Said only when it differs. A slot that matches gets no chip: the panel would otherwise be a
+    /// wall of labels agreeing with each other, with the one that matters hidden among them.
+    /// </summary>
+    public string LiveComparisonText => DiffersFromLive ? "Differs from live" : "";
 
     public bool HasLiveComparisonText => LiveComparisonText.Length > 0;
 

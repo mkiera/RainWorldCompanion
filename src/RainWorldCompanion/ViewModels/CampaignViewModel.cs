@@ -301,9 +301,8 @@ public sealed partial class CampaignViewModel : ObservableObject
             || ProgressStats.Any(tile => tile.DiffersFromLive)
             || Badges.Any(badge => badge.DiffersFromLive));
 
-    /// <summary>Empty unless there was a live campaign to compare against.</summary>
-    public string LiveComparisonText =>
-        !ComparedToLive ? "" : DiffersFromLive ? "Differs from live" : "Same as live";
+    /// <summary>Said only when it differs, the same way a slot's is.</summary>
+    public string LiveComparisonText => DiffersFromLive ? "Differs from live" : "";
 
     public bool HasLiveComparisonText => LiveComparisonText.Length > 0;
 
