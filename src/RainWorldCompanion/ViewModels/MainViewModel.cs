@@ -3375,6 +3375,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         LoadSaveCommand.NotifyCanExecuteChanged();
         UpdateEntryCommand.NotifyCanExecuteChanged();
         UndoUpdateCommand.NotifyCanExecuteChanged();
+        TakeSettingsCommand.NotifyCanExecuteChanged();
         RenameEntryCommand.NotifyCanExecuteChanged();
         ImportSaveCommand.NotifyCanExecuteChanged();
         ExportSaveCommand.NotifyCanExecuteChanged();
@@ -3384,6 +3385,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         SendCampaignCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
         DeleteSlotCommand.NotifyCanExecuteChanged();
+        StoreWholeSlotCommand.NotifyCanExecuteChanged();
         OpenModSyncCommand.NotifyCanExecuteChanged();
     }
 
