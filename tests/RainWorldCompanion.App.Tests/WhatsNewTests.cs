@@ -354,6 +354,25 @@ public class WhatsNewTests
         Assert.Equal("2 changes.", updates.WhatsNewSummary);
     }
 
+    [Fact]
+    public async Task A_skipped_stable_release_still_shows_its_notes()
+    {
+        var world = new UpdateWorld();
+        world.Source.Releases.Add(UpdateWorld.Release("v1.1.0", notes: UpdateWorld.Body("- The 1.1.0 news.")));
+        world.Source.Releases.Add(
+            UpdateWorld.Release("v1.2.0-beta.1", prerelease: true, notes: UpdateWorld.Body("- A beta thing.")));
+        world.Source.Releases.Add(UpdateWorld.Release("v1.2.0", notes: UpdateWorld.Body("- The 1.2.0 news.")));
+
+        var updates = world.Build(runningVersion: "1.2.0");
+        updates.Adopt(Seen("1.0.0"));
+
+        await updates.CheckForWhatsNewAsync(CancellationToken.None);
+
+        // The skipped stable release is in the span. The beta between them is not, because
+        // 1.2.0's own section collects what its betas brought.
+        Assert.Equal(["1.2.0", "1.1.0"], updates.WhatsNewSections.Select(section => section.Version));
+    }
+
     /// <summary>Between two pre-releases the span holds: nothing there collects anything.</summary>
     [Fact]
     public async Task Landing_on_a_pre_release_still_spans()
