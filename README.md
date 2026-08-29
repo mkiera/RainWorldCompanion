@@ -37,6 +37,15 @@ the creatures killed.
 The library holds saves outside the game's three slots. An entry can be a whole slot or a single
 campaign lifted out of one, and any of them can be put back into any slot.
 
+![The mods window](docs/screenshots/05-mods.png)
+
+The Mods window turns mods on and off without opening the game. Opened from a save, it says how
+the mods on now differ from the ones that save was played with, and Match the save puts them back.
+
+![The main window in dark mode](docs/screenshots/04-dark.png)
+
+There is a dark theme as well as the light one, under Settings.
+
 The slugcat art is read from your own Rain World install at runtime. None of it is copied into
 this repo or shipped with the app.
 

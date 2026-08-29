@@ -243,6 +243,41 @@ public class SettingsTests
     }
 
     [Fact]
+    public void The_install_id_and_the_telemetry_flag_survive_a_save_and_a_load()
+    {
+        using var temp = new TempDirectory("settings");
+        var store = new SettingsStore(temp.Resolve("settings.json"));
+
+        store.Save(new AppSettings
+        {
+            GameSavePath = @"C:\Games\Rain World",
+            BackupRootPath = @"D:\Backups",
+            InstallId = "0123456789abcdef0123456789abcdef",
+            TelemetryEnabled = false,
+        });
+
+        var loaded = store.Load();
+        Assert.Equal("0123456789abcdef0123456789abcdef", loaded.InstallId);
+        Assert.False(loaded.TelemetryEnabled);
+    }
+
+    [Fact]
+    public void A_settings_file_written_before_telemetry_existed_loads_with_no_id()
+    {
+        // Blank stays blank: the id is made by the first ping, not by a load.
+        using var temp = new TempDirectory("settings");
+        var path = temp.WriteText(
+            "settings.json",
+            """{ "schemaVersion": 1, "gameSavePath": "C:\\Games\\Rain World", "backupRootPath": "D:\\Backups" }""");
+        var store = new SettingsStore(path);
+
+        var settings = store.Load();
+
+        Assert.Equal("", settings.InstallId);
+        Assert.True(settings.TelemetryEnabled);
+    }
+
+    [Fact]
     public void The_library_root_survives_a_save_and_a_load()
     {
         using var temp = new TempDirectory("settings");

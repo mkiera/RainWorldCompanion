@@ -16,6 +16,7 @@ public class ThemeTests
 
     private static readonly Regex DeclaredKey = new(@"x:Key=""(?<key>[^""]+)""");
     private static readonly Regex UsedKey = new(@"\{DynamicResource (?<key>[^}]+)\}");
+    private static readonly Regex UsedStaticKey = new(@"\{StaticResource (?<key>[^}]+)\}");
 
     [Fact]
     public void The_two_palettes_hold_the_same_keys()
@@ -61,6 +62,31 @@ public class ThemeTests
             .ToList();
 
         Assert.Empty(stuck);
+    }
+
+    // Unlike a missing DynamicResource, a missing StaticResource key throws and takes the window with it.
+    [Fact]
+    public void Every_style_the_markup_asks_for_by_name_is_declared_somewhere()
+    {
+        var files = Directory.EnumerateFiles(XamlRoot, "*.xaml", SearchOption.AllDirectories).ToList();
+
+        var declared = files
+            .SelectMany(file => DeclaredKey.Matches(File.ReadAllText(file))
+                .Select(match => match.Groups["key"].Value))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var missing = files
+            .SelectMany(file => UsedStaticKey.Matches(File.ReadAllText(file))
+                .Select(match => new { File = Path.GetFileName(file), Key = match.Groups["key"].Value }))
+            // A key of {x:Type Foo} is the implicit style for that type, which no x:Key declares.
+            .Where(used => !used.Key.StartsWith('{'))
+            .Where(used => !declared.Contains(used.Key))
+            .Select(used => used.File + " asks for " + used.Key)
+            .Distinct()
+            .Order()
+            .ToList();
+
+        Assert.Empty(missing);
     }
 
     private static HashSet<string> KeysDeclaredIn(string relativePath)

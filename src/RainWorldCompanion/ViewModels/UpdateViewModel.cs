@@ -484,7 +484,19 @@ public sealed partial class UpdateViewModel : ObservableObject
     public async Task<IReadOnlyList<AlphaBuild>> ListBranchBuildsAsync(CancellationToken cancellationToken)
     {
         var runs = await _source.GetBranchBuildRunsAsync(cancellationToken);
-        return AlphaBuilds.FromRuns(runs, Build);
+
+        IReadOnlyList<string> branches;
+        try
+        {
+            branches = await _source.GetBranchNamesAsync(cancellationToken);
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            // An unfiltered list beats no list at all.
+            branches = [];
+        }
+
+        return AlphaBuilds.FromRuns(runs, Build, branches);
     }
 
     public async Task SetChannelAsync(UpdateChannel channel, CancellationToken cancellationToken)

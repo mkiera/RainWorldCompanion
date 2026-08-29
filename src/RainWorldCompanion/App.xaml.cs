@@ -18,9 +18,10 @@ public partial class App : Application
 
     private Mutex? _singleInstance;
 
-    // Both hold an HttpClient, so they live as long as the app rather than being made per check.
+    // All three hold an HttpClient, so they live as long as the app rather than being made per check.
     private GitHubReleaseSource? _releases;
     private InstallerDownloader? _downloader;
+    private TelemetryReporter? _telemetry;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -70,6 +71,9 @@ public partial class App : Application
             // Queued, because this runs from inside the update, which has a line or two left.
             () => Dispatcher.BeginInvoke(Shutdown)));
 
+        _telemetry = new TelemetryReporter(build.Version);
+        viewModel.AttachTelemetry(_telemetry);
+
         // Before Show, so the window is painted in the right colours once rather than opening
         // light and turning dark a moment later.
         var startup = settingsStore.ReadForStartup();
@@ -87,6 +91,8 @@ public partial class App : Application
         _releases = null;
         _downloader?.Dispose();
         _downloader = null;
+        _telemetry?.Dispose();
+        _telemetry = null;
 
         if (_singleInstance is not null)
         {

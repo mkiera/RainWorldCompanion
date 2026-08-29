@@ -16,6 +16,7 @@ using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
+using RainWorldCompanion.Core.Telemetry;
 using RainWorldCompanion.Core.Updates;
 using RainWorldCompanion.Services;
 using RainWorldCompanion.Theming;
@@ -118,6 +119,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     [ObservableProperty]
     private UpdateViewModel? updates;
+
+    private ITelemetryReporter? _telemetry;
+
+    public void AttachTelemetry(ITelemetryReporter telemetry) => _telemetry = telemetry;
 
     /// <summary>The first check waits a few seconds, so it never competes with the launch.</summary>
     public void AttachUpdates(UpdateViewModel updates)
@@ -448,6 +453,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // _settings is still the blank object the constructor made.
         Updates?.Adopt(_settings);
 
+        ReportInstall();
+
         // Immediately after the Adopt above, because the version it compares against is one of the
         // settings that only just arrived. On the update timer it would race this method and a tick
         // that won would read a blank version and swallow the notes for good. Started rather than
@@ -467,6 +474,23 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         await ReloadAsync();
+    }
+
+    private void ReportInstall()
+    {
+        if (_telemetry is null || !_settings.TelemetryEnabled || !TelemetryPing.Enabled)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_settings.InstallId))
+        {
+            PersistSetting(s => s.InstallId = TelemetryPing.NewInstallId());
+        }
+
+        _ = _telemetry.SendAsync(
+            TelemetryPing.PingUrl(TelemetryPing.Endpoint, _settings.InstallId, _appVersion),
+            _shutdown.Token);
     }
 
     public void Shutdown()

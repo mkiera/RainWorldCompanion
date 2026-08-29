@@ -60,6 +60,18 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
             : payload.WorkflowRuns.Where(r => r is not null).Select(r => r.ToRun()).ToList();
     }
 
+    public async Task<IReadOnlyList<string>> GetBranchNamesAsync(CancellationToken cancellationToken)
+    {
+        // One page. A repository with more than a hundred live branches would lose the tail, and
+        // the cost of that is an old row staying on the list, which is what it did before.
+        var payload = await GetAsync<List<GhBranch>>(
+            UpdateUrls.Branches + "?per_page=100", cancellationToken);
+
+        return payload is null
+            ? []
+            : payload.Where(b => !string.IsNullOrWhiteSpace(b?.Name)).Select(b => b.Name!).ToList();
+    }
+
     private async Task<T?> GetAsync<T>(string url, CancellationToken cancellationToken)
     {
         HttpResponseMessage response;
@@ -151,6 +163,11 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
     private sealed class GhRunsPage
     {
         [JsonPropertyName("workflow_runs")] public List<GhRun>? WorkflowRuns { get; set; }
+    }
+
+    private sealed class GhBranch
+    {
+        [JsonPropertyName("name")] public string? Name { get; set; }
     }
 }
 
