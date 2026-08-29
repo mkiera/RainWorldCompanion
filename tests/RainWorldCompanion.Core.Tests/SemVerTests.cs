@@ -40,18 +40,18 @@ public class SemVerTests
         Assert.NotEqual(low, high);
     }
 
-    // build-test.yml names a branch build after the last tag plus the commits on top of it. These
-    // pin the ordering that naming depends on. A build that sorts below a release already out is
-    // what made the what's new list replay 47 changes that had already been seen.
+    // build-test.yml names a branch build after the last tag, the word alpha, and the commits on
+    // top of that tag. These pin the ordering that naming depends on. A build that sorts below a
+    // release already out is what made the what's new list replay 47 changes already seen.
     [Theory]
     [InlineData("1.2.0", "1.2.1-alpha.0.1")]
     [InlineData("1.2.1-alpha.0.1", "1.2.1-alpha.0.9")]
     [InlineData("1.2.1-alpha.0.9", "1.2.1-beta.1")]
-    [InlineData("1.2.1-beta.1", "1.2.1-beta.1.1")]
-    [InlineData("1.2.1-beta.1.1", "1.2.1-beta.1.7")]
-    [InlineData("1.2.1-beta.1.7", "1.2.1-beta.2")]
-    [InlineData("1.2.1-beta.2", "1.2.1-beta.2.2")]
-    [InlineData("1.2.1-beta.2.2", "1.2.1")]
+    [InlineData("1.2.1-beta.1", "1.2.1-beta.1.alpha.1")]
+    [InlineData("1.2.1-beta.1.alpha.1", "1.2.1-beta.1.alpha.7")]
+    [InlineData("1.2.1-beta.1.alpha.7", "1.2.1-beta.2")]
+    [InlineData("1.2.1-beta.2", "1.2.1-beta.2.alpha.2")]
+    [InlineData("1.2.1-beta.2.alpha.2", "1.2.1")]
     [InlineData("1.2.1", "1.2.2-alpha.0.1")]
     public void A_branch_build_sits_between_the_tag_it_follows_and_the_next_one(string lower, string higher)
     {
@@ -70,6 +70,17 @@ public class SemVerTests
         Assert.True(build < Parse("1.3.0-beta.1"));
         Assert.True(build < Parse("1.3.0"));
         Assert.True(build < Parse("2.0.0"));
+    }
+
+    [Fact]
+    public void Every_branch_build_says_alpha_somewhere_in_its_tail()
+    {
+        // The version is read on its own in bug reports, the updates list and the install counts,
+        // where a tail of bare numbers would pass for the release it was built after.
+        foreach (var version in new[] { "1.2.1-alpha.0.4", "1.2.1-beta.1.alpha.7", "1.2.2-alpha.0.1" })
+        {
+            Assert.Contains("alpha", Parse(version).PreRelease, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

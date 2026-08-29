@@ -94,9 +94,10 @@ jobs:
             $version = "$aimedCore-alpha.0.$count"
           }
           elseif ($tagPre) {
-            # Extending the tag's own name: beta.1 with 7 commits on it ranks above beta.1 and
-            # below beta.2.
-            $version = "$tagCore-$tagPre.$count"
+            # Extending the tag's own name, so beta.1 with 7 commits on it ranks above beta.1 and
+            # below beta.2. "alpha" stays in the tail because the version is read on its own in
+            # bug reports and version lists, where beta.1.7 would pass for a release.
+            $version = "$tagCore-$tagPre.alpha.$count"
           }
           else {
             # Past a stable tag. patch+1 is the lowest core above it and promises nothing, since
