@@ -34,15 +34,37 @@ public static class AlphaBuilds
     /// <see cref="MaxBranches"/>. A failed or cancelled run uploaded no artifact, so its row would
     /// be a download that answers 404.
     /// </summary>
+    /// <param name="liveBranches">
+    /// Branches still on the remote. A run outlives the branch it came from, so without this the
+    /// list keeps offering branches merged and deleted long ago. Empty means the branches could
+    /// not be fetched, and every run is kept rather than the list emptying itself over a failure.
+    /// </param>
     public static IReadOnlyList<AlphaBuild> FromRuns(
         IEnumerable<WorkflowRun> runs,
-        BuildStamp running)
+        BuildStamp running,
+        IEnumerable<string>? liveBranches = null)
     {
+        var live = liveBranches is null
+            ? null
+            : new HashSet<string>(
+                liveBranches.Where(b => !string.IsNullOrWhiteSpace(b)),
+                StringComparer.OrdinalIgnoreCase);
+
+        if (live is { Count: 0 })
+        {
+            live = null;
+        }
+
         var newestPerBranch = new Dictionary<string, WorkflowRun>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var run in runs)
         {
             if (!IsUsable(run))
+            {
+                continue;
+            }
+
+            if (live is not null && !live.Contains(run.HeadBranch))
             {
                 continue;
             }

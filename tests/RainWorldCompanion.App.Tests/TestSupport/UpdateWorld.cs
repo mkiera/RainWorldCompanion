@@ -33,6 +33,16 @@ internal sealed class FakeReleaseSource : IReleaseSource
         => Throws is not null
             ? Task.FromException<IReadOnlyList<WorkflowRun>>(Throws)
             : Task.FromResult<IReadOnlyList<WorkflowRun>>(Runs);
+
+    /// <summary>Empty by default, which keeps every run rather than filtering them all away.</summary>
+    public List<string> Branches { get; } = [];
+
+    public Exception? BranchesThrow { get; set; }
+
+    public Task<IReadOnlyList<string>> GetBranchNamesAsync(CancellationToken cancellationToken)
+        => BranchesThrow is not null
+            ? Task.FromException<IReadOnlyList<string>>(BranchesThrow)
+            : Task.FromResult<IReadOnlyList<string>>(Branches);
 }
 
 internal sealed class FakeInstallerDownloader : IInstallerDownloader

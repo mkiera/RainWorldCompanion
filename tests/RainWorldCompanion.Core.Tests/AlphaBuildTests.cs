@@ -20,6 +20,47 @@ public class AlphaBuildTests
     private static BuildStamp Nothing => BuildStamp.ForVersion("1.0.0");
 
     [Fact]
+    public void A_branch_that_is_gone_from_the_remote_is_not_offered()
+    {
+        // mod-configs was merged and deleted months ago, but its run is still on the API and the
+        // list went on offering it as something to install.
+        var runs = new[]
+        {
+            Run(10, "mod-configs", 20),
+            Run(11, "beta", 44),
+        };
+
+        var builds = AlphaBuilds.FromRuns(runs, Nothing, ["beta", "main"]);
+
+        Assert.Equal("beta", Assert.Single(builds).Branch);
+    }
+
+    [Fact]
+    public void A_branch_name_is_matched_without_case()
+    {
+        var builds = AlphaBuilds.FromRuns([Run(10, "Mod-Configs", 20)], Nothing, ["mod-configs"]);
+
+        Assert.Single(builds);
+    }
+
+    [Fact]
+    public void Every_run_is_kept_when_the_branches_could_not_be_fetched()
+    {
+        // Filtering against a list that never arrived would empty the window over one failed
+        // request, which is worse than the stale row it was meant to remove.
+        Assert.Single(AlphaBuilds.FromRuns([Run(10, "mod-configs", 20)], Nothing, null));
+        Assert.Single(AlphaBuilds.FromRuns([Run(10, "mod-configs", 20)], Nothing, []));
+    }
+
+    [Fact]
+    public void A_blank_entry_in_the_branch_list_does_not_match_anything()
+    {
+        var builds = AlphaBuilds.FromRuns([Run(10, "mod-configs", 20)], Nothing, ["", "   ", "beta"]);
+
+        Assert.Empty(builds);
+    }
+
+    [Fact]
     public void Only_the_newest_run_of_each_branch_is_listed()
     {
         // A branch gets rebuilt on every push, so the same branch arrives many times over. The

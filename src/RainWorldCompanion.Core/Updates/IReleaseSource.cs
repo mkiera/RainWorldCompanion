@@ -10,6 +10,9 @@ public interface IReleaseSource
 
     /// <summary>Runs of the branch-build workflow, newest first.</summary>
     Task<IReadOnlyList<WorkflowRun>> GetBranchBuildRunsAsync(CancellationToken cancellationToken);
+
+    /// <summary>The branches that still exist on the remote. Empty means the question went unanswered.</summary>
+    Task<IReadOnlyList<string>> GetBranchNamesAsync(CancellationToken cancellationToken);
 }
 
 public sealed class NullReleaseSource : IReleaseSource
@@ -19,4 +22,7 @@ public sealed class NullReleaseSource : IReleaseSource
 
     public Task<IReadOnlyList<WorkflowRun>> GetBranchBuildRunsAsync(CancellationToken cancellationToken)
         => Task.FromResult<IReadOnlyList<WorkflowRun>>([]);
+
+    public Task<IReadOnlyList<string>> GetBranchNamesAsync(CancellationToken cancellationToken)
+        => Task.FromResult<IReadOnlyList<string>>([]);
 }

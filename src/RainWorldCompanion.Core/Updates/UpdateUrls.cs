@@ -28,6 +28,12 @@ public static class UpdateUrls
 
     public const string ReleasesPage = $"https://github.com/{Owner}/{Repo}/releases";
 
+    /// <summary>
+    /// A run outlives the branch it was built from, so the runs list alone still offers branches
+    /// that were merged and deleted months ago.
+    /// </summary>
+    public const string Branches = $"https://api.github.com/repos/{Owner}/{Repo}/branches";
+
     /// <summary>A constant rather than the branch name, which would put a slash in a URL path.</summary>
     public const string BranchBuildArtifact = "RainWorldCompanion-Setup";
 
