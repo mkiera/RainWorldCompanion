@@ -13,6 +13,19 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.1 - 2026-08-29
+
+- The buttons across the top are split into groups, with a line between one
+  group and the next, so backups, slots, the save folder and the app itself are
+  told apart at a glance. Settings is a gear at the right hand end of that row.
+- Going back to an older version and returning no longer loses the settings the
+  newer one had added.
+- The Alpha list only offers branches that are still on GitHub, instead of ones
+  that were merged and deleted long ago.
+- Updating from an alpha build no longer lists changes you have already seen.
+  Alpha builds are named after the release they follow, as in
+  1.2.1-beta.1.alpha.3.
+
 ## 1.2.1-beta.3 - 2026-08-29
 
 - The buttons across the top are split into groups, with a line between one
