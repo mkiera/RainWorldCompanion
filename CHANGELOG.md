@@ -13,6 +13,8 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.1-beta.1 - 2026-08-29
+
 - Going back to an older version and returning no longer loses the settings the
   newer one had added.
 
