@@ -2024,6 +2024,11 @@
                             Command="{Binding NewBackupCommand}" />
                     <Button Content="Restore" Style="{StaticResource Button.Small}"
                             Margin="4,0,0,0" Command="{Binding RestoreCommand}" />
+                    <!-- Beside Restore because it acts on the same selection, in the backup and
+                         library lists, and not on a slot. -->
+                    <Button Content="Delete" Style="{StaticResource Button.Danger}"
+                            Margin="4,0,0,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
+                            Command="{Binding DeleteCommand}" />
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 
@@ -2035,9 +2040,6 @@
                     <Button Content="Copy Slot" Style="{StaticResource Button.Small}"
                             Margin="4,0,0,0" Command="{Binding CopySlotCommand}"
                             ToolTip="Copy one whole save slot onto another, byte for byte." />
-                    <Button Content="Delete" Style="{StaticResource Button.Danger}"
-                            Margin="4,0,0,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
-                            Command="{Binding DeleteCommand}" />
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 
