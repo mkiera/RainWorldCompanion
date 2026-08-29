@@ -13,6 +13,8 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.1-beta.2 - 2026-08-29
+
 - The Alpha list only offers branches that are still on GitHub, instead of ones
   that were merged and deleted long ago.
 - Updating from an alpha build no longer lists changes you have already seen.
