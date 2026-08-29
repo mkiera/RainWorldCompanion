@@ -44,15 +44,15 @@ public class SemVerTests
     // top of that tag. These pin the ordering that naming depends on. A build that sorts below a
     // release already out is what made the what's new list replay 47 changes already seen.
     [Theory]
-    [InlineData("1.2.0", "1.2.1-alpha.0.1")]
-    [InlineData("1.2.1-alpha.0.1", "1.2.1-alpha.0.9")]
-    [InlineData("1.2.1-alpha.0.9", "1.2.1-beta.1")]
+    [InlineData("1.2.0", "1.2.1-alpha.1")]
+    [InlineData("1.2.1-alpha.1", "1.2.1-alpha.9")]
+    [InlineData("1.2.1-alpha.9", "1.2.1-beta.1")]
     [InlineData("1.2.1-beta.1", "1.2.1-beta.1.alpha.1")]
     [InlineData("1.2.1-beta.1.alpha.1", "1.2.1-beta.1.alpha.7")]
     [InlineData("1.2.1-beta.1.alpha.7", "1.2.1-beta.2")]
     [InlineData("1.2.1-beta.2", "1.2.1-beta.2.alpha.2")]
     [InlineData("1.2.1-beta.2.alpha.2", "1.2.1")]
-    [InlineData("1.2.1", "1.2.2-alpha.0.1")]
+    [InlineData("1.2.1", "1.2.2-alpha.1")]
     public void A_branch_build_sits_between_the_tag_it_follows_and_the_next_one(string lower, string higher)
     {
         Assert.True(Parse(lower) < Parse(higher), lower + " should rank below " + higher);
@@ -61,9 +61,9 @@ public class SemVerTests
     [Fact]
     public void A_branch_build_named_for_a_patch_still_ranks_below_a_larger_release()
     {
-        // Why naming a branch build 1.2.1-alpha.0.N commits to nothing: the release it turns out
+        // Why naming a branch build 1.2.1-alpha.N commits to nothing: the release it turns out
         // to precede can be any size, and each of these still outranks it.
-        var build = Parse("1.2.1-alpha.0.4");
+        var build = Parse("1.2.1-alpha.4");
 
         Assert.True(build > Parse("1.2.0"));
         Assert.True(build < Parse("1.2.1"));
@@ -77,7 +77,7 @@ public class SemVerTests
     {
         // The version is read on its own in bug reports, the updates list and the install counts,
         // where a tail of bare numbers would pass for the release it was built after.
-        foreach (var version in new[] { "1.2.1-alpha.0.4", "1.2.1-beta.1.alpha.7", "1.2.2-alpha.0.1" })
+        foreach (var version in new[] { "1.2.1-alpha.4", "1.2.1-beta.1.alpha.7", "1.2.2-alpha.1" })
         {
             Assert.Contains("alpha", Parse(version).PreRelease, StringComparison.Ordinal);
         }
@@ -93,7 +93,7 @@ public class SemVerTests
         Assert.True(wrong < Parse("1.2.0-beta.2"));
         Assert.True(wrong < Parse("1.2.0"));
 
-        Assert.True(Parse("1.2.1-alpha.0.33") > Parse("1.2.0"));
+        Assert.True(Parse("1.2.1-alpha.33") > Parse("1.2.0"));
     }
 
     [Fact]
