@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using System.Text.Json.Nodes;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.Updates;
 
@@ -16,6 +17,84 @@ public class SettingsResilienceTests
         var path = Path.Combine(dir.Path, "settings.json");
         File.WriteAllText(path, json);
         return new SettingsStore(path);
+    }
+
+    private static JsonObject WrittenFile(TempDirectory dir) =>
+        JsonNode.Parse(File.ReadAllText(Path.Combine(dir.Path, "settings.json")))!.AsObject();
+
+    [Fact]
+    public void A_key_this_build_has_no_property_for_survives_a_save()
+    {
+        // What made an install id vanish: the older build had no property for it, saved the file
+        // on its way past, and the newer build read a blank back and treated it as a first run.
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, """
+        {
+          "schemaVersion": 1,
+          "gameSavePath": "C:\\saves",
+          "backupRootPath": "C:\\backups",
+          "somethingANewerBuildWrote": "keep me"
+        }
+        """);
+
+        store.Save(store.Load());
+
+        Assert.Equal("keep me", (string?)WrittenFile(dir)["somethingANewerBuildWrote"]);
+    }
+
+    [Fact]
+    public void An_unknown_key_survives_a_save_that_changes_a_known_one()
+    {
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, """
+        {
+          "gameSavePath": "C:\\saves",
+          "backupRootPath": "C:\\backups",
+          "theme": "light",
+          "fromTheFuture": 42
+        }
+        """);
+
+        var settings = store.Load();
+        settings.Theme = "dark";
+        store.Save(settings);
+
+        var written = WrittenFile(dir);
+        Assert.Equal("dark", (string?)written["theme"]);
+        Assert.Equal(42, (int?)written["fromTheFuture"]);
+    }
+
+    [Fact]
+    public void A_PascalCase_name_is_not_left_beside_its_camelCase_replacement()
+    {
+        // Both spellings in one file would leave the reader free to pick either, and TryFind
+        // matches without case, so which one it landed on would be down to property order.
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, """
+        { "Theme": "dark", "GameSavePath": "C:\\saves", "BackupRootPath": "C:\\backups" }
+        """);
+
+        store.Save(store.Load());
+
+        var written = WrittenFile(dir);
+        Assert.False(written.ContainsKey("Theme"));
+        Assert.Equal("dark", (string?)written["theme"]);
+    }
+
+    [Fact]
+    public void Saving_over_a_corrupt_file_still_writes_the_settings()
+    {
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, "{ this is not json ]");
+
+        store.Save(new AppSettings
+        {
+            GameSavePath = @"C:\saves",
+            BackupRootPath = @"C:\backups",
+            InstallId = "0123456789abcdef0123456789abcdef",
+        });
+
+        Assert.Equal("0123456789abcdef0123456789abcdef", store.Load().InstallId);
     }
 
     /// <summary>

@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using System.Text.Json.Nodes;
 using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Settings;
@@ -87,8 +88,48 @@ public sealed class SettingsStore
         }
 
         var tempPath = SettingsPath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(settings, SerializerOptions));
+        File.WriteAllText(tempPath, Merge(settings, ReadObject()));
         File.Move(tempPath, SettingsPath, overwrite: true);
+    }
+
+    // Carries across keys this build has no property for. Serializing the object alone drops them,
+    // so one run of an older build erased whatever a newer one had written.
+    private static string Merge(AppSettings settings, JsonObject? existing)
+    {
+        var written = JsonSerializer.SerializeToNode(settings, SerializerOptions)!.AsObject();
+        if (existing is null)
+        {
+            return written.ToJsonString(SerializerOptions);
+        }
+
+        // Matched without case, or a file still holding PascalCase names would come back with both
+        // spellings of every property and the reader would be free to pick either.
+        var known = written.Select(property => property.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var property in existing)
+        {
+            if (!known.Contains(property.Key))
+            {
+                written[property.Key] = property.Value?.DeepClone();
+            }
+        }
+
+        return written.ToJsonString(SerializerOptions);
+    }
+
+    private JsonObject? ReadObject()
+    {
+        try
+        {
+            return File.Exists(SettingsPath)
+                ? JsonNode.Parse(File.ReadAllText(SettingsPath)) as JsonObject
+                : null;
+        }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException
+                                      or NotSupportedException or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private AppSettings? ReadFile()

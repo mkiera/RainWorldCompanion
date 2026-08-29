@@ -13,6 +13,9 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- Going back to an older version and returning no longer loses the settings the
+  newer one had added.
+
 ## 1.2.0 - 2026-08-28
 
 - Turn Rain World's mods on and off from the app, without opening the game.
