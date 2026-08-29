@@ -2016,33 +2016,52 @@
                         Style="{StaticResource Button.Small}"
                         Command="{Binding RefreshCommand}" />
 
-                <Button DockPanel.Dock="Right" Content="Settings" Style="{StaticResource Button.Small}"
-                        Command="{Binding OpenSettingsCommand}" />
-                <Button DockPanel.Dock="Right" Content="Updates" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0"
-                        Command="{Binding OpenUpdatesCommand}" />
-                <Button DockPanel.Dock="Right" Content="Mods" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0"
-                        Command="{Binding OpenModSyncCommand}"
-                        AutomationProperties.HelpText="Turn mods on and off, and match what a save was played with" />
-                <Button DockPanel.Dock="Right" Content="Delete" Style="{StaticResource Button.Danger}"
-                        Margin="0,0,8,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
-                        Command="{Binding DeleteCommand}" />
-                <Button DockPanel.Dock="Right" Content="Open Folder" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0" Command="{Binding OpenFolderCommand}" />
-                <!-- The one way in to a slot copy. Both ends are picked in the dialog, so the slot
-                     rows further down carry no buttons of their own. -->
-                <Button DockPanel.Dock="Right" Content="Copy Slot" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0" Command="{Binding CopySlotCommand}"
-                        ToolTip="Copy one whole save slot onto another, byte for byte." />
-                <Button DockPanel.Dock="Right" Content="Store Slot" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0" Command="{Binding StoreSlotCommand}"
-                        ToolTip="Keep a copy of one save slot in the library under a name of your choosing." />
-                <Button DockPanel.Dock="Right" Content="Restore" Style="{StaticResource Button.Small}"
-                        Margin="0,0,8,0" Command="{Binding RestoreCommand}" />
-                <Button DockPanel.Dock="Right" Content="New Backup" Style="{StaticResource Button.Accent}"
-                        Margin="0,0,8,0" MinWidth="98" MinHeight="26" Padding="10,4" FontSize="12"
-                        Command="{Binding NewBackupCommand}" />
+                <!-- One StackPanel rather than a button apiece docked Right, which listed them backwards. -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+
+                    <Button Content="New Backup" Style="{StaticResource Button.Accent}"
+                            MinWidth="98" MinHeight="26" Padding="10,4" FontSize="12"
+                            Command="{Binding NewBackupCommand}" />
+                    <Button Content="Restore" Style="{StaticResource Button.Small}"
+                            Margin="4,0,0,0" Command="{Binding RestoreCommand}" />
+
+                    <Rectangle Style="{StaticResource Toolbar.Separator}" />
+
+                    <Button Content="Store Slot" Style="{StaticResource Button.Small}"
+                            Command="{Binding StoreSlotCommand}"
+                            ToolTip="Keep a copy of one save slot in the library under a name of your choosing." />
+                    <!-- The one way in to a slot copy. Both ends are picked in the dialog, so the
+                         slot rows further down carry no buttons of their own. -->
+                    <Button Content="Copy Slot" Style="{StaticResource Button.Small}"
+                            Margin="4,0,0,0" Command="{Binding CopySlotCommand}"
+                            ToolTip="Copy one whole save slot onto another, byte for byte." />
+                    <Button Content="Delete" Style="{StaticResource Button.Danger}"
+                            Margin="4,0,0,0" MinWidth="76" MinHeight="26" Padding="10,4" FontSize="12"
+                            Command="{Binding DeleteCommand}" />
+
+                    <Rectangle Style="{StaticResource Toolbar.Separator}" />
+
+                    <Button Content="Open Folder" Style="{StaticResource Button.Small}"
+                            Command="{Binding OpenFolderCommand}" />
+                    <Button Content="Mods" Style="{StaticResource Button.Small}"
+                            Margin="4,0,0,0"
+                            Command="{Binding OpenModSyncCommand}"
+                            AutomationProperties.HelpText="Turn mods on and off, and match what a save was played with" />
+
+                    <Rectangle Style="{StaticResource Toolbar.Separator}" />
+
+                    <Button Content="Updates" Style="{StaticResource Button.Small}"
+                            Command="{Binding OpenUpdatesCommand}" />
+                    <Button Style="{StaticResource Button.Icon}"
+                            Margin="4,0,0,0"
+                            Command="{Binding OpenSettingsCommand}"
+                            ToolTip="Settings"
+                            AutomationProperties.Name="Settings">
+                        <Path Data="{StaticResource Icon.Gear}"
+                              Width="14" Height="14" Stretch="Uniform"
+                              Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    </Button>
+                </StackPanel>
             </DockPanel>
         </Border>
 

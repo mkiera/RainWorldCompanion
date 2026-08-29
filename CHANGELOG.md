@@ -13,6 +13,11 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- The buttons across the top are split into groups, with a line between one
+  group and the next, so backups, slots, the save folder and the app itself are
+  told apart at a glance.
+- Settings is a gear at the right hand end of that row.
+
 ## 1.2.1-beta.2 - 2026-08-29
 
 - The Alpha list only offers branches that are still on GitHub, instead of ones
