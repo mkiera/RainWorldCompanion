@@ -13,6 +13,8 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.1-beta.3 - 2026-08-29
+
 - The buttons across the top are split into groups, with a line between one
   group and the next, so backups, slots, the save folder and the app itself are
   told apart at a glance.
