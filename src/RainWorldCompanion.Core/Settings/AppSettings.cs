@@ -44,6 +44,11 @@ public sealed class AppSettings
 
     public DateTimeOffset? LastUpdateCheckUtc { get; set; }
 
+    // Blank until the first ping makes one, so an install that never pings has none.
+    public string InstallId { get; set; } = "";
+
+    public bool TelemetryEnabled { get; set; } = true;
+
     /// <summary>
     /// Blank on a first run, and blank deliberately does not mean "show them": the first launch
     /// records what it is running and says nothing.
@@ -79,6 +84,8 @@ public sealed class AppSettings
         AutoCheckUpdates = AutoCheckUpdates,
         Theme = Theme,
         LastUpdateCheckUtc = LastUpdateCheckUtc,
+        InstallId = InstallId,
+        TelemetryEnabled = TelemetryEnabled,
         LastSeenChangelogVersion = LastSeenChangelogVersion,
         WindowWidth = WindowWidth,
         WindowHeight = WindowHeight,

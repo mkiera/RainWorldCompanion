@@ -153,6 +153,8 @@ public sealed class SettingsStore
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
         settings.Theme = ReadString(root, "theme", settings.Theme);
         settings.LastUpdateCheckUtc = ReadTimestamp(root, "lastUpdateCheckUtc");
+        settings.InstallId = ReadString(root, "installId", settings.InstallId);
+        settings.TelemetryEnabled = ReadBool(root, "telemetryEnabled", settings.TelemetryEnabled);
         settings.LastSeenChangelogVersion = ReadString(root, "lastSeenChangelogVersion", settings.LastSeenChangelogVersion);
         settings.WindowWidth = ReadDoubleOrNull(root, "windowWidth");
         settings.WindowHeight = ReadDoubleOrNull(root, "windowHeight");
