@@ -69,7 +69,7 @@ public class DevourmentReaderTests
         Assert.True(campaign.DevourmentStates[1].PreyIsItem);
     }
 
-    /// <summary>Rain Meadow saves put the two player keys after the food value.</summary>
+    // Rain Meadow saves put two player keys after the food value.
     [Fact]
     public void Parts_after_the_fourth_do_not_stop_the_field_being_read()
     {

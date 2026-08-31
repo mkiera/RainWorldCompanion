@@ -60,6 +60,9 @@ public sealed class LibraryManifest
     /// when the save could not be parsed at all.</summary>
     public SlotMetadata? Metadata { get; set; }
 
+    // The SaveMetadataExtractor.Version the metadata was parsed with. Older manifests read back as 0.
+    public int MetadataVersion { get; set; }
+
     /// <summary>The slot holding these same bytes. At most one entry names a given slot: whichever
     /// entry last put its bytes there owns the link and everyone else's is cleared, so two rows can
     /// never both claim to be in sav.</summary>

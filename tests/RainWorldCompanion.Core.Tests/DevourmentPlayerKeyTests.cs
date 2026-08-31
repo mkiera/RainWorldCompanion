@@ -3,11 +3,6 @@ using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
-/// <summary>
-/// A save written during a Rain Meadow session puts two more parts after the food value, naming
-/// the player who owns the predator and the one who owns the prey. The values here are the shape
-/// a real online save arrived in.
-/// </summary>
 public class DevourmentPlayerKeyTests
 {
     private const string PlayerKey = "903948047";
@@ -104,7 +99,7 @@ public class DevourmentPlayerKeyTests
         Assert.Equal(PlayerKey, state.Entries[1].PredatorPlayerKey);
     }
 
-    /// <summary>The prey key sits after the predator key, so writing one must not tread on it.</summary>
+    // The prey key sits after the predator key, so writing one must not tread on it.
     [Fact]
     public void A_prey_that_is_itself_a_player_keeps_its_own_key()
     {

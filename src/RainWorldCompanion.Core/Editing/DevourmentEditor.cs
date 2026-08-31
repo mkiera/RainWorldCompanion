@@ -62,11 +62,9 @@ public sealed class DevourmentEntry
     /// <summary>False when the field split into fewer than the four parts the mod writes.</summary>
     public bool IsWellFormed { get; }
 
-    /// <summary>What came after the food value, which for an online save is the two player keys.
-    /// Held so parts this app has no use for still survive an edit.</summary>
+    // What comes after the food value: for a save from an online session, the two player keys.
     public IReadOnlyList<string> Extra => _extra;
 
-    /// <summary>Which Rain Meadow player the predator belongs to, empty when the save names none.</summary>
     public string PredatorPlayerKey => _extra.Count > 0 ? _extra[0] : "";
 
     public string Predator { get; internal set; }
@@ -102,8 +100,7 @@ public sealed class DevourmentEntry
             : new DevourmentEntry(value, "", "", "", "", [], wellFormed: false);
     }
 
-    /// <summary>The part is added when the entry has none, because the mod reads a part that is not
-    /// there as no player at all.</summary>
+    // The mod reads a missing part as no player, so an empty key on a four-part entry adds nothing.
     internal void SetPredatorPlayerKey(string key)
     {
         if (_extra.Count > 0)
@@ -414,9 +411,7 @@ public sealed class DevourmentEditState
         _entriesChanged = true;
     }
 
-    /// <summary>An online save names the player each predator belongs to, so a row put under a
-    /// predator has to carry the same name as the rows already there or the mod hands it to whoever
-    /// holds that entity id instead.</summary>
+    // Rows under one predator have to agree on its player key, or the mod re-homes the new row.
     private string PlayerKeyFor(string? predatorId)
     {
         if (predatorId is not { Length: > 0 })

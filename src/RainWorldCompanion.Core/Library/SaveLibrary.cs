@@ -66,7 +66,7 @@ public sealed class SaveLibrary
 
             foreach (var directory in Directory.EnumerateDirectories(LibraryRoot))
             {
-                entries.Add(LibraryEntry.Load(directory));
+                entries.Add(RefreshStaleMetadata(LibraryEntry.Load(directory)));
             }
         }
         catch (Exception)
@@ -78,6 +78,48 @@ public sealed class SaveLibrary
         entries.Sort(static (a, b) => b.ModifiedUtc.CompareTo(a.ModifiedUtc));
         return entries;
     }
+
+    /// <summary>The manifest keeps what the extractor saw when the entry was written, so an entry
+    /// stored before the extractor learned a shape keeps showing the old reading. When the stored
+    /// stamp is behind <see cref="SaveMetadataExtractor.Version"/> the bytes are parsed again and
+    /// the manifest rewritten, once per entry. An entry whose folder cannot be rewritten is listed
+    /// as it was.</summary>
+    private LibraryEntry RefreshStaleMetadata(LibraryEntry entry)
+    {
+        if (entry.Manifest is not { } manifest
+            || manifest.Metadata is null
+            || manifest.MetadataVersion >= SaveMetadataExtractor.Version)
+        {
+            return entry;
+        }
+
+        try
+        {
+            manifest.Metadata = ExtractStored(entry, manifest, entry.ContentPath);
+
+            if (manifest.PreviousMetadata is not null && File.Exists(entry.PreviousContentPath))
+            {
+                manifest.PreviousMetadata = ExtractStored(entry, manifest, entry.PreviousContentPath);
+            }
+
+            manifest.MetadataVersion = SaveMetadataExtractor.Version;
+            WriteManifest(entry.DirectoryPath, manifest);
+
+            return LibraryEntry.Load(entry.DirectoryPath);
+        }
+        catch (Exception)
+        {
+            return entry;
+        }
+    }
+
+    /// <summary>The previous file is parsed under the content name too, matching what an update
+    /// recorded for it when it was current.</summary>
+    private static SlotMetadata ExtractStored(LibraryEntry entry, LibraryManifest manifest, string path)
+        => entry.IsCampaign
+            ? SaveMetadataExtractor.FromPayload(
+                File.ReadAllText(path), LibraryEntry.CampaignFileName, manifest.SourceSlot, manifest.SourceRealm)
+            : SaveMetadataExtractor.Extract(path, manifest.SourceSlot, manifest.SourceRealm);
 
     /// <summary>The entry's own bytes are checked here rather than only at the moment of the write,
     /// so a damaged save is reported in the dialog rather than after the user has agreed.</summary>
@@ -482,6 +524,7 @@ public sealed class SaveLibrary
             SizeBytes = copied.SizeBytes,
             Sha256 = copied.Sha256,
             Metadata = metadata,
+            MetadataVersion = SaveMetadataExtractor.Version,
             Mods = _backups.TryReadMods(),
             Configs = StoreConfigs(directory, SaveRoot),
         };
@@ -549,6 +592,7 @@ public sealed class SaveLibrary
             SizeBytes = copied.SizeBytes,
             Sha256 = copied.Sha256,
             Metadata = metadata,
+            MetadataVersion = SaveMetadataExtractor.Version,
             Mods = mods,
             Configs = StoreConfigs(directory, configsRoot),
         };
@@ -653,6 +697,7 @@ public sealed class SaveLibrary
             Sha256 = Hashing.ComputeFileSha256(campaignPath),
             Metadata = SaveMetadataExtractor.FromPayload(
                 payload, LibraryEntry.CampaignFileName, sourceSlot, sourceRealm),
+            MetadataVersion = SaveMetadataExtractor.Version,
             Mods = mods,
             Configs = StoreConfigs(directory, configsRoot),
         };
@@ -969,6 +1014,7 @@ public sealed class SaveLibrary
         manifest.SizeBytes = copied.SizeBytes;
         manifest.Sha256 = copied.Sha256;
         manifest.Metadata = metadata;
+        manifest.MetadataVersion = SaveMetadataExtractor.Version;
         manifest.Mods = _backups.TryReadMods();
         manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
         manifest.SourceFileName = source.FileName;
@@ -1024,6 +1070,7 @@ public sealed class SaveLibrary
         manifest.Sha256 = Hashing.ComputeFileSha256(entry.CampaignPath);
         manifest.Metadata = SaveMetadataExtractor.FromPayload(
             payload, LibraryEntry.CampaignFileName, source.Slot, source.Realm);
+        manifest.MetadataVersion = SaveMetadataExtractor.Version;
         manifest.CampaignSlugcatId = slice.SlugcatId;
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
@@ -1071,6 +1118,10 @@ public sealed class SaveLibrary
         manifest.SizeBytes = manifest.PreviousSizeBytes ?? new FileInfo(entry.ContentPath).Length;
         manifest.Sha256 = previousHash;
         manifest.Metadata = metadata;
+
+        // Parsed whenever the entry was last stored, which may predate this extractor, so the next
+        // listing decides for itself.
+        manifest.MetadataVersion = 0;
 
         manifest.Mods = manifest.PreviousMods;
 
@@ -1351,6 +1402,7 @@ public sealed class SaveLibrary
             SizeBytes = copied.SizeBytes,
             Sha256 = copied.Sha256,
             Metadata = metadata,
+            MetadataVersion = SaveMetadataExtractor.Version,
         };
     }
 
@@ -1389,6 +1441,7 @@ public sealed class SaveLibrary
             SizeBytes = copied.SizeBytes,
             Sha256 = copied.Sha256,
             Metadata = metadata,
+            MetadataVersion = SaveMetadataExtractor.Version,
         };
     }
 
