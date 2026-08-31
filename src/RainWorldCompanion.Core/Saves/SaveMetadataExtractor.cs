@@ -52,6 +52,9 @@ public static class SaveMetadataExtractor
 
     private const int MaxErrorLength = 200;
 
+    // Bumped when the extractor learns to read a shape it used to reject.
+    public const int Version = 2;
+
     /// <summary>
     /// Never throws. The realm is taken from the file name, so a file read out of the save folder
     /// under its real name lands on the right side without the caller saying so.

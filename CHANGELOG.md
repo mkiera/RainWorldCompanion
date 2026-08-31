@@ -13,6 +13,25 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.2 - 2026-08-31
+
+- A save from a Rain Meadow session shows what is inside what, instead of
+  reporting every relationship as a shape the app could not read. Editing one
+  keeps each belly attached to the player it belongs to.
+- A save already stored in the library, and the saves inside a backup, are
+  read again once the app can read more out of them, so their details update
+  instead of staying what an older version saw. A backup taken before entity
+  ids were recorded draws its tree nested rather than flat.
+
+## 1.2.2-beta.1 - 2026-08-31
+
+- A save from a Rain Meadow session shows what is inside what, instead of
+  reporting every relationship as a shape the app could not read. Editing one
+  keeps each belly attached to the player it belongs to.
+- A save already stored in the library, and the saves inside a backup, are
+  read again once the app can read more out of them, so their details update
+  instead of staying what an older version saw.
+
 ## 1.2.1 - 2026-08-29
 
 - The buttons across the top are split into groups, with a line between one

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.Tests;
 
@@ -133,7 +134,7 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteVersionOneSnapshot(world);
 
-        var slot = Assert.Single(Load(world).Manifest!.Slots, s => s.Slot == 2);
+        var slot = Assert.Single(LoadRaw(world).Manifest!.Slots, s => s.Slot == 2);
 
         Assert.Equal("sav2", slot.FileName);
         Assert.True(slot.ChecksumValid);
@@ -155,7 +156,7 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteVersionOneSnapshot(world);
 
-        var campaign = Assert.Single(Assert.Single(Load(world).Manifest!.Slots, s => s.Slot == 2).Campaigns);
+        var campaign = Assert.Single(Assert.Single(LoadRaw(world).Manifest!.Slots, s => s.Slot == 2).Campaigns);
 
         // DisplayName is computed from the id rather than stored, so a manifest written before
         // it existed still shows the in-game name.
@@ -168,7 +169,7 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteVersionOneSnapshot(world);
 
-        var campaign = Assert.Single(Assert.Single(Load(world).Manifest!.Slots, s => s.Slot == 2).Campaigns);
+        var campaign = Assert.Single(Assert.Single(LoadRaw(world).Manifest!.Slots, s => s.Slot == 2).Campaigns);
 
         CampaignDetailTests.AssertCollectionsAreEmptyNotNull(campaign);
         Assert.Null(campaign.Karma);
@@ -198,7 +199,7 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteVersionOneSnapshot(world);
 
-        var slot = Assert.Single(Load(world).Manifest!.Slots, s => s.Slot == 3);
+        var slot = Assert.Single(LoadRaw(world).Manifest!.Slots, s => s.Slot == 3);
 
         Assert.Equal("file not found", slot.ParseError);
         Assert.NotNull(slot.Campaigns);
@@ -211,13 +212,32 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteVersionOneSnapshot(world, includeSlots: false);
 
-        var snapshot = Load(world);
+        var snapshot = LoadRaw(world);
 
         Assert.True(snapshot.IsComplete);
         Assert.NotNull(snapshot.Manifest!.Slots);
         Assert.Empty(snapshot.Manifest.Slots);
         Assert.NotNull(snapshot.Manifest.SkippedLinks);
         Assert.True(world.Service.Verify(snapshot).Ok);
+    }
+
+    [Fact]
+    public void Listing_reparses_a_version_one_snapshot_from_its_own_files()
+    {
+        using var world = new BackupWorld();
+        WriteVersionOneSnapshot(world);
+
+        var listed = Load(world);
+        var manifest = listed.Manifest!;
+
+        Assert.Equal(SaveMetadataExtractor.Version, manifest.MetadataVersion);
+        Assert.Equal(1, manifest.SchemaVersion);
+        Assert.Equal("before the update", manifest.Label);
+
+        // The hand-written slot rows are replaced by a parse of the files the snapshot holds, so
+        // the recorded "file not found" gives way to the sav3 that is actually in the folder.
+        Assert.All(manifest.Slots, slot => Assert.Null(slot.ParseError));
+        Assert.Contains(manifest.Slots, slot => slot.FileName == "sav3" && slot.Campaigns.Count > 0);
     }
 
     [Fact]
@@ -279,7 +299,7 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteNullCollectionSnapshot(world);
 
-        var manifest = Load(world).Manifest!;
+        var manifest = LoadRaw(world).Manifest!;
 
         // An explicit JSON null overwrites a field initialiser, so without normalising on the
         // way in these come back null and every caller that walks them throws.
@@ -302,7 +322,7 @@ public class ManifestCompatibilityTests
         using var world = new BackupWorld();
         WriteNullCollectionSnapshot(world, nullCampaigns: true);
 
-        var slot = Assert.Single(Load(world).Manifest!.Slots);
+        var slot = Assert.Single(LoadRaw(world).Manifest!.Slots);
 
         Assert.NotNull(slot.Campaigns);
         Assert.Empty(slot.Campaigns);
@@ -327,6 +347,10 @@ public class ManifestCompatibilityTests
 
     private static BackupSnapshot Load(BackupWorld world)
         => world.Service.ListBackups().Single(s => s.Id == V1SnapshotId);
+
+    // Straight off disk, before ListBackups gets a chance to re-parse a stale manifest.
+    private static BackupSnapshot LoadRaw(BackupWorld world)
+        => BackupSnapshot.Load(Path.Combine(world.BackupRoot.Path, V1SnapshotId));
 
     /// <summary>
     /// Nothing this app writes looks like this, but a hand-edited file or another tool's output
