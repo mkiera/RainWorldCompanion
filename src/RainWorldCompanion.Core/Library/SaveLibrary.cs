@@ -79,14 +79,11 @@ public sealed class SaveLibrary
         return entries;
     }
 
-    /// <summary>The manifest keeps what the extractor saw when the entry was written, so an entry
-    /// stored before the extractor learned a shape keeps showing the old reading. When the stored
-    /// stamp is behind <see cref="SaveMetadataExtractor.Version"/> the bytes are parsed again and
-    /// the manifest rewritten, once per entry. An entry whose folder cannot be rewritten is listed
-    /// as it was.</summary>
     private LibraryEntry RefreshStaleMetadata(LibraryEntry entry)
     {
+        // A manifest from a later schema loads with unknown fields skipped, so a rewrite would drop them.
         if (entry.Manifest is not { } manifest
+            || manifest.SchemaVersion > LibraryManifest.CurrentSchemaVersion
             || manifest.Metadata is null
             || manifest.MetadataVersion >= SaveMetadataExtractor.Version)
         {
@@ -113,8 +110,7 @@ public sealed class SaveLibrary
         }
     }
 
-    /// <summary>The previous file is parsed under the content name too, matching what an update
-    /// recorded for it when it was current.</summary>
+    // The previous file is parsed under the content name, matching what its update recorded for it.
     private static SlotMetadata ExtractStored(LibraryEntry entry, LibraryManifest manifest, string path)
         => entry.IsCampaign
             ? SaveMetadataExtractor.FromPayload(
@@ -1119,8 +1115,7 @@ public sealed class SaveLibrary
         manifest.Sha256 = previousHash;
         manifest.Metadata = metadata;
 
-        // Parsed whenever the entry was last stored, which may predate this extractor, so the next
-        // listing decides for itself.
+        // The restored metadata may predate this extractor, so the next listing decides for itself.
         manifest.MetadataVersion = 0;
 
         manifest.Mods = manifest.PreviousMods;

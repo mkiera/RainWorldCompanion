@@ -55,6 +55,9 @@ public sealed class BackupManifest
         set => _slots = value ?? new List<SlotMetadata>();
     }
 
+    // The SaveMetadataExtractor.Version the slots were parsed with. Older manifests read back as 0.
+    public int MetadataVersion { get; set; }
+
     public List<string> SkippedLinks
     {
         get => _skippedLinks;

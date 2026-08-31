@@ -297,6 +297,7 @@ public sealed class BackupService
 
         progress?.Report("Reading save slots");
         manifest.Slots.AddRange(ReadSlots(directory));
+        manifest.MetadataVersion = SaveMetadataExtractor.Version;
 
         progress?.Report("Writing manifest");
         ReleaseClaim(directory);
@@ -330,7 +331,7 @@ public sealed class BackupService
         {
             try
             {
-                snapshots.Add(BackupSnapshot.Load(directory));
+                snapshots.Add(RefreshStaleMetadata(BackupSnapshot.Load(directory)));
             }
             catch (Exception ex)
             {
@@ -350,6 +351,31 @@ public sealed class BackupService
         });
 
         return snapshots;
+    }
+
+    private static BackupSnapshot RefreshStaleMetadata(BackupSnapshot snapshot)
+    {
+        // A manifest from a later schema loads with unknown fields skipped, so a rewrite would drop them.
+        if (snapshot.Manifest is not { } manifest
+            || manifest.SchemaVersion > BackupManifest.CurrentSchemaVersion
+            || manifest.MetadataVersion >= SaveMetadataExtractor.Version)
+        {
+            return snapshot;
+        }
+
+        try
+        {
+            manifest.Slots.Clear();
+            manifest.Slots.AddRange(ReadSlots(snapshot.DirectoryPath));
+            manifest.MetadataVersion = SaveMetadataExtractor.Version;
+            WriteManifest(snapshot.DirectoryPath, manifest);
+
+            return BackupSnapshot.Load(snapshot.DirectoryPath);
+        }
+        catch (Exception)
+        {
+            return snapshot;
+        }
     }
 
     /// <summary>

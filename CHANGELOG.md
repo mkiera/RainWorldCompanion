@@ -16,9 +16,9 @@ worded as things ended up. The pre-release sections stay for their tags.
 - A save from a Rain Meadow session shows what is inside what, instead of
   reporting every relationship as a shape the app could not read. Editing one
   keeps each belly attached to the player it belongs to.
-- A save already stored in the library is read again once the app can read
-  more out of it, so its details update instead of staying what an older
-  version saw.
+- A save already stored in the library, and the saves inside a backup, are
+  read again once the app can read more out of them, so their details update
+  instead of staying what an older version saw.
 
 ## 1.2.1 - 2026-08-29
 
