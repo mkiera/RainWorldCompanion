@@ -163,8 +163,9 @@ the chain, so a spear sits inside the lizard inside whatever ate the lizard. Eac
 the save knows about that entity: a pearl's type and colour, a creature's feeling towards you and
 whether it is tamed, a spear's properties.
 
-Backups taken before this version recorded no entity ids, so their contents are drawn flat, and a
-line under the tree counts anything written in a shape the app does not read.
+A backup or library save stored by an older version is read again the first time this one lists
+it, so it draws the same as one taken today. A line under the tree counts anything written in a
+shape the app does not read.
 
 </details>
 

@@ -81,6 +81,24 @@ public class BackupMetadataRefreshTests
     }
 
     [Fact]
+    public void A_reparse_restores_the_entity_ids_the_devourment_tree_nests_by()
+    {
+        using var world = new BackupWorld();
+        var snapshot = world.Service.CreateBackup("first", null);
+
+        MakeStale(snapshot);
+
+        var states = Assert.Single(world.Service.ListBackups())
+            .Manifest!.Slots
+            .SelectMany(slot => slot.Campaigns)
+            .SelectMany(campaign => campaign.DevourmentStates)
+            .ToList();
+
+        Assert.NotEmpty(states);
+        Assert.All(states, state => Assert.NotEqual("", state.PredatorId));
+    }
+
+    [Fact]
     public void What_the_snapshot_records_about_itself_survives_the_reparse()
     {
         using var world = new BackupWorld();
