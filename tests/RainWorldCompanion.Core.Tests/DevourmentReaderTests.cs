@@ -69,8 +69,32 @@ public class DevourmentReaderTests
         Assert.True(campaign.DevourmentStates[1].PreyIsItem);
     }
 
+    /// <summary>Rain Meadow saves put the two player keys after the food value.</summary>
     [Fact]
-    public void A_value_that_does_not_split_into_four_parts_is_skipped_rather_than_thrown_on()
+    public void Parts_after_the_fourth_do_not_stop_the_field_being_read()
+    {
+        var campaign = CampaignFixture.Campaign(
+            CampaignFixture.Field("SAV STATE NUMBER", "Yellow"),
+            CampaignFixture.Field(
+                "DEVOURMENTSTATE",
+                string.Join(
+                    CampaignFixture.DevourmentSeparator,
+                    Predator,
+                    CampaignFixture.Creature("PinkLizard", "ID.5030.5489"),
+                    "Healing",
+                    "4",
+                    "903948047",
+                    "")));
+
+        var relationship = Assert.Single(campaign.DevourmentStates);
+        Assert.Equal("Slugcat", relationship.PredatorType);
+        Assert.Equal("PinkLizard", relationship.PreyType);
+        Assert.Equal("Healing", relationship.Status);
+        Assert.Equal(4, relationship.FoodValue);
+    }
+
+    [Fact]
+    public void A_value_that_splits_into_fewer_than_four_parts_is_skipped_rather_than_thrown_on()
     {
         var campaign = CampaignFixture.Campaign(
             CampaignFixture.Field("SAV STATE NUMBER", "Yellow"),

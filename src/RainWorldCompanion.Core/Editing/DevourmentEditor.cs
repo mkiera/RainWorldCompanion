@@ -27,29 +27,47 @@ public static class DevourmentStatus
 }
 
 /// <summary>
-/// The mod writes <c>{pred}&lt;dvD&gt;{prey}&lt;dvD&gt;{status}&lt;dvD&gt;{food}</c> and reads it
-/// back by splitting on the same separator and taking four parts. A field that does not split into
-/// four is carried as the text it arrived as and written back untouched.
+/// The mod writes <c>{pred}&lt;dvD&gt;{prey}&lt;dvD&gt;{status}&lt;dvD&gt;{food}</c>, and from an
+/// online session two further parts naming the Rain Meadow player who owns each side. Parts past
+/// the fourth are kept as they arrived and written back where they were. A field with fewer than
+/// four parts is carried as the text it arrived as and written back untouched.
 /// </summary>
 public sealed class DevourmentEntry
 {
     private const string PartSeparator = DevourmentReader.PartSeparator;
 
-    private DevourmentEntry(string raw, string predator, string prey, string status, string food, bool wellFormed)
+    private readonly List<string> _extra;
+
+    private DevourmentEntry(
+        string raw,
+        string predator,
+        string prey,
+        string status,
+        string food,
+        List<string> extra,
+        bool wellFormed)
     {
         Raw = raw;
         Predator = predator;
         Prey = prey;
         Status = status;
         Food = food;
+        _extra = extra;
         IsWellFormed = wellFormed;
     }
 
     /// <summary>The field value as it was read, which is what a malformed entry is written back as.</summary>
     public string Raw { get; }
 
-    /// <summary>False when the field did not split into the four parts the mod writes.</summary>
+    /// <summary>False when the field split into fewer than the four parts the mod writes.</summary>
     public bool IsWellFormed { get; }
+
+    /// <summary>What came after the food value, which for an online save is the two player keys.
+    /// Held so parts this app has no use for still survive an edit.</summary>
+    public IReadOnlyList<string> Extra => _extra;
+
+    /// <summary>Which Rain Meadow player the predator belongs to, empty when the save names none.</summary>
+    public string PredatorPlayerKey => _extra.Count > 0 ? _extra[0] : "";
 
     public string Predator { get; internal set; }
 
@@ -79,9 +97,23 @@ public sealed class DevourmentEntry
     {
         string[] parts = value.Split(PartSeparator, StringSplitOptions.None);
 
-        return parts.Length == 4
-            ? new DevourmentEntry(value, parts[0], parts[1], parts[2], parts[3], wellFormed: true)
-            : new DevourmentEntry(value, "", "", "", "", wellFormed: false);
+        return parts.Length >= 4
+            ? new DevourmentEntry(value, parts[0], parts[1], parts[2], parts[3], [.. parts.Skip(4)], wellFormed: true)
+            : new DevourmentEntry(value, "", "", "", "", [], wellFormed: false);
+    }
+
+    /// <summary>The part is added when the entry has none, because the mod reads a part that is not
+    /// there as no player at all.</summary>
+    internal void SetPredatorPlayerKey(string key)
+    {
+        if (_extra.Count > 0)
+        {
+            _extra[0] = key;
+        }
+        else if (key.Length > 0)
+        {
+            _extra.Add(key);
+        }
     }
 
     internal static DevourmentEntry Create(string predator, string prey, string status, string food)
@@ -91,11 +123,12 @@ public sealed class DevourmentEntry
             prey,
             status,
             food,
+            [],
             wellFormed: true);
 
     /// <summary>The field value to write, which for an entry this app could not read is the original.</summary>
     public string ToFieldValue() => IsWellFormed
-        ? string.Join(PartSeparator, Predator, Prey, Status, Food)
+        ? string.Join(PartSeparator, new[] { Predator, Prey, Status, Food }.Concat(_extra))
         : Raw;
 }
 
@@ -244,7 +277,11 @@ public sealed class DevourmentEditState
             return false;
         }
 
+        // Read before the move, so the entry's own key is not what the new predator is matched to.
+        string playerKey = PlayerKeyFor(newPredatorId);
+
         entry.Predator = predatorBlob;
+        entry.SetPredatorPlayerKey(playerKey);
 
         // The mod puts a swallowed thing in the room its predator is in, so it follows the move. An
         // item keeps the rest of its coordinate, which a creature does not carry at all.
@@ -342,8 +379,7 @@ public sealed class DevourmentEditState
             predator?.Room ?? "",
             predator?.Node ?? 0);
 
-        _entries.Add(DevourmentEntry.Create(predatorBlob, prey, status, food));
-        _entriesChanged = true;
+        AddEntry(predatorBlob, prey, status, food);
 
         return id;
     }
@@ -364,10 +400,36 @@ public sealed class DevourmentEditState
             ? ItemBlobBuilder.Build(type, id, "")
             : ItemBlobBuilder.BuildBeside(type, id, predator);
 
-        _entries.Add(DevourmentEntry.Create(predatorBlob, prey, status, food));
-        _entriesChanged = true;
+        AddEntry(predatorBlob, prey, status, food);
 
         return id;
+    }
+
+    private void AddEntry(string predatorBlob, string prey, string status, string food)
+    {
+        DevourmentEntry entry = DevourmentEntry.Create(predatorBlob, prey, status, food);
+        entry.SetPredatorPlayerKey(PlayerKeyFor(DevourmentReader.CreatureIdOf(predatorBlob)));
+
+        _entries.Add(entry);
+        _entriesChanged = true;
+    }
+
+    /// <summary>An online save names the player each predator belongs to, so a row put under a
+    /// predator has to carry the same name as the rows already there or the mod hands it to whoever
+    /// holds that entity id instead.</summary>
+    private string PlayerKeyFor(string? predatorId)
+    {
+        if (predatorId is not { Length: > 0 })
+        {
+            return "";
+        }
+
+        return _entries
+            .Where(entry => entry.IsWellFormed
+                && entry.PredatorPlayerKey.Length > 0
+                && string.Equals(entry.PredatorId, predatorId, StringComparison.Ordinal))
+            .Select(entry => entry.PredatorPlayerKey)
+            .FirstOrDefault() ?? "";
     }
 
     /// <summary>Setting the liking to zero takes the whole relationship out, along with what the

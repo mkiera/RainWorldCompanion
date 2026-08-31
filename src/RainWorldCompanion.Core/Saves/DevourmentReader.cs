@@ -6,7 +6,9 @@ using RainWorldCompanion.Core.Saves.Models;
 namespace RainWorldCompanion.Core.Saves;
 
 /// <summary>One DEVOURMENTSTATE field holds one relationship, split on &lt;dvD&gt; into predator,
-/// prey, status and food value. Predator and prey are the game's own serialized forms.</summary>
+/// prey, status and food value. Predator and prey are the game's own serialized forms. A save from
+/// an online session carries two more parts after the food value, naming the Rain Meadow player who
+/// owns the predator and the one who owns the prey.</summary>
 public static class DevourmentReader
 {
     /// <summary>Separates the four parts of one relationship.</summary>
@@ -29,8 +31,9 @@ public static class DevourmentReader
 
     private const int CreatureIdIndex = 1;
 
-    /// <summary>False for anything that does not split into exactly four parts or that carries no
-    /// predator, prey or status text, so a field written by a newer mod version costs one row.</summary>
+    /// <summary>False for anything that splits into fewer than four parts or that carries no
+    /// predator, prey or status text, so a field written by a newer mod version costs one row. Parts
+    /// past the fourth are read past, not rejected.</summary>
     public static bool TryRead(string? value, out DevourmentRelationship? relationship)
     {
         relationship = null;
@@ -41,7 +44,7 @@ public static class DevourmentReader
         }
 
         string[] parts = value.Split(PartSeparator, StringSplitOptions.None);
-        if (parts.Length != 4)
+        if (parts.Length < 4)
         {
             return false;
         }

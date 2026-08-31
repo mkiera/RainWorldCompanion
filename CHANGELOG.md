@@ -13,6 +13,10 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- A save from a Rain Meadow session shows what is inside what, instead of
+  reporting every relationship as a shape the app could not read. Editing one
+  keeps each belly attached to the player it belongs to.
+
 ## 1.2.1 - 2026-08-29
 
 - The buttons across the top are split into groups, with a line between one
