@@ -11,7 +11,9 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
-## Unreleased
+## 1.2.3 - 2026-09-01
+
+- Launch Rain World now starts the game through Steam.
 
 ## 1.2.2 - 2026-08-31
 
