@@ -18,7 +18,7 @@ internal static class WorkshopLink
     /// <param name="report">Told why nothing opened, when neither did.</param>
     public static void Open(string url, Action<string>? report = null)
     {
-        if (url.Length == 0 || TryStart(SteamOpenPrefix + url))
+        if (url.Length == 0 || TryStart(UrlForSteam(url)))
         {
             return;
         }
@@ -28,6 +28,10 @@ internal static class WorkshopLink
             report?.Invoke(problem);
         }
     }
+
+    internal static string UrlForSteam(string url) => url.StartsWith("steam:", StringComparison.OrdinalIgnoreCase)
+        ? url
+        : SteamOpenPrefix + url;
 
     private static bool TryStart(string url) => TryStart(url, out _);
 

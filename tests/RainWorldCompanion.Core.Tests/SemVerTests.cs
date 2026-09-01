@@ -97,6 +97,12 @@ public class SemVerTests
     }
 
     [Fact]
+    public void A_branch_build_after_a_released_beta_ranks_above_the_stable_release()
+    {
+        Assert.True(Parse("1.2.3-alpha.2") > Parse("1.2.2"));
+    }
+
+    [Fact]
     public void A_release_outranks_every_prerelease_of_the_same_version()
     {
         Assert.True(Parse("1.1.0") > Parse("1.1.0-beta.1"));

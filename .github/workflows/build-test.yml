@@ -73,6 +73,16 @@ jobs:
             $count = [int]$Matches.count
           }
 
+          $latestStable = ''
+          foreach ($candidate in @(git tag --list 'v[0-9]*')) {
+            if ($candidate -notmatch '^v(?<core>\d+\.\d+\.\d+)$') { continue }
+
+            $candidateCore = $Matches.core
+            if (-not $latestStable -or (Compare-Core $candidateCore $latestStable) -gt 0) {
+              $latestStable = $candidateCore
+            }
+          }
+
           $tagCore = $tag
           $tagPre = ''
           $dash = $tag.IndexOf('-')
@@ -92,6 +102,15 @@ jobs:
             # The props file aims past the last tag, so the branch is heading somewhere further
             # out than the next patch.
             $version = "$aimedCore-alpha.$count"
+          }
+          elseif ($tagPre -and $latestStable -and (Compare-Core $latestStable $tagCore) -ge 0) {
+            # A beta branch does not contain main's merge commit, so git describe can still find
+            # its beta tag after the matching stable release is out. Branch builds must move past
+            # that release instead of becoming an update that ranks below it.
+            $p = $latestStable -split '\.'
+            $nextCore = ('{0}.{1}.{2}' -f $p[0], $p[1], ([int]$p[2] + 1))
+            $base = if ((Compare-Core $aimedCore $nextCore) -gt 0) { $aimedCore } else { $nextCore }
+            $version = "$base-alpha.$count"
           }
           elseif ($tagPre) {
             # Extending the tag's own name, so beta.1 with 7 commits on it ranks above beta.1 and
