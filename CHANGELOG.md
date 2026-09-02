@@ -11,6 +11,11 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## Unreleased
+
+- What a mod records inside a campaign is shown, and offered for editing,
+  only when the slot already carries it or that mod is installed.
+
 ## 1.2.3 - 2026-09-01
 
 - Launch Rain World now starts the game through Steam.
@@ -19,7 +24,7 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 - A save from a Rain Meadow session shows what is inside what, instead of
   reporting every relationship as a shape the app could not read. Editing one
-  keeps each belly attached to the player it belongs to.
+  keeps each entry attached to the player it belongs to.
 - A save already stored in the library, and the saves inside a backup, are
   read again once the app can read more out of them, so their details update
   instead of staying what an older version saw. A backup taken before entity
@@ -29,7 +34,7 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 - A save from a Rain Meadow session shows what is inside what, instead of
   reporting every relationship as a shape the app could not read. Editing one
-  keeps each belly attached to the player it belongs to.
+  keeps each entry attached to the player it belongs to.
 - A save already stored in the library, and the saves inside a backup, are
   read again once the app can read more out of them, so their details update
   instead of staying what an older version saw.
@@ -246,7 +251,6 @@ worded as things ended up. The pre-release sections stay for their tags.
   them into any slot.
 - Copy one slot onto another, and export or import a save as a single `.rwsave`
   file.
-- Read Rain Meadow's online saves beside the local ones, and show what a
-  Devourment campaign is carrying.
+- Read Rain Meadow's online saves beside the local ones.
 - The app was called Rain World Save Manager until this release and moves its
   own folders on first launch.

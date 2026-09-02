@@ -175,7 +175,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         SaveEditSession session,
         CampaignRecordRef campaign,
         CampaignSummary original,
-        ExpansionPresence? expansions = null)
+        ExpansionPresence? expansions = null,
+        bool devourmentInstalled = false)
     {
         _session = session;
         _campaign = campaign;
@@ -212,7 +213,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
 
         BuildRawFields();
 
-        Devourment = new DevourmentEditViewModel(session, campaign, denPos, AfterChange, expansions);
+        Devourment = new DevourmentEditViewModel(
+            session, campaign, denPos, AfterChange, expansions, devourmentInstalled);
 
         _loading = false;
 
@@ -236,7 +238,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     /// <summary>Every field, whether the search is showing it or not.</summary>
     public IReadOnlyList<RawFieldRow> RawFields => _rawFields;
 
-    /// <summary>Built for every campaign, not only the ones carrying Devourment data.</summary>
+    /// <summary>Built for every campaign, and it decides for itself whether it is shown.</summary>
     public DevourmentEditViewModel Devourment { get; }
 
     public string RawFieldCountText => _rawFields.Count == VisibleRawFields.Count

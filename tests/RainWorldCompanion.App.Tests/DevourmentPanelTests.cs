@@ -57,6 +57,22 @@ public class DevourmentPanelTests : IDisposable
         new CampaignSummary { SlugcatId = _campaign.SlugcatId },
         expansions).Devourment;
 
+    private DevourmentEditViewModel PanelFor(string fixture, bool modInstalled)
+    {
+        var path = Path.Combine(_directory.Path, fixture);
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", fixture), path, true);
+
+        SaveEditSession session = SaveEditSession.Open(path);
+        CampaignRecordRef campaign = session.Campaigns[0];
+
+        return new CampaignEditViewModel(
+            session,
+            campaign,
+            new CampaignSummary { SlugcatId = campaign.SlugcatId },
+            null,
+            modInstalled).Devourment;
+    }
+
     private DevourmentEditState Stored()
         => DevourmentEditState.Read(_session.GetRecordBody(_campaign));
 
@@ -929,5 +945,23 @@ public class DevourmentPanelTests : IDisposable
         Assert.Equal(
             5,
             editor.RawFields.Count(row => row.Key == DevourmentEditState.EntryField));
+    }
+
+    [Fact]
+    public void The_panel_is_offered_when_the_slot_carries_entries_and_the_mod_is_not_installed()
+    {
+        Assert.True(Panel().IsVisible);
+    }
+
+    [Fact]
+    public void The_panel_is_left_out_of_a_slot_that_carries_none_when_the_mod_is_not_installed()
+    {
+        Assert.False(PanelFor("sav2.bin", modInstalled: false).IsVisible);
+    }
+
+    [Fact]
+    public void The_panel_is_offered_on_a_slot_that_carries_none_when_the_mod_is_installed()
+    {
+        Assert.True(PanelFor("sav2.bin", modInstalled: true).IsVisible);
     }
 }

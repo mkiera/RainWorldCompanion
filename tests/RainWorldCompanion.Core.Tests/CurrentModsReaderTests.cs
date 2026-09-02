@@ -522,4 +522,20 @@ public class CurrentModsReaderTests
         Assert.Equal("broken", mod.Id);
         Assert.Equal(new[] { "moreslugcats", "expedition" }, mod.Requirements);
     }
+
+    [Fact]
+    public void A_mod_is_found_by_id_whether_it_sits_on_disk_or_only_in_the_enabled_list()
+    {
+        using var onDisk = new Machine();
+        onDisk.InstallMod("Devourment-mod", """{"id": "devourment"}""");
+
+        using var turnedOn = new Machine();
+        turnedOn.TurnOn("devourment");
+
+        using var bare = new Machine();
+
+        Assert.True(onDisk.Read().Has("Devourment"));
+        Assert.True(turnedOn.Read().Has("devourment"));
+        Assert.False(bare.Read().Has("devourment"));
+    }
 }

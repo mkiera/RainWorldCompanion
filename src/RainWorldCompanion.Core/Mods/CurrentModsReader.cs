@@ -12,6 +12,11 @@ public sealed record CurrentMods(ModListSnapshot Enabled, IReadOnlyList<ModEntry
     public static CurrentMods NothingRead(string? note) => new(
         new ModListSnapshot { Note = note },
         Array.Empty<ModEntry>());
+
+    // The enabled list counts too: a mod the game has turned on but that was not found on disk is
+    // still one the player has.
+    public bool Has(string modId) =>
+        Installed.Concat(Enabled.Mods).Any(m => string.Equals(m.Id, modId, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>
