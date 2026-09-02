@@ -13,6 +13,8 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.4-beta.1 - 2026-09-01
+
 - What a mod records inside a campaign is shown, and offered for editing,
   only when the slot already carries it or that mod is installed.
 

@@ -15,7 +15,7 @@
          only while they are empty, so setting either here would pin the exe's version resource at
          whatever was last typed in this file. A build whose version disagrees with its tag keeps
          being offered its own release as an update, forever. -->
-    <Version>1.2.3</Version>
+    <Version>1.2.4</Version>
 
     <!-- Stamped into the exe's Win32 version resource. An executable carrying no company or
          product name reads as suspicious to antivirus heuristics, which is the same reason the
