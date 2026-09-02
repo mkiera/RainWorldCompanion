@@ -852,7 +852,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             session,
             record,
             campaign.Summary,
-            ExpansionDetector.Detect(_settings.GameInstallPath));
+            ExpansionDetector.Detect(_settings.GameInstallPath),
+            _currentMods?.Has(ModConfigReader.DevourmentModId) ?? false);
         _openEditor = campaign;
     }
 

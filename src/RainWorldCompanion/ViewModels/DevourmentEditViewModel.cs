@@ -65,7 +65,8 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         CampaignRecordRef campaign,
         string denPos,
         Action changed,
-        ExpansionPresence? expansions = null)
+        ExpansionPresence? expansions = null,
+        bool modInstalled = false)
     {
         _session = session;
         _campaign = campaign;
@@ -74,6 +75,9 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
         _expansions = expansions ?? ExpansionPresence.Unknown;
 
         State = DevourmentEditState.Read(session.GetRecordBody(campaign));
+
+        IsVisible = modInstalled
+            || session.Campaigns.Any(c => session.HasField(c, DevourmentEditState.EntryField));
 
         foreach (DevourmentEntry entry in State.Entries)
         {
@@ -112,6 +116,10 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     public bool HasWarnings => Warnings.Count > 0;
 
     public bool HasRows => State.Entries.Count > 0;
+
+    // Whether to offer the panel at all. Read once, at open: a slot that carries nothing and a
+    // machine without the mod has no use for it.
+    public bool IsVisible { get; }
 
     public IEnumerable<DevourmentEditNode> AllNodes => Roots.SelectMany(root => root.Flatten());
 

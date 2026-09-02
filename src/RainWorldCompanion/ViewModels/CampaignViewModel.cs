@@ -347,16 +347,12 @@ public sealed partial class CampaignViewModel : ObservableObject
     /// </summary>
     public string UnreadDevourmentText { get; }
 
-    /// <summary>
-    /// True only when the record held nothing at all. The unread count is part of the test: a
-    /// campaign with unreadable fields has no rows to show, but saying it recorded nothing would
-    /// contradict the count on the collapsed header.
-    /// </summary>
-    public bool HasNothingDevourment =>
-        Summary.DevourmentStateCount == 0
-        && DevourmentRoots.Count == 0
-        && SwallowedItems.Count == 0
-        && HeldItems.Count == 0;
+    // Counts fields this app could not read, so the header still stands over the line reporting them.
+    public bool HasAnyDevourment =>
+        Summary.DevourmentStateCount > 0
+        || DevourmentRoots.Count > 0
+        || SwallowedItems.Count > 0
+        || HeldItems.Count > 0;
 
     [RelayCommand]
     private void Toggle() => IsExpanded = !IsExpanded;

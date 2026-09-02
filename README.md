@@ -155,23 +155,6 @@ without the mod sees one set of saves and no toggle over them.
 <br>
 
 <details>
-<summary><b>Devourment</b>: what a campaign is carrying, drawn as a tree</summary>
-<br>
-
-The mod records one predator and prey pair per line. The panel follows the entity ids and draws
-the chain, so a spear sits inside the lizard inside whatever ate the lizard. Each row shows what
-the save knows about that entity: a pearl's type and colour, a creature's feeling towards you and
-whether it is tamed, a spear's properties.
-
-A backup or library save stored by an older version is read again the first time this one lists
-it, so it draws the same as one taken today. A line under the tree counts anything written in a
-shape the app does not read.
-
-</details>
-
-<br>
-
-<details>
 <summary><b>RandomBuff</b>: save data backed up and restored</summary>
 <br>
 

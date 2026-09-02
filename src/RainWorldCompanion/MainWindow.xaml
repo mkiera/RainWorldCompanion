@@ -915,94 +915,96 @@
                             Command="{Binding AddGateCommand}" />
                 </StackPanel>
 
-                <DockPanel Margin="0,14,0,7">
-                    <TextBlock DockPanel.Dock="Left" Text="SWALLOWED" Margin="0,0,8,0"
-                               Style="{StaticResource Text.SectionLabel}" />
-                    <TextBlock DockPanel.Dock="Right" Text="{Binding Devourment.CountText}"
-                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center"
-                               Margin="8,0,0,0" />
-                    <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
-                </DockPanel>
+                <StackPanel Visibility="{Binding Devourment.IsVisible, Converter={StaticResource BoolToVis}}">
+                    <DockPanel Margin="0,14,0,7">
+                        <TextBlock DockPanel.Dock="Left" Text="SWALLOWED" Margin="0,0,8,0"
+                                   Style="{StaticResource Text.SectionLabel}" />
+                        <TextBlock DockPanel.Dock="Right" Text="{Binding Devourment.CountText}"
+                                   Style="{StaticResource Text.Tiny}" VerticalAlignment="Center"
+                                   Margin="8,0,0,0" />
+                        <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
+                    </DockPanel>
 
-                <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
-                           Text="What is inside what. Drag a row onto a creature to put it inside that one, use the arrows to reorder it where it is, and press Edit on a row for its values." />
-
-                <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="4"
-                        Padding="9,4,9,6"
-                        Visibility="{Binding Devourment.HasRows, Converter={StaticResource BoolToVis}}">
-                    <StackPanel DataContext="{Binding Devourment}">
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="96" />
-                                <ColumnDefinition Width="58" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="CONTENTS" Style="{StaticResource Text.SectionLabel}" />
-                            <TextBlock Grid.Column="1" Text="STATE" Style="{StaticResource Text.SectionLabel}" />
-                            <TextBlock Grid.Column="2" Text="FOOD" Style="{StaticResource Text.SectionLabel}" />
-                        </Grid>
-
-                        <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
-                            <ItemsControl ItemsSource="{Binding Roots}"
-                                          behaviors:ListDragDropBehavior.Move="{Binding}" />
-                        </ScrollViewer>
-                    </StackPanel>
-                </Border>
-
-                <TextBlock Text="This campaign has swallowed nothing. Adding a creature below puts one in."
-                           Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
-                           Visibility="{Binding Devourment.HasRows, Converter={StaticResource NotBoolToVis}}" />
-
-                <StackPanel DataContext="{Binding Devourment}" Margin="0,9,0,0">
-                    <WrapPanel>
-                        <StackPanel Style="{StaticResource Edit.FieldGroup}">
-                            <TextBlock Text="Put a creature inside" Style="{StaticResource Text.Tiny}" />
-                            <ComboBox Width="210" Margin="0,2,0,0"
-                                      ItemsSource="{Binding Predators}"
-                                      SelectedItem="{Binding NewCreaturePredator, Mode=TwoWay}"
-                                      ToolTip="Anything already in this campaign can hold something, and so can you." />
-                        </StackPanel>
-                        <StackPanel Style="{StaticResource Edit.FieldGroup}">
-                            <DockPanel Width="240">
-                                <TextBlock DockPanel.Dock="Right" Text="{Binding CreatureMatchCountText}"
-                                           Style="{StaticResource Text.Tiny}" Margin="6,0,0,0" />
-                                <TextBlock Text="Search" Style="{StaticResource Text.Tiny}" />
-                            </DockPanel>
-                            <TextBox Width="240" Margin="0,2,0,0"
-                                     ToolTip="Matches the base game, Downpour and The Watcher. Anything can be typed, matched or not."
-                                     Text="{Binding NewCreatureSearch, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Style="{StaticResource Edit.FieldGroup}">
-                            <TextBlock Text="Put in" Style="{StaticResource Text.Tiny}" />
-                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
-                                <RadioButton Content="A creature" GroupName="AddKind" Margin="0,0,10,0"
-                                             VerticalAlignment="Center"
-                                             IsChecked="{Binding AddingACreature, Mode=TwoWay}" />
-                                <RadioButton Content="An item" GroupName="AddKind" VerticalAlignment="Center"
-                                             IsChecked="{Binding AddingAnItem, Mode=TwoWay}" />
-                            </StackPanel>
-                        </StackPanel>
-                        <Button Content="Add" Style="{StaticResource Button.Small}"
-                                VerticalAlignment="Bottom" Margin="0,0,0,8"
-                                ToolTip="Puts whatever is typed in the box into the chosen stomach, matched or not."
-                                Command="{Binding AddCommand}" />
-                    </WrapPanel>
+                    <TextBlock Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,7"
+                               Text="What is inside what. Drag a row onto a creature to put it inside that one, use the arrows to reorder it where it is, and press Edit on a row for its values." />
 
                     <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="4"
-                            Padding="8,8,8,4">
-                        <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
-                            <Grid>
-                                <ItemsControl ItemsSource="{Binding CreatureMatches}"
-                                              ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
-                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
-                                              Visibility="{Binding AddingAnItem, Converter={StaticResource NotBoolToVis}}" />
-                                <ItemsControl ItemsSource="{Binding ItemMatches}"
-                                              ItemTemplate="{StaticResource ItemSuggestionTemplate}"
-                                              ItemsPanel="{StaticResource WrapPanelTemplate}"
-                                              Visibility="{Binding AddingAnItem, Converter={StaticResource BoolToVis}}" />
+                            Padding="9,4,9,6"
+                            Visibility="{Binding Devourment.HasRows, Converter={StaticResource BoolToVis}}">
+                        <StackPanel DataContext="{Binding Devourment}">
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="96" />
+                                    <ColumnDefinition Width="58" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="CONTENTS" Style="{StaticResource Text.SectionLabel}" />
+                                <TextBlock Grid.Column="1" Text="STATE" Style="{StaticResource Text.SectionLabel}" />
+                                <TextBlock Grid.Column="2" Text="FOOD" Style="{StaticResource Text.SectionLabel}" />
                             </Grid>
-                        </ScrollViewer>
+
+                            <ScrollViewer MaxHeight="400" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Roots}"
+                                              behaviors:ListDragDropBehavior.Move="{Binding}" />
+                            </ScrollViewer>
+                        </StackPanel>
                     </Border>
+
+                    <TextBlock Text="This campaign has swallowed nothing. Adding a creature below puts one in."
+                               Style="{StaticResource Text.Muted}" TextWrapping="Wrap"
+                               Visibility="{Binding Devourment.HasRows, Converter={StaticResource NotBoolToVis}}" />
+
+                    <StackPanel DataContext="{Binding Devourment}" Margin="0,9,0,0">
+                        <WrapPanel>
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                                <TextBlock Text="Put a creature inside" Style="{StaticResource Text.Tiny}" />
+                                <ComboBox Width="210" Margin="0,2,0,0"
+                                          ItemsSource="{Binding Predators}"
+                                          SelectedItem="{Binding NewCreaturePredator, Mode=TwoWay}"
+                                          ToolTip="Anything already in this campaign can hold something, and so can you." />
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                                <DockPanel Width="240">
+                                    <TextBlock DockPanel.Dock="Right" Text="{Binding CreatureMatchCountText}"
+                                               Style="{StaticResource Text.Tiny}" Margin="6,0,0,0" />
+                                    <TextBlock Text="Search" Style="{StaticResource Text.Tiny}" />
+                                </DockPanel>
+                                <TextBox Width="240" Margin="0,2,0,0"
+                                         ToolTip="Matches the base game, Downpour and The Watcher. Anything can be typed, matched or not."
+                                         Text="{Binding NewCreatureSearch, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Style="{StaticResource Edit.FieldGroup}">
+                                <TextBlock Text="Put in" Style="{StaticResource Text.Tiny}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <RadioButton Content="A creature" GroupName="AddKind" Margin="0,0,10,0"
+                                                 VerticalAlignment="Center"
+                                                 IsChecked="{Binding AddingACreature, Mode=TwoWay}" />
+                                    <RadioButton Content="An item" GroupName="AddKind" VerticalAlignment="Center"
+                                                 IsChecked="{Binding AddingAnItem, Mode=TwoWay}" />
+                                </StackPanel>
+                            </StackPanel>
+                            <Button Content="Add" Style="{StaticResource Button.Small}"
+                                    VerticalAlignment="Bottom" Margin="0,0,0,8"
+                                    ToolTip="Puts whatever is typed in the box into the chosen stomach, matched or not."
+                                    Command="{Binding AddCommand}" />
+                        </WrapPanel>
+
+                        <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" CornerRadius="4"
+                                Padding="8,8,8,4">
+                            <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                                <Grid>
+                                    <ItemsControl ItemsSource="{Binding CreatureMatches}"
+                                                  ItemTemplate="{StaticResource CreatureSuggestionTemplate}"
+                                                  ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                                  Visibility="{Binding AddingAnItem, Converter={StaticResource NotBoolToVis}}" />
+                                    <ItemsControl ItemsSource="{Binding ItemMatches}"
+                                                  ItemTemplate="{StaticResource ItemSuggestionTemplate}"
+                                                  ItemsPanel="{StaticResource WrapPanelTemplate}"
+                                                  Visibility="{Binding AddingAnItem, Converter={StaticResource BoolToVis}}" />
+                                </Grid>
+                            </ScrollViewer>
+                        </Border>
+                    </StackPanel>
                 </StackPanel>
 
                 <DockPanel Margin="0,14,0,7">
@@ -1312,7 +1314,8 @@
                                               ItemsPanel="{StaticResource WrapPanelTemplate}"
                                               Visibility="{Binding HasKills, Converter={StaticResource BoolToVis}}" />
 
-                                <DockPanel Margin="0,10,0,7">
+                                <DockPanel Margin="0,10,0,7"
+                                           Visibility="{Binding HasAnyDevourment, Converter={StaticResource BoolToVis}}">
                                     <TextBlock DockPanel.Dock="Left" Text="DEVOURMENT" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
                                     <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
@@ -1360,10 +1363,6 @@
                                               ItemTemplate="{StaticResource ChipTemplate}"
                                               ItemsPanel="{StaticResource WrapPanelTemplate}"
                                               Visibility="{Binding HasHeldItems, Converter={StaticResource BoolToVis}}" />
-
-                                <TextBlock Text="No Devourment state recorded."
-                                           Style="{StaticResource Text.Muted}"
-                                           Visibility="{Binding HasNothingDevourment, Converter={StaticResource BoolToVis}}" />
 
                                 </StackPanel>
                             </StackPanel>
