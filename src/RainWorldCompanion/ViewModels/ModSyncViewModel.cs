@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -67,7 +68,7 @@ public sealed partial class ModSyncRowViewModel : ObservableObject
 
             if (Wanted == IsOn)
             {
-                return "";
+                return _row.OrderChanges ? "will move in load order" : "";
             }
 
             return Wanted ? "will be turned on" : "will be turned off";
@@ -99,6 +100,7 @@ public sealed partial class ModSyncViewModel : ObservableObject
     private readonly ModSyncService _service;
     private ModSyncPlan? _plan;
     private ModListSnapshot? _recorded;
+    private string _applyReason = "changing mods in the Mods window";
 
     public ModSyncViewModel(ModSyncService service)
     {
@@ -139,6 +141,9 @@ public sealed partial class ModSyncViewModel : ObservableObject
     private string restorePointText = "";
 
     [ObservableProperty]
+    private string matchListButtonText = "Match the save";
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanLaunch))]
     private bool appliedSomething;
 
@@ -173,13 +178,22 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
             int on = _plan.Rows.Count(row => row.TurningOn);
             int off = _plan.Rows.Count(row => row.TurningOff);
+            int reordered = _plan.Rows.Count(row => row.OrderChanges);
+
+            if (on == 0 && off == 0)
+            {
+                return reordered == 0
+                    ? $"{_plan.OnCount} on. Nothing to apply."
+                    : $"{_plan.OnCount} on once applied. Restoring load order for {Count(reordered)}.";
+            }
+
+            string order = reordered == 0 ? "" : $" Restoring load order for {Count(reordered)}.";
 
             return (on, off) switch
             {
-                (0, 0) => $"{_plan.OnCount} on. Nothing to apply.",
-                ( > 0, 0) => $"{_plan.OnCount} on once applied. Turning on {on}.",
-                (0, > 0) => $"{_plan.OnCount} on once applied. Turning off {off}.",
-                _ => $"{_plan.OnCount} on once applied. Turning on {on}, turning off {off}.",
+                ( > 0, 0) => $"{_plan.OnCount} on once applied. Turning on {on}." + order,
+                (0, > 0) => $"{_plan.OnCount} on once applied. Turning off {off}." + order,
+                _ => $"{_plan.OnCount} on once applied. Turning on {on}, turning off {off}." + order,
             };
         }
     }
@@ -187,12 +201,58 @@ public sealed partial class ModSyncViewModel : ObservableObject
     public void Match(ModListSnapshot? recorded, string? sourceName)
     {
         _recorded = recorded;
+        _applyReason = recorded is null ? "changing mods in the Mods window" : "matching a save's mods";
+        MatchListButtonText = "Match the save";
         SourceText = recorded is null
             ? FreeText
             : $"Matching the mods {sourceName ?? "that save"} was played with.";
 
         ResultText = "";
         Refresh();
+    }
+
+    public void ImportList(string path)
+    {
+        if (IsBusy)
+        {
+            return;
+        }
+
+        try
+        {
+            ModListSnapshot imported = _service.ImportList(path);
+            string name = Path.GetFileNameWithoutExtension(path);
+
+            _recorded = imported;
+            _applyReason = "matching an imported mod list";
+            MatchListButtonText = "Match imported list";
+            SourceText = $"Matching the imported mod list \"{name}\".";
+            ResultText = "";
+            Refresh();
+            ResultText = $"Imported {Count(imported.Mods.Count)}. Review the ticks, then press Apply.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            ResultText = "The mod list could not be imported: " + ex.Message;
+        }
+    }
+
+    public void ExportList(string path)
+    {
+        if (IsBusy || _plan is null)
+        {
+            return;
+        }
+
+        try
+        {
+            int count = _service.ExportList(_plan, path);
+            ResultText = $"Exported {Count(count)} to {path}.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            ResultText = "The mod list could not be exported: " + ex.Message;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanRefresh))]
@@ -254,7 +314,7 @@ public sealed partial class ModSyncViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            Report(_service.Apply(_plan));
+            Report(_service.Apply(_plan, _applyReason));
         }
         catch (GameRunningException ex)
         {
@@ -285,6 +345,8 @@ public sealed partial class ModSyncViewModel : ObservableObject
         {
             IsBusy = false;
             _recorded = null;
+            _applyReason = "changing mods in the Mods window";
+            MatchListButtonText = "Match the save";
             SourceText = FreeText;
             Refresh();
         }
@@ -347,8 +409,8 @@ public sealed partial class ModSyncViewModel : ObservableObject
         }
 
         return _plan.NothingToDo
-            ? "This machine already has the mods that save was played with."
-            : "Ticked to match that save. Change any you would rather leave alone, then press Apply.";
+            ? "This machine already has the selected mod list."
+            : "Ticked to match the selected mod list. Change any you would rather leave alone, then press Apply.";
     }
 
     private string BuildRestorePointText()
@@ -447,4 +509,6 @@ public sealed partial class ModSyncViewModel : ObservableObject
         RestorePreviousCommand.NotifyCanExecuteChanged();
         RaiseChangeStates();
     }
+
+    private static string Count(int count) => count == 1 ? "1 mod" : $"{count} mods";
 }

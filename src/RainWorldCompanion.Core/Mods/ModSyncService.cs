@@ -61,6 +61,45 @@ public sealed class ModSyncService
 
     public ModSyncPlan BuildPlan(ModListSnapshot? recorded) => ModSyncPlan.Build(recorded, ReadCurrent());
 
+    public ModListSnapshot ImportList(string path) => ModListFile.Read(path);
+
+    public int ExportList(ModSyncPlan plan, string path)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        CurrentMods current = ReadCurrent();
+        var currentOrder = current.Enabled.Mods
+            .Select((mod, index) => (mod.Id, Order: mod.LoadOrder ?? index))
+            .GroupBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().Order, StringComparer.OrdinalIgnoreCase);
+
+        List<ModSyncRow> selected = plan.Rows
+            .Where(row => row.Wanted)
+            .OrderBy(row => row.WantedLoadOrder ?? currentOrder.GetValueOrDefault(row.Id, int.MaxValue))
+            .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var snapshot = new ModListSnapshot
+        {
+            GameVersion = plan.Diff.RecordedGameVersion ?? current.Enabled.GameVersion,
+            ReadTheEnabledList = true,
+            CheckedTheInstall = true,
+            CheckedTheWorkshop = true,
+            Mods = selected.Select((row, index) => new ModEntry
+            {
+                Id = row.Id,
+                Name = row.Name,
+                Version = row.RecordedVersion ?? row.Version,
+                WorkshopId = row.WorkshopId,
+                LoadOrder = index,
+            }).ToList(),
+        };
+
+        ModListFile.Write(path, snapshot);
+        return snapshot.Mods.Count;
+    }
+
     public ModStateRestorePoint? ReadRestorePoint() => Store.Read();
 
     public string? WhyNotNow()

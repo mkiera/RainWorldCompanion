@@ -84,7 +84,7 @@
                     Style="{StaticResource Button.Tiny}"
                     Command="{Binding RevertChangesCommand}" />
 
-            <Button DockPanel.Dock="Right" Content="Match the save" Margin="0,0,8,0"
+            <Button DockPanel.Dock="Right" Content="{Binding MatchListButtonText}" Margin="0,0,8,0"
                     Style="{StaticResource Button.Tiny}"
                     Command="{Binding MatchTheSaveCommand}"
                     Visibility="{Binding IsMatchingASave, Converter={StaticResource BoolToVis}}" />
@@ -124,9 +124,17 @@
         </Border>
 
         <DockPanel Grid.Row="5" Margin="0,12,0,0">
-            <Button DockPanel.Dock="Left" Content="Refresh"
-                    Command="{Binding RefreshCommand}"
-                    AutomationProperties.HelpText="Look at the mods folder again after subscribing in Steam" />
+            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                <Button Content="Refresh"
+                        Command="{Binding RefreshCommand}"
+                        AutomationProperties.HelpText="Look at the mods folder again after subscribing in Steam" />
+                <Button Content="Import list" Margin="8,0,0,0"
+                        Click="OnImportList"
+                        ToolTip="Choose a .rwmods file and tick its mods for review." />
+                <Button Content="Export list" Margin="8,0,0,0"
+                        Click="OnExportList"
+                        ToolTip="Save the currently ticked mods as a .rwmods file." />
+            </StackPanel>
 
             <Button DockPanel.Dock="Right" Content="Close" Click="OnClose" Margin="8,0,0,0" />
 

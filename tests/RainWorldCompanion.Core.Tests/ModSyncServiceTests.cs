@@ -147,6 +147,30 @@ public class ModSyncServiceTests
     }
 
     [Fact]
+    public void Apply_restores_an_imported_load_order_when_the_enabled_mods_already_match()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a", "mod.b");
+        machine.WriteOptions(OptionsFixture.Payload(
+            OptionsFixture.Enabled("mod.a", "mod.b"),
+            OptionsFixture.LoadOrder(("mod.a", "0"), ("mod.b", "1"))));
+        ModEntry first = ModLists.Mod("mod.a");
+        first.LoadOrder = 1;
+        ModEntry second = ModLists.Mod("mod.b");
+        second.LoadOrder = 0;
+        ModSyncPlan plan = machine.Service.BuildPlan(ModLists.Snapshot(null, first, second));
+
+        ModSyncResult result = machine.Service.Apply(plan, "matching an imported mod list");
+
+        Assert.True(result.Applied);
+        OptionsRead options = OptionsFile.Read(machine.SaveRoot);
+        Assert.Equal(1, options.LoadOrder["mod.a"]);
+        Assert.Equal(0, options.LoadOrder["mod.b"]);
+    }
+
+    [Fact]
     public void Apply_refuses_while_the_game_is_running_and_leaves_both_files_untouched()
     {
         using var machine = new Machine();
