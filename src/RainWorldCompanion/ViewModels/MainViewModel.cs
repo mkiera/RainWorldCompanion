@@ -3175,10 +3175,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    /// <summary>
-    /// Whatever was selected wins if it is still there, then the newest backup, then the live save
-    /// card, so the panel is never blank.
-    /// </summary>
     private void RestoreSelection(string? keepId, string? keepEntryId, bool keepLive)
     {
         LibraryEntryViewModel? entry = null;
@@ -3189,7 +3185,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             entry = FindEntryById(keepEntryId);
             if (entry is null)
             {
-                backup = FindById(keepId) ?? (keepEntryId is null ? Backups.FirstOrDefault() : null);
+                backup = FindById(keepId);
             }
         }
 

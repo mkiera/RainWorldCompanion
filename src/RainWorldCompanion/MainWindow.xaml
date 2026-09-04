@@ -2251,21 +2251,21 @@
                      open in the panel on the right while the library is being read on the left. -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="1,16,0,7">
                     <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
-                                 IsChecked="{Binding IsBackupsTabSelected, Mode=TwoWay}"
-                                 AutomationProperties.Name="Backups tab">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="BACKUPS" Style="{StaticResource ListTabText}" />
-                            <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
-                                       Margin="8,0,0,0" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </RadioButton>
-
-                    <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
                                  IsChecked="{Binding IsLibraryTabSelected, Mode=TwoWay}"
                                  AutomationProperties.Name="Library tab">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="LIBRARY" Style="{StaticResource ListTabText}" />
                             <TextBlock Text="{Binding LibraryCountText}" Style="{StaticResource Text.Muted}"
+                                       Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+
+                    <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
+                                 IsChecked="{Binding IsBackupsTabSelected, Mode=TwoWay}"
+                                 AutomationProperties.Name="Backups tab">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="BACKUPS" Style="{StaticResource ListTabText}" />
+                            <TextBlock Text="{Binding BackupCountText}" Style="{StaticResource Text.Muted}"
                                        Margin="8,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
                     </RadioButton>
