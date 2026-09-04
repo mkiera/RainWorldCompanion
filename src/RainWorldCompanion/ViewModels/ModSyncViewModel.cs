@@ -91,6 +91,48 @@ public sealed partial class ModSyncRowViewModel : ObservableObject
     }
 }
 
+public sealed class ModListProfileViewModel
+{
+    public ModListProfileViewModel(ModListProfile profile)
+    {
+        Profile = profile;
+    }
+
+    internal ModListProfile Profile { get; }
+
+    public Guid Id => Profile.Id;
+
+    public string Name => Profile.Name;
+
+    public string DetailText => $"{Count(Profile.Snapshot.Mods.Count)}, updated {Profile.UpdatedAt.LocalDateTime:d MMM HH:mm}";
+
+    public ModListSnapshot Snapshot => Profile.Snapshot;
+
+    private static string Count(int count) => count == 1 ? "1 mod" : $"{count} mods";
+}
+
+public sealed class ModListHistoryViewModel
+{
+    public ModListHistoryViewModel(ModListHistoryEntry entry)
+    {
+        Entry = entry;
+    }
+
+    internal ModListHistoryEntry Entry { get; }
+
+    public Guid Id => Entry.Id;
+
+    public string Reason => Entry.Reason;
+
+    public string DetailText => $"{Count(Entry.Snapshot.Mods.Count)}, saved {Entry.CapturedAt.LocalDateTime:d MMM HH:mm}";
+
+    public ModListSnapshot Snapshot => Entry.Snapshot;
+
+    public DateTimeOffset CapturedAt => Entry.CapturedAt;
+
+    private static string Count(int count) => count == 1 ? "1 mod" : $"{count} mods";
+}
+
 public sealed partial class ModSyncViewModel : ObservableObject
 {
     public const string SteamRunUrl = "steam://rungameid/" + CurrentModsReader.SteamAppId;
@@ -100,7 +142,9 @@ public sealed partial class ModSyncViewModel : ObservableObject
     private readonly ModSyncService _service;
     private ModSyncPlan? _plan;
     private ModListSnapshot? _recorded;
-    private string _applyReason = "changing mods in the Mods window";
+    private ModListSnapshot? _imported;
+    private ModListHistoryViewModel? _latestHistory;
+    private string _applyReason = "Before manual mod changes";
 
     public ModSyncViewModel(ModSyncService service)
     {
@@ -112,9 +156,12 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
     public ObservableCollection<ModSyncRowViewModel> Missing { get; } = new();
 
+    public ObservableCollection<ModListProfileViewModel> Profiles { get; } = new();
+
+    public ObservableCollection<ModListHistoryViewModel> History { get; } = new();
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
-    [NotifyCanExecuteChangedFor(nameof(RestorePreviousCommand))]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(MatchTheSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(RevertChangesCommand))]
@@ -129,7 +176,6 @@ public sealed partial class ModSyncViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProblem))]
     [NotifyCanExecuteChangedFor(nameof(ApplyCommand))]
-    [NotifyCanExecuteChangedFor(nameof(RestorePreviousCommand))]
     private string problemText = "";
 
     [ObservableProperty]
@@ -137,8 +183,17 @@ public sealed partial class ModSyncViewModel : ObservableObject
     private string resultText = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRestorePoint))]
-    private string restorePointText = "";
+    [NotifyPropertyChangedFor(nameof(HasCatalogMessage))]
+    private string catalogMessageText = "";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCurrentListSelected))]
+    [NotifyPropertyChangedFor(nameof(IsSavedListsSelected))]
+    private int selectedTabIndex;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSaveImportedAsProfile))]
+    private string suggestedProfileName = "";
 
     [ObservableProperty]
     private string matchListButtonText = "Match the save";
@@ -151,7 +206,43 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
     public bool HasResult => ResultText.Length > 0;
 
-    public bool HasRestorePoint => RestorePointText.Length > 0;
+    public bool HasCatalogMessage => CatalogMessageText.Length > 0;
+
+    public bool IsCurrentListSelected
+    {
+        get => SelectedTabIndex == 0;
+        set
+        {
+            if (value)
+            {
+                SelectedTabIndex = 0;
+            }
+        }
+    }
+
+    public bool IsSavedListsSelected
+    {
+        get => SelectedTabIndex == 1;
+        set
+        {
+            if (value)
+            {
+                SelectedTabIndex = 1;
+            }
+        }
+    }
+
+    public bool CanSaveImportedAsProfile => _imported is not null && SuggestedProfileName.Length > 0;
+
+    public bool HasProfiles => Profiles.Count > 0;
+
+    public bool HasHistory => History.Count > 0;
+
+    public bool HasLatestHistory => _latestHistory is not null;
+
+    public string LatestHistoryText => _latestHistory is null
+        ? ""
+        : $"Previous list: {Count(_latestHistory.Snapshot.Mods.Count)}, saved {_latestHistory.CapturedAt.LocalDateTime:d MMM HH:mm}";
 
     public bool CanLaunch => AppliedSomething && OfferLaunch;
 
@@ -201,11 +292,17 @@ public sealed partial class ModSyncViewModel : ObservableObject
     public void Match(ModListSnapshot? recorded, string? sourceName)
     {
         _recorded = recorded;
-        _applyReason = recorded is null ? "changing mods in the Mods window" : "matching a save's mods";
+        _imported = null;
+        SuggestedProfileName = "";
+        OnPropertyChanged(nameof(CanSaveImportedAsProfile));
+        _applyReason = recorded is null
+            ? "Before manual mod changes"
+            : $"Before matching save \"{sourceName ?? "selected save"}\"";
         MatchListButtonText = "Match the save";
         SourceText = recorded is null
             ? FreeText
             : $"Matching the mods {sourceName ?? "that save"} was played with.";
+        SelectedTabIndex = 0;
 
         ResultText = "";
         Refresh();
@@ -224,11 +321,15 @@ public sealed partial class ModSyncViewModel : ObservableObject
             string name = Path.GetFileNameWithoutExtension(path);
 
             _recorded = imported;
-            _applyReason = "matching an imported mod list";
+            _imported = imported;
+            SuggestedProfileName = name;
+            _applyReason = $"Before applying imported list \"{name}\"";
             MatchListButtonText = "Match imported list";
             SourceText = $"Matching the imported mod list \"{name}\".";
+            SelectedTabIndex = 0;
             ResultText = "";
             Refresh();
+            OnPropertyChanged(nameof(CanSaveImportedAsProfile));
             ResultText = $"Imported {Count(imported.Mods.Count)}. Review the ticks, then press Apply.";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
@@ -255,6 +356,171 @@ public sealed partial class ModSyncViewModel : ObservableObject
         }
     }
 
+    public void SaveImportedProfile(string name)
+    {
+        if (_imported is null || _plan is null)
+        {
+            return;
+        }
+
+        if (SaveProfile(name, _service.Snapshot(_plan)))
+        {
+            _imported = null;
+            SuggestedProfileName = "";
+            OnPropertyChanged(nameof(CanSaveImportedAsProfile));
+        }
+    }
+
+    public void SaveCurrentProfile(string name)
+    {
+        if (_plan is not null)
+        {
+            SaveProfile(name, _service.Snapshot(_plan));
+        }
+    }
+
+    public void RenameProfile(ModListProfileViewModel profile, string name)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        RunCatalogCommand(
+            new RainWorldCompanion.Core.Mods.RenameProfile(profile.Id, name),
+            $"Renamed saved list to \"{name.Trim()}\".");
+    }
+
+    public void ReplaceProfile(ModListProfileViewModel profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        if (_plan is not null)
+        {
+            RunCatalogCommand(
+                new RainWorldCompanion.Core.Mods.ReplaceProfile(profile.Id, _service.Snapshot(_plan)),
+                $"Replaced \"{profile.Name}\" with the currently ticked list.");
+        }
+    }
+
+    public void DeleteProfile(ModListProfileViewModel profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        RunCatalogCommand(
+            new RainWorldCompanion.Core.Mods.DeleteProfile(profile.Id),
+            $"Deleted saved list \"{profile.Name}\".");
+    }
+
+    public void LoadProfile(ModListProfileViewModel profile)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
+        LoadPreview(
+            profile.Snapshot,
+            $"Previewing saved list \"{profile.Name}\".",
+            "Match saved list",
+            $"Before applying profile \"{profile.Name}\"");
+    }
+
+    public void LoadHistory(ModListHistoryViewModel history)
+    {
+        ArgumentNullException.ThrowIfNull(history);
+        string when = history.CapturedAt.LocalDateTime.ToString("d MMM HH:mm");
+        LoadPreview(
+            history.Snapshot,
+            $"Previewing the mod list saved {when}.",
+            "Match saved list",
+            $"Before loading mod history from {when}");
+    }
+
+    public void PreviewLatestHistory()
+    {
+        if (_latestHistory is { } latest)
+        {
+            LoadHistory(latest);
+        }
+    }
+
+    public void ExportSnapshot(ModListSnapshot snapshot, string path)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        try
+        {
+            ModListFile.Write(path, snapshot);
+            ResultText = $"Exported {Count(snapshot.Mods.Count)} to {path}.";
+            CatalogMessageText = ResultText;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            ResultText = "The mod list could not be exported: " + ex.Message;
+            CatalogMessageText = ResultText;
+        }
+    }
+
+    private bool SaveProfile(string name, ModListSnapshot snapshot)
+    {
+        return RunCatalogCommand(
+            new RainWorldCompanion.Core.Mods.SaveProfile(name, snapshot),
+            $"Saved \"{name.Trim()}\" as a profile.");
+    }
+
+    private bool RunCatalogCommand(ModListCatalogCommand command, string success)
+    {
+        ModListCatalogResult result = _service.Catalog.Execute(command);
+        if (!result.Succeeded)
+        {
+            CatalogMessageText = result.Problem ?? "The saved lists could not be changed.";
+            ResultText = CatalogMessageText;
+            return false;
+        }
+
+        LoadCatalog(result.View, result.Warning);
+        ResultText = success;
+        return true;
+    }
+
+    private void LoadPreview(ModListSnapshot snapshot, string source, string matchButton, string applyReason)
+    {
+        _recorded = snapshot;
+        _imported = null;
+        SuggestedProfileName = "";
+        OnPropertyChanged(nameof(CanSaveImportedAsProfile));
+        _applyReason = applyReason;
+        MatchListButtonText = matchButton;
+        SourceText = source;
+        SelectedTabIndex = 0;
+        ResultText = "";
+        Refresh();
+    }
+
+    private void LoadCatalog(ModListCatalogView catalog, string? warning = null)
+    {
+        Profiles.Clear();
+        History.Clear();
+
+        foreach (ModListProfile profile in catalog.Profiles)
+        {
+            Profiles.Add(new ModListProfileViewModel(profile));
+        }
+
+        foreach (ModListHistoryEntry entry in catalog.History.Take(ModListCatalog.HistoryLimit))
+        {
+            History.Add(new ModListHistoryViewModel(entry));
+        }
+
+        _latestHistory = History.FirstOrDefault();
+
+        string unreadable = catalog.UnreadableEntryCount switch
+        {
+            0 => "",
+            1 => "1 saved mod list could not be read.",
+            int count => $"{count} saved mod lists could not be read.",
+        };
+        CatalogMessageText = string.Join(
+            " ",
+            new[] { warning, unreadable }.Where(text => !string.IsNullOrWhiteSpace(text)));
+
+        OnPropertyChanged(nameof(HasProfiles));
+        OnPropertyChanged(nameof(HasHistory));
+        OnPropertyChanged(nameof(HasLatestHistory));
+        OnPropertyChanged(nameof(LatestHistoryText));
+    }
+
     [RelayCommand(CanExecute = nameof(CanRefresh))]
     private void Refresh()
     {
@@ -279,7 +545,7 @@ public sealed partial class ModSyncViewModel : ObservableObject
         }
 
         HeadlineText = BuildHeadline();
-        RestorePointText = BuildRestorePointText();
+        LoadCatalog(_service.ReadCatalog());
         RaiseListStates();
     }
 
@@ -328,31 +594,6 @@ public sealed partial class ModSyncViewModel : ObservableObject
     }
 
     private bool CanApply() => !IsBusy && !HasProblem && _plan is { NothingToDo: false };
-
-    [RelayCommand(CanExecute = nameof(CanRestorePrevious))]
-    private void RestorePrevious()
-    {
-        IsBusy = true;
-        try
-        {
-            Report(_service.RestorePrevious());
-        }
-        catch (GameRunningException ex)
-        {
-            ResultText = ex.Message;
-        }
-        finally
-        {
-            IsBusy = false;
-            _recorded = null;
-            _applyReason = "changing mods in the Mods window";
-            MatchListButtonText = "Match the save";
-            SourceText = FreeText;
-            Refresh();
-        }
-    }
-
-    private bool CanRestorePrevious() => !IsBusy && !HasProblem && _service.ReadRestorePoint() is { UsableForRestore: true };
 
     public void ReportLinkProblem(string message) => ResultText = "That link could not be opened: " + message;
 
@@ -411,17 +652,6 @@ public sealed partial class ModSyncViewModel : ObservableObject
         return _plan.NothingToDo
             ? "This machine already has the selected mod list."
             : "Ticked to match the selected mod list. Change any you would rather leave alone, then press Apply.";
-    }
-
-    private string BuildRestorePointText()
-    {
-        if (_service.ReadRestorePoint() is not { UsableForRestore: true } point)
-        {
-            return "";
-        }
-
-        int count = point.Mods?.Mods.Count ?? 0;
-        return $"Your previous list, {count} mods, saved {point.TakenAt.LocalDateTime:d MMM HH:mm}.";
     }
 
     /// <summary>
@@ -506,7 +736,6 @@ public sealed partial class ModSyncViewModel : ObservableObject
         OnPropertyChanged(nameof(IsMatchingASave));
 
         MatchTheSaveCommand.NotifyCanExecuteChanged();
-        RestorePreviousCommand.NotifyCanExecuteChanged();
         RaiseChangeStates();
     }
 

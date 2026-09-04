@@ -50,103 +50,274 @@
                         Visibility="{Binding HasWorkshopPage, Converter={StaticResource BoolToVis}}" />
             </Grid>
         </DataTemplate>
+
+        <Style x:Key="ModsTab" TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Focusable" Value="True" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="Root" Background="Transparent" Padding="2,4,18,7"
+                                BorderThickness="0,0,0,2" BorderBrush="Transparent">
+                            <ContentPresenter VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Border}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="{DynamicResource Brush.Accent}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModsTabText" TargetType="TextBlock" BasedOn="{StaticResource Text.SectionLabel}">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource AncestorType=RadioButton}}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource Brush.Accent}" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0">
-            <TextBlock Text="{Binding SourceText}" Style="{StaticResource Text.Title}" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding HeadlineText}" TextWrapping="Wrap" Margin="0,6,0,0" />
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12">
+            <RadioButton Style="{StaticResource ModsTab}" GroupName="ModsTabs"
+                         IsChecked="{Binding IsCurrentListSelected, Mode=TwoWay}"
+                         AutomationProperties.Name="Current list tab">
+                <TextBlock Text="CURRENT LIST" Style="{StaticResource ModsTabText}" />
+            </RadioButton>
+            <RadioButton Style="{StaticResource ModsTab}" GroupName="ModsTabs"
+                         IsChecked="{Binding IsSavedListsSelected, Mode=TwoWay}"
+                         AutomationProperties.Name="Saved lists tab">
+                <TextBlock Text="SAVED LISTS" Style="{StaticResource ModsTabText}" />
+            </RadioButton>
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Margin="0,10,0,0">
-            <Border Style="{StaticResource Banner.Warn}"
-                    Visibility="{Binding HasProblem, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="{Binding ProblemText}" TextWrapping="Wrap" />
+        <Grid Grid.Row="1" Visibility="{Binding IsCurrentListSelected, Converter={StaticResource BoolToVis}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0">
+                <TextBlock Text="{Binding SourceText}" Style="{StaticResource Text.Title}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding HeadlineText}" TextWrapping="Wrap" Margin="0,6,0,0" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="1" Margin="0,10,0,0">
+                <Border Style="{StaticResource Banner.Warn}"
+                        Visibility="{Binding HasProblem, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding ProblemText}" TextWrapping="Wrap" />
+                </Border>
+
+                <Border Style="{StaticResource Banner.Info}" Margin="0,6,0,0"
+                        Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" />
+                </Border>
+            </StackPanel>
+
+            <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0"
+                    Visibility="{Binding CanSaveImportedAsProfile, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Save as profile"
+                            Style="{StaticResource Button.Small}" Click="OnSaveImportedProfile" />
+                    <StackPanel Margin="0,0,10,0">
+                        <TextBlock Text="Imported list ready" FontWeight="SemiBold" />
+                        <TextBlock Text="Keep this list under a name without applying it."
+                                   Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </DockPanel>
             </Border>
 
-            <Border Style="{StaticResource Banner.Info}" Margin="0,6,0,0"
-                    Visibility="{Binding HasResult, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="{Binding ResultText}" TextWrapping="Wrap" />
-            </Border>
-        </StackPanel>
+            <DockPanel Grid.Row="3" Margin="0,12,0,0">
+                <Button DockPanel.Dock="Right" Content="Undo my changes"
+                        Style="{StaticResource Button.Tiny}"
+                        Command="{Binding RevertChangesCommand}" />
 
-        <DockPanel Grid.Row="2" Margin="0,12,0,0">
-            <Button DockPanel.Dock="Right" Content="Undo my changes"
-                    Style="{StaticResource Button.Tiny}"
-                    Command="{Binding RevertChangesCommand}" />
+                <Button DockPanel.Dock="Right" Content="{Binding MatchListButtonText}" Margin="0,0,8,0"
+                        Style="{StaticResource Button.Tiny}"
+                        Command="{Binding MatchTheSaveCommand}"
+                        Visibility="{Binding IsMatchingASave, Converter={StaticResource BoolToVis}}" />
 
-            <Button DockPanel.Dock="Right" Content="{Binding MatchListButtonText}" Margin="0,0,8,0"
-                    Style="{StaticResource Button.Tiny}"
-                    Command="{Binding MatchTheSaveCommand}"
-                    Visibility="{Binding IsMatchingASave, Converter={StaticResource BoolToVis}}" />
+                <TextBlock Text="{Binding ChangeText}" VerticalAlignment="Center" FontWeight="SemiBold"
+                           TextWrapping="Wrap" Margin="0,0,10,0" />
+            </DockPanel>
 
-            <TextBlock Text="{Binding ChangeText}" VerticalAlignment="Center" FontWeight="SemiBold"
-                       TextWrapping="Wrap" Margin="0,0,10,0" />
-        </DockPanel>
+            <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
+                <StackPanel>
+                    <StackPanel Visibility="{Binding HasMissing, Converter={StaticResource BoolToVis}}"
+                                Margin="0,0,0,12">
+                        <TextBlock Text="{Binding MissingHeader}" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush.Warn}" />
+                        <TextBlock Text="Subscribe in Steam, then press Refresh to pick them up."
+                                   Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Missing}" ItemTemplate="{StaticResource ModToggleRow}"
+                                      Margin="0,2,0,0" />
+                    </StackPanel>
 
-        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Margin="0,10,0,0">
-            <StackPanel>
-                <StackPanel Visibility="{Binding HasMissing, Converter={StaticResource BoolToVis}}"
-                            Margin="0,0,0,12">
-                    <TextBlock Text="{Binding MissingHeader}" FontWeight="SemiBold"
-                               Foreground="{DynamicResource Brush.Warn}" />
-                    <TextBlock Text="Subscribe in Steam, then press Refresh to pick them up."
-                               Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding Missing}" ItemTemplate="{StaticResource ModToggleRow}"
+                    <TextBlock Text="{Binding ModsHeader}" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush.TextMuted}" />
+                    <ItemsControl ItemsSource="{Binding Mods}" ItemTemplate="{StaticResource ModToggleRow}"
                                   Margin="0,2,0,0" />
                 </StackPanel>
+            </ScrollViewer>
 
-                <TextBlock Text="{Binding ModsHeader}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource Brush.TextMuted}" />
-                <ItemsControl ItemsSource="{Binding Mods}" ItemTemplate="{StaticResource ModToggleRow}"
-                              Margin="0,2,0,0" />
-            </StackPanel>
-        </ScrollViewer>
+            <Border Grid.Row="5" Style="{StaticResource Card}" Margin="0,12,0,0"
+                    Visibility="{Binding HasLatestHistory, Converter={StaticResource BoolToVis}}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Preview"
+                            Style="{StaticResource Button.Small}" Click="OnPreviewLatestHistory" />
+                    <TextBlock Text="{Binding LatestHistoryText}" VerticalAlignment="Center"
+                               Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,10,0" />
+                </DockPanel>
+            </Border>
 
-        <Border Grid.Row="4" Style="{StaticResource Card}" Margin="0,12,0,0"
-                Visibility="{Binding HasRestorePoint, Converter={StaticResource BoolToVis}}">
-            <DockPanel>
-                <Button DockPanel.Dock="Right" Content="Restore my previous mods"
-                        Style="{StaticResource Button.Small}"
-                        Command="{Binding RestorePreviousCommand}" />
-                <TextBlock Text="{Binding RestorePointText}" VerticalAlignment="Center"
-                           Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,10,0" />
+            <DockPanel Grid.Row="6" Margin="0,12,0,0">
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                    <Button Content="Refresh"
+                            Command="{Binding RefreshCommand}"
+                            AutomationProperties.HelpText="Look at the mods folder again after subscribing in Steam" />
+                    <Button Content="Import list" Margin="8,0,0,0"
+                            Click="OnImportList"
+                            ToolTip="Choose a .rwmods file and tick its mods for review." />
+                    <Button Content="Export list" Margin="8,0,0,0"
+                            Click="OnExportList"
+                            ToolTip="Save the currently ticked mods as a .rwmods file." />
+                </StackPanel>
+
+                <Button DockPanel.Dock="Right" Content="Close" Click="OnClose" Margin="8,0,0,0" />
+
+                <Button DockPanel.Dock="Right" Content="Launch Rain World"
+                        Click="OnLaunchGame" Margin="8,0,0,0"
+                        Visibility="{Binding CanLaunch, Converter={StaticResource BoolToVis}}" />
+
+                <Button DockPanel.Dock="Right" Content="Apply"
+                        Style="{StaticResource Button.Accent}"
+                        Command="{Binding ApplyCommand}" />
+
+                <TextBlock />
             </DockPanel>
-        </Border>
+        </Grid>
 
-        <DockPanel Grid.Row="5" Margin="0,12,0,0">
-            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
-                <Button Content="Refresh"
-                        Command="{Binding RefreshCommand}"
-                        AutomationProperties.HelpText="Look at the mods folder again after subscribing in Steam" />
-                <Button Content="Import list" Margin="8,0,0,0"
-                        Click="OnImportList"
-                        ToolTip="Choose a .rwmods file and tick its mods for review." />
-                <Button Content="Export list" Margin="8,0,0,0"
-                        Click="OnExportList"
-                        ToolTip="Save the currently ticked mods as a .rwmods file." />
-            </StackPanel>
+        <Grid Grid.Row="1" Visibility="{Binding IsSavedListsSelected, Converter={StaticResource BoolToVis}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <Button DockPanel.Dock="Right" Content="Close" Click="OnClose" Margin="8,0,0,0" />
+            <Border Grid.Row="0" Style="{StaticResource Banner.Warn}" Margin="0,0,0,10"
+                    Visibility="{Binding HasCatalogMessage, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="{Binding CatalogMessageText}" TextWrapping="Wrap" />
+            </Border>
 
-            <Button DockPanel.Dock="Right" Content="Launch Rain World"
-                    Click="OnLaunchGame" Margin="8,0,0,0"
-                    Visibility="{Binding CanLaunch, Converter={StaticResource BoolToVis}}" />
+            <DockPanel Grid.Row="1" Margin="0,0,0,8">
+                <Button DockPanel.Dock="Right" Content="Save current list"
+                        Style="{StaticResource Button.Small}" Click="OnSaveCurrentProfile" />
+                <StackPanel>
+                    <TextBlock Text="Profiles" Style="{StaticResource Text.Title}" />
+                    <TextBlock Text="Named lists stay here until you delete them."
+                               Style="{StaticResource Text.Muted}" />
+                </StackPanel>
+            </DockPanel>
 
-            <Button DockPanel.Dock="Right" Content="Apply"
-                    Style="{StaticResource Button.Accent}"
-                    Command="{Binding ApplyCommand}" />
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="No profiles saved yet."
+                               Style="{StaticResource Text.Muted}" Margin="0,8,0,12"
+                               Visibility="{Binding HasProfiles, Converter={StaticResource NotBoolToVis}}" />
 
-            <TextBlock />
-        </DockPanel>
+                    <ItemsControl ItemsSource="{Binding Profiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding DetailText}" Style="{StaticResource Text.Muted}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Load" Style="{StaticResource Button.Small}"
+                                                Click="OnLoadProfile" />
+                                        <Button Grid.Column="2" Content="⋯" Style="{StaticResource Button.Icon}"
+                                                Margin="8,0,0,0" Click="OnOpenProfileMenu"
+                                                AutomationProperties.Name="More profile actions">
+                                            <Button.ContextMenu>
+                                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                                    <MenuItem Header="Rename" Click="OnRenameProfile" />
+                                                    <MenuItem Header="Replace with current ticks" Click="OnReplaceProfile" />
+                                                    <MenuItem Header="Export" Click="OnExportProfile" />
+                                                    <Separator />
+                                                    <MenuItem Header="Delete" Click="OnDeleteProfile" />
+                                                </ContextMenu>
+                                            </Button.ContextMenu>
+                                        </Button>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="Recent changes" Style="{StaticResource Text.Title}" Margin="0,12,0,2" />
+                    <TextBlock Text="The current list is captured before each Apply. The latest 10 are kept."
+                               Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,8" />
+
+                    <TextBlock Text="No mod changes have been applied yet."
+                               Style="{StaticResource Text.Muted}" Margin="0,8,0,12"
+                               Visibility="{Binding HasHistory, Converter={StaticResource NotBoolToVis}}" />
+
+                    <ItemsControl ItemsSource="{Binding History}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource Card}" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="{Binding Reason}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding DetailText}" Style="{StaticResource Text.Muted}" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Load" Style="{StaticResource Button.Small}"
+                                                Click="OnLoadHistory" />
+                                        <Button Grid.Column="2" Content="Export" Style="{StaticResource Button.Small}"
+                                                Margin="8,0,0,0" Click="OnExportHistory" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+
+            <DockPanel Grid.Row="3" Margin="0,12,0,0">
+                <Button DockPanel.Dock="Right" Content="Close" Click="OnClose" />
+                <TextBlock />
+            </DockPanel>
+        </Grid>
     </Grid>
 </Window>

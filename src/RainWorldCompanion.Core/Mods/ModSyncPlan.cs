@@ -129,6 +129,7 @@ public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Dif
                 Name = Pick(mod.Name, mod.Id),
                 Version = mod.Version,
                 WorkshopId = mod.WorkshopId,
+                CurrentLoadOrder = mod.LoadOrder,
                 Installed = false,
                 IsOn = true,
                 Recorded = wasRecorded.ContainsKey(mod.Id),
@@ -169,8 +170,14 @@ public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Dif
     {
         ArgumentNullException.ThrowIfNull(current);
 
+        var installed = current.Installed
+            .GroupBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         var wanted = new HashSet<string>(
-            Rows.Where(row => row.Installed && row.Wanted).Select(row => row.Id),
+            Rows.Where(row => row.Wanted && installed.ContainsKey(row.Id)).Select(row => row.Id),
+            StringComparer.OrdinalIgnoreCase);
+        var onNow = new HashSet<string>(
+            current.Enabled.Mods.Select(mod => mod.Id),
             StringComparer.OrdinalIgnoreCase);
 
         var enabled = new List<string>();
@@ -186,7 +193,7 @@ public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Dif
             }
         }
 
-        foreach (ModSyncRow row in Rows.Where(row => row.Installed && row.Wanted))
+        foreach (ModSyncRow row in Rows.Where(row => wanted.Contains(row.Id)))
         {
             if (seen.Add(row.Id))
             {
@@ -200,16 +207,23 @@ public sealed record ModSyncPlan(IReadOnlyList<ModSyncRow> Rows, ModListDiff Dif
 
         foreach (ModSyncRow row in Rows)
         {
-            if (row.Installed && row.Wanted && row.WantedLoadOrder is { } position)
+            if (wanted.Contains(row.Id) && row.WantedLoadOrder is { } position)
             {
                 loadOrder[row.Id] = position;
             }
+        }
 
-            if (row.TurningOn && row.OnDisk is { } coming)
+        foreach (string id in wanted)
+        {
+            if (!onNow.Contains(id) && installed.TryGetValue(id, out ModEntry? coming))
             {
                 turnOn.Add(coming);
             }
-            else if (row.TurningOff && row.OnDisk is { } going)
+        }
+
+        foreach (ModEntry mod in current.Enabled.Mods)
+        {
+            if (!wanted.Contains(mod.Id) && installed.TryGetValue(mod.Id, out ModEntry? going))
             {
                 turnOff.Add(going);
             }

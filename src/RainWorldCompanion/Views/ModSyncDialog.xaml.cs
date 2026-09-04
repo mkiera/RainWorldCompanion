@@ -1,4 +1,6 @@
+using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using Microsoft.Win32;
 
 using RainWorldCompanion.Core.Mods;
@@ -46,19 +48,173 @@ public partial class ModSyncDialog : Window
 
     private void OnExportList(object sender, RoutedEventArgs e)
     {
+        if (ShowExportDialog("Export the ticked mod list", "Rain World mods") is { } path)
+        {
+            ViewModel?.ExportList(path);
+        }
+    }
+
+    private void OnSaveImportedProfile(object sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not { } viewModel)
+        {
+            return;
+        }
+
+        string? name = AskForName(
+            viewModel.SuggestedProfileName,
+            "Save imported list",
+            "This keeps the list as a profile. It does not change the game files.",
+            "Save profile");
+        if (name is not null)
+        {
+            viewModel.SaveImportedProfile(name);
+        }
+    }
+
+    private void OnSaveCurrentProfile(object sender, RoutedEventArgs e)
+    {
+        string? name = AskForName(
+            "",
+            "Save current list",
+            "The mods currently ticked in this window will be saved as a profile.",
+            "Save profile");
+        if (name is not null)
+        {
+            ViewModel?.SaveCurrentProfile(name);
+        }
+    }
+
+    private void OnLoadProfile(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ModListProfileViewModel profile)
+        {
+            ViewModel?.LoadProfile(profile);
+        }
+    }
+
+    private void OnLoadHistory(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is ModListHistoryViewModel history)
+        {
+            ViewModel?.LoadHistory(history);
+        }
+    }
+
+    private void OnPreviewLatestHistory(object sender, RoutedEventArgs e) => ViewModel?.PreviewLatestHistory();
+
+    private void OnOpenProfileMenu(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button { ContextMenu: { } menu } button)
+        {
+            menu.DataContext = button.DataContext;
+            menu.PlacementTarget = button;
+            menu.IsOpen = true;
+        }
+    }
+
+    private void OnRenameProfile(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ModListProfileViewModel profile)
+        {
+            return;
+        }
+
+        string? name = AskForName(
+            profile.Name,
+            "Rename saved list",
+            "Only the profile name changes.",
+            "Rename");
+        if (name is not null)
+        {
+            ViewModel?.RenameProfile(profile, name);
+        }
+    }
+
+    private void OnReplaceProfile(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ModListProfileViewModel profile)
+        {
+            return;
+        }
+
+        MessageBoxResult answer = MessageBox.Show(
+            this,
+            $"Replace \"{profile.Name}\" with the mods currently ticked in this window?",
+            "Replace saved list",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes)
+        {
+            ViewModel?.ReplaceProfile(profile);
+        }
+    }
+
+    private void OnDeleteProfile(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ModListProfileViewModel profile)
+        {
+            return;
+        }
+
+        MessageBoxResult answer = MessageBox.Show(
+            this,
+            $"Delete the saved list \"{profile.Name}\"?",
+            "Delete saved list",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer == MessageBoxResult.Yes)
+        {
+            ViewModel?.DeleteProfile(profile);
+        }
+    }
+
+    private void OnExportProfile(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ModListProfileViewModel profile)
+        {
+            return;
+        }
+
+        if (ShowExportDialog("Export saved mod list", profile.Name) is { } path)
+        {
+            ViewModel?.ExportSnapshot(profile.Snapshot, path);
+        }
+    }
+
+    private void OnExportHistory(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not ModListHistoryViewModel history)
+        {
+            return;
+        }
+
+        if (ShowExportDialog("Export mod history", "Rain World mods " + history.CapturedAt.LocalDateTime.ToString("yyyy-MM-dd HH-mm")) is { } path)
+        {
+            ViewModel?.ExportSnapshot(history.Snapshot, path);
+        }
+    }
+
+    private string? AskForName(string current, string headline, string subtitle, string action)
+    {
+        var dialog = new ModProfileNameDialog(current, headline, subtitle, action) { Owner = this };
+        return dialog.ShowDialog() == true ? dialog.EntryName : null;
+    }
+
+    private string? ShowExportDialog(string title, string suggestedName)
+    {
+        string safeName = string.Concat(suggestedName.Select(character =>
+            Path.GetInvalidFileNameChars().Contains(character) ? '_' : character));
         var dialog = new SaveFileDialog
         {
-            Title = "Export the ticked mod list",
+            Title = title,
             Filter = "Rain World mod list (*.rwmods)|*.rwmods|JSON files (*.json)|*.json|All files (*.*)|*.*",
             DefaultExt = ModListFile.Extension,
             AddExtension = true,
-            FileName = "Rain World mods" + ModListFile.Extension,
+            FileName = safeName + ModListFile.Extension,
         };
 
-        if (dialog.ShowDialog(this) == true)
-        {
-            ViewModel?.ExportList(dialog.FileName);
-        }
+        return dialog.ShowDialog(this) == true ? dialog.FileName : null;
     }
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();

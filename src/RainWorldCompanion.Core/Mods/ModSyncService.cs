@@ -13,7 +13,8 @@ public sealed record ModSyncResult(
     string? Problem,
     int TurnedOn,
     int TurnedOff,
-    int NowOn)
+    int NowOn,
+    string? Warning = null)
 {
     public static ModSyncResult Refused(string problem) => new(false, problem, 0, 0, 0);
 
@@ -23,7 +24,7 @@ public sealed record ModSyncResult(
             "{0} on, {1} turned on, {2} turned off. Start Rain World to play with them.",
             NowOn,
             TurnedOn,
-            TurnedOff)
+            TurnedOff) + (Warning is { Length: > 0 } warning ? " " + warning : "")
         : Problem ?? "Nothing was changed.";
 }
 
@@ -37,7 +38,8 @@ public sealed class ModSyncService
         string? gameInstallPath,
         IGameProcessDetector gameDetector,
         ModStateStore? store = null,
-        BackupService? backups = null)
+        BackupService? backups = null,
+        ModListCatalog? catalog = null)
     {
         if (string.IsNullOrWhiteSpace(saveRoot))
         {
@@ -47,7 +49,8 @@ public sealed class ModSyncService
         SaveRoot = Path.GetFullPath(saveRoot.Trim());
         GameInstallPath = string.IsNullOrWhiteSpace(gameInstallPath) ? null : Path.GetFullPath(gameInstallPath.Trim());
         _gameDetector = gameDetector ?? throw new ArgumentNullException(nameof(gameDetector));
-        Store = store ?? new ModStateStore();
+        var legacyStore = store ?? new ModStateStore();
+        Catalog = catalog ?? new ModListCatalog(legacyStore.Folder);
         _backups = backups;
     }
 
@@ -55,7 +58,7 @@ public sealed class ModSyncService
 
     public string? GameInstallPath { get; }
 
-    public ModStateStore Store { get; }
+    public ModListCatalog Catalog { get; }
 
     public CurrentMods ReadCurrent() => CurrentModsReader.Read(SaveRoot, GameInstallPath);
 
@@ -64,6 +67,15 @@ public sealed class ModSyncService
     public ModListSnapshot ImportList(string path) => ModListFile.Read(path);
 
     public int ExportList(ModSyncPlan plan, string path)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        ModListSnapshot snapshot = Snapshot(plan);
+        ModListFile.Write(path, snapshot);
+        return snapshot.Mods.Count;
+    }
+
+    public ModListSnapshot Snapshot(ModSyncPlan plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
@@ -80,7 +92,7 @@ public sealed class ModSyncService
             .ThenBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var snapshot = new ModListSnapshot
+        return new ModListSnapshot
         {
             GameVersion = plan.Diff.RecordedGameVersion ?? current.Enabled.GameVersion,
             ReadTheEnabledList = true,
@@ -95,12 +107,9 @@ public sealed class ModSyncService
                 LoadOrder = index,
             }).ToList(),
         };
-
-        ModListFile.Write(path, snapshot);
-        return snapshot.Mods.Count;
     }
 
-    public ModStateRestorePoint? ReadRestorePoint() => Store.Read();
+    public ModListCatalogView ReadCatalog() => Catalog.Read();
 
     public string? WhyNotNow()
     {
@@ -108,6 +117,12 @@ public sealed class ModSyncService
         {
             return $"Rain World is running (process \"{processName}\"). Close the game before changing which mods are on.";
         }
+
+        return WhyFilesCannotChange();
+    }
+
+    private string? WhyFilesCannotChange()
+    {
 
         if (GameInstallPath is null)
         {
@@ -136,52 +151,30 @@ public sealed class ModSyncService
     {
         ArgumentNullException.ThrowIfNull(plan);
 
-        if (WhyNotNow() is { } refusal)
-        {
-            return ModSyncResult.Refused(refusal);
-        }
-
         CurrentMods current = ReadCurrent();
         if (!current.Enabled.ReadTheEnabledList)
         {
             return ModSyncResult.Refused(
                 "Which mods are on could not be read, so changing them would be a guess. " + current.Enabled.Note);
+        }
+
+        if (!PlanMatchesCurrent(plan, current.Enabled))
+        {
+            return ModSyncResult.Refused("The live mod list changed after this preview was built. Refresh and try again.");
         }
 
         ModSyncOutcome outcome = plan.Resolve(current);
-        return Write(current, outcome, because ?? "matching a save's mods");
-    }
-
-    public ModSyncResult RestorePrevious()
-    {
-        ModStateRestorePoint? point = Store.Read();
-
-        if (point is null)
+        if (!Changes(current, outcome))
         {
-            return ModSyncResult.Refused("There is no earlier mod list to go back to.");
+            return new ModSyncResult(false, null, 0, 0, current.Enabled.Mods.Count);
         }
 
-        if (!point.UsableForRestore)
-        {
-            return ModSyncResult.Refused("The earlier mod list was not recorded fully enough to put back.");
-        }
-
-        if (WhyNotNow() is { } refusal)
+        if (WhyFilesCannotChange() is { } refusal)
         {
             return ModSyncResult.Refused(refusal);
         }
 
-        CurrentMods current = ReadCurrent();
-        if (!current.Enabled.ReadTheEnabledList)
-        {
-            return ModSyncResult.Refused(
-                "Which mods are on could not be read, so changing them would be a guess. " + current.Enabled.Note);
-        }
-
-        // Restoring is the same operation as matching a save, with the saved list standing in for the
-        // recording, so there is one write path rather than two that can drift apart.
-        ModSyncPlan plan = ModSyncPlan.Build(point.Mods, current);
-        return Write(current, plan.Resolve(current), "going back to the earlier mod list");
+        return Write(current, outcome, because ?? "Before manual mod changes");
     }
 
     private ModSyncResult Write(CurrentMods current, ModSyncOutcome outcome, string because)
@@ -190,26 +183,35 @@ public sealed class ModSyncService
         string listPath = EnabledModsFile.PathTo(GameInstallPath)!;
 
         byte[] originalOptions;
+        byte[] originalList;
         byte[] newOptions;
         try
         {
             originalOptions = File.ReadAllBytes(optionsPath);
+            originalList = File.ReadAllBytes(listPath);
             newOptions = OptionsWriter.Rewrite(originalOptions, outcome.EnabledIds, outcome.LoadOrder);
         }
         catch (Exception ex) when (ex is SaveContainerException or IOException or UnauthorizedAccessException)
         {
-            return ModSyncResult.Refused($"The options file could not be prepared ({ex.Message}), so nothing was changed.");
+            return ModSyncResult.Refused($"The live mod files could not be prepared ({ex.Message}), so nothing was changed.");
         }
 
-        IReadOnlyList<string> existingLines = EnabledModsFile.Read(GameInstallPath) ?? Array.Empty<string>();
+        IReadOnlyList<string>? existingLines = EnabledModsFile.Read(GameInstallPath);
+        if (existingLines is null)
+        {
+            return ModSyncResult.Refused("The current enabledMods.txt could not be read, so nothing was changed.");
+        }
+
         IReadOnlyList<string> newLines = EnabledModsFile.Rewrite(
             existingLines,
             outcome.TurnOn,
             outcome.TurnOff,
             CurrentModsReader.WorkshopContentPath(GameInstallPath));
 
-        string optionsStaged = optionsPath + ".rwc-tmp";
-        string listStaged = listPath + ".rwc-tmp";
+        string stagingId = Guid.NewGuid().ToString("N");
+        string optionsStaged = optionsPath + "." + stagingId + ".rwc-tmp";
+        string listStaged = listPath + "." + stagingId + ".rwc-tmp";
+        string? captureWarning = null;
 
         try
         {
@@ -218,31 +220,41 @@ public sealed class ModSyncService
                 return ModSyncResult.Refused(staging);
             }
 
-            // Written before either file moves, so a crash between the two moves still leaves a way
-            // back to the list that was on.
-            try
-            {
-                Store.Write(new ModStateRestorePoint
-                {
-                    TakenAt = DateTimeOffset.Now,
-                    Mods = current.Enabled,
-                    EnabledModsLines = existingLines.ToList(),
-                    Because = because,
-                });
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return ModSyncResult.Refused(
-                    $"The list you have now could not be saved to go back to ({ex.Message}), so nothing was changed.");
-            }
-
             using IDisposable? lease = _backups?.AcquireOperationLock();
 
-            // Re-checked inside the lock: staging and hashing take long enough for somebody to start
-            // the game in the middle of it.
             if (_gameDetector.IsGameRunning(out string? processName))
             {
-                throw new GameRunningException(processName ?? "RainWorld");
+                return ModSyncResult.Refused(
+                    $"Rain World is running (process \"{processName ?? "RainWorld"}\"). Close the game before changing which mods are on.");
+            }
+
+            CurrentMods lockedCurrent = ReadCurrent();
+            if (!SameState(current.Enabled, lockedCurrent.Enabled)
+                || !File.ReadAllBytes(optionsPath).SequenceEqual(originalOptions)
+                || !File.ReadAllBytes(listPath).SequenceEqual(originalList))
+            {
+                return ModSyncResult.Refused("The mod list changed while Apply was being prepared. Refresh and try again.");
+            }
+
+            ModListCatalogResult captured = Catalog.Execute(new AppendHistory(lockedCurrent.Enabled, because));
+            if (!captured.Succeeded)
+            {
+                return ModSyncResult.Refused(
+                    $"The list you have now could not be saved for recovery ({captured.Problem}), so nothing was changed.");
+            }
+
+            captureWarning = captured.Warning;
+
+            if (_gameDetector.IsGameRunning(out processName))
+            {
+                return ModSyncResult.Refused(
+                    $"Rain World started while Apply was being prepared (process \"{processName ?? "RainWorld"}\"). Nothing was changed.");
+            }
+
+            if (!File.ReadAllBytes(optionsPath).SequenceEqual(originalOptions)
+                || !File.ReadAllBytes(listPath).SequenceEqual(originalList))
+            {
+                return ModSyncResult.Refused("The mod list changed while its recovery entry was being saved. Refresh and try again.");
             }
 
             File.Move(optionsStaged, optionsPath, overwrite: true);
@@ -258,9 +270,9 @@ public sealed class ModSyncService
                 return PutOptionsBack(optionsPath, originalOptions, ex.Message);
             }
         }
-        catch (GameRunningException)
+        catch (BackupBusyException ex)
         {
-            throw;
+            return ModSyncResult.Refused(ex.Message);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -272,12 +284,80 @@ public sealed class ModSyncService
             Delete(listStaged);
         }
 
+        ModListCatalogResult pruned = Catalog.Execute(new PruneModListHistory());
+        string? pruneWarning = pruned.Succeeded
+            ? pruned.Warning
+            : "The mod list changed, but old recovery entries could not be cleaned up. " + pruned.Problem;
+        string? warning = JoinWarnings(captureWarning, pruneWarning);
+
         return new ModSyncResult(
             true,
             null,
             outcome.TurnOn.Count,
             outcome.TurnOff.Count,
-            outcome.EnabledIds.Count);
+            outcome.EnabledIds.Count,
+            warning);
+    }
+
+    private static bool Changes(CurrentMods current, ModSyncOutcome outcome)
+    {
+        var currentIds = new HashSet<string>(current.Enabled.Mods.Select(mod => mod.Id), StringComparer.OrdinalIgnoreCase);
+        if (!currentIds.SetEquals(outcome.EnabledIds))
+        {
+            return true;
+        }
+
+        var currentOrder = current.Enabled.Mods
+            .Where(mod => mod.LoadOrder is not null)
+            .GroupBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().LoadOrder!.Value, StringComparer.OrdinalIgnoreCase);
+
+        return outcome.LoadOrder.Any(item => currentOrder.GetValueOrDefault(item.Key, int.MinValue) != item.Value);
+    }
+
+    private static bool PlanMatchesCurrent(ModSyncPlan plan, ModListSnapshot current)
+    {
+        var plannedIds = new HashSet<string>(
+            plan.Rows.Where(row => row.IsOn).Select(row => row.Id),
+            StringComparer.OrdinalIgnoreCase);
+        var currentIds = new HashSet<string>(current.Mods.Select(mod => mod.Id), StringComparer.OrdinalIgnoreCase);
+        if (!plannedIds.SetEquals(currentIds))
+        {
+            return false;
+        }
+
+        var plannedOrder = plan.Rows
+            .Where(row => row.IsOn)
+            .GroupBy(row => row.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().CurrentLoadOrder, StringComparer.OrdinalIgnoreCase);
+        var currentOrder = current.Mods
+            .GroupBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().LoadOrder, StringComparer.OrdinalIgnoreCase);
+        return plannedOrder.All(item => currentOrder.TryGetValue(item.Key, out int? order) && item.Value == order);
+    }
+
+    private static bool SameState(ModListSnapshot first, ModListSnapshot second)
+    {
+        var firstIds = new HashSet<string>(first.Mods.Select(mod => mod.Id), StringComparer.OrdinalIgnoreCase);
+        var secondIds = new HashSet<string>(second.Mods.Select(mod => mod.Id), StringComparer.OrdinalIgnoreCase);
+        if (!firstIds.SetEquals(secondIds))
+        {
+            return false;
+        }
+
+        var firstOrder = first.Mods
+            .GroupBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().LoadOrder, StringComparer.OrdinalIgnoreCase);
+        var secondOrder = second.Mods
+            .GroupBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().LoadOrder, StringComparer.OrdinalIgnoreCase);
+        return firstOrder.All(item => secondOrder.TryGetValue(item.Key, out int? order) && item.Value == order);
+    }
+
+    private static string? JoinWarnings(params string?[] warnings)
+    {
+        string[] present = warnings.Where(warning => !string.IsNullOrWhiteSpace(warning)).Select(warning => warning!).ToArray();
+        return present.Length == 0 ? null : string.Join(" ", present);
     }
 
     private string? Stage(
@@ -320,6 +400,14 @@ public sealed class ModSyncService
             return "The new options file came back holding a different mod list than it was given, so nothing was changed.";
         }
 
+        foreach ((string id, int position) in outcome.LoadOrder)
+        {
+            if (!read.LoadOrder.TryGetValue(id, out int written) || written != position)
+            {
+                return "The new options file came back with a different load order than it was given, so nothing was changed.";
+            }
+        }
+
         string[] linesBack;
         try
         {
@@ -348,7 +436,7 @@ public sealed class ModSyncService
             return ModSyncResult.Refused(
                 $"The mod loader's list could not be written ({why}), and putting the options file "
                 + $"back failed too ({ex.Message}). Which mods are on has changed but which ones load "
-                + "has not. Use Restore my previous mods, or start the game and set them in Remix.");
+                + "has not. Open Saved lists to preview the captured list, or set the mods in Remix.");
         }
     }
 

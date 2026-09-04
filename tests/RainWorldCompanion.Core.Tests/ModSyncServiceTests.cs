@@ -6,7 +6,7 @@ public class ModSyncServiceTests
 {
     private sealed class Machine : IDisposable
     {
-        public Machine()
+        public Machine(TimeProvider? catalogTime = null)
         {
             Root = new TempDirectory("modsync");
             SaveRoot = Root.CreateSubdirectory("save");
@@ -17,7 +17,8 @@ public class ModSyncServiceTests
                 SaveRoot,
                 InstallPath,
                 Detector,
-                store: new ModStateStore(Root.Resolve("modstate")));
+                store: new ModStateStore(Root.Resolve("modstate")),
+                catalog: new ModListCatalog(Root.Resolve("modstate"), catalogTime));
         }
 
         public TempDirectory Root { get; }
@@ -50,6 +51,19 @@ public class ModSyncServiceTests
         }
 
         public void Dispose() => Root.Dispose();
+    }
+
+    private sealed class CallbackTimeProvider : TimeProvider
+    {
+        public Action? OnRead { get; set; }
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            Action? action = OnRead;
+            OnRead = null;
+            action?.Invoke();
+            return new DateTimeOffset(2026, 9, 4, 14, 31, 0, TimeSpan.Zero);
+        }
     }
 
     [Fact]
@@ -190,50 +204,208 @@ public class ModSyncServiceTests
     }
 
     [Fact]
-    public void Apply_writes_a_restore_point_and_RestorePrevious_puts_the_original_list_back()
+    public void Apply_captures_the_current_list_with_the_reason_before_changing_files()
     {
         using var machine = new Machine();
         machine.InstallMod("mod.a");
         machine.InstallMod("mod.b");
         machine.WriteEnabledMods("mod.a", "mod.b");
-        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a", "mod.b")));
+        machine.WriteOptions(OptionsFixture.Payload(
+            OptionsFixture.Enabled("mod.a", "mod.b"),
+            OptionsFixture.LoadOrder(("mod.a", "1"), ("mod.b", "0"))));
 
         ModListSnapshot recorded = ModLists.Snapshot(null, ModLists.Mod("mod.a"));
-        ModSyncResult applied = machine.Service.Apply(machine.Service.BuildPlan(recorded));
+        ModSyncResult applied = machine.Service.Apply(
+            machine.Service.BuildPlan(recorded),
+            "Before applying imported list \"friends\"");
         Assert.True(applied.Applied);
 
         OptionsRead afterTurnOff = OptionsFile.Read(machine.SaveRoot);
         Assert.DoesNotContain("mod.b", afterTurnOff.EnabledModIds);
 
-        ModStateRestorePoint? point = machine.Service.ReadRestorePoint();
-        Assert.NotNull(point);
-        Assert.True(point!.UsableForRestore);
-
-        ModListSnapshot snapshot = point.Mods!;
-        Assert.Equal(new[] { "mod.a", "mod.b" }, snapshot.Mods.Select(mod => mod.Id).OrderBy(id => id));
-
-        ModSyncResult restored = machine.Service.RestorePrevious();
-
-        Assert.True(restored.Applied);
-        OptionsRead afterRestore = OptionsFile.Read(machine.SaveRoot);
-        Assert.Contains("mod.b", afterRestore.EnabledModIds);
-
-        IReadOnlyList<string>? linesAfterRestore = EnabledModsFile.Read(machine.InstallPath);
-        Assert.NotNull(linesAfterRestore);
-        Assert.Contains("mod.b", linesAfterRestore);
+        ModListHistoryEntry entry = Assert.Single(machine.Service.ReadCatalog().History);
+        Assert.Equal("Before applying imported list \"friends\"", entry.Reason);
+        Assert.Equal(new[] { "mod.a", "mod.b" }, entry.Snapshot.Mods.Select(mod => mod.Id).OrderBy(id => id));
+        Assert.Equal(1, entry.Snapshot.Mods.Single(mod => mod.Id == "mod.a").LoadOrder);
+        Assert.Equal(0, entry.Snapshot.Mods.Single(mod => mod.Id == "mod.b").LoadOrder);
     }
 
     [Fact]
-    public void RestorePrevious_refuses_when_there_is_no_restore_point()
+    public void A_no_op_creates_no_history()
     {
         using var machine = new Machine();
-        machine.WriteEnabledMods();
-        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled()));
+        machine.InstallMod("mod.a");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
 
-        ModSyncResult result = machine.Service.RestorePrevious();
+        ModSyncResult result = machine.Service.Apply(machine.Service.BuildPlan(null));
 
         Assert.False(result.Applied);
-        Assert.Contains("no earlier mod list", result.Problem);
+        Assert.Null(result.Problem);
+        Assert.Empty(machine.Service.ReadCatalog().History);
+    }
+
+    [Fact]
+    public void Apply_refuses_when_history_cannot_be_written_and_keeps_both_live_files()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
+        Directory.CreateDirectory(machine.Service.Catalog.Root);
+        File.WriteAllText(machine.Service.Catalog.HistoryRoot, "blocked");
+        byte[] optionsBefore = File.ReadAllBytes(machine.OptionsPath);
+        byte[] enabledModsBefore = File.ReadAllBytes(machine.EnabledModsPath);
+
+        ModSyncResult result = machine.Service.Apply(
+            machine.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b"))));
+
+        Assert.False(result.Applied);
+        Assert.Contains("saved for recovery", result.Problem);
+        Assert.Equal(optionsBefore, File.ReadAllBytes(machine.OptionsPath));
+        Assert.Equal(enabledModsBefore, File.ReadAllBytes(machine.EnabledModsPath));
+    }
+
+    [Fact]
+    public void Apply_refuses_a_preview_when_the_live_mod_list_changed_since_it_was_built()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
+        ModSyncPlan plan = machine.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b")));
+        machine.WriteEnabledMods("mod.a", "mod.b");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a", "mod.b")));
+        byte[] optionsBefore = File.ReadAllBytes(machine.OptionsPath);
+        byte[] enabledModsBefore = File.ReadAllBytes(machine.EnabledModsPath);
+
+        ModSyncResult result = machine.Service.Apply(plan);
+
+        Assert.False(result.Applied);
+        Assert.Contains("after this preview", result.Problem);
+        Assert.Equal(optionsBefore, File.ReadAllBytes(machine.OptionsPath));
+        Assert.Equal(enabledModsBefore, File.ReadAllBytes(machine.EnabledModsPath));
+        Assert.Empty(machine.Service.ReadCatalog().History);
+    }
+
+    [Fact]
+    public void Apply_rechecks_live_files_after_the_recovery_entry_is_written()
+    {
+        var clock = new CallbackTimeProvider();
+        using var machine = new Machine(clock);
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
+        ModSyncPlan plan = machine.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b")));
+        clock.OnRead = () =>
+        {
+            machine.WriteEnabledMods("mod.a", "mod.b");
+            machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a", "mod.b")));
+        };
+
+        ModSyncResult result = machine.Service.Apply(plan);
+
+        Assert.False(result.Applied);
+        Assert.Contains("recovery entry", result.Problem);
+        ModListHistoryEntry captured = Assert.Single(machine.Service.ReadCatalog().History);
+        Assert.Equal("mod.a", Assert.Single(captured.Snapshot.Mods).Id);
+        Assert.Contains("mod.b", OptionsFile.Read(machine.SaveRoot).EnabledModIds);
+    }
+
+    [Fact]
+    public void Applying_a_history_preview_captures_the_list_it_replaces()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
+        machine.Service.Catalog.Execute(new AppendHistory(
+            ModLists.Snapshot(null, ModLists.Mod("mod.b")),
+            "Older list"));
+        ModListHistoryEntry older = Assert.Single(machine.Service.ReadCatalog().History);
+
+        ModSyncResult result = machine.Service.Apply(
+            machine.Service.BuildPlan(older.Snapshot),
+            "Before loading mod history from 4 Sep 14:31");
+
+        Assert.True(result.Applied);
+        ModListHistoryEntry newest = machine.Service.ReadCatalog().History.First();
+        Assert.Equal("Before loading mod history from 4 Sep 14:31", newest.Reason);
+        Assert.Equal("mod.a", Assert.Single(newest.Snapshot.Mods).Id);
+    }
+
+    [Fact]
+    public void A_live_write_failure_keeps_the_new_history_entry_and_does_not_prune()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
+        for (int number = 0; number < ModListCatalog.HistoryLimit; number++)
+        {
+            machine.Service.Catalog.Execute(new AppendHistory(
+                ModLists.Snapshot(null, ModLists.Mod("old." + number)),
+                "Older " + number));
+        }
+
+        byte[] optionsBefore = File.ReadAllBytes(machine.OptionsPath);
+        byte[] enabledModsBefore = File.ReadAllBytes(machine.EnabledModsPath);
+        File.SetAttributes(machine.EnabledModsPath, File.GetAttributes(machine.EnabledModsPath) | FileAttributes.ReadOnly);
+        ModSyncResult result;
+        try
+        {
+            result = machine.Service.Apply(
+                machine.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b"))));
+        }
+        finally
+        {
+            File.SetAttributes(machine.EnabledModsPath, FileAttributes.Normal);
+        }
+
+        Assert.False(result.Applied);
+        Assert.Equal(optionsBefore, File.ReadAllBytes(machine.OptionsPath));
+        Assert.Equal(enabledModsBefore, File.ReadAllBytes(machine.EnabledModsPath));
+        Assert.Equal(11, machine.Service.ReadCatalog().History.Count);
+
+        ModSyncResult retried = machine.Service.Apply(
+            machine.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b"))));
+
+        Assert.True(retried.Applied);
+        Assert.Equal(ModListCatalog.HistoryLimit, machine.Service.ReadCatalog().History.Count);
+    }
+
+    [Fact]
+    public void A_retention_failure_is_a_warning_after_the_live_change()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("mod.a");
+        machine.InstallMod("mod.b");
+        machine.WriteEnabledMods("mod.a");
+        machine.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
+        for (int number = 0; number < ModListCatalog.HistoryLimit; number++)
+        {
+            machine.Service.Catalog.Execute(new AppendHistory(
+                ModLists.Snapshot(null, ModLists.Mod("old." + number)),
+                "Older " + number));
+        }
+
+        string oldest = Directory.EnumerateFiles(machine.Service.Catalog.HistoryRoot, "*.json")
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .First();
+        using var held = new FileStream(oldest, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+        ModSyncResult result = machine.Service.Apply(
+            machine.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b"))));
+
+        Assert.True(result.Applied);
+        Assert.Contains("could not be cleaned up", result.Warning);
+        Assert.Contains("mod.b", OptionsFile.Read(machine.SaveRoot).EnabledModIds);
+        Assert.Equal(11, machine.Service.ReadCatalog().History.Count);
     }
 
     [Fact]
@@ -258,14 +430,16 @@ public class ModSyncServiceTests
     {
         using var succeeding = new Machine();
         succeeding.InstallMod("mod.a");
+        succeeding.InstallMod("mod.b");
         succeeding.WriteEnabledMods("mod.a");
         succeeding.WriteOptions(OptionsFixture.Payload(OptionsFixture.Enabled("mod.a")));
 
-        ModSyncResult applied = succeeding.Service.Apply(succeeding.Service.BuildPlan(null));
+        ModSyncResult applied = succeeding.Service.Apply(
+            succeeding.Service.BuildPlan(ModLists.Snapshot(null, ModLists.Mod("mod.b"))));
 
         Assert.True(applied.Applied);
-        Assert.False(File.Exists(succeeding.OptionsPath + ".rwc-tmp"));
-        Assert.False(File.Exists(succeeding.EnabledModsPath + ".rwc-tmp"));
+        Assert.Empty(Directory.EnumerateFiles(succeeding.SaveRoot, "*.rwc-tmp"));
+        Assert.Empty(Directory.EnumerateFiles(succeeding.StreamingAssets, "*.rwc-tmp"));
 
         using var refusing = new Machine();
         refusing.WriteEnabledMods("mod.a");
@@ -275,7 +449,7 @@ public class ModSyncServiceTests
         ModSyncResult refused = refusing.Service.Apply(refusing.Service.BuildPlan(null));
 
         Assert.False(refused.Applied);
-        Assert.False(File.Exists(refusing.OptionsPath + ".rwc-tmp"));
-        Assert.False(File.Exists(refusing.EnabledModsPath + ".rwc-tmp"));
+        Assert.Empty(Directory.EnumerateFiles(refusing.SaveRoot, "*.rwc-tmp"));
+        Assert.Empty(Directory.EnumerateFiles(refusing.StreamingAssets, "*.rwc-tmp"));
     }
 }
