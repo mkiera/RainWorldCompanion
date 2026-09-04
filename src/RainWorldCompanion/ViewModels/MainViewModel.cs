@@ -297,7 +297,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBackupsTabSelected))]
-    private bool isLibraryTabSelected;
+    private bool isLibraryTabSelected = true;
 
     public bool IsBackupsTabSelected
     {
