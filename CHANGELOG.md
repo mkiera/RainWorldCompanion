@@ -13,6 +13,16 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.2.5-beta.1 - 2026-09-04
+
+- The app opens with the live save selected and the save library visible. The
+  library is on the left of the backups tab.
+- Mod lists can be imported from and exported to `.rwmods` files. Importing
+  previews the selection and load order before anything changes.
+- The Mods window keeps named profiles and the ten most recent lists replaced
+  by Apply. Profiles and earlier lists can be loaded into the checklist or
+  exported, and loading one still waits for Apply before changing the game.
+
 ## 1.2.4 - 2026-09-01
 
 - What a mod records inside a campaign is shown, and offered for editing,
