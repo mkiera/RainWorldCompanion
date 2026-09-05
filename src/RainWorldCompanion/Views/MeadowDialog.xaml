@@ -31,8 +31,18 @@
             <Button DockPanel.Dock="Right"
                     Content="Refresh"
                     Style="{StaticResource Button.Small}"
+                    VerticalAlignment="Top"
                     Command="{Binding RefreshCommand}"
                     ToolTip="Look again at which mods you have and which lobbies are up." />
+            <TextBlock DockPanel.Dock="Right"
+                       Text="{Binding SteamNoteText}"
+                       Style="{StaticResource Text.Tiny}"
+                       TextWrapping="Wrap"
+                       TextAlignment="Right"
+                       MaxWidth="230"
+                       Margin="16,4,10,0"
+                       VerticalAlignment="Top"
+                       Visibility="{Binding IsReady, Converter={StaticResource BoolToVis}}" />
             <StackPanel>
                 <TextBlock Text="Rain Meadow" Style="{StaticResource Text.Title}" />
                 <TextBlock Text="{Binding StatusText}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />

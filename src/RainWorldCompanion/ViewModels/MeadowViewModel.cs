@@ -171,9 +171,18 @@ public sealed partial class MeadowViewModel : ObservableObject
         _syncMods = syncMods ?? throw new ArgumentNullException(nameof(syncMods));
         _launch = launch ?? throw new ArgumentNullException(nameof(launch));
         _openUrl = openUrl ?? throw new ArgumentNullException(nameof(openUrl));
-        _read = read ?? ((game, version, timeout) => MeadowSteam.Read(game, version, timeout));
+        _read = read ?? ((game, version, timeout) =>
+            MeadowSteamProcess.ReadThrough(Environment.ProcessPath, game, version, timeout));
         _readCurrent = readCurrent ?? mods.ReadCurrent;
     }
+
+    // Steam counts the asking as the game running, so it is said next to the button that asks.
+    public const string SteamNote =
+        "Steam shows Rain World as running for the second or two this takes to look.";
+
+    public string SteamNoteText => SteamNote;
+
+    private const string BeforeRefreshText = "Refresh asks Steam which lobbies are up.";
 
     // The rows Search lets through. The full answer from Steam is kept aside, so narrowing and
     // widening the search costs nothing and never asks Steam again.
@@ -181,6 +190,7 @@ public sealed partial class MeadowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CheckModsCommand))]
     [NotifyCanExecuteChangedFor(nameof(JoinCommand))]
     [NotifyCanExecuteChangedFor(nameof(SyncAndJoinCommand))]
     [NotifyCanExecuteChangedFor(nameof(JoinTypedCommand))]
@@ -195,7 +205,7 @@ public sealed partial class MeadowViewModel : ObservableObject
     private MeadowLobbyRowViewModel? selectedLobby;
 
     [ObservableProperty]
-    private string statusText = "Refresh to ask Steam which lobbies are up.";
+    private string statusText = BeforeRefreshText;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasProblem))]
@@ -274,6 +284,29 @@ public sealed partial class MeadowViewModel : ObservableObject
     public string EmptyText => _all.Count == 0
         ? "No lobbies listed. Refresh, or paste a join code below."
         : "No lobby matches the search.";
+
+    // What opening the window does: the machine is read, Steam is not.
+    [RelayCommand(CanExecute = nameof(NotBusy))]
+    private async Task CheckModsAsync()
+    {
+        IsBusy = true;
+        ProblemText = "";
+
+        try
+        {
+            CurrentMods current = await Task.Run(_readCurrent);
+            Step = MeadowReadiness.From(current).Step;
+            StatusText = IsReady ? BeforeRefreshText : "";
+        }
+        catch (Exception ex)
+        {
+            ProblemText = "Which mods you have could not be read: " + ex.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(NotBusy))]
     private async Task RefreshAsync()

@@ -16,7 +16,8 @@ worded as things ended up. The pre-release sections stay for their tags.
 - Meadow in the top bar lists the Rain Meadow lobbies that are up, says which
   ones your friends are in, and starts Rain World straight into the one you
   pick. A lobby id, a join code, or a Steam invite link can be pasted in
-  instead.
+  instead. Steam is asked only when Refresh is pressed, and it shows Rain
+  World as running for the second or two that takes and at no other time.
 - The lobby list has a search box. It matches a lobby's name, mode, campaign,
   who is in it, and the mods it needs.
 - Joining a lobby can match its mods first, turning on what it needs and off

@@ -11,11 +11,13 @@ public partial class MeadowDialog : Window
         InitializeComponent();
         DataContext = viewModel;
 
+        // Only the machine is read on opening. Steam is asked when Refresh is pressed and not
+        // before, because Steam counts the asking as the game running.
         Loaded += async (_, _) =>
         {
-            if (viewModel.RefreshCommand.CanExecute(null))
+            if (viewModel.CheckModsCommand.CanExecute(null))
             {
-                await viewModel.RefreshCommand.ExecuteAsync(null);
+                await viewModel.CheckModsCommand.ExecuteAsync(null);
             }
         };
     }

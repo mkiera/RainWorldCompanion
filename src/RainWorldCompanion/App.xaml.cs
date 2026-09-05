@@ -1,4 +1,6 @@
-﻿using System.Reflection;
+﻿using System.IO;
+using System.Reflection;
+using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
@@ -26,6 +28,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+
+        // Started by the running app to ask Steam for the lobby list on its behalf, and exits with
+        // the answer. Before the mutex: the app that asked is holding it.
+        if (MeadowSteamProcess.IsHelperCall(e.Args))
+        {
+            using var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false));
+            Shutdown(MeadowSteamProcess.RunHelper(e.Args, stdout));
+            return;
+        }
 
         // Two windows can start a restore within the same second, both writing into the same save
         // folder and the same backup store.

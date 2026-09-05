@@ -134,6 +134,28 @@ public class MeadowPanelTests
         };
 
     [Fact]
+    public async Task Opening_the_window_reads_the_mods_and_leaves_Steam_alone()
+    {
+        using var world = new World();
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug") } };
+
+        MeadowViewModel view = world.Build();
+        await view.CheckModsCommand.ExecuteAsync(null);
+
+        Assert.True(view.IsReady);
+        Assert.Equal(0, world.SteamReads);
+        Assert.Empty(view.Lobbies);
+        Assert.Contains("Refresh", view.StatusText);
+        Assert.Contains("running", view.SteamNoteText);
+
+        world.Machine = MachineWith(MeadowStep.TurnedOff);
+        await view.CheckModsCommand.ExecuteAsync(null);
+
+        Assert.True(view.CanTurnOn);
+        Assert.Equal(0, world.SteamReads);
+    }
+
+    [Fact]
     public async Task A_refresh_lists_what_Steam_answered()
     {
         using var world = new World();
