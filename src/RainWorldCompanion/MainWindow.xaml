@@ -2048,12 +2048,22 @@
                             Margin="4,0,0,0"
                             Command="{Binding OpenModSyncCommand}"
                             AutomationProperties.HelpText="Turn mods on and off, and match what a save was played with" />
-                    <Button Content="Meadow" Style="{StaticResource Button.Small}"
+                    <!-- Always shown. The dot marks the mod as missing or off, which the window
+                         then says how to fix. -->
+                    <Button Style="{StaticResource Button.Small}"
                             Margin="4,0,0,0"
                             Command="{Binding OpenMeadowCommand}"
-                            Visibility="{Binding MeadowInstalled, Converter={StaticResource BoolToVis}}"
-                            ToolTip="See which Rain Meadow lobbies are up, match their mods, and join one."
-                            AutomationProperties.HelpText="See which Rain Meadow lobbies are up, match their mods, and join one" />
+                            ToolTip="{Binding MeadowButtonHint}"
+                            AutomationProperties.Name="Meadow"
+                            AutomationProperties.HelpText="{Binding MeadowButtonHint}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Meadow" />
+                            <Ellipse Width="7" Height="7" Margin="6,0,0,0"
+                                     VerticalAlignment="Center"
+                                     Fill="{DynamicResource Brush.Warn}"
+                                     Visibility="{Binding MeadowNeedsSetup, Converter={StaticResource BoolToVis}}" />
+                        </StackPanel>
+                    </Button>
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 

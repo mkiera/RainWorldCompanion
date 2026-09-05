@@ -6,9 +6,9 @@
         mc:Ignorable="d"
         Title="Rain Meadow"
         Width="780"
-        Height="600"
+        Height="640"
         MinWidth="640"
-        MinHeight="480"
+        MinHeight="520"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource Brush.Window}"
@@ -21,6 +21,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -30,14 +31,43 @@
             <Button DockPanel.Dock="Right"
                     Content="Refresh"
                     Style="{StaticResource Button.Small}"
-                    Command="{Binding RefreshCommand}" />
+                    Command="{Binding RefreshCommand}"
+                    ToolTip="Look again at which mods you have and which lobbies are up." />
             <StackPanel>
                 <TextBlock Text="Rain Meadow" Style="{StaticResource Text.Title}" />
                 <TextBlock Text="{Binding StatusText}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap" />
             </StackPanel>
         </DockPanel>
 
-        <StackPanel Grid.Row="1" Margin="0,10,0,0">
+        <!-- Shown instead of the list until the mod is on. Everything the list needs, the version
+             filter included, comes from the installed mod, so there is nothing to ask Steam yet. -->
+        <Border Grid.Row="1" Margin="0,12,0,0"
+                Style="{StaticResource Card}"
+                BorderBrush="{DynamicResource Brush.Meadow}"
+                Visibility="{Binding NeedsSetup, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <TextBlock Text="{Binding AboutMeadowText}" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SetupText}"
+                           Style="{StaticResource Text.Muted}"
+                           TextWrapping="Wrap"
+                           Margin="0,10,0,0" />
+                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                    <Button Content="Steam Workshop"
+                            Style="{StaticResource Button.Accent}"
+                            Command="{Binding InstallCommand}"
+                            Visibility="{Binding CanInstall, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Opens the Rain Meadow page in Steam, where Subscribe installs it." />
+                    <Button Content="Turn it on"
+                            Style="{StaticResource Button.Accent}"
+                            Command="{Binding TurnOnCommand}"
+                            Visibility="{Binding CanTurnOn, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Previews the change in the Mods window, then Apply writes it." />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <StackPanel Grid.Row="2" Margin="0,10,0,0"
+                    Visibility="{Binding IsReady, Converter={StaticResource BoolToVis}}">
             <TextBlock Text="{Binding FriendsText}"
                        Style="{StaticResource Text.Muted}"
                        TextWrapping="Wrap"
@@ -52,9 +82,16 @@
                        TextWrapping="Wrap"
                        Margin="0,8,0,0"
                        Visibility="{Binding HasNoteAboutPolicy, Converter={StaticResource BoolToVis}}" />
+            <DockPanel Margin="0,10,0,0">
+                <TextBlock DockPanel.Dock="Left" Text="Search" VerticalAlignment="Center" Margin="0,0,8,0" />
+                <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Search lobbies"
+                         ToolTip="Matches the lobby name, mode, campaign, who is there, and the mods it needs." />
+            </DockPanel>
         </StackPanel>
 
-        <Grid Grid.Row="2" Margin="0,12,0,0">
+        <Grid Grid.Row="3" Margin="0,8,0,0"
+              Visibility="{Binding IsReady, Converter={StaticResource BoolToVis}}">
             <ListBox ItemsSource="{Binding Lobbies}"
                      SelectedItem="{Binding SelectedLobby, Mode=TwoWay}"
                      HorizontalContentAlignment="Stretch"
@@ -80,14 +117,14 @@
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <TextBlock Text="No lobbies listed. Refresh, or paste a join code below."
+            <TextBlock Text="{Binding EmptyText}"
                        Style="{StaticResource Text.Muted}"
                        HorizontalAlignment="Center"
                        VerticalAlignment="Center"
                        Visibility="{Binding HasNoLobbies, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
-        <StackPanel Grid.Row="3" Margin="0,12,0,0"
+        <StackPanel Grid.Row="4" Margin="0,12,0,0"
                     Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal"
                         Margin="0,0,0,8"
@@ -103,42 +140,48 @@
                 <Button Content="Sync mods and join"
                         Style="{StaticResource Button.Accent}"
                         Margin="0,0,8,0"
-                        Command="{Binding SyncAndJoinCommand}" />
-                <Button Content="Join without changing mods"
+                        Command="{Binding SyncAndJoinCommand}"
+                        ToolTip="Previews the change in the Mods window, applies it, then starts the game into the lobby." />
+                <Button Content="Join"
                         Style="{StaticResource Button.Small}"
-                        Command="{Binding JoinCommand}" />
+                        Command="{Binding JoinCommand}"
+                        ToolTip="Only when your mods already match, because Rain Meadow changes them at the door otherwise." />
             </StackPanel>
         </StackPanel>
 
-        <Expander Grid.Row="4" Header="Paste a join code" Margin="0,12,0,0"
-                  Foreground="{DynamicResource Brush.TextMuted}">
-            <StackPanel Margin="4,8,0,0">
-                <TextBlock Text="A lobby id, a join code starting with +connect_lobby, or a Steam invite link."
-                           Style="{StaticResource Text.Muted}"
-                           TextWrapping="Wrap"
-                           Margin="0,0,0,6" />
-                <DockPanel>
-                    <Button DockPanel.Dock="Right"
-                            Content="Join"
-                            Style="{StaticResource Button.Small}"
-                            Margin="8,0,0,0"
-                            Command="{Binding JoinTypedCommand}" />
-                    <TextBox Text="{Binding TypedCode, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Lobby id, join code or invite link" />
-                </DockPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                    <TextBlock Text="Password" VerticalAlignment="Center" Margin="0,0,8,0" />
-                    <TextBox Text="{Binding TypedPassword, UpdateSourceTrigger=PropertyChanged}"
-                             Width="220"
-                             MaxLength="200"
-                             AutomationProperties.Name="Password for the pasted lobby" />
-                </StackPanel>
-                <TextBlock Text="{Binding TypedProblem}"
-                           TextWrapping="Wrap"
-                           Margin="0,8,0,0"
-                           Foreground="{DynamicResource Brush.Danger}"
-                           Visibility="{Binding HasTypedProblem, Converter={StaticResource BoolToVis}}" />
-            </StackPanel>
-        </Expander>
+        <!-- Always in view, so a code from a friend has somewhere to go without anything to open. -->
+        <StackPanel Grid.Row="5" Margin="0,14,0,0"
+                    Visibility="{Binding IsReady, Converter={StaticResource BoolToVis}}">
+            <DockPanel Margin="0,0,0,6">
+                <TextBlock DockPanel.Dock="Left" Text="JOIN CODE" Margin="0,0,8,0"
+                           Style="{StaticResource Text.SectionLabel}" />
+                <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
+            </DockPanel>
+            <TextBlock Text="A lobby id, a join code starting with +connect_lobby, or a Steam invite link."
+                       Style="{StaticResource Text.Muted}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,6" />
+            <DockPanel>
+                <Button DockPanel.Dock="Right"
+                        Content="Join"
+                        Style="{StaticResource Button.Small}"
+                        Margin="8,0,0,0"
+                        Command="{Binding JoinTypedCommand}" />
+                <TextBox DockPanel.Dock="Right"
+                         Text="{Binding TypedPassword, UpdateSourceTrigger=PropertyChanged}"
+                         Width="150"
+                         MaxLength="200"
+                         ToolTip="Only needed when the lobby has one."
+                         AutomationProperties.Name="Password for the pasted lobby" />
+                <TextBlock DockPanel.Dock="Right" Text="Password" VerticalAlignment="Center" Margin="12,0,8,0" />
+                <TextBox Text="{Binding TypedCode, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Lobby id, join code or invite link" />
+            </DockPanel>
+            <TextBlock Text="{Binding TypedProblem}"
+                       TextWrapping="Wrap"
+                       Margin="0,8,0,0"
+                       Foreground="{DynamicResource Brush.Danger}"
+                       Visibility="{Binding HasTypedProblem, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
     </Grid>
 </Window>

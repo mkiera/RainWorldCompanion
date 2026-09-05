@@ -17,9 +17,17 @@ worded as things ended up. The pre-release sections stay for their tags.
   ones your friends are in, and starts Rain World straight into the one you
   pick. A lobby id, a join code, or a Steam invite link can be pasted in
   instead.
+- The lobby list has a search box. It matches a lobby's name, mode, campaign,
+  who is in it, and the mods it needs.
 - Joining a lobby can match its mods first, turning on what it needs and off
   what it does not, in the order it loads them. The game then has nothing left
-  to change and does not restart to sync them.
+  to change and does not restart to sync them. Mods the lobby says nothing
+  about stay as they are, and Join on its own is offered only when nothing
+  needs to change.
+- The Meadow button is there without the mod too, with a dot on it when Rain
+  Meadow is missing or turned off. The window then says what the mod is and
+  offers its Workshop page or turns it on, and Refresh moves on to the lobbies
+  once it is.
 
 ## 1.2.5-beta.1 - 2026-09-04
 
