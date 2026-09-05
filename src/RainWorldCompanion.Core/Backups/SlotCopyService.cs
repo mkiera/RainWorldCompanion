@@ -161,6 +161,16 @@ public sealed record SettingsWriteResult(
     public bool LiveFolderModified => SettingsWritten > 0;
 }
 
+public sealed record SettingsDeleteResult(
+    bool Success,
+    BackupSnapshot? SafetySnapshot,
+    IReadOnlyList<string> Errors,
+    IReadOnlyList<string> Warnings,
+    int SettingsDeleted)
+{
+    public bool LiveFolderModified => SettingsDeleted > 0;
+}
+
 internal sealed record SlotWriteOutcome(
     bool Success,
     BackupSnapshot? SafetySnapshot,
@@ -387,21 +397,111 @@ public sealed class SlotCopyService
         var errors = new List<string>();
         var warnings = new List<string>();
 
-        EnsureGameNotRunning();
-
-        if (settings.Count == 0)
+        if (!PrepareSettingsChange(
+                settings.Count, safetyLabel, safetyNote, safetyMods, progress, ct, errors,
+                out BackupSnapshot? safety, out IDisposable? operationLock))
         {
-            errors.Add("No settings were chosen, so nothing was changed.");
-            return new SettingsWriteResult(false, null, errors, warnings, 0);
+            return new SettingsWriteResult(false, safety, errors, warnings, 0);
         }
 
-        BackupSnapshot safety;
+        using (operationLock)
+        {
+            int written = WriteExtras(settings, safety!, warnings, progress);
+
+            // Every file that would not write already named itself in a warning. Nothing landing at
+            // all is the one case that is not a partial success.
+            if (written == 0)
+            {
+                errors.Add("None of the chosen settings could be written.");
+            }
+
+            progress?.Report(written == settings.Count ? "Settings written" : "Settings written with problems");
+            return new SettingsWriteResult(errors.Count == 0, safety, errors, warnings, written);
+        }
+    }
+
+    // Deleting is a change to the player's own folder the same as writing over it, so it climbs
+    // the same rungs, and a file the safety snapshot does not hold is left where it is.
+    public SettingsDeleteResult DeleteSettings(
+        IReadOnlyList<string> relativePaths,
+        string safetyLabel,
+        Func<int, string> safetyNote,
+        ModListSnapshot? safetyMods = null,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(relativePaths);
+        ArgumentNullException.ThrowIfNull(safetyNote);
+
+        var errors = new List<string>();
+        var warnings = new List<string>();
+
+        if (!PrepareSettingsChange(
+                relativePaths.Count, safetyLabel, safetyNote, safetyMods, progress, ct, errors,
+                out BackupSnapshot? safety, out IDisposable? operationLock))
+        {
+            return new SettingsDeleteResult(false, safety, errors, warnings, 0);
+        }
+
+        using (operationLock)
+        {
+            int deleted = 0;
+
+            foreach (string relative in relativePaths)
+            {
+                string? problem = DeleteExtra(relative, safety!, progress);
+
+                if (problem is null)
+                {
+                    deleted++;
+                }
+                else
+                {
+                    warnings.Add($"{relative} was not deleted: {problem}.");
+                }
+            }
+
+            if (deleted == 0)
+            {
+                errors.Add("None of the chosen settings could be deleted.");
+            }
+
+            progress?.Report(deleted == relativePaths.Count ? "Settings deleted" : "Settings deleted with problems");
+            return new SettingsDeleteResult(errors.Count == 0, safety, errors, warnings, deleted);
+        }
+    }
+
+    // The rungs every change to settings climbs before a file is touched: the game closed, a
+    // safety snapshot that finished, the lock, then the game checked again because the snapshot
+    // took long enough for one to start. False leaves the reason in errors and holds no lock.
+    private bool PrepareSettingsChange(
+        int count,
+        string safetyLabel,
+        Func<int, string> safetyNote,
+        ModListSnapshot? safetyMods,
+        IProgress<string>? progress,
+        CancellationToken ct,
+        List<string> errors,
+        out BackupSnapshot? safety,
+        out IDisposable? operationLock)
+    {
+        safety = null;
+        operationLock = null;
+
+        EnsureGameNotRunning();
+
+        if (count == 0)
+        {
+            errors.Add("No settings were chosen, so nothing was changed.");
+            return false;
+        }
+
         try
         {
             progress?.Report("Saving a copy of the current saves first");
             safety = _backups.CreateBackup(
                 safetyLabel,
-                safetyNote(settings.Count),
+                safetyNote(count),
                 BackupKind.PreRestoreSafety,
                 progress,
                 ct,
@@ -418,16 +518,15 @@ public sealed class SlotCopyService
         catch (Exception ex)
         {
             errors.Add($"The safety copy of the current saves failed ({ex.Message}), so nothing was changed.");
-            return new SettingsWriteResult(false, null, errors, warnings, 0);
+            return false;
         }
 
         if (!safety.IsComplete)
         {
             errors.Add($"The safety copy {safety.Id} did not finish ({safety.Problem}), so nothing was changed.");
-            return new SettingsWriteResult(false, safety, errors, warnings, 0);
+            return false;
         }
 
-        IDisposable operationLock;
         try
         {
             operationLock = _backups.AcquireOperationLock();
@@ -435,31 +534,99 @@ public sealed class SlotCopyService
         catch (BackupBusyException ex)
         {
             errors.Add(ex.Message);
-            return new SettingsWriteResult(false, safety, errors, warnings, 0);
+            return false;
         }
         catch (Exception ex)
         {
-            errors.Add($"The backup folder could not be held while the settings were written ({ex.Message}), so nothing was changed.");
-            return new SettingsWriteResult(false, safety, errors, warnings, 0);
+            errors.Add($"The backup folder could not be held while the settings were changed ({ex.Message}), so nothing was changed.");
+            return false;
         }
 
-        using (operationLock)
+        try
         {
-            // The snapshot took several seconds, and nothing has been written yet, so a game
-            // started during it can still be refused outright.
             EnsureGameNotRunning();
+        }
+        catch
+        {
+            operationLock.Dispose();
+            operationLock = null;
+            throw;
+        }
 
-            int written = WriteExtras(settings, safety, warnings, progress);
+        return true;
+    }
 
-            // Every file that would not write already named itself in a warning. Nothing landing at
-            // all is the one case that is not a partial success.
-            if (written == 0)
+    private string? DeleteExtra(string relative, BackupSnapshot safety, IProgress<string>? progress)
+    {
+        if (!_backups.Scope.IsInScope(relative))
+        {
+            return "it is not one of the files this app manages";
+        }
+
+        if (!BackupService.TryResolveInside(SaveRoot, relative, out string target))
+        {
+            return "its name does not resolve to a file inside the save folder";
+        }
+
+        if (CanonicalPath.LeadsThroughLink(SaveRoot, target))
+        {
+            return "it is a link, so deleting it would reach outside the save folder";
+        }
+
+        if (!File.Exists(target))
+        {
+            return "it is not there any more";
+        }
+
+        if (!SnapshotHolds(safety, relative))
+        {
+            return $"the safety copy {safety.Id} does not hold it, so deleting it could not be undone";
+        }
+
+        try
+        {
+            progress?.Report($"Deleting {relative}");
+            ClearReadOnly(target);
+            File.Delete(target);
+
+            if (File.Exists(target))
             {
-                errors.Add("None of the chosen settings could be written.");
+                return "it is still there";
             }
 
-            progress?.Report(written == settings.Count ? "Settings written" : "Settings written with problems");
-            return new SettingsWriteResult(errors.Count == 0, safety, errors, warnings, written);
+            RemoveEmptiedFolder(target);
+        }
+        catch (Exception ex)
+        {
+            return ex.Message;
+        }
+
+        return null;
+    }
+
+    // A mod's own folder under ModConfigs is only there for its files, and the mod makes it again
+    // when it needs it. ModConfigs itself stays: the game expects it.
+    private void RemoveEmptiedFolder(string deletedFile)
+    {
+        string configs = Path.Combine(SaveRoot, ModConfigReader.ModConfigsFolderName);
+        string? parent = Path.GetDirectoryName(deletedFile);
+
+        if (parent is null
+            || string.Equals(Path.GetFullPath(parent), Path.GetFullPath(configs), StringComparison.OrdinalIgnoreCase)
+            || !CanonicalPath.IsInside(configs, parent))
+        {
+            return;
+        }
+
+        try
+        {
+            if (!Directory.EnumerateFileSystemEntries(parent).Any())
+            {
+                Directory.Delete(parent);
+            }
+        }
+        catch (Exception)
+        {
         }
     }
 

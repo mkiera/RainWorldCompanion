@@ -88,6 +88,61 @@ public class ModConfigPanelTests
         Assert.Single(section.Rows);
     }
 
+    // ---- the live folder's rows can be ticked ----
+
+    [Fact]
+    public void Only_the_live_section_asked_to_manage_offers_ticks()
+    {
+        var set = Set(File(@"ModConfigs\devourment.txt", "devourment"), File(@"ModConfigs\moreslugcats.txt", "moreslugcats"));
+
+        var live = ModConfigSectionViewModel.ForCurrent(set, manageable: true);
+        var recorded = ModConfigSectionViewModel.ForRecorded(set, fromABackup: false);
+
+        Assert.True(live.CanManage);
+        Assert.True(live.CanSelectAny);
+        Assert.All(live.Rows, row => Assert.True(row.CanSelect));
+        Assert.False(recorded.CanManage);
+        Assert.All(recorded.Rows, row => Assert.False(row.CanSelect));
+    }
+
+    [Fact]
+    public void Ticking_rows_names_the_mods_chosen()
+    {
+        var section = ModConfigSectionViewModel.ForCurrent(
+            Set(File(@"ModConfigs\devourment.txt", "devourment"),
+                File(@"ModConfigs\DvrmentConfs\current.json", "devourment"),
+                File(@"ModConfigs\moreslugcats.txt", "moreslugcats")),
+            manageable: true);
+        var raised = new List<string>();
+        section.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? "");
+
+        Assert.False(section.HasSelection);
+        Assert.Equal("Tick the mods to export or delete.", section.SelectionText);
+
+        section.Rows.Single(row => row.ModId == "devourment").IsSelected = true;
+
+        Assert.True(section.HasSelection);
+        Assert.Equal(new[] { "devourment" }, section.SelectedModIds);
+        Assert.Equal("1 mod ticked", section.SelectionText);
+        Assert.Contains(nameof(ModConfigSectionViewModel.HasSelection), raised);
+
+        section.SelectAll(true);
+        Assert.Equal(2, section.SelectedCount);
+
+        section.SelectAll(false);
+        Assert.False(section.HasSelection);
+    }
+
+    [Fact]
+    public void An_empty_live_folder_still_offers_import()
+    {
+        var section = ModConfigSectionViewModel.ForCurrent(Set(), manageable: true);
+
+        Assert.True(section.CanManage);
+        Assert.False(section.CanSelectAny);
+        Assert.Equal("No mod settings", section.CountText);
+    }
+
     // ---- a backup, derived from its manifest ----
 
     /// <summary>

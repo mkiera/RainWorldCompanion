@@ -13,6 +13,12 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- The live save's SETTINGS list has a tick box on each mod. Ticked settings
+  can be exported to a `.rwconfigs` file to share, and a `.rwconfigs` file
+  from somebody else can be imported, picking which mods to take. A safety
+  snapshot is taken before anything is replaced.
+- Ticked settings can be deleted from the save folder. A safety snapshot is
+  taken first, and restoring it puts them back.
 - Join in the Meadow window asks Steam once more before starting the game, so
   a lobby that closed or filled up since the last Refresh is reported instead
   of joined.
