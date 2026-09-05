@@ -308,6 +308,17 @@ public sealed partial class ModSyncViewModel : ObservableObject
         Refresh();
     }
 
+    // The list a lobby needs is a recorded list like any other, so it previews and applies through
+    // the same path a save's list does.
+    public void MatchLobby(ModListSnapshot wanted, string lobbyName)
+    {
+        LoadPreview(
+            wanted,
+            $"Matching the mods \"{lobbyName}\" needs.",
+            "Match the lobby",
+            $"Before joining \"{lobbyName}\"");
+    }
+
     public void ImportList(string path)
     {
         if (IsBusy)

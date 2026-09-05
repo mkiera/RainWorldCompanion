@@ -13,9 +13,13 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
-- Join Lobby in the top bar starts Rain World straight into a Rain Meadow
-  lobby, from a lobby id, a join code, or a Steam invite link. A lobby with a
-  password starts the game directly, because Steam cannot carry one.
+- Meadow in the top bar lists the Rain Meadow lobbies that are up, says which
+  ones your friends are in, and starts Rain World straight into the one you
+  pick. A lobby id, a join code, or a Steam invite link can be pasted in
+  instead.
+- Joining a lobby can match its mods first, turning on what it needs and off
+  what it does not, in the order it loads them. The game then has nothing left
+  to change and does not restart to sync them.
 
 ## 1.2.5-beta.1 - 2026-09-04
 

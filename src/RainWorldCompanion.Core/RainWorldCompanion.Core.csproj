@@ -5,6 +5,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The managed wrapper only. The native steam_api64.dll is not in this package and is not
+         shipped with this app either: MeadowSteam loads the copy in the player's own Rain World
+         folder, which is the same file the game itself uses. -->
+    <PackageReference Include="Steamworks.NET" Version="20.2.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The tests drive the snapshot folder claim and the scope injection directly, because
          neither race is reachable through the public surface once the operation lock serialises
          it. -->

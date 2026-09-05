@@ -2758,21 +2758,42 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanOpenModSync() => !IsBusy && _modSync is not null;
 
-    // Nothing here touches the save folder, so this stays available while the game is running and
-    // the dialog says why that will not work instead.
-    [RelayCommand(CanExecute = nameof(CanJoinLobby))]
-    private void JoinLobby()
+    // Nothing here touches the save folder until the mods are applied, and that path does its own
+    // checking, so this stays available while the game is running.
+    [RelayCommand(CanExecute = nameof(CanOpenMeadow))]
+    private void OpenMeadow()
     {
-        var dialog = new JoinLobbyDialog(_settings.GameInstallPath, IsGameRunning);
-        if (ShowDialog(dialog) != true || dialog.Start is not { } start)
+        if (_modSync is not { } service)
         {
             return;
         }
 
-        MeadowLauncher.Start(start, problem => ShowMessage(problem, "Join a lobby", MessageBoxImage.Warning));
+        var view = new MeadowViewModel(
+            service,
+            _meadow.Version,
+            SyncModsForLobby,
+            start => MeadowLauncher.Start(start, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)));
+
+        ShowDialog(new MeadowDialog(view));
     }
 
-    private bool CanJoinLobby() => !IsBusy;
+    private bool CanOpenMeadow() => !IsBusy && _modSync is not null;
+
+    // Shown over the Meadow window rather than instead of it, the same way a save's mod diff is,
+    // and the answer is whether anything was actually written.
+    private bool SyncModsForLobby(ModListSnapshot wanted, string lobbyName)
+    {
+        if (_modSync is not { } service)
+        {
+            return false;
+        }
+
+        var view = new ModSyncViewModel(service) { OfferLaunch = false };
+        var window = new ModSyncDialog(view) { Owner = OwnerWindow };
+        view.MatchLobby(wanted, lobbyName);
+        window.ShowDialog();
+        return view.AppliedSomething;
+    }
 
     private ModSyncViewModel? ShowModSyncWindow()
     {
