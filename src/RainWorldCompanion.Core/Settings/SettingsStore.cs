@@ -192,7 +192,7 @@ public sealed class SettingsStore
         settings.GameInstallPath = ReadStringOrNull(root, "gameInstallPath");
         settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
-        settings.Theme = ReadString(root, "theme", settings.Theme);
+        settings.Theme = ReadString(root, "theme", "light");
         settings.LastUpdateCheckUtc = ReadTimestamp(root, "lastUpdateCheckUtc");
         settings.InstallId = ReadString(root, "installId", settings.InstallId);
         settings.TelemetryEnabled = ReadBool(root, "telemetryEnabled", settings.TelemetryEnabled);

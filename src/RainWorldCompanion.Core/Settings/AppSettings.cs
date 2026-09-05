@@ -112,6 +112,7 @@ public sealed class AppSettings
     public static AppSettings CreateDefault() => new()
     {
         SchemaVersion = 1,
+        Theme = "dark",
         GameSavePath = SavePathResolver.FindSavePath() ?? SavePathResolver.DefaultSavePath,
         BackupRootPath = DefaultBackupRootPath,
         LibraryRootPath = DefaultLibraryRootPath,

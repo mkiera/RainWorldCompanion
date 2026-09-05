@@ -88,7 +88,7 @@ public partial class App : Application
         // Before Show, so the window is painted in the right colours once rather than opening
         // light and turning dark a moment later.
         var startup = settingsStore.ReadForStartup();
-        ThemeManager.Apply(AppThemes.Parse(startup?.Theme));
+        ThemeManager.Apply(startup is null ? AppTheme.Dark : AppThemes.Parse(startup.Theme));
 
         var window = new MainWindow { DataContext = viewModel };
         window.ApplyStartupGeometry(startup);
