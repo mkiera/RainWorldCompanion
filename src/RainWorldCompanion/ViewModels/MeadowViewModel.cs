@@ -150,14 +150,24 @@ public sealed partial class MeadowViewModel : ObservableObject
 
     private static readonly TimeSpan SteamTimeout = TimeSpan.FromSeconds(12);
 
+    // Steam can sit on an update before it starts the game, so this is generous.
+    private static readonly TimeSpan DefaultStartTimeout = TimeSpan.FromMinutes(2);
+
+    private enum JoinPhase { Idle, Starting, Playing }
+
     private readonly ModSyncService _mods;
     private readonly Func<ModSyncRequest, bool> _syncMods;
     private readonly Func<MeadowStart, bool> _launch;
     private readonly Action<string> _openUrl;
     private readonly Func<string?, string?, TimeSpan, MeadowLobbyList> _read;
     private readonly Func<CurrentMods> _readCurrent;
+    private readonly TimeSpan _startTimeout;
 
     private readonly List<MeadowLobbyRowViewModel> _all = new();
+
+    private JoinPhase _phase;
+    private string _joinedWhat = "";
+    private int _joinGeneration;
 
     public MeadowViewModel(
         ModSyncService mods,
@@ -165,7 +175,8 @@ public sealed partial class MeadowViewModel : ObservableObject
         Func<MeadowStart, bool> launch,
         Action<string> openUrl,
         Func<string?, string?, TimeSpan, MeadowLobbyList>? read = null,
-        Func<CurrentMods>? readCurrent = null)
+        Func<CurrentMods>? readCurrent = null,
+        TimeSpan? startTimeout = null)
     {
         _mods = mods ?? throw new ArgumentNullException(nameof(mods));
         _syncMods = syncMods ?? throw new ArgumentNullException(nameof(syncMods));
@@ -174,6 +185,7 @@ public sealed partial class MeadowViewModel : ObservableObject
         _read = read ?? ((game, version, timeout) =>
             MeadowSteamProcess.ReadThrough(Environment.ProcessPath, game, version, timeout));
         _readCurrent = readCurrent ?? mods.ReadCurrent;
+        _startTimeout = startTimeout ?? DefaultStartTimeout;
     }
 
     // Steam counts the asking as the game running, so it is said next to the button that asks.
@@ -197,8 +209,21 @@ public sealed partial class MeadowViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(TurnOnCommand))]
     private bool isBusy;
 
+    // Set by the window that owns this one, which already watches the game's process.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GameText))]
+    [NotifyPropertyChangedFor(nameof(HasGameText))]
+    [NotifyPropertyChangedFor(nameof(ShowJoin))]
+    [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
+    [NotifyCanExecuteChangedFor(nameof(JoinCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SyncAndJoinCommand))]
+    [NotifyCanExecuteChangedFor(nameof(JoinTypedCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TurnOnCommand))]
+    private bool isGameRunning;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelection))]
+    [NotifyPropertyChangedFor(nameof(ShowJoin))]
     [NotifyPropertyChangedFor(nameof(NeedsPassword))]
     [NotifyCanExecuteChangedFor(nameof(JoinCommand))]
     [NotifyCanExecuteChangedFor(nameof(SyncAndJoinCommand))]
@@ -269,6 +294,19 @@ public sealed partial class MeadowViewModel : ObservableObject
 
     public bool HasSelection => SelectedLobby is not null;
 
+    // Takes the place of the join buttons from the moment the game is asked to start until it
+    // has closed again, and whenever the game is open for any other reason.
+    public string GameText => _phase switch
+    {
+        JoinPhase.Starting => "Joining " + _joinedWhat + "...",
+        JoinPhase.Playing => "Rain World is open in " + _joinedWhat + ". Close it to join another lobby.",
+        _ => IsGameRunning ? "Rain World is open. Close it to join a lobby from here." : "",
+    };
+
+    public bool HasGameText => GameText.Length > 0;
+
+    public bool ShowJoin => HasSelection && !HasGameText;
+
     public bool NeedsPassword => SelectedLobby is { HasPassword: true };
 
     public bool HasProblem => ProblemText.Length > 0;
@@ -308,7 +346,7 @@ public sealed partial class MeadowViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(NotBusy))]
+    [RelayCommand(CanExecute = nameof(CanRefresh))]
     private async Task RefreshAsync()
     {
         IsBusy = true;
@@ -317,54 +355,7 @@ public sealed partial class MeadowViewModel : ObservableObject
 
         try
         {
-            string? game = _mods.GameInstallPath;
-
-            // What the machine has decides both whether there is anything to show and which
-            // version the lobby list is asked for, so it is read before Steam is touched.
-            CurrentMods current = await Task.Run(_readCurrent);
-            MeadowReadiness readiness = MeadowReadiness.From(current);
-
-            _all.Clear();
-            Step = readiness.Step;
-
-            if (readiness.Step != MeadowStep.Ready)
-            {
-                StatusText = "";
-                FriendsText = "";
-                PolicyNote = "";
-                ShowMatching();
-                return;
-            }
-
-            string? version = readiness.Version;
-
-            (MeadowLobbyList list, MeadowModPolicy policy) = await Task.Run(() =>
-                (_read(game, version, SteamTimeout), MeadowModPolicy.ReadFrom(game)));
-
-            if (!list.Read)
-            {
-                ProblemText = list.Problem ?? "Steam could not be read.";
-                StatusText = "";
-                FriendsText = "";
-                ShowMatching();
-                return;
-            }
-
-            foreach (MeadowLobby lobby in list.Lobbies)
-            {
-                _all.Add(new MeadowLobbyRowViewModel(
-                    lobby,
-                    MeadowModMatch.Build(lobby.Mods, policy, current),
-                    policy.Read));
-            }
-
-            FriendsText = DescribeFriends(list.Friends);
-            PolicyNote = policy.Read
-                ? ""
-                : "Rain Meadow has not written its mod lists yet, so what it would turn off cannot "
-                    + "be worked out here. Start the game once and refresh.";
-            StatusText = Describe(_all.Count);
-            ShowMatching();
+            await ReadListAsync();
         }
         catch (Exception ex)
         {
@@ -377,11 +368,64 @@ public sealed partial class MeadowViewModel : ObservableObject
         }
     }
 
+    private async Task<bool> ReadListAsync()
+    {
+        string? game = _mods.GameInstallPath;
+
+        // What the machine has decides both whether there is anything to show and which
+        // version the lobby list is asked for, so it is read before Steam is touched.
+        CurrentMods current = await Task.Run(_readCurrent);
+        MeadowReadiness readiness = MeadowReadiness.From(current);
+
+        _all.Clear();
+        Step = readiness.Step;
+
+        if (readiness.Step != MeadowStep.Ready)
+        {
+            StatusText = "";
+            FriendsText = "";
+            PolicyNote = "";
+            ShowMatching();
+            return false;
+        }
+
+        string? version = readiness.Version;
+
+        (MeadowLobbyList list, MeadowModPolicy policy) = await Task.Run(() =>
+            (_read(game, version, SteamTimeout), MeadowModPolicy.ReadFrom(game)));
+
+        if (!list.Read)
+        {
+            ProblemText = list.Problem ?? "Steam could not be read.";
+            StatusText = "";
+            FriendsText = "";
+            ShowMatching();
+            return false;
+        }
+
+        foreach (MeadowLobby lobby in list.Lobbies)
+        {
+            _all.Add(new MeadowLobbyRowViewModel(
+                lobby,
+                MeadowModMatch.Build(lobby.Mods, policy, current),
+                policy.Read));
+        }
+
+        FriendsText = DescribeFriends(list.Friends);
+        PolicyNote = policy.Read
+            ? ""
+            : "Rain Meadow has not written its mod lists yet, so what it would turn off cannot "
+                + "be worked out here. Start the game once and refresh.";
+        StatusText = Describe(_all.Count);
+        ShowMatching();
+        return true;
+    }
+
     [RelayCommand(CanExecute = nameof(CanJoinSelectedAsIs))]
-    private void Join() => Start(SelectedLobby!, syncFirst: false);
+    private Task JoinAsync() => StartAsync(SelectedLobby!, syncFirst: false);
 
     [RelayCommand(CanExecute = nameof(CanSyncSelected))]
-    private void SyncAndJoin() => Start(SelectedLobby!, syncFirst: true);
+    private Task SyncAndJoinAsync() => StartAsync(SelectedLobby!, syncFirst: true);
 
     [RelayCommand]
     private void Install() => _openUrl(WorkshopUrl);
@@ -404,7 +448,7 @@ public sealed partial class MeadowViewModel : ObservableObject
         }
     }
 
-    [RelayCommand(CanExecute = nameof(NotBusy))]
+    [RelayCommand(CanExecute = nameof(CanJoinTyped))]
     private void JoinTyped()
     {
         TypedProblem = "";
@@ -423,7 +467,23 @@ public sealed partial class MeadowViewModel : ObservableObject
             return;
         }
 
-        _launch(start);
+        if (_launch(start))
+        {
+            BeginJoining("the pasted lobby");
+        }
+    }
+
+    partial void OnIsGameRunningChanged(bool value)
+    {
+        if (value && _phase == JoinPhase.Starting)
+        {
+            _phase = JoinPhase.Playing;
+            RaiseGameText();
+        }
+        else if (!value && _phase == JoinPhase.Playing)
+        {
+            EndJoining("Rain World has closed. Refresh to see which lobbies are up now.");
+        }
     }
 
     partial void OnSearchTextChanged(string value) => ShowMatching();
@@ -450,7 +510,7 @@ public sealed partial class MeadowViewModel : ObservableObject
         OnPropertyChanged(nameof(EmptyText));
     }
 
-    private void Start(MeadowLobbyRowViewModel row, bool syncFirst)
+    private async Task StartAsync(MeadowLobbyRowViewModel row, bool syncFirst)
     {
         ProblemText = "";
 
@@ -485,16 +545,123 @@ public sealed partial class MeadowViewModel : ObservableObject
             }
         }
 
-        _launch(start);
+        if (!await StillUpAsync(row))
+        {
+            return;
+        }
+
+        if (_launch(start))
+        {
+            BeginJoining("\"" + row.Name + "\"");
+        }
     }
+
+    // The list can be minutes old by the time Join is pressed, so Steam is asked once more and
+    // the lobby has to be in the answer, with room, before the game is started towards it.
+    private async Task<bool> StillUpAsync(MeadowLobbyRowViewModel row)
+    {
+        IsBusy = true;
+        StatusText = "Checking that \"" + row.Name + "\" is still up...";
+
+        try
+        {
+            if (!await ReadListAsync())
+            {
+                StatusText = "\"" + row.Name + "\" was not joined.";
+                return false;
+            }
+
+            MeadowLobbyRowViewModel? fresh = _all.FirstOrDefault(other =>
+                string.Equals(other.Lobby.Id, row.Lobby.Id, StringComparison.Ordinal));
+
+            if (fresh is null)
+            {
+                ProblemText = "\"" + row.Name + "\" is no longer up.";
+                return false;
+            }
+
+            if (Lobbies.Contains(fresh))
+            {
+                SelectedLobby = fresh;
+            }
+
+            if (fresh.IsFull)
+            {
+                ProblemText = "\"" + row.Name + "\" is full now.";
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ProblemText = "Whether \"" + row.Name + "\" is still up could not be checked: " + ex.Message;
+            StatusText = "\"" + row.Name + "\" was not joined.";
+            return false;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void BeginJoining(string what)
+    {
+        _joinedWhat = what;
+        _phase = JoinPhase.Starting;
+        RaiseGameText();
+        Waiting = WaitForTheGameAsync(++_joinGeneration);
+    }
+
+    // The game not turning up is the one way out of Starting that the process watch cannot give,
+    // since it only ever reports what is running.
+    private async Task WaitForTheGameAsync(int generation)
+    {
+        await Task.Delay(_startTimeout);
+
+        if (generation == _joinGeneration && _phase == JoinPhase.Starting)
+        {
+            EndJoining("Rain World did not open. Try again, or start it from Steam.");
+        }
+    }
+
+    private void EndJoining(string status)
+    {
+        _phase = JoinPhase.Idle;
+        _joinedWhat = "";
+        RaiseGameText();
+        StatusText = status;
+    }
+
+    private void RaiseGameText()
+    {
+        OnPropertyChanged(nameof(GameText));
+        OnPropertyChanged(nameof(HasGameText));
+        OnPropertyChanged(nameof(ShowJoin));
+        RefreshCommand.NotifyCanExecuteChanged();
+        JoinCommand.NotifyCanExecuteChanged();
+        SyncAndJoinCommand.NotifyCanExecuteChanged();
+        JoinTypedCommand.NotifyCanExecuteChanged();
+        TurnOnCommand.NotifyCanExecuteChanged();
+    }
+
+    internal Task? Waiting { get; private set; }
 
     private bool NotBusy() => !IsBusy;
 
-    private bool CanTurnOnNow() => !IsBusy && CanTurnOn;
+    // Steam would only bring an open game to the front, and asking it for the list from a second
+    // process while the game holds the app id is untested, so the window waits for the game to close.
+    private bool GameIsClosed() => !IsGameRunning && _phase == JoinPhase.Idle;
 
-    private bool CanJoinSelectedAsIs() => !IsBusy && SelectedLobby is { CanJoinAsIs: true };
+    private bool CanRefresh() => !IsBusy && GameIsClosed();
 
-    private bool CanSyncSelected() => !IsBusy && SelectedLobby is { CanJoin: true, Match.NothingToDo: false };
+    private bool CanTurnOnNow() => !IsBusy && GameIsClosed() && CanTurnOn;
+
+    private bool CanJoinSelectedAsIs() => !IsBusy && GameIsClosed() && SelectedLobby is { CanJoinAsIs: true };
+
+    private bool CanSyncSelected() => !IsBusy && GameIsClosed() && SelectedLobby is { CanJoin: true, Match.NothingToDo: false };
+
+    private bool CanJoinTyped() => !IsBusy && GameIsClosed();
 
     private static string Describe(int count) => count switch
     {

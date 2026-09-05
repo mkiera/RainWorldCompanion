@@ -13,6 +13,13 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- Join in the Meadow window asks Steam once more before starting the game, so
+  a lobby that closed or filled up since the last Refresh is reported instead
+  of joined.
+- After Sync mods and join, the Mods window closes by itself once Apply has
+  run, and the Meadow window says which lobby it is joining. The join buttons
+  come back when Rain World closes, and stay away while it is open.
+
 ## 1.3.0-beta.1 - 2026-09-04
 
 - Meadow in the top bar lists the Rain Meadow lobbies that are up, says which

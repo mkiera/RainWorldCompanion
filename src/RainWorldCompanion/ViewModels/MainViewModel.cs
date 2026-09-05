@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -2784,9 +2785,30 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             service,
             SyncModsFor,
             start => MeadowLauncher.Start(start, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)),
-            url => WorkshopLink.Open(url, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)));
+            url => WorkshopLink.Open(url, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)))
+        {
+            IsGameRunning = IsGameRunning,
+        };
 
-        ShowDialog(new MeadowDialog(view));
+        // The game poll keeps ticking under the modal window, so the window learns when the game
+        // it started has closed again.
+        PropertyChangedEventHandler follow = (_, e) =>
+        {
+            if (e.PropertyName == nameof(IsGameRunning))
+            {
+                view.IsGameRunning = IsGameRunning;
+            }
+        };
+
+        PropertyChanged += follow;
+        try
+        {
+            ShowDialog(new MeadowDialog(view));
+        }
+        finally
+        {
+            PropertyChanged -= follow;
+        }
 
         // The window may have turned the mod on, and the button's marker reads from this.
         _currentMods = service.ReadCurrent();
@@ -2808,6 +2830,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         var view = new ModSyncViewModel(service) { OfferLaunch = false };
         var window = new ModSyncDialog(view) { Owner = OwnerWindow };
         view.MatchWanted(request);
+
+        // Apply is the last thing wanted from this window: the Meadow window carries on from it.
+        view.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ModSyncViewModel.AppliedSomething) && view.AppliedSomething)
+            {
+                window.Close();
+            }
+        };
+
         window.ShowDialog();
         return view.AppliedSomething;
     }
