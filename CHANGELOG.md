@@ -13,6 +13,8 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+## 1.3.0-beta.1 - 2026-09-04
+
 - Meadow in the top bar lists the Rain Meadow lobbies that are up, says which
   ones your friends are in, and starts Rain World straight into the one you
   pick. A lobby id, a join code, or a Steam invite link can be pasted in
