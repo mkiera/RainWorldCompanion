@@ -61,7 +61,6 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool isDarkTheme;
 
-    /// <summary>Only the portraits read this, so a blank or wrong value never blocks Save.</summary>
     [ObservableProperty]
     private string gameInstallPath;
 
@@ -89,6 +88,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(AutoDetectCommand))]
     [NotifyCanExecuteChangedFor(nameof(AutoDetectInstallCommand))]
+    [NotifyCanExecuteChangedFor(nameof(BundleLogsCommand))]
     private bool isBusy;
 
     public bool HasValidationMessage => ValidationMessage.Length > 0;
@@ -226,6 +226,56 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         GameInstallPath = found;
     }
+
+    [RelayCommand(CanExecute = nameof(CanBundleLogs))]
+    private async Task BundleLogsAsync()
+    {
+        var installPath = GameInstallPath.Trim();
+        if (installPath.Length == 0)
+        {
+            Show(
+                "Set the Rain World install folder above, then try again.",
+                "Rain World logs",
+                MessageBoxImage.Information);
+            return;
+        }
+
+        RainWorldLogBundleResult? result = null;
+        Exception? failure = null;
+
+        IsBusy = true;
+        try
+        {
+            result = await Task.Run(() => RainWorldLogBundle.Create(
+                installPath,
+                DownloadsFolder.GetPath()));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+
+        if (failure is not null)
+        {
+            Show(
+                "The Rain World logs could not be bundled.\n\n" + failure.Message,
+                "Rain World logs",
+                MessageBoxImage.Error);
+            return;
+        }
+
+        Show(
+            "Bundled " + string.Join(" and ", result!.IncludedFileNames) + " into:\n\n"
+            + result.ArchivePath,
+            "Rain World logs",
+            MessageBoxImage.Information);
+    }
+
+    private bool CanBundleLogs() => !IsBusy;
 
     /// <param name="debounce">
     /// True when the path came from typing, which stops one sweep per character being run through.
