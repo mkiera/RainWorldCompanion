@@ -8,7 +8,7 @@
         xmlns:behaviors="clr-namespace:RainWorldCompanion.Views.Behaviors"
         mc:Ignorable="d"
         Title="{x:Static local:AppInfo.DisplayName}"
-        Height="720" Width="1150" MinHeight="560" MinWidth="900"
+        Height="720" Width="1150" MinHeight="560" MinWidth="1024"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource Brush.Window}"
         Foreground="{DynamicResource Brush.Text}"
@@ -1968,55 +1968,12 @@
                 BorderBrush="{DynamicResource Brush.Border}"
                 BorderThickness="0,0,0,1"
                 Padding="16,10">
-            <DockPanel LastChildFill="False">
-                <Border DockPanel.Dock="Left" CornerRadius="3" Padding="10,5" VerticalAlignment="Center">
-                    <Border.Style>
-                        <Style TargetType="Border">
-                            <Setter Property="Background" Value="{DynamicResource Brush.OkSoft}" />
-                            <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
-                            <Setter Property="BorderThickness" Value="1" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                    <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
-                                    <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Border.Style>
-                    <StackPanel Orientation="Horizontal">
-                        <Ellipse Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
-                            <Ellipse.Style>
-                                <Style TargetType="Ellipse">
-                                    <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                            <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Ellipse.Style>
-                        </Ellipse>
-                        <TextBlock Text="{Binding GameStatusText}" FontWeight="SemiBold" VerticalAlignment="Center">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
-                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </StackPanel>
-                </Border>
-
-                <Button DockPanel.Dock="Left" Content="Refresh" Margin="10,0,0,0"
-                        Style="{StaticResource Button.Small}"
-                        Command="{Binding RefreshCommand}" />
-
-                <!-- One StackPanel rather than a button apiece docked Right, which listed them backwards. -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+            <DockPanel LastChildFill="True">
+                <!-- One StackPanel rather than a button apiece docked Right, which listed them backwards.
+                     First in the panel so it is measured first: when the row is short of room
+                     it is the status chip that gives way, never a command. -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
+                            Margin="10,0,0,0">
 
                     <Button Content="New Backup" Style="{StaticResource Button.Accent}"
                             MinWidth="98" MinHeight="26" Padding="10,4" FontSize="12"
@@ -2079,6 +2036,63 @@
                               Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                     </Button>
                 </StackPanel>
+
+                <!-- Fills what the commands leave and sits left in it, so the two stay together
+                     and the chip, in the star column, is what shortens when the row is tight. -->
+                <Grid HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" HorizontalAlignment="Left" CornerRadius="3" Padding="10,5" VerticalAlignment="Center">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource Brush.OkSoft}" />
+                                <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
+                                        <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <DockPanel>
+                            <Ellipse DockPanel.Dock="Left" Width="9" Height="9" Margin="0,0,8,0" VerticalAlignment="Center">
+                                <Ellipse.Style>
+                                    <Style TargetType="Ellipse">
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                                <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Ellipse.Style>
+                            </Ellipse>
+                            <TextBlock Text="{Binding GameStatusText}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip="{Binding GameStatusText}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                                <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DockPanel>
+                    </Border>
+
+                    <Button Grid.Column="1" Content="Refresh" Margin="10,0,0,0"
+                            Style="{StaticResource Button.Small}"
+                            Command="{Binding RefreshCommand}" />
+                </Grid>
             </DockPanel>
         </Border>
 
