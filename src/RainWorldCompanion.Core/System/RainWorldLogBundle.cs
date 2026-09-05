@@ -9,7 +9,12 @@ public sealed record RainWorldLogBundleResult(
 
 public static class RainWorldLogBundle
 {
-    private static readonly string[] LogFileNames = ["consoleLog.txt", "exceptionLog.txt"];
+    private static readonly (string ArchiveName, string RelativePath)[] LogFiles =
+    [
+        ("consoleLog.txt", "consoleLog.txt"),
+        ("exceptionLog.txt", "exceptionLog.txt"),
+        ("BepInEx/LogOutput.log", Path.Combine("BepInEx", "LogOutput.log")),
+    ];
 
     public static RainWorldLogBundleResult Create(
         string installPath,
@@ -20,15 +25,15 @@ public static class RainWorldLogBundle
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectory);
 
         var installRoot = Path.GetFullPath(installPath.Trim());
-        var sources = LogFileNames
-            .Select(name => new { Name = name, Path = Path.Combine(installRoot, name) })
+        var sources = LogFiles
+            .Select(log => new { Name = log.ArchiveName, Path = Path.Combine(installRoot, log.RelativePath) })
             .Where(source => File.Exists(source.Path))
             .ToList();
 
         if (sources.Count == 0)
         {
             throw new FileNotFoundException(
-                "No consoleLog.txt or exceptionLog.txt was found in the Rain World install folder: "
+                "No consoleLog.txt, exceptionLog.txt, or BepInEx/LogOutput.log was found in the Rain World install folder: "
                 + installRoot);
         }
 

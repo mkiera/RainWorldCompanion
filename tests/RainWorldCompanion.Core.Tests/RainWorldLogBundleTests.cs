@@ -10,25 +10,30 @@ public class RainWorldLogBundleTests
         new DateTimeOffset(2026, 9, 5, 14, 23, 45, TimeSpan.Zero));
 
     [Fact]
-    public void Both_Rain_World_logs_are_bundled_with_their_contents()
+    public void Every_existing_log_is_bundled_with_its_contents()
     {
         using var files = new TempDirectory("rain-world-log-bundle");
         var install = files.CreateSubdirectory("Rain World");
         var downloads = files.CreateSubdirectory("Downloads");
         File.WriteAllText(Path.Combine(install, "consoleLog.txt"), "console output");
         File.WriteAllText(Path.Combine(install, "exceptionLog.txt"), "exception output");
+        var bepinEx = Directory.CreateDirectory(Path.Combine(install, "BepInEx"));
+        File.WriteAllText(Path.Combine(bepinEx.FullName, "LogOutput.log"), "mod output");
 
         RainWorldLogBundleResult result = RainWorldLogBundle.Create(install, downloads, Clock);
 
         Assert.Equal(
             Path.Combine(downloads, "Rain World logs 2026-09-05 14-23-45.zip"),
             result.ArchivePath);
-        Assert.Equal(["consoleLog.txt", "exceptionLog.txt"], result.IncludedFileNames);
+        Assert.Equal(["consoleLog.txt", "exceptionLog.txt", "BepInEx/LogOutput.log"], result.IncludedFileNames);
 
         using var archive = ZipFile.OpenRead(result.ArchivePath);
-        Assert.Equal(["consoleLog.txt", "exceptionLog.txt"], archive.Entries.Select(entry => entry.FullName));
+        Assert.Equal(
+            ["consoleLog.txt", "exceptionLog.txt", "BepInEx/LogOutput.log"],
+            archive.Entries.Select(entry => entry.FullName));
         Assert.Equal("console output", Read(archive.GetEntry("consoleLog.txt")!));
         Assert.Equal("exception output", Read(archive.GetEntry("exceptionLog.txt")!));
+        Assert.Equal("mod output", Read(archive.GetEntry("BepInEx/LogOutput.log")!));
     }
 
     [Fact]
@@ -76,6 +81,7 @@ public class RainWorldLogBundleTests
 
         Assert.Contains("consoleLog.txt", exception.Message);
         Assert.Contains("exceptionLog.txt", exception.Message);
+        Assert.Contains("BepInEx/LogOutput.log", exception.Message);
         Assert.Contains(install, exception.Message);
         Assert.False(Directory.Exists(downloads));
     }
