@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -267,6 +267,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenModSyncCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenMeadowCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TakeSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreWholeSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SendCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteCampaignCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -316,6 +323,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyPropertyChangedFor(nameof(HasDetail))]
     [NotifyPropertyChangedFor(nameof(HasNoDetail))]
     private SnapshotDetailViewModel? detail;
+
+    // The Meadow button is always there. This marks it when the mod is missing or off, so the
+    // button says so before it is pressed.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MeadowButtonHint))]
+    private bool meadowNeedsSetup;
+
+    public string MeadowButtonHint => MeadowNeedsSetup
+        ? "Rain Meadow is not on. Open this to install it or turn it on."
+        : "See which Rain Meadow lobbies are up, match their mods, and join one.";
 
     [ObservableProperty]
     private string savePathText = "";
@@ -2753,6 +2770,48 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanOpenModSync() => !IsBusy && _modSync is not null;
 
+    // Nothing here touches the save folder until the mods are applied, and that path does its own
+    // checking, so this stays available while the game is running.
+    [RelayCommand(CanExecute = nameof(CanOpenMeadow))]
+    private void OpenMeadow()
+    {
+        if (_modSync is not { } service)
+        {
+            return;
+        }
+
+        var view = new MeadowViewModel(
+            service,
+            SyncModsFor,
+            start => MeadowLauncher.Start(start, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)),
+            url => WorkshopLink.Open(url, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)));
+
+        ShowDialog(new MeadowDialog(view));
+
+        // The window may have turned the mod on, and the button's marker reads from this.
+        _currentMods = service.ReadCurrent();
+        MeadowNeedsSetup = MeadowReadiness.From(_currentMods).Step != MeadowStep.Ready;
+        RebuildDetail();
+    }
+
+    private bool CanOpenMeadow() => !IsBusy && _modSync is not null;
+
+    // Shown over the Meadow window rather than instead of it, the same way a save's mod diff is,
+    // and the answer is whether anything was actually written.
+    private bool SyncModsFor(ModSyncRequest request)
+    {
+        if (_modSync is not { } service)
+        {
+            return false;
+        }
+
+        var view = new ModSyncViewModel(service) { OfferLaunch = false };
+        var window = new ModSyncDialog(view) { Owner = OwnerWindow };
+        view.MatchWanted(request);
+        window.ShowDialog();
+        return view.AppliedSomething;
+    }
+
     private ModSyncViewModel? ShowModSyncWindow()
     {
         if (_modSync is not { } service)
@@ -3023,6 +3082,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             _liveFileCount = 0;
             _liveMeadow = null;
             _backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
+            MeadowNeedsSetup = false;
             LiveSlots.Clear();
             Backups.Clear();
             LibraryEntries.Clear();
@@ -3089,6 +3149,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             });
 
             _meadow = data.Meadow;
+            MeadowNeedsSetup = MeadowReadiness.From(data.Mods).Step != MeadowStep.Ready;
             _currentMods = data.Mods;
             _liveConfigs = data.Configs;
             _liveSlotData = data.Slots;

@@ -89,6 +89,24 @@ public class ThemeTests
         Assert.Empty(missing);
     }
 
+    // A key declared twice in one dictionary throws while that dictionary loads, which happens
+    // before the first window is built and so takes the whole app down at startup.
+    [Fact]
+    public void No_dictionary_declares_the_same_key_twice()
+    {
+        var repeated = Directory
+            .EnumerateFiles(XamlRoot, "*.xaml", SearchOption.AllDirectories)
+            .SelectMany(file => DeclaredKey.Matches(File.ReadAllText(file))
+                .Select(match => match.Groups["key"].Value)
+                .GroupBy(key => key, StringComparer.Ordinal)
+                .Where(group => group.Count() > 1)
+                .Select(group => Path.GetFileName(file) + " declares " + group.Key + " twice"))
+            .Order()
+            .ToList();
+
+        Assert.Empty(repeated);
+    }
+
     private static HashSet<string> KeysDeclaredIn(string relativePath)
     {
         var path = Path.Combine(XamlRoot, relativePath.Replace('/', Path.DirectorySeparatorChar));

@@ -10,6 +10,14 @@ using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.ViewModels;
 
+// A mod change another window wants previewed and applied here, with the wording that window
+// would use for it.
+public sealed record ModSyncRequest(
+    ModListSnapshot Wanted,
+    string SourceText,
+    string ButtonText,
+    string ApplyReason);
+
 public sealed partial class ModSyncRowViewModel : ObservableObject
 {
     private readonly ModSyncRow _row;
@@ -306,6 +314,14 @@ public sealed partial class ModSyncViewModel : ObservableObject
 
         ResultText = "";
         Refresh();
+    }
+
+    // The list a lobby needs is a recorded list like any other, so it previews and applies through
+    // the same path a save's list does.
+    public void MatchWanted(ModSyncRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        LoadPreview(request.Wanted, request.SourceText, request.ButtonText, request.ApplyReason);
     }
 
     public void ImportList(string path)
