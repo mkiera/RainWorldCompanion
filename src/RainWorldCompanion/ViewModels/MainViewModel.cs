@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -267,6 +267,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenModSyncCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenMeadowCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TakeSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreWholeSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SendCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteCampaignCommand))]
     private bool isBusy;
 
     [ObservableProperty]

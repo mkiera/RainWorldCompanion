@@ -36,6 +36,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- A command whose guard reads IsBusy but is not listed under the field keeps whatever it
+         decided at construction. Nothing throws, the button is just dead, so the wiring is read
+         off the source. -->
+    <None Include="..\..\src\RainWorldCompanion\ViewModels\*.cs"
+          Link="ViewModelSource\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\RainWorldCompanion\RainWorldCompanion.csproj" />
   </ItemGroup>
 
