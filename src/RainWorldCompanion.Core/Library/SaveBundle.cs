@@ -115,11 +115,14 @@ internal static class SaveBundle
     /// </summary>
     private static void WriteConfigs(ZipArchive archive, LibraryManifest manifest, string? configsDirectory)
     {
-        if (manifest.Configs is not { } configs || string.IsNullOrWhiteSpace(configsDirectory))
+        if (manifest.Configs is { } configs && !string.IsNullOrWhiteSpace(configsDirectory))
         {
-            return;
+            WriteConfigs(archive, configs, configsDirectory);
         }
+    }
 
+    internal static void WriteConfigs(ZipArchive archive, ModConfigSet configs, string configsDirectory)
+    {
         foreach (var file in configs.Files)
         {
             var below = ConfigSegments(file.RelativePath);
@@ -151,10 +154,10 @@ internal static class SaveBundle
         }
     }
 
-    private static string EntryNameFor(string[] segmentsBelowModConfigs)
+    internal static string EntryNameFor(string[] segmentsBelowModConfigs)
         => ConfigsEntryPrefix + string.Join('/', segmentsBelowModConfigs);
 
-    private static string[]? ConfigSegments(string? relativePath)
+    internal static string[]? ConfigSegments(string? relativePath)
         => ModConfigReader.PathBelowFolder(relativePath)?.Split('\\');
 
     /// <summary>A container always starts with the UTF-8 byte order mark and a zip with the local
@@ -277,7 +280,7 @@ internal static class SaveBundle
     /// is dropped with a warning, because none of those is a reason to refuse the save it came
     /// with.</para>
     /// </summary>
-    private static List<ModConfigFile> ExtractConfigs(
+    internal static List<ModConfigFile> ExtractConfigs(
         ZipArchive archive,
         ModConfigSet configs,
         string destinationDirectory,
@@ -407,7 +410,7 @@ internal static class SaveBundle
 
     /// <summary>The declared length in an archive is a claim by whoever wrote it, so the bytes
     /// actually arriving are counted too.</summary>
-    private static long CopyBounded(Stream source, Stream destination, long limit, string what)
+    internal static long CopyBounded(Stream source, Stream destination, long limit, string what)
     {
         var buffer = new byte[CopyBufferBytes];
         long total = 0;

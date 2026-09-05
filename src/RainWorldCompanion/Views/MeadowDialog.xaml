@@ -134,8 +134,17 @@
                        Visibility="{Binding HasNoLobbies, Converter={StaticResource BoolToVis}}" />
         </Grid>
 
+        <Border Grid.Row="4" Margin="0,12,0,0"
+                Style="{StaticResource Card}"
+                BorderBrush="{DynamicResource Brush.Meadow}"
+                Visibility="{Binding HasGameText, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="{Binding GameText}"
+                       TextWrapping="Wrap"
+                       AutomationProperties.Name="Game state" />
+        </Border>
+
         <StackPanel Grid.Row="4" Margin="0,12,0,0"
-                    Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}">
+                    Visibility="{Binding ShowJoin, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal"
                         Margin="0,0,0,8"
                         Visibility="{Binding NeedsPassword, Converter={StaticResource BoolToVis}}">

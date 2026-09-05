@@ -1554,6 +1554,14 @@
                 <TextBlock DockPanel.Dock="Right" Text="{Binding DetailText}"
                            Style="{StaticResource Text.Muted}" Margin="10,0,0,0" />
 
+                <!-- Only the live folder's rows can be ticked, for Export and Delete below. -->
+                <CheckBox DockPanel.Dock="Left"
+                          IsChecked="{Binding IsSelected}"
+                          VerticalAlignment="Center"
+                          Margin="0,0,8,0"
+                          Visibility="{Binding CanSelect, Converter={StaticResource BoolToVis}}"
+                          AutomationProperties.Name="{Binding Name}" />
+
                 <!-- Whether this differs from the settings in the save folder now, so it can be
                      read off the panel without opening a dialog. The same three words appear on
                      the picker's rows. -->
@@ -2673,6 +2681,31 @@
                                 <ItemsControl ItemsSource="{Binding Detail.Configs.Rows}"
                                               ItemTemplate="{StaticResource ModConfigRowTemplate}"
                                               Margin="0,6,0,0" />
+
+                                <StackPanel Margin="0,10,0,0"
+                                            Visibility="{Binding Detail.Configs.CanManage, Converter={StaticResource BoolToVis}}">
+                                    <TextBlock Text="{Binding Detail.Configs.SelectionText}"
+                                               Style="{StaticResource Text.Muted}"
+                                               Margin="0,0,0,6"
+                                               Visibility="{Binding Detail.Configs.CanSelectAny, Converter={StaticResource BoolToVis}}" />
+                                    <WrapPanel>
+                                        <Button Content="Import..."
+                                                Style="{StaticResource Button.Small}"
+                                                Margin="0,0,8,6"
+                                                Command="{Binding ImportSettingsCommand}"
+                                                ToolTip="Takes mod settings from a .rwconfigs file somebody exported. You pick which mods, and a safety snapshot is taken before anything is replaced." />
+                                        <Button Content="Export ticked"
+                                                Style="{StaticResource Button.Small}"
+                                                Margin="0,0,8,6"
+                                                Command="{Binding ExportSettingsCommand}"
+                                                ToolTip="Writes the ticked mods' settings to a .rwconfigs file you can send to somebody." />
+                                        <Button Content="Delete ticked"
+                                                Style="{StaticResource Button.Danger}"
+                                                Margin="0,0,8,6"
+                                                Command="{Binding DeleteSettingsCommand}"
+                                                ToolTip="Deletes the ticked mods' settings from the save folder, after a safety snapshot that puts them back." />
+                                    </WrapPanel>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </ScrollViewer>

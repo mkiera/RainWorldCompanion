@@ -31,6 +31,8 @@ public class MeadowPanelTests
 
         public CurrentMods Machine { get; set; } = MachineWith(MeadowStep.Ready);
 
+        public TimeSpan? StartTimeout { get; set; }
+
         public MeadowViewModel Build() => new(
             new ModSyncService(_saves.Path, null, new NullGameProcessDetector()),
             request =>
@@ -55,7 +57,8 @@ public class MeadowPanelTests
                 SteamReads++;
                 return Answer;
             },
-            () => Machine);
+            () => Machine,
+            StartTimeout);
 
         public void Dispose() => _saves.Dispose();
     }
@@ -216,10 +219,161 @@ public class MeadowPanelTests
         Assert.True(view.JoinCommand.CanExecute(null));
         Assert.False(view.SyncAndJoinCommand.CanExecute(null));
 
-        view.JoinCommand.Execute(null);
+        await view.JoinCommand.ExecuteAsync(null);
 
         Assert.Equal(new[] { $"steam://joinlobby/312520/{LobbyId}" }, world.Launched);
         Assert.Empty(world.Synced);
+        // Once for Refresh, once more to see the lobby is still up before the game starts.
+        Assert.Equal(2, world.SteamReads);
+    }
+
+    [Fact]
+    public async Task Join_stops_when_the_lobby_has_gone_since_the_last_refresh()
+    {
+        using var world = new World();
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug"), Lobby(FriendLobbyId, "Bretta") } };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(FriendLobbyId, "Bretta") } };
+
+        await view.JoinCommand.ExecuteAsync(null);
+
+        Assert.Empty(world.Launched);
+        Assert.Equal("\"Slug\" is no longer up.", view.ProblemText);
+        Assert.Equal(new[] { "Bretta" }, view.Lobbies.Select(row => row.Name));
+        Assert.False(view.HasGameText);
+    }
+
+    [Fact]
+    public async Task Join_stops_when_the_lobby_has_filled_up()
+    {
+        using var world = new World();
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug", players: 3) } };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug", players: 4) } };
+
+        await view.JoinCommand.ExecuteAsync(null);
+
+        Assert.Empty(world.Launched);
+        Assert.Equal("\"Slug\" is full now.", view.ProblemText);
+        Assert.Equal("4 of 4", view.SelectedLobby!.PlayersText);
+    }
+
+    [Fact]
+    public async Task Join_stops_when_Steam_cannot_say_whether_the_lobby_is_up()
+    {
+        using var world = new World();
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug") } };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        world.Answer = MeadowLobbyList.Refused("Steam did not answer.");
+
+        await view.JoinCommand.ExecuteAsync(null);
+
+        Assert.Empty(world.Launched);
+        Assert.Equal("Steam did not answer.", view.ProblemText);
+        Assert.Equal("\"Slug\" was not joined.", view.StatusText);
+    }
+
+    [Fact]
+    public async Task The_window_says_it_is_joining_until_the_game_has_closed_again()
+    {
+        using var world = new World();
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug") } };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        await view.JoinCommand.ExecuteAsync(null);
+
+        Assert.Single(world.Launched);
+        Assert.Equal("Joining \"Slug\"...", view.GameText);
+        Assert.False(view.ShowJoin);
+        Assert.False(view.JoinCommand.CanExecute(null));
+        Assert.False(view.RefreshCommand.CanExecute(null));
+
+        // The game takes a while to appear, and its absence before then means nothing.
+        view.IsGameRunning = false;
+        Assert.Equal("Joining \"Slug\"...", view.GameText);
+
+        view.IsGameRunning = true;
+        Assert.Contains("open in \"Slug\"", view.GameText);
+        Assert.False(view.JoinCommand.CanExecute(null));
+
+        view.IsGameRunning = false;
+        Assert.False(view.HasGameText);
+        Assert.True(view.ShowJoin);
+        Assert.True(view.JoinCommand.CanExecute(null));
+        Assert.True(view.RefreshCommand.CanExecute(null));
+        Assert.Contains("closed", view.StatusText);
+    }
+
+    [Fact]
+    public async Task A_game_that_never_opens_gives_the_buttons_back()
+    {
+        using var world = new World();
+        world.StartTimeout = TimeSpan.FromMilliseconds(20);
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug") } };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        await view.JoinCommand.ExecuteAsync(null);
+        Assert.True(view.HasGameText);
+
+        await view.Waiting!;
+
+        Assert.False(view.HasGameText);
+        Assert.Contains("did not open", view.StatusText);
+        Assert.True(view.JoinCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Nothing_is_joined_or_refreshed_while_the_game_is_open()
+    {
+        using var world = new World();
+        world.Answer = new MeadowLobbyList { Lobbies = new[] { Lobby(LobbyId, "Slug") } };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        view.TypedCode = LobbyId;
+
+        view.IsGameRunning = true;
+
+        Assert.Equal("Rain World is open. Close it to join a lobby from here.", view.GameText);
+        Assert.False(view.ShowJoin);
+        Assert.False(view.JoinCommand.CanExecute(null));
+        Assert.False(view.SyncAndJoinCommand.CanExecute(null));
+        Assert.False(view.JoinTypedCommand.CanExecute(null));
+        Assert.False(view.RefreshCommand.CanExecute(null));
+
+        view.IsGameRunning = false;
+
+        Assert.False(view.HasGameText);
+        Assert.True(view.JoinCommand.CanExecute(null));
+        Assert.True(view.JoinTypedCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task Syncing_first_checks_the_lobby_after_the_mods_are_applied_and_then_joins()
+    {
+        using var world = new World();
+        world.Machine = new CurrentMods(world.Machine.Enabled, world.Machine.Installed.Append(Mod("rwremix", 0)).ToList());
+        world.Answer = new MeadowLobbyList
+        {
+            Lobbies = new[] { Lobby(LobbyId, "Slug", required: Meadow + "\nrwremix") },
+        };
+
+        MeadowViewModel view = world.Build();
+        await view.RefreshCommand.ExecuteAsync(null);
+        await view.SyncAndJoinCommand.ExecuteAsync(null);
+
+        Assert.Single(world.Synced);
+        Assert.Equal(2, world.SteamReads);
+        Assert.Equal(new[] { $"steam://joinlobby/312520/{LobbyId}" }, world.Launched);
+        Assert.Equal("Joining \"Slug\"...", view.GameText);
     }
 
     [Fact]
@@ -285,12 +439,13 @@ public class MeadowPanelTests
 
         MeadowViewModel view = world.Build();
         await view.RefreshCommand.ExecuteAsync(null);
-        view.SyncAndJoinCommand.Execute(null);
+        await view.SyncAndJoinCommand.ExecuteAsync(null);
 
         ModSyncRequest request = Assert.Single(world.Synced);
         Assert.Equal("Match the lobby", request.ButtonText);
         Assert.Contains("rwremix", request.Wanted.Mods.Select(mod => mod.Id));
         Assert.Empty(world.Launched);
+        Assert.Equal(1, world.SteamReads);
     }
 
     [Fact]
