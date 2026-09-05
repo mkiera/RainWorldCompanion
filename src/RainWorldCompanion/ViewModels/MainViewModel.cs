@@ -317,6 +317,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyPropertyChangedFor(nameof(HasNoDetail))]
     private SnapshotDetailViewModel? detail;
 
+    // Rain Meadow writes the online saves and reads the join code, so the join button only means
+    // anything when it is on the machine.
+    [ObservableProperty]
+    private bool meadowInstalled;
+
     [ObservableProperty]
     private string savePathText = "";
 
@@ -2753,6 +2758,22 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanOpenModSync() => !IsBusy && _modSync is not null;
 
+    // Nothing here touches the save folder, so this stays available while the game is running and
+    // the dialog says why that will not work instead.
+    [RelayCommand(CanExecute = nameof(CanJoinLobby))]
+    private void JoinLobby()
+    {
+        var dialog = new JoinLobbyDialog(_settings.GameInstallPath, IsGameRunning);
+        if (ShowDialog(dialog) != true || dialog.Start is not { } start)
+        {
+            return;
+        }
+
+        MeadowLauncher.Start(start, problem => ShowMessage(problem, "Join a lobby", MessageBoxImage.Warning));
+    }
+
+    private bool CanJoinLobby() => !IsBusy;
+
     private ModSyncViewModel? ShowModSyncWindow()
     {
         if (_modSync is not { } service)
@@ -3023,6 +3044,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             _liveFileCount = 0;
             _liveMeadow = null;
             _backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
+            MeadowInstalled = false;
             LiveSlots.Clear();
             Backups.Clear();
             LibraryEntries.Clear();
@@ -3089,6 +3111,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             });
 
             _meadow = data.Meadow;
+            MeadowInstalled = data.Meadow.Present;
             _currentMods = data.Mods;
             _liveConfigs = data.Configs;
             _liveSlotData = data.Slots;

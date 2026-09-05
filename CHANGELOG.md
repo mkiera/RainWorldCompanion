@@ -13,6 +13,10 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- Join Lobby in the top bar starts Rain World straight into a Rain Meadow
+  lobby, from a lobby id, a join code, or a Steam invite link. A lobby with a
+  password starts the game directly, because Steam cannot carry one.
+
 ## 1.2.5-beta.1 - 2026-09-04
 
 - The app opens with the live save selected and the save library visible. The

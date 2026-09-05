@@ -1,0 +1,68 @@
+<Window x:Class="RainWorldCompanion.Views.JoinLobbyDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Join a lobby"
+        Width="560"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI"
+        FontSize="13">
+
+    <StackPanel Margin="20">
+        <TextBlock Text="Join a lobby" Style="{StaticResource Text.Title}" />
+        <TextBlock Text="Rain World starts and goes straight into the lobby."
+                   Style="{StaticResource Text.Muted}"
+                   TextWrapping="Wrap"
+                   Margin="0,4,0,16" />
+
+        <TextBlock Text="LOBBY" Style="{StaticResource Text.SectionLabel}" Margin="0,0,0,4" />
+        <TextBox x:Name="CodeBox"
+                 TextChanged="OnInputChanged"
+                 AutomationProperties.Name="Lobby id, join code or invite link" />
+        <TextBlock Text="A lobby id, a join code starting with +connect_lobby, or a Steam invite link."
+                   Style="{StaticResource Text.Muted}"
+                   TextWrapping="Wrap"
+                   Margin="0,4,0,0" />
+
+        <TextBlock Text="PASSWORD (OPTIONAL)" Style="{StaticResource Text.SectionLabel}" Margin="0,14,0,4" />
+        <TextBox x:Name="PasswordEntry"
+                 MaxLength="200"
+                 TextChanged="OnInputChanged"
+                 AutomationProperties.Name="Lobby password" />
+
+        <Border x:Name="PreviewPanel"
+                Margin="0,16,0,0"
+                Padding="10"
+                Visibility="Collapsed"
+                Background="{DynamicResource Brush.Panel}">
+            <TextBlock x:Name="PreviewText"
+                       Style="{StaticResource Text.Muted}"
+                       TextWrapping="Wrap" />
+        </Border>
+
+        <TextBlock x:Name="GameRunningNote"
+                   Style="{StaticResource Text.Muted}"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed"
+                   Margin="0,12,0,0" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button x:Name="JoinButton"
+                    Content="Join"
+                    Style="{StaticResource Button.Accent}"
+                    IsDefault="True"
+                    IsEnabled="False"
+                    Margin="0,0,8,0"
+                    Click="OnJoin" />
+            <Button Content="Cancel" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>
