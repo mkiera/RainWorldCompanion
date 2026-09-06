@@ -259,8 +259,14 @@ public class UpdatesWindowTests
         Assert.NotEmpty(window.Message);
     }
 
-    private static WorkflowRun Run(long id, string branch, int number, string sha = "abc1234def") =>
-        new(id, "Build Test", branch, sha, number, "success", DateTimeOffset.UnixEpoch);
+    private static WorkflowRun Run(
+        long id,
+        string branch,
+        int number,
+        string sha = "abc1234def",
+        string conclusion = "success",
+        string status = "completed") =>
+        new(id, "Build Test", branch, sha, number, conclusion, DateTimeOffset.UnixEpoch, status);
 
     [Fact]
     public async Task Branch_builds_are_listed_on_the_alpha_channel()
@@ -297,6 +303,65 @@ public class UpdatesWindowTests
 
         Assert.Equal([99L], world.Downloader.BranchRuns);
         Assert.Single(world.Launcher.Started);
+    }
+
+    [Fact]
+    public async Task A_running_workflow_can_be_queued_and_installs_when_it_succeeds()
+    {
+        var world = new UpdateWorld
+        {
+            Delay = (_, _) => Task.CompletedTask,
+        };
+        world.Source.Runs.Add(Run(99, "feature/updater", 47, conclusion: "", status: "in_progress"));
+        world.Source.WhileGettingRuns = call =>
+        {
+            if (call == 2)
+            {
+                world.Source.Runs[0] = Run(99, "feature/updater", 47);
+            }
+        };
+
+        var updates = world.Build("1.0.0");
+        updates.Channel = UpdateChannel.Alpha;
+        var window = Window(world, updates);
+        await window.InitializeAsync(CancellationToken.None);
+        var row = Assert.Single(window.BranchBuilds);
+
+        Assert.True(row.IsBuilding);
+        Assert.Equal("Install when ready", row.ActionText);
+
+        await window.InstallBranchCommand.ExecuteAsync(row);
+
+        Assert.Equal([99L], world.Downloader.BranchRuns);
+        Assert.Single(world.Launcher.Started);
+    }
+
+    [Fact]
+    public async Task A_queued_workflow_that_fails_does_not_try_to_download_an_artifact()
+    {
+        var world = new UpdateWorld
+        {
+            Delay = (_, _) => Task.CompletedTask,
+        };
+        world.Source.Runs.Add(Run(99, "feature/updater", 47, conclusion: "", status: "queued"));
+        world.Source.WhileGettingRuns = call =>
+        {
+            if (call == 2)
+            {
+                world.Source.Runs[0] = Run(99, "feature/updater", 47, conclusion: "failure");
+            }
+        };
+
+        var updates = world.Build("1.0.0");
+        updates.Channel = UpdateChannel.Alpha;
+        var window = Window(world, updates);
+        await window.InitializeAsync(CancellationToken.None);
+
+        await window.InstallBranchCommand.ExecuteAsync(Assert.Single(window.BranchBuilds));
+
+        Assert.Empty(world.Downloader.BranchRuns);
+        Assert.Empty(world.Launcher.Started);
+        Assert.Contains("failure", updates.StatusMessage);
     }
 
     [Fact]

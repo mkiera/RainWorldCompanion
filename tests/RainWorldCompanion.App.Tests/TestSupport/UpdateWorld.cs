@@ -21,6 +21,10 @@ internal sealed class FakeReleaseSource : IReleaseSource
 
     public int Calls { get; private set; }
 
+    public int RunCalls { get; private set; }
+
+    public Action<int>? WhileGettingRuns { get; set; }
+
     public Task<IReadOnlyList<ReleaseCandidate>> GetReleasesAsync(CancellationToken cancellationToken)
     {
         Calls++;
@@ -30,9 +34,13 @@ internal sealed class FakeReleaseSource : IReleaseSource
     }
 
     public Task<IReadOnlyList<WorkflowRun>> GetBranchBuildRunsAsync(CancellationToken cancellationToken)
-        => Throws is not null
+    {
+        RunCalls++;
+        WhileGettingRuns?.Invoke(RunCalls);
+        return Throws is not null
             ? Task.FromException<IReadOnlyList<WorkflowRun>>(Throws)
             : Task.FromResult<IReadOnlyList<WorkflowRun>>(Runs);
+    }
 
     /// <summary>Empty by default, which keeps every run rather than filtering them all away.</summary>
     public List<string> Branches { get; } = [];
@@ -136,6 +144,8 @@ internal sealed class UpdateWorld
 
     public DateTimeOffset Now { get; set; } = new(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
 
+    public Func<TimeSpan, CancellationToken, Task> Delay { get; set; } = Task.Delay;
+
     public UpdateViewModel Build(string runningVersion = "1.0.0", string sha = "", string branch = "", string runId = "") =>
         new(new BuildStamp(runningVersion, sha, branch, runId),
             Source,
@@ -144,7 +154,8 @@ internal sealed class UpdateWorld
             Busy,
             change => change(Saved),
             () => ShutdownRequests++,
-            () => Now);
+            () => Now,
+            Delay);
 
     /// <summary>A release carrying a well-formed installer asset.</summary>
     public static ReleaseCandidate Release(string tag, bool prerelease = false, string notes = "") => new(

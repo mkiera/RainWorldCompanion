@@ -50,10 +50,8 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
 
     public async Task<IReadOnlyList<WorkflowRun>> GetBranchBuildRunsAsync(CancellationToken cancellationToken)
     {
-        // Filtered server side, so the failed runs of one branch cannot crowd the successful runs
-        // of others out of the page.
         var payload = await GetAsync<GhRunsPage>(
-            UpdateUrls.BranchBuildRuns + "?status=success&per_page=50", cancellationToken);
+            UpdateUrls.BranchBuildRuns + "?per_page=100", cancellationToken);
 
         return payload?.WorkflowRuns is null
             ? []
@@ -153,11 +151,12 @@ public sealed class GitHubReleaseSource : IReleaseSource, IDisposable
         [JsonPropertyName("head_branch")] public string? HeadBranch { get; set; }
         [JsonPropertyName("head_sha")] public string? HeadSha { get; set; }
         [JsonPropertyName("run_number")] public int RunNumber { get; set; }
+        [JsonPropertyName("status")] public string? Status { get; set; }
         [JsonPropertyName("conclusion")] public string? Conclusion { get; set; }
         [JsonPropertyName("created_at")] public DateTimeOffset? CreatedAt { get; set; }
 
         public WorkflowRun ToRun() => new(
-            Id, Name ?? "", HeadBranch ?? "", HeadSha ?? "", RunNumber, Conclusion ?? "", CreatedAt);
+            Id, Name ?? "", HeadBranch ?? "", HeadSha ?? "", RunNumber, Conclusion ?? "", CreatedAt, Status ?? "");
     }
 
     private sealed class GhRunsPage

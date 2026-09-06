@@ -8,7 +8,17 @@ public sealed record WorkflowRun(
     string HeadSha,
     int RunNumber,
     string Conclusion,
-    DateTimeOffset? CreatedUtc);
+    DateTimeOffset? CreatedUtc,
+    string Status = "completed")
+{
+    public bool IsReady => string.Equals(Conclusion, "success", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsPending => string.Equals(Status, "queued", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "in_progress", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "waiting", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "pending", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "requested", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed record AlphaBuild(
     long RunId,
@@ -18,22 +28,27 @@ public sealed record AlphaBuild(
     DateTimeOffset? CreatedUtc,
     string DownloadUrl,
     string RunUrl,
+    string Status,
+    string Conclusion,
     bool IsRunningCopy)
 {
     public string ShortSha => Sha.Length <= 7 ? Sha : Sha[..7];
 
     public string Label => $"{Branch} #{RunNumber}";
+
+    public bool IsReady => string.Equals(Conclusion, "success", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsPending => string.Equals(Status, "queued", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "in_progress", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "waiting", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "pending", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(Status, "requested", StringComparison.OrdinalIgnoreCase);
 }
 
 public static class AlphaBuilds
 {
     public const int MaxBranches = 8;
 
-    /// <summary>
-    /// The newest successful run of each branch, newest first, capped at
-    /// <see cref="MaxBranches"/>. A failed or cancelled run uploaded no artifact, so its row would
-    /// be a download that answers 404.
-    /// </summary>
     /// <param name="liveBranches">
     /// Branches still on the remote. A run outlives the branch it came from, so without this the
     /// list keeps offering branches merged and deleted long ago. Empty means the branches could
@@ -90,7 +105,7 @@ public static class AlphaBuilds
             return false;
         }
 
-        if (!string.Equals(run.Conclusion, "success", StringComparison.OrdinalIgnoreCase))
+        if (!run.IsReady && !run.IsPending)
         {
             return false;
         }
@@ -127,6 +142,8 @@ public static class AlphaBuilds
             run.CreatedUtc,
             UpdateUrls.BranchBuildZip(run.Id),
             UpdateUrls.BranchBuildPage(run.Id),
+            run.Status,
+            run.Conclusion,
             isRunning);
     }
 }

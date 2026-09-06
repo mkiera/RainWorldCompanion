@@ -84,13 +84,24 @@ public sealed partial class ReleaseRowViewModel : ObservableObject
         IsArmed ? ReleaseActions.ConfirmationText(VersionText) : "";
 }
 
-public sealed class BranchRowViewModel(AlphaBuild build)
+public sealed partial class BranchRowViewModel(AlphaBuild build) : ObservableObject
 {
     public AlphaBuild Build { get; } = build;
 
     public string Label { get; } = build.Label;
 
     public bool IsRunning { get; } = build.IsRunningCopy;
+
+    public bool IsBuilding { get; } = build.IsPending;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActionText))]
+    [NotifyPropertyChangedFor(nameof(CanInstall))]
+    private bool isQueued;
+
+    public string ActionText => IsQueued ? "Queued" : IsBuilding ? "Install when ready" : "Install";
+
+    public bool CanInstall => !IsQueued;
 
     public string RunUrl { get; } = build.RunUrl;
 
@@ -235,8 +246,16 @@ public sealed partial class UpdatesViewModel : ObservableObject
         }
 
         Disarm();
-        await _updates.InstallBranchBuildAsync(row.Build, CancellationToken.None);
-        Adopt();
+        row.IsQueued = row.Build.IsPending;
+        try
+        {
+            await _updates.InstallBranchBuildAsync(row.Build, CancellationToken.None);
+            Adopt();
+        }
+        finally
+        {
+            row.IsQueued = false;
+        }
     }
 
     /// <summary>

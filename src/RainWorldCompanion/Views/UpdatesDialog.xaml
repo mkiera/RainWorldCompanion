@@ -269,6 +269,11 @@
                                                 Visibility="{Binding IsRunning, Converter={StaticResource BoolToVis}}">
                                             <TextBlock Text="Running now" />
                                         </Border>
+                                        <Border Style="{StaticResource Chip}"
+                                                Margin="8,0,0,0"
+                                                Visibility="{Binding IsBuilding, Converter={StaticResource BoolToVis}}">
+                                            <TextBlock Text="Workflow running" />
+                                        </Border>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Subtitle}"
                                                Style="{StaticResource Text.Muted}"
@@ -284,9 +289,10 @@
                                         CommandParameter="{Binding}" />
 
                                 <Button Grid.Column="2"
-                                        Content="Install"
+                                        Content="{Binding ActionText}"
                                         MinWidth="96"
                                         Style="{StaticResource Button.Small}"
+                                        IsEnabled="{Binding CanInstall}"
                                         Command="{Binding DataContext.InstallBranchCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}"
                                         CommandParameter="{Binding}" />

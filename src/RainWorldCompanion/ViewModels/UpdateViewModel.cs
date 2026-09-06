@@ -34,6 +34,9 @@ public sealed partial class UpdateViewModel : ObservableObject
     private readonly Action<Action<AppSettings>> _persist;
     private readonly Action _requestShutdown;
     private readonly Func<DateTimeOffset> _now;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+
+    public static readonly TimeSpan BranchBuildPollInterval = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Never written to disk on purpose: persisting a skipped version is how somebody ends up
@@ -52,7 +55,8 @@ public sealed partial class UpdateViewModel : ObservableObject
         IBusyGuard busy,
         Action<Action<AppSettings>> persist,
         Action requestShutdown,
-        Func<DateTimeOffset>? now = null)
+        Func<DateTimeOffset>? now = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null)
     {
         Build = build;
         _source = source;
@@ -62,6 +66,7 @@ public sealed partial class UpdateViewModel : ObservableObject
         _persist = persist;
         _requestShutdown = requestShutdown;
         _now = now ?? (() => DateTimeOffset.Now);
+        _delay = delay ?? Task.Delay;
     }
 
     public BuildStamp Build { get; }
@@ -426,18 +431,34 @@ public sealed partial class UpdateViewModel : ObservableObject
             return;
         }
 
-        if (_busy.WhyNotNow() is { } reason)
-        {
-            Say(reason, problem: true);
-            return;
-        }
-
         IsDownloading = true;
         DownloadPercent = 0;
-        Say($"Downloading {build.Label}...", problem: false);
 
         try
         {
+            if (build.IsPending)
+            {
+                Say($"Waiting for {build.Label} to finish...", problem: false);
+                build = await WaitForBranchBuildAsync(build, cancellationToken);
+                if (build is null)
+                {
+                    return;
+                }
+            }
+
+            if (!build.IsReady)
+            {
+                Say($"{build.Label} did not produce an installer.", problem: true);
+                return;
+            }
+
+            if (_busy.WhyNotNow() is { } reason)
+            {
+                Say(reason, problem: true);
+                return;
+            }
+
+            Say($"Downloading {build.Label}...", problem: false);
             var progress = new Progress<double>(fraction => DownloadPercent = fraction * 100);
             var installer = await _downloader.DownloadBranchBuildAsync(
                 build.DownloadUrl, build.RunId, progress, cancellationToken);
@@ -468,6 +489,41 @@ public sealed partial class UpdateViewModel : ObservableObject
         finally
         {
             IsDownloading = false;
+        }
+    }
+
+    private async Task<AlphaBuild?> WaitForBranchBuildAsync(
+        AlphaBuild build,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            await _delay(BranchBuildPollInterval, cancellationToken);
+            var runs = await _source.GetBranchBuildRunsAsync(cancellationToken);
+            var run = runs.FirstOrDefault(candidate => candidate.Id == build.RunId);
+
+            if (run is null)
+            {
+                Say($"{build.Label} could no longer be found on GitHub.", problem: true);
+                return null;
+            }
+
+            if (run.IsReady)
+            {
+                return build with { Status = run.Status, Conclusion = run.Conclusion };
+            }
+
+            if (run.IsPending)
+            {
+                Say($"Waiting for {build.Label} to finish...", problem: false);
+                continue;
+            }
+
+            var outcome = string.IsNullOrWhiteSpace(run.Conclusion)
+                ? "without succeeding"
+                : $"with status {run.Conclusion}";
+            Say($"{build.Label} finished {outcome}. No download was started.", problem: true);
+            return null;
         }
     }
 
