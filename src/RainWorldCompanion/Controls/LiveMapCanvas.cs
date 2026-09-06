@@ -23,7 +23,7 @@ public sealed class LiveMapCanvas : FrameworkElement
     public string? SelectedPlayerId { get; set; }
     public event Action<string>? PlayerSelected;
     public event Action<string>? PlayerFollowed;
-    public event Action<MappedRoom>? RoomSelected;
+    public event Action<MappedRoom?>? RoomSelected;
     public event Action? ManuallyPanned;
 
     public LiveMapCanvas()
@@ -163,7 +163,7 @@ public sealed class LiveMapCanvas : FrameworkElement
         {
             Point point = e.GetPosition(this);
             if (HitPlayer(point) is { } player) PlayerSelected?.Invoke(player.Id);
-            else if (HitRoom(point) is { } room) RoomSelected?.Invoke(room);
+            else RoomSelected?.Invoke(HitRoom(point));
         }
         e.Handled = true;
     }

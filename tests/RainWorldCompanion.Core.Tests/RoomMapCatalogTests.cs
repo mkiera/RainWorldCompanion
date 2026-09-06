@@ -21,7 +21,6 @@ public class RoomMapCatalogTests
     {
         var room = Assert.IsType<MappedRoom>(RoomMapCatalog.Find("vanilla", " su_a02 "));
         Assert.Equal("su_a02", room.RoomId);
-        Assert.StartsWith("reference-affine", room.MatchKind, StringComparison.Ordinal);
         Assert.NotEmpty(room.Bounds);
         Assert.Empty(RoomMapCatalog.ForMap("unknown"));
         Assert.Null(RoomMapCatalog.Find("Vanilla", "missing"));

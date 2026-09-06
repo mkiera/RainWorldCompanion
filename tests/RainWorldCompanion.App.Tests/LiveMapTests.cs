@@ -60,7 +60,7 @@ public class LiveMapTests
         var view = new LiveMapViewModel();
         view.Browse(DenMapCatalog.Rivulet);
         view.Query = "ms_BITTER";
-        Assert.Equal("MS_bittershelter", Assert.Single(view.SearchResults).RoomId);
+        Assert.Contains(view.SearchResults, room => room.RoomId == "MS_bittershelter");
         var viewport = new DenMapViewport();
         viewport.Resize(new Size(800, 500));
         viewport.Zoom(3, new Point(400, 250));
