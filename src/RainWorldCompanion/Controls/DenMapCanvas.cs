@@ -193,7 +193,7 @@ public sealed class DenMapCanvas : FrameworkElement
         base.OnKeyDown(e);
     }
 
-    private static BitmapSource LoadImage(DenMapDefinition map)
+    internal static BitmapSource LoadImage(DenMapDefinition map)
     {
         var image = new BitmapImage();
         image.BeginInit();

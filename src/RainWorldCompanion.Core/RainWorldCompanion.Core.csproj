@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Saves\*Dens.json" />
+    <ProjectReference Include="..\RainWorldCompanion.LiveProtocol\RainWorldCompanion.LiveProtocol.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,4 +23,7 @@
     <InternalsVisibleTo Include="RainWorldCompanion.Core.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Saves/*RoomMapCatalog.json" />
+  </ItemGroup>
 </Project>

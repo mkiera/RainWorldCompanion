@@ -1,7 +1,13 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
+  <Target Name="PackageCompanionMod" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true' And !$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('_wpftmp'))">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\build\PackageCompanionMod.ps1&quot; -Configuration $(Configuration)" />
+  </Target>
+
   <ItemGroup>
     <ProjectReference Include="..\RainWorldCompanion.Core\RainWorldCompanion.Core.csproj" />
+    <Content Include="..\RWCompanion.Mod\bin\$(Configuration)\package\rwcompanion.zip" Link="CompanionMod\rwcompanion.zip" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\RWCompanion.Mod\bin\$(Configuration)\package\release.json" Link="CompanionMod\release.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

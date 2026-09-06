@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <CompanionModVersion Condition="'$(CompanionModVersion)' == ''">1.0.0</CompanionModVersion>
+  </PropertyGroup>
+  <Target Name="GenerateCompanionModVersion" BeforeTargets="CoreCompile">
+    <Error Condition="!$([System.Text.RegularExpressions.Regex]::IsMatch('$(CompanionModVersion)', '^\d+\.\d+\.\d+(\.\d+)?$'))" Text="CompanionModVersion must be a numeric version." />
+    <WriteLinesToFile File="$(IntermediateOutputPath)CompanionModVersion.g.cs" Lines="namespace RainWorldCompanion.LiveProtocol { public static partial class ProtocolInfo { public const string ModVersion = &quot;$(CompanionModVersion)&quot;%3B } }" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)CompanionModVersion.g.cs" /></ItemGroup>
+  </Target>
+</Project>

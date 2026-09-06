@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Windows;
 using System.Windows.Threading;
+using System.Windows.Input;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
 using RainWorldCompanion.Core.Updates;
@@ -93,11 +94,25 @@ public partial class App : Application
         var window = new MainWindow { DataContext = viewModel };
         window.ApplyStartupGeometry(startup);
         MainWindow = window;
+        InputManager.Current.PreProcessInput += OnDeveloperShortcut;
         window.Show();
+    }
+
+    private void OnDeveloperShortcut(object sender, PreProcessInputEventArgs e)
+    {
+        if (e.StagingItem.Input is KeyEventArgs { RoutedEvent: var routedEvent, Key: Key.D, IsRepeat: false } key
+            && routedEvent == Keyboard.PreviewKeyDownEvent
+            && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift)
+            && MainWindow?.DataContext is MainViewModel viewModel)
+        {
+            key.Handled = true;
+            viewModel.OpenDeveloperWindow();
+        }
     }
 
     protected override void OnExit(ExitEventArgs e)
     {
+        InputManager.Current.PreProcessInput -= OnDeveloperShortcut;
         _releases?.Dispose();
         _releases = null;
         _downloader?.Dispose();

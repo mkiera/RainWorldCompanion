@@ -22,6 +22,8 @@ public sealed class AppSettings
     /// </summary>
     public string? GameInstallPath { get; set; }
 
+    public string? CompanionModInstallRequestedPath { get; set; }
+
     /// <summary>
     /// "stable", "prerelease" or "alpha". Text rather than the enum, because System.Text.Json
     /// writes an enum as its ordinal and inserting a channel would change what old files mean.
@@ -80,6 +82,7 @@ public sealed class AppSettings
         BackupRootPath = BackupRootPath,
         LibraryRootPath = LibraryRootPath,
         GameInstallPath = GameInstallPath,
+        CompanionModInstallRequestedPath = CompanionModInstallRequestedPath,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
         Theme = Theme,

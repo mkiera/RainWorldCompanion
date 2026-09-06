@@ -1979,6 +1979,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Top bar: whether the game is running, and every command -->
@@ -2071,6 +2072,9 @@
                                 <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
                                 <Setter Property="BorderThickness" Value="1" />
                                 <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Live.Installed}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
                                         <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
@@ -2111,6 +2115,26 @@
                     <Button Grid.Column="1" Content="Refresh" Margin="10,0,0,0"
                             Style="{StaticResource Button.Small}"
                             Command="{Binding RefreshCommand}" />
+                    <Button Grid.Column="0" Command="{Binding OpenLiveFeaturesCommand}"
+                            Style="{StaticResource Button.Small}"
+                            Visibility="{Binding Live.Installed, Converter={StaticResource BoolToVis}}"
+                            ToolTip="{Binding GameStatusText}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Live features" FontWeight="SemiBold" Margin="0,0,10,0" />
+                            <TextBlock>
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                                        <Setter Property="Text" Value="Game closed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                                <Setter Property="Text" Value="Game running" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Button>
                 </Grid>
             </DockPanel>
         </Border>
@@ -2733,7 +2757,27 @@
         </Grid>
 
         <!-- Busy overlay -->
-        <Border Grid.Row="0" Grid.RowSpan="3"
+        <Button Grid.Row="3" HorizontalAlignment="Left" Margin="16,6,16,8"
+                Command="{Binding OpenLiveFeaturesCommand}" Style="{StaticResource Button.Small}"
+                AutomationProperties.Name="Companion mod status" ToolTip="{Binding Live.SetupText}">
+            <StackPanel Orientation="Horizontal">
+                <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
+                    <Ellipse.Style>
+                        <Style TargetType="Ellipse">
+                            <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Live.SetupReady}" Value="True">
+                                    <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Ellipse.Style>
+                </Ellipse>
+                <TextBlock Text="{Binding Live.IndicatorText}" FontSize="11" />
+            </StackPanel>
+        </Button>
+
+        <Border Grid.Row="0" Grid.RowSpan="4"
                 Panel.ZIndex="10"
                 Background="{DynamicResource Brush.Overlay}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">

@@ -1,0 +1,105 @@
+<Window x:Class="RainWorldCompanion.Views.DeveloperWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Developer data" Width="1000" Height="720" MinWidth="660" MinHeight="480"
+        Background="{DynamicResource Brush.Window}" Foreground="{DynamicResource Brush.Text}"
+        FontFamily="Segoe UI" FontSize="13" WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabBorder" Padding="12,8" BorderThickness="0,0,0,2" BorderBrush="Transparent" Background="{DynamicResource Brush.Window}">
+                            <ContentPresenter ContentSource="Header"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True"><Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Brush.Text}"/></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="TabBorder" Property="BorderBrush" Value="{DynamicResource Brush.Text}"/></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Margin="20">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <StackPanel Margin="0,0,0,14">
+            <TextBlock Text="Developer data" FontSize="23" FontWeight="SemiBold"/>
+            <TextBlock Text="Updates every 250 ms. Connection counters cover this app run. Authentication tokens are omitted."
+                       TextWrapping="Wrap" Style="{StaticResource Text.Muted}" Margin="0,6,0,0"/>
+        </StackPanel>
+        <TabControl Grid.Row="1" Background="{DynamicResource Brush.Window}" Foreground="{DynamicResource Brush.Text}" BorderBrush="{DynamicResource Brush.Border}">
+            <TabItem Header="Connection charts">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="12">
+                        <UniformGrid Columns="4" Margin="0,4,0,20">
+                            <StackPanel><TextBlock Text="CONNECTION"/><TextBlock Text="{Binding StatusText}" FontSize="20" TextWrapping="Wrap"/></StackPanel>
+                            <StackPanel><TextBlock Text="ACCEPTED"/><TextBlock Text="{Binding AcceptedText}" FontSize="20"/></StackPanel>
+                            <StackPanel><TextBlock Text="REJECTED"/><TextBlock Text="{Binding RejectedText}" FontSize="20"/></StackPanel>
+                            <StackPanel><TextBlock Text="PLAYERS"/><TextBlock Text="{Binding PlayersText}" FontSize="20"/></StackPanel>
+                        </UniformGrid>
+                        <TextBlock Text="Snapshot arrival rate (one-second average)" FontSize="17" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding RateText}" Margin="0,4,0,8"/>
+                        <Grid Height="145">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding RateScale}"/>
+                            <TextBlock Text="0" VerticalAlignment="Bottom"/>
+                            <Border Grid.Column="1" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Padding="2">
+                                <Viewbox Stretch="Fill"><Canvas Width="480" Height="100" ClipToBounds="True">
+                                    <Line X1="0" X2="480" Y1="50" Y2="50" Stroke="{DynamicResource Brush.Border}" StrokeThickness="0.5"/>
+                                    <Polyline Points="{Binding RatePoints}" Stroke="#39BDA7" StrokeThickness="1.5"/>
+                                </Canvas></Viewbox>
+                            </Border>
+                        </Grid>
+                        <DockPanel Margin="45,3,0,18"><TextBlock Text="30 seconds ago"/><TextBlock Text="Now" HorizontalAlignment="Right"/></DockPanel>
+                        <TextBlock Text="Snapshot age" FontSize="17" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding AgeText}" Margin="0,4,0,8"/>
+                        <Grid Height="145">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="45"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding AgeScale}"/>
+                            <TextBlock Text="0" VerticalAlignment="Bottom"/>
+                            <Border Grid.Column="1" BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Padding="2">
+                                <Viewbox Stretch="Fill"><Canvas Width="480" Height="100" ClipToBounds="True">
+                                    <Line X1="0" X2="480" Y1="50" Y2="50" Stroke="{DynamicResource Brush.Border}" StrokeThickness="0.5"/>
+                                    <Polyline Points="{Binding AgePoints}" Stroke="#D49A35" StrokeThickness="1.5"/>
+                                </Canvas></Viewbox>
+                            </Border>
+                        </Grid>
+                        <DockPanel Margin="45,3,0,12"><TextBlock Text="30 seconds ago"/><TextBlock Text="Now" HorizontalAlignment="Right"/></DockPanel>
+                        <TextBlock Text="A gap of three seconds clears the live session. Charts show the last 30 seconds while this window is open."
+                                   TextWrapping="Wrap" Style="{StaticResource Text.Muted}"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Values">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Categories}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Expander Foreground="{DynamicResource Brush.Text}" Header="{Binding Name}" IsExpanded="True" Margin="0,8,0,8">
+                                    <ItemsControl ItemsSource="{Binding Values}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="8,3">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Name}" TextWrapping="Wrap" Margin="0,3,10,0"/>
+                                                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=OneWay}" IsReadOnly="True"
+                                                             TextWrapping="Wrap" BorderThickness="0" Background="Transparent"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Current snapshot">
+                <TextBox Text="{Binding SnapshotJson, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas"
+                         AcceptsReturn="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

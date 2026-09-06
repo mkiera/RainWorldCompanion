@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <CompanionModVersion Condition="'$(CompanionModVersion)' == ''">1.0.0</CompanionModVersion>
+    <Version>$(CompanionModVersion)</Version>
+    <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json</RestoreAdditionalProjectSources>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RainWorldCompanion.LiveProtocol\RainWorldCompanion.LiveProtocol.csproj" />
+    <PackageReference Include="BepInEx.Core" Version="5.4.17" IncludeAssets="compile" PrivateAssets="all" />
+    <PackageReference Include="UnityEngine.Modules" Version="2020.3.45" IncludeAssets="compile" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

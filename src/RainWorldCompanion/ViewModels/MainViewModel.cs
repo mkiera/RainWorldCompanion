@@ -107,6 +107,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _gameDetector = gameDetector;
         _icons = icons;
         _appVersion = appVersion;
+        Live = new LiveSessionViewModel(InstallCompanionModAsync);
 
         // Empty on purpose. This runs on the dispatcher inside App.OnStartup, and every way of
         // guessing a path from here touches disk. InitializeAsync loads the real settings.
@@ -491,6 +492,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         _gameTimer.Start();
         await PollGameAsync();
+        StartLiveFeatures();
 
         if (_backupService is null)
         {
@@ -523,6 +525,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     public void Shutdown()
     {
+        StopLiveFeatures();
         _gameTimer.Stop();
         _gameTimer.Tick -= OnGameTimerTick;
 
