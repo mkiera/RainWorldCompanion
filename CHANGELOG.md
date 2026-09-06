@@ -11,6 +11,22 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## 1.3.0 - 2026-09-05
+
+- The app opens with the live save selected and the save library visible. The
+  library is on the left of the backups tab.
+- Mod lists can be imported from and exported to `.rwmods` files. The Mods
+  window keeps named profiles and recent pre-Apply lists for loading, exporting,
+  and returning to an earlier setup.
+- The live save's mod settings can be selected, exported to or imported from
+  `.rwconfigs` files, and deleted. Each replace or delete makes a safety
+  snapshot first.
+- Meadow lists, searches, and joins Rain Meadow lobbies, including lobbies
+  friends are in. It can match a lobby's mods before starting Rain World and
+  guides you through installing or enabling Rain Meadow when needed.
+- New installs open in dark mode. Exported game logs include
+  `BepInEx/LogOutput.log` when it exists.
+
 ## 1.3.0-beta.3 - 2026-09-05
 
 - New installs open in dark mode. Existing settings files without a theme keep
