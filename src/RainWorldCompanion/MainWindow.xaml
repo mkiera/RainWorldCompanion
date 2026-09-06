@@ -10,6 +10,9 @@
         Title="{x:Static local:AppInfo.DisplayName}"
         Height="720" Width="1150" MinHeight="560" MinWidth="1024"
         WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        PreviewDragOver="OnPreviewDragOver"
+        PreviewDrop="OnPreviewDrop"
         Background="{DynamicResource Brush.Window}"
         Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
@@ -2330,7 +2333,7 @@
                             Command="{Binding RenameEntryCommand}" />
                     <Button Content="Import" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding ImportSaveCommand}"
-                            ToolTip="Read a .rwsave file, or a bare save file, into the library." />
+                            ToolTip="Read a .rwsave file, or a bare save file, into the library. Dropping one onto the window does the same." />
                     <Button Content="Export" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding ExportSaveCommand}"
                             ToolTip="Write this library save out as a single .rwsave file." />
@@ -2371,7 +2374,7 @@
                             </ListBox.ItemContainerStyle>
                         </ListBox>
 
-                        <TextBlock Text="No saves in the library yet. Use Store Slot to keep one of your slots here under a name, or Import to read one in."
+                        <TextBlock Text="No saves in the library yet. Use Store Slot to keep one of your slots here under a name, or Import to read one in. A save file dropped onto the window is read in too."
                                    Style="{StaticResource Text.Muted}"
                                    TextWrapping="Wrap"
                                    HorizontalAlignment="Center"
@@ -2693,7 +2696,7 @@
                                                 Style="{StaticResource Button.Small}"
                                                 Margin="0,0,8,6"
                                                 Command="{Binding ImportSettingsCommand}"
-                                                ToolTip="Takes mod settings from a .rwconfigs file somebody exported. You pick which mods, and a safety snapshot is taken before anything is replaced." />
+                                                ToolTip="Takes mod settings from a .rwconfigs file somebody exported. You pick which mods, and a safety snapshot is taken before anything is replaced. Dropping the file onto the window does the same." />
                                         <Button Content="Export ticked"
                                                 Style="{StaticResource Button.Small}"
                                                 Margin="0,0,8,6"

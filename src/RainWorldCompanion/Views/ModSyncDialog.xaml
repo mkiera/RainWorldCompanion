@@ -12,6 +12,9 @@
         MaxHeight="{Binding Source={x:Static SystemParameters.WorkArea}, Path=Height}"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
+        AllowDrop="True"
+        PreviewDragOver="OnPreviewDragOver"
+        PreviewDrop="OnPreviewDrop"
         Background="{DynamicResource Brush.Window}"
         Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
@@ -196,7 +199,7 @@
                             AutomationProperties.HelpText="Look at the mods folder again after subscribing in Steam" />
                     <Button Content="Import list" Margin="8,0,0,0"
                             Click="OnImportList"
-                            ToolTip="Choose a .rwmods file and tick its mods for review." />
+                            ToolTip="Choose a .rwmods file and tick its mods for review. Dropping one onto this window does the same." />
                     <Button Content="Export list" Margin="8,0,0,0"
                             Click="OnExportList"
                             ToolTip="Save the currently ticked mods as a .rwmods file." />

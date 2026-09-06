@@ -11,6 +11,13 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## Unreleased
+
+- Files the app exports can be dropped onto the window to import them. A
+  `.rwsave` or `.rwcampaign` file goes into the library, a `.rwconfigs` file
+  opens the settings picker, and a `.rwmods` file opens the Mods window with
+  its list ready. The Mods window takes a dropped `.rwmods` file too.
+
 ## 1.3.0 - 2026-09-05
 
 - The app opens with the live save selected and the save library visible. The

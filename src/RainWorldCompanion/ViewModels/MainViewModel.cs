@@ -1916,7 +1916,17 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        string source = dialog.FileName;
+        await ImportSettingsFromAsync(dialog.FileName);
+    }
+
+    private async Task ImportSettingsFromAsync(string source)
+    {
+        var service = _modConfigs;
+        if (service is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
         string name = Path.GetFileName(source);
         ModConfigImport? import = null;
         Exception? failure = null;
@@ -2485,7 +2495,17 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        var source = dialog.FileName;
+        await ImportSaveFromAsync(dialog.FileName);
+    }
+
+    private async Task ImportSaveFromAsync(string source)
+    {
+        var library = _library;
+        if (library is null || IsBusy)
+        {
+            return;
+        }
+
         LibraryImportResult? result = null;
         Exception? failure = null;
 
@@ -2532,6 +2552,68 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     private bool CanImportSave() => !IsBusy && _library is not null;
+
+    // Files dropped on the window. Each goes where its Import button would have sent it, one
+    // after another, so a settings picker for one file is answered before the next starts.
+    public async Task DropFilesAsync(IReadOnlyList<string> paths)
+    {
+        if (IsBusy || paths.Count == 0)
+        {
+            return;
+        }
+
+        var refused = new List<string>();
+
+        foreach (string path in paths)
+        {
+            string name = Path.GetFileName(path);
+
+            switch (ImportableFile.Classify(path))
+            {
+                case ImportableKind.Save when _library is not null:
+                    await ImportSaveFromAsync(path);
+                    break;
+
+                case ImportableKind.Save:
+                    refused.Add(name + ": the library is not ready.");
+                    break;
+
+                case ImportableKind.ModSettings when _modConfigs is null:
+                    refused.Add(name + ": no mod settings folder was found.");
+                    break;
+
+                case ImportableKind.ModSettings when IsGameRunning:
+                    refused.Add(name + ": close Rain World first.");
+                    break;
+
+                case ImportableKind.ModSettings:
+                    SelectLive();
+                    await ImportSettingsFromAsync(path);
+                    break;
+
+                case ImportableKind.ModList when _modSync is null:
+                    refused.Add(name + ": the mod list could not be read from this install.");
+                    break;
+
+                case ImportableKind.ModList:
+                    ShowModSyncWindow()?.ImportList(path);
+                    break;
+
+                default:
+                    refused.Add(name + ": not a file this app reads.");
+                    break;
+            }
+        }
+
+        if (refused.Count > 0)
+        {
+            ShowMessage(
+                (refused.Count == paths.Count ? "Nothing was imported.\n\n" : "Some files were skipped.\n\n")
+                + FormatList(refused),
+                "Drop files",
+                MessageBoxImage.Warning);
+        }
+    }
 
     /// <summary>
     /// The headline is built by Core, so a load that wrote to the save folder is never worded like
