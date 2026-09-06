@@ -381,9 +381,10 @@ public sealed partial class UpdateViewModel : ObservableObject
 
         try
         {
-            var progress = new Progress<double>(fraction => DownloadPercent = fraction * 100);
+            using var progress = new DownloadProgress(fraction => DownloadPercent = fraction * 100);
             var installer = await _downloader.DownloadAsync(
                 target.DownloadUrl, target.AssetName, target.SizeBytes, progress, cancellationToken);
+            progress.Complete();
 
             // Asked again, because the download took long enough for the answer to change.
             if (_busy.WhyNotNow() is { } startedSince)
@@ -438,9 +439,10 @@ public sealed partial class UpdateViewModel : ObservableObject
 
         try
         {
-            var progress = new Progress<double>(fraction => DownloadPercent = fraction * 100);
+            using var progress = new DownloadProgress(fraction => DownloadPercent = fraction * 100);
             var installer = await _downloader.DownloadBranchBuildAsync(
                 build.DownloadUrl, build.RunId, progress, cancellationToken);
+            progress.Complete();
 
             if (_busy.WhyNotNow() is { } startedSince)
             {
