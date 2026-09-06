@@ -9342,6 +9342,51 @@
       "MatchKind": "reference-affine"
     },
     {
+      "RoomId": "GATE_HI_CC",
+      "RegionCode": "HI",
+      "X": 5697.0,
+      "Y": 1996.5,
+      "Bounds": [
+        {
+          "X": 5681,
+          "Y": 1986,
+          "Width": 32,
+          "Height": 21
+        }
+      ],
+      "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "GATE_HI_GW",
+      "RegionCode": "HI",
+      "X": 5800.5,
+      "Y": 2573.5,
+      "Bounds": [
+        {
+          "X": 5779,
+          "Y": 2562,
+          "Width": 43,
+          "Height": 23
+        }
+      ],
+      "MatchKind": "terrain-template-connected"
+    },
+    {
+      "RoomId": "GATE_HI_SH",
+      "RegionCode": "HI",
+      "X": 6333.0,
+      "Y": 2276.5,
+      "Bounds": [
+        {
+          "X": 6311,
+          "Y": 2265,
+          "Width": 44,
+          "Height": 23
+        }
+      ],
+      "MatchKind": "terrain-template-connected"
+    },
+    {
       "RoomId": "HI_S01",
       "RegionCode": "HI",
       "X": 5246,
@@ -9392,182 +9437,182 @@
     {
       "RoomId": "hi_a04",
       "RegionCode": "HI",
-      "X": 5609.25,
-      "Y": 2462.26,
+      "X": 5739.0,
+      "Y": 2376.0,
       "Bounds": [
         {
-          "X": 5575.41,
-          "Y": 2448.27,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5712,
+          "Y": 2359,
+          "Width": 54,
+          "Height": 34
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a06",
       "RegionCode": "HI",
-      "X": 5587.13,
-      "Y": 2565.38,
+      "X": 5610.0,
+      "Y": 2564.0,
       "Bounds": [
         {
-          "X": 5553.29,
-          "Y": 2551.39,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5586,
+          "Y": 2547,
+          "Width": 48,
+          "Height": 34
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a07",
       "RegionCode": "HI",
-      "X": 5197.01,
-      "Y": 2295.6,
+      "X": 5202.0,
+      "Y": 2281.0,
       "Bounds": [
         {
-          "X": 5163.17,
-          "Y": 2281.61,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5178,
+          "Y": 2266,
+          "Width": 48,
+          "Height": 30
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a10",
       "RegionCode": "HI",
-      "X": 5587.17,
-      "Y": 2176.68,
+      "X": 5678.0,
+      "Y": 2146.0,
       "Bounds": [
         {
-          "X": 5553.33,
-          "Y": 2162.69,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5656,
+          "Y": 2131,
+          "Width": 44,
+          "Height": 30
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a11",
       "RegionCode": "HI",
-      "X": 5664.66,
-      "Y": 2245.12,
+      "X": 5745.5,
+      "Y": 2235.0,
       "Bounds": [
         {
-          "X": 5630.82,
-          "Y": 2231.13,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5725,
+          "Y": 2226,
+          "Width": 41,
+          "Height": 18
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a14",
       "RegionCode": "HI",
-      "X": 5195.47,
-      "Y": 2256.7,
+      "X": 5206.0,
+      "Y": 2244.5,
       "Bounds": [
         {
-          "X": 5161.63,
-          "Y": 2242.71,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5190,
+          "Y": 2229,
+          "Width": 32,
+          "Height": 31
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a15",
       "RegionCode": "HI",
-      "X": 5192.32,
-      "Y": 2215.77,
+      "X": 5207.5,
+      "Y": 2206.5,
       "Bounds": [
         {
-          "X": 5158.48,
-          "Y": 2201.78,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5193,
+          "Y": 2193,
+          "Width": 29,
+          "Height": 27
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a16",
       "RegionCode": "HI",
-      "X": 5413.08,
-      "Y": 2618.83,
+      "X": 5439.5,
+      "Y": 2612.5,
       "Bounds": [
         {
-          "X": 5379.24,
-          "Y": 2604.84,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5415,
+          "Y": 2602,
+          "Width": 49,
+          "Height": 21
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a17",
       "RegionCode": "HI",
-      "X": 5337.51,
-      "Y": 2620.64,
+      "X": 5376.5,
+      "Y": 2612.5,
       "Bounds": [
         {
-          "X": 5303.67,
-          "Y": 2606.65,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5353,
+          "Y": 2602,
+          "Width": 47,
+          "Height": 21
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a18",
       "RegionCode": "HI",
-      "X": 5333.83,
-      "Y": 2568.34,
+      "X": 5377.0,
+      "Y": 2564.0,
       "Bounds": [
         {
-          "X": 5299.99,
-          "Y": 2554.36,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5350,
+          "Y": 2547,
+          "Width": 54,
+          "Height": 34
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a19",
       "RegionCode": "HI",
-      "X": 5753.78,
-      "Y": 2558.29,
+      "X": 5727.0,
+      "Y": 2564.0,
       "Bounds": [
         {
-          "X": 5719.94,
-          "Y": 2544.3,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5702,
+          "Y": 2547,
+          "Width": 50,
+          "Height": 34
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a20",
       "RegionCode": "HI",
-      "X": 5264.53,
-      "Y": 2203.01,
+      "X": 5234.5,
+      "Y": 2201.5,
       "Bounds": [
         {
-          "X": 5230.69,
-          "Y": 2189.02,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5218,
+          "Y": 2194,
+          "Width": 33,
+          "Height": 15
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a21",
@@ -9587,77 +9632,77 @@
     {
       "RoomId": "hi_a22",
       "RegionCode": "HI",
-      "X": 5350.61,
-      "Y": 2352.23,
+      "X": 5367.5,
+      "Y": 2051.5,
       "Bounds": [
         {
-          "X": 5316.78,
-          "Y": 2338.24,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5351,
+          "Y": 2041,
+          "Width": 33,
+          "Height": 21
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a23",
       "RegionCode": "HI",
-      "X": 5263.25,
-      "Y": 2621.04,
+      "X": 5296.5,
+      "Y": 2614.0,
       "Bounds": [
         {
-          "X": 5229.41,
-          "Y": 2607.05,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5277,
+          "Y": 2602,
+          "Width": 39,
+          "Height": 24
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a24",
       "RegionCode": "HI",
-      "X": 5668.1,
-      "Y": 2559.65,
+      "X": 5669.0,
+      "Y": 2552.0,
       "Bounds": [
         {
-          "X": 5634.26,
-          "Y": 2545.66,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5647,
+          "Y": 2548,
+          "Width": 44,
+          "Height": 8
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a25",
       "RegionCode": "HI",
-      "X": 5400.16,
-      "Y": 2305.55,
+      "X": 5439.0,
+      "Y": 2314.0,
       "Bounds": [
         {
-          "X": 5366.32,
-          "Y": 2291.57,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5416,
+          "Y": 2305,
+          "Width": 46,
+          "Height": 18
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a26",
       "RegionCode": "HI",
-      "X": 5535.2,
-      "Y": 2498.74,
+      "X": 5695.5,
+      "Y": 2431.0,
       "Bounds": [
         {
-          "X": 5501.36,
-          "Y": 2484.75,
-          "Width": 67.68,
-          "Height": 27.97
+          "X": 5673,
+          "Y": 2419,
+          "Width": 45,
+          "Height": 24
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_a27",
@@ -9677,317 +9722,317 @@
     {
       "RoomId": "hi_b02",
       "RegionCode": "HI",
-      "X": 5327.03,
-      "Y": 2080.82,
+      "X": 5424.0,
+      "Y": 2039.0,
       "Bounds": [
         {
-          "X": 5292.04,
-          "Y": 2053.85,
-          "Width": 69.98,
-          "Height": 53.94
+          "X": 5397,
+          "Y": 2000,
+          "Width": 54,
+          "Height": 78
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b03",
       "RegionCode": "HI",
-      "X": 5444.27,
-      "Y": 2169.73,
+      "X": 5541.5,
+      "Y": 2147.0,
       "Bounds": [
         {
-          "X": 5385.96,
-          "Y": 2155.15,
-          "Width": 116.61,
-          "Height": 29.15
+          "X": 5489,
+          "Y": 2131,
+          "Width": 105,
+          "Height": 32
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b04",
       "RegionCode": "HI",
-      "X": 5131.89,
-      "Y": 2307.48,
+      "X": 5134.0,
+      "Y": 2299.0,
       "Bounds": [
         {
-          "X": 5096.87,
-          "Y": 2280.44,
-          "Width": 70.04,
-          "Height": 54.07
+          "X": 5109,
+          "Y": 2261,
+          "Width": 50,
+          "Height": 76
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b05",
       "RegionCode": "HI",
-      "X": 5451.14,
-      "Y": 2448.01,
+      "X": 5368.5,
+      "Y": 2299.0,
       "Bounds": [
         {
-          "X": 5416.14,
-          "Y": 2420.97,
-          "Width": 69.99,
-          "Height": 54.07
+          "X": 5346,
+          "Y": 2264,
+          "Width": 45,
+          "Height": 70
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b06",
       "RegionCode": "HI",
-      "X": 5566.4,
-      "Y": 2244.9,
+      "X": 5651.0,
+      "Y": 2239.0,
       "Bounds": [
         {
-          "X": 5508.13,
-          "Y": 2230.18,
-          "Width": 116.54,
-          "Height": 29.45
+          "X": 5604,
+          "Y": 2223,
+          "Width": 94,
+          "Height": 32
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b07",
       "RegionCode": "HI",
-      "X": 5836.72,
-      "Y": 2179.85,
+      "X": 5877.0,
+      "Y": 2163.5,
       "Bounds": [
         {
-          "X": 5778.45,
-          "Y": 2165.12,
-          "Width": 116.54,
-          "Height": 29.45
+          "X": 5826,
+          "Y": 2146,
+          "Width": 102,
+          "Height": 35
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b08",
       "RegionCode": "HI",
-      "X": 5368.89,
-      "Y": 2249.98,
+      "X": 5452.0,
+      "Y": 2239.5,
       "Bounds": [
         {
-          "X": 5310.62,
-          "Y": 2235.25,
-          "Width": 116.54,
-          "Height": 29.45
+          "X": 5406,
+          "Y": 2226,
+          "Width": 92,
+          "Height": 27
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b09",
       "RegionCode": "HI",
-      "X": 5734.89,
-      "Y": 2172.31,
+      "X": 5784.0,
+      "Y": 2144.0,
       "Bounds": [
         {
-          "X": 5699.83,
-          "Y": 2145.15,
-          "Width": 70.11,
-          "Height": 54.32
+          "X": 5757,
+          "Y": 2107,
+          "Width": 54,
+          "Height": 74
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b12",
       "RegionCode": "HI",
-      "X": 5127.75,
-      "Y": 2226.17,
+      "X": 5138.5,
+      "Y": 2179.0,
       "Bounds": [
         {
-          "X": 5092.72,
-          "Y": 2199.01,
-          "Width": 70.06,
-          "Height": 54.31
+          "X": 5115,
+          "Y": 2140,
+          "Width": 47,
+          "Height": 78
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b13",
       "RegionCode": "HI",
-      "X": 5160.85,
-      "Y": 2147.82,
+      "X": 5165.0,
+      "Y": 2082.0,
       "Bounds": [
         {
-          "X": 5125.83,
-          "Y": 2120.62,
-          "Width": 70.02,
-          "Height": 54.42
+          "X": 5132,
+          "Y": 2043,
+          "Width": 66,
+          "Height": 78
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b14",
       "RegionCode": "HI",
-      "X": 5875.67,
-      "Y": 2252.11,
+      "X": 5892.5,
+      "Y": 2257.0,
       "Bounds": [
         {
-          "X": 5840.65,
-          "Y": 2225.07,
-          "Width": 70.04,
-          "Height": 54.07
+          "X": 5870,
+          "Y": 2229,
+          "Width": 45,
+          "Height": 56
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_b15",
       "RegionCode": "HI",
-      "X": 5725.27,
-      "Y": 2484.04,
+      "X": 5787.0,
+      "Y": 2438.0,
       "Bounds": [
         {
-          "X": 5666.9,
-          "Y": 2469.31,
-          "Width": 116.73,
-          "Height": 29.46
+          "X": 5741,
+          "Y": 2422,
+          "Width": 92,
+          "Height": 32
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c01",
       "RegionCode": "HI",
-      "X": 5339.94,
-      "Y": 2162.14,
+      "X": 5424.0,
+      "Y": 2151.5,
       "Bounds": [
         {
-          "X": 5303.77,
-          "Y": 2121.83,
-          "Width": 72.35,
-          "Height": 80.62
+          "X": 5401,
+          "Y": 2096,
+          "Width": 46,
+          "Height": 111
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c02",
       "RegionCode": "HI",
-      "X": 5274.29,
-      "Y": 2285.86,
+      "X": 5261.0,
+      "Y": 2280.0,
       "Bounds": [
         {
-          "X": 5238.11,
-          "Y": 2245.7,
-          "Width": 72.37,
-          "Height": 80.31
+          "X": 5237,
+          "Y": 2225,
+          "Width": 48,
+          "Height": 110
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c03",
       "RegionCode": "HI",
-      "X": 5742.83,
-      "Y": 2266.94,
+      "X": 5816.0,
+      "Y": 2278.5,
       "Bounds": [
         {
-          "X": 5706.65,
-          "Y": 2226.9,
-          "Width": 72.35,
-          "Height": 80.07
+          "X": 5792,
+          "Y": 2225,
+          "Width": 48,
+          "Height": 107
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c04",
       "RegionCode": "HI",
-      "X": 5474.07,
-      "Y": 2279.35,
+      "X": 5562.0,
+      "Y": 2279.5,
       "Bounds": [
         {
-          "X": 5437.89,
-          "Y": 2239.2,
-          "Width": 72.37,
-          "Height": 80.31
+          "X": 5535,
+          "Y": 2225,
+          "Width": 54,
+          "Height": 109
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c05",
       "RegionCode": "HI",
-      "X": 5463.06,
-      "Y": 2560.86,
+      "X": 5498.5,
+      "Y": 2566.5,
       "Bounds": [
         {
-          "X": 5380.39,
-          "Y": 2545.68,
-          "Width": 165.35,
-          "Height": 30.35
+          "X": 5421,
+          "Y": 2549,
+          "Width": 155,
+          "Height": 35
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c11",
       "RegionCode": "HI",
-      "X": 5656.03,
-      "Y": 2134.36,
+      "X": 5714.0,
+      "Y": 2078.0,
       "Bounds": [
         {
-          "X": 5619.76,
-          "Y": 2094.0,
-          "Width": 72.55,
-          "Height": 80.73
+          "X": 5687,
+          "Y": 2019,
+          "Width": 54,
+          "Height": 118
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c13",
       "RegionCode": "HI",
-      "X": 6206.46,
-      "Y": 2258.5,
+      "X": 6221.5,
+      "Y": 2281.0,
       "Bounds": [
         {
-          "X": 6123.82,
-          "Y": 2243.15,
-          "Width": 165.28,
-          "Height": 30.69
+          "X": 6149,
+          "Y": 2268,
+          "Width": 145,
+          "Height": 26
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_c14",
       "RegionCode": "HI",
-      "X": 5356.69,
-      "Y": 2424.12,
+      "X": 5367.0,
+      "Y": 2171.5,
       "Bounds": [
         {
-          "X": 5320.47,
-          "Y": 2384.09,
-          "Width": 72.44,
-          "Height": 80.07
+          "X": 5344,
+          "Y": 2117,
+          "Width": 46,
+          "Height": 109
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "hi_d01",
       "RegionCode": "HI",
-      "X": 6024.56,
-      "Y": 2262.53,
+      "X": 6039.5,
+      "Y": 2275.5,
       "Bounds": [
         {
-          "X": 5917.22,
-          "Y": 2246.63,
-          "Width": 214.69,
-          "Height": 31.8
+          "X": 5938,
+          "Y": 2258,
+          "Width": 203,
+          "Height": 35
         }
       ],
-      "MatchKind": "reference-affine"
+      "MatchKind": "terrain-template"
     },
     {
       "RoomId": "LF_S01",

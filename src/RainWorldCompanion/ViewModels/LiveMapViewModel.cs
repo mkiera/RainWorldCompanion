@@ -9,7 +9,9 @@ public sealed record LiveMapPlayer(string Id, string Name, string RoomId, string
 {
     public string Source => IsLocal ? "Local" : "Online";
     public string MapStatus => RoomId == "Location unavailable" ? RoomId : Placement is null ? "Not on this map"
-        : Placement.Bounds.Count == 0 ? "Den anchor only" : Placement.MatchKind.StartsWith("reference-affine", StringComparison.Ordinal) ? "Approximate placement" : Placement.MatchKind;
+        : Placement.Bounds.Count == 0 ? "Den anchor only"
+        : Placement.MatchKind.StartsWith("terrain-template", StringComparison.Ordinal) ? "Terrain matched"
+        : Placement.MatchKind.StartsWith("reference-affine", StringComparison.Ordinal) ? "Approximate placement" : Placement.MatchKind;
 }
 
 public sealed partial class LiveMapViewModel : ObservableObject

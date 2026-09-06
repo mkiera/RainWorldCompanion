@@ -215,6 +215,12 @@ def main():
                     }
                 )
         catalog[map_id] = sorted(entries, key=lambda entry: (entry["RegionCode"], entry["RoomId"]))
+    override_path = SAVES / "RoomMapOverrides.json"
+    if override_path.exists():
+        for map_id, overrides in json.loads(override_path.read_text(encoding="utf-8")).items():
+            by_id = {room["RoomId"].upper(): room for room in catalog[map_id]}
+            by_id.update({room["RoomId"].upper(): room for room in overrides})
+            catalog[map_id] = sorted(by_id.values(), key=lambda room: (room["RegionCode"], room["RoomId"]))
     OUTPUT.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
 
