@@ -2960,7 +2960,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             EndBusy();
         }
 
-        await ReloadAsync();
+        await ReloadAsync(preserveVerification: true);
 
         if (failure is not null)
         {
@@ -3003,7 +3003,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             EndBusy();
         }
 
-        await ReloadAsync();
+        await ReloadAsync(preserveVerification: true);
 
         if (failure is not null)
         {
@@ -3421,13 +3421,23 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    private async Task ReloadAsync()
+    private async Task ReloadAsync(bool preserveVerification = false)
     {
         var service = _backupService;
         var library = _library;
         var keepId = SelectedBackup?.Id;
         var keepEntryId = SelectedLibraryEntry?.Id;
         var keepLive = IsLiveSelected;
+        var backupVerification = preserveVerification
+            ? Backups
+                .Where(item => item.VerifiedOk.HasValue)
+                .ToDictionary(item => item.Id, item => item.VerifiedOk!.Value, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var libraryVerification = preserveVerification
+            ? LibraryEntries
+                .Where(item => item.VerifiedOk.HasValue)
+                .ToDictionary(item => item.Id, item => item.VerifiedOk!.Value, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         if (service is null)
         {
@@ -3528,13 +3538,25 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             Backups.Clear();
             foreach (var snapshot in data.Snapshots)
             {
-                Backups.Add(new BackupItemViewModel(snapshot, _icons));
+                var item = new BackupItemViewModel(snapshot, _icons);
+                if (backupVerification.TryGetValue(item.Id, out bool verified))
+                {
+                    item.VerifiedOk = verified;
+                }
+
+                Backups.Add(item);
             }
 
             LibraryEntries.Clear();
             foreach (var entry in data.Entries)
             {
-                LibraryEntries.Add(new LibraryEntryViewModel(entry, _icons, service.SaveRoot));
+                var item = new LibraryEntryViewModel(entry, _icons, service.SaveRoot);
+                if (libraryVerification.TryGetValue(item.Id, out bool verified))
+                {
+                    item.VerifiedOk = verified;
+                }
+
+                LibraryEntries.Add(item);
             }
 
             RestoreSelection(keepId, keepEntryId, keepLive);
