@@ -13,6 +13,148 @@ namespace RainWorldCompanion.App.Tests;
 
 public class DenPickerTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Disabling_Downpour_while_the_map_is_open_applies_neither_change(bool last)
+    {
+        using var directory = new TempDirectory("den-expansion-recheck");
+        string path = Path.Combine(directory.Path, "sav2");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "sav2.bin"), path);
+        var session = SaveEditSession.Open(path);
+        var record = session.Campaigns[0];
+        var before = session.EnumerateFields(record).ToArray();
+        var editor = new CampaignEditViewModel(session, record, new CampaignSummary(), denMapPicker: new FakePicker
+        {
+            Result = "LC_A05", ResultTimeline = "Artificer", DisableExpansionAfterPick = true,
+        });
+        (last ? editor.ChooseLastShelterOnMapCommand : editor.ChooseShelterOnMapCommand).Execute(null);
+        Assert.Equal(before, session.EnumerateFields(record));
+        Assert.False(session.IsDirty);
+    }
+
+    [Fact]
+    public void Unreadable_world_keeps_typed_entry_and_suggestions_available()
+    {
+        using var directory = new TempDirectory("den-world-fallback");
+        string path = Path.Combine(directory.Path, "sav2");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "sav2.bin"), path);
+        var session = SaveEditSession.Open(path);
+        var editor = new CampaignEditViewModel(session, session.Campaigns[0], new CampaignSummary(),
+            denMapPicker: new FakePicker { WorldUnavailable = true });
+        Assert.False(editor.CanChooseDenOnMap);
+        editor.DenPos = "SU_";
+        Assert.Contains("SU_S01", editor.ShelterMatches);
+        editor.UseShelterCommand.Execute("SU_S01");
+        Assert.Equal("SU_S01", editor.DenPos);
+        Assert.True(editor.BuildWritePlan().CanWrite);
+    }
+
+    public static IEnumerable<object[]> CampaignMapCases => DenWorldCatalog.Timelines.SelectMany(campaign =>
+        new[] { false, true }.Select(last => new object[] { campaign, last, true }))
+        .Concat(new[] { "White", "Yellow", "Red" }.SelectMany(campaign =>
+            new[] { false, true }.Select(last => new object[] { campaign, last, false })));
+
+    [Theory]
+    [MemberData(nameof(CampaignMapCases))]
+    public void Every_campaign_saves_a_selected_timeline_and_den_without_changing_character(string campaign, bool last, bool expanded)
+    {
+        using var directory = new TempDirectory("den-maps-save");
+        string path = Path.Combine(directory.Path, "sav2");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "Fixtures", "sav2.bin"), path);
+        var session = SaveEditSession.Open(path);
+        session.SetField(session.Campaigns[0], "SAV STATE NUMBER", campaign);
+        var record = session.Campaigns[0];
+        session.SetField(record, "TIMELINE", campaign);
+        var before = session.EnumerateFields(record).ToArray();
+        var timelines = expanded ? DenWorldCatalog.Timelines.ToArray() : new[] { "White", "Yellow", "Red" };
+        string target = timelines[(Array.IndexOf(timelines, campaign) + 1) % timelines.Length];
+        string den = target switch
+        {
+            "Spear" => "DM_LAB5", "Artificer" => "LC_A05", "Rivulet" => "RM_LCS1", "Saint" => "CL_LCS2", _ => "SU_S01",
+        };
+        var editor = new CampaignEditViewModel(session, record, new CampaignSummary { SlugcatId = campaign },
+            denMapPicker: new FakePicker { Result = den, ResultTimeline = target, Expanded = expanded });
+        Assert.Equal(campaign, editor.DenTimeline);
+        (last ? editor.ChooseLastShelterOnMapCommand : editor.ChooseShelterOnMapCommand).Execute(null);
+        Assert.Equal(target, editor.Timeline);
+        Assert.Equal(den, last ? editor.LastDenPos : editor.DenPos);
+        var plan = editor.BuildWritePlan();
+        Assert.True(plan.CanWrite);
+        string written = Path.Combine(directory.Path, "written");
+        File.WriteAllBytes(written, plan.NewBytes);
+        var reloaded = SaveEditSession.Open(written);
+        Assert.Equal(campaign, reloaded.Campaigns[0].SlugcatId);
+        var after = reloaded.EnumerateFields(reloaded.Campaigns[0]).ToArray();
+        string field = last ? "LASTVDENPOS" : "DENPOS";
+        Assert.Equal(target, after.Single(f => f.Key == "TIMELINE").Value);
+        Assert.Equal(den, after.Single(f => f.Key == field).Value);
+        Assert.Equal(before.Where(f => f.Key != "TIMELINE" && f.Key != field),
+            after.Where(f => f.Key != "TIMELINE" && f.Key != field));
+    }
+
+    [Fact]
+    public void Timeline_switches_move_shared_selection_and_current_den_to_each_map()
+    {
+        var view = new DenMapViewModel("SU_S01", "Shelter", "White", TestWorld());
+        int prompts = 0;
+        foreach (string timeline in DenWorldCatalog.Timelines)
+        {
+            Assert.True(view.TryChangeTimeline(timeline, () => { prompts++; return true; }));
+            var expected = DenMapCatalog.ForTimeline(timeline, true)!;
+            Assert.Same(expected, view.Map);
+            Assert.Equal(expected.Title, view.MapTitle);
+            Assert.Equal(expected.Find("SU_S01"), view.CurrentDen);
+            Assert.Equal(expected.Find("SU_S01"), view.SelectedDen);
+            Assert.True(view.CanUseDen);
+            Assert.All(view.Matches, den => Assert.Contains(den, expected.Dens));
+        }
+        Assert.Equal(1, prompts);
+    }
+
+    [Fact]
+    public void Switching_away_from_a_unique_region_clears_selection_and_search_results()
+    {
+        var view = new DenMapViewModel("LC_A05", "Shelter", "Artificer", TestWorld());
+        Assert.True(view.CanUseDen);
+        view.Search = "LC_A05";
+        Assert.Single(view.Matches);
+        Assert.True(view.TryChangeTimeline("White", () => true));
+        Assert.False(view.HasCurrentDen);
+        Assert.Null(view.SelectedDen);
+        Assert.Empty(view.Matches);
+        Assert.False(view.CanUseDen);
+        Assert.Contains("not on this map", view.CurrentText);
+    }
+
+    [Fact]
+    public void Vanilla_timeline_choices_stay_on_the_vanilla_map()
+    {
+        var view = new DenMapViewModel("SU_S01", "Shelter", "White", TestWorld(false));
+        Assert.Same(DenMapCatalog.Vanilla, view.Map);
+        Assert.Equal(new[] { "Red", "White", "Yellow" }, view.TimelineOptions.Select(t => t.Id));
+        Assert.False(view.TryChangeTimeline("Rivulet", () => throw new Exception("Unavailable expansion")));
+        Assert.Equal("White", view.Timeline);
+        Assert.True(view.TryChangeTimeline("Red", () => true));
+        Assert.Same(DenMapCatalog.Vanilla, view.Map);
+        Assert.True(view.CanUseDen);
+    }
+
+    [Fact]
+    public void Fit_uses_the_new_images_dimensions_after_a_map_switch()
+    {
+        var viewport = new DenMapViewport();
+        viewport.Resize(new Size(900, 600));
+        foreach (var map in DenMapCatalog.Maps)
+        {
+            viewport.Zoom(3, new Point(450, 300));
+            viewport.SetMap(map);
+            Assert.True(viewport.IsFitted);
+            Assert.Equal(Math.Min(900d / map.ImageWidth, 600d / map.ImageHeight), viewport.Scale, 8);
+            Assert.Equal(new Point(450, 300), viewport.ToScreen(new Point(map.ImageWidth / 2d, map.ImageHeight / 2d)));
+        }
+    }
+
     [Fact]
     public void Unavailable_marker_requires_confirmation_each_time_even_after_dropdown_confirmation()
     {
@@ -22,10 +164,11 @@ public class DenPickerTests
         bool Dropdown() { dropdownPrompts++; return true; }
         bool Marker(string target) { Assert.Equal("Rivulet", target); markerPrompts++; return true; }
         Assert.True(view.TryChangeTimeline("Gourmand", Dropdown));
-        var exclusive = DenMapCatalog.Find("MS_S04")!;
+        var exclusive = DenMapCatalog.Downpour.Find("MS_S04")!;
         Assert.True(view.TrySelectDen(exclusive, Marker));
         Assert.Equal("Rivulet", view.Timeline);
-        Assert.Equal(exclusive, view.SelectedDen);
+        Assert.Equal("MS_S04", view.SelectedDen?.RoomId);
+        Assert.Equal(DenMapCatalog.Rivulet.Find("MS_S04"), view.SelectedDen);
         Assert.True(view.TryChangeTimeline("White", Dropdown));
         Assert.True(view.TrySelectDen(exclusive, Marker));
         Assert.Equal(2, markerPrompts);
@@ -37,7 +180,7 @@ public class DenPickerTests
     {
         var view = new DenMapViewModel("SU_S01", "Shelter", "White", TestWorld());
         var previous = view.SelectedDen;
-        var exclusive = DenMapCatalog.Find("MS_S04")!;
+        var exclusive = DenMapCatalog.Downpour.Find("MS_S04")!;
         Assert.False(view.TrySelectDen(exclusive, _ => false));
         Assert.Equal("White", view.Timeline);
         Assert.Equal(previous, view.SelectedDen);
@@ -52,7 +195,7 @@ public class DenPickerTests
     public void Marker_with_multiple_timelines_offers_compatible_choices_before_switching()
     {
         var view = new DenMapViewModel("SU_S01", "Shelter", "Yellow", TestWorld());
-        var den = DenMapCatalog.Find("OE_S06")!;
+        var den = DenMapCatalog.Downpour.Find("OE_S06")!;
         Assert.False(view.TrySelectDen(den, _ => throw new Exception("A timeline has not been chosen")));
         Assert.Equal("Yellow", view.Timeline);
         Assert.True(view.NeedsTimelineChoice);
@@ -62,6 +205,21 @@ public class DenPickerTests
         Assert.False(view.NeedsTimelineChoice);
         Assert.False(new DenMapViewModel("SU_S01", "Shelter", "White", DenWorldCatalog.Unknown)
             .TrySelectDen(den, _ => throw new Exception("No verified timeline")));
+    }
+
+    [Fact]
+    public void Declining_a_marker_timeline_choice_restores_the_full_dropdown()
+    {
+        var view = new DenMapViewModel("SU_S01", "Shelter", "Yellow", TestWorld());
+        var previous = view.SelectedDen;
+        var den = view.Map.Find("OE_S06")!;
+        Assert.False(view.TrySelectDen(den, _ => throw new Exception("Choose a timeline first")));
+        Assert.True(view.NeedsTimelineChoice);
+        Assert.False(view.TryChangeTimeline("White", () => false));
+        Assert.Equal("Yellow", view.Timeline);
+        Assert.Equal(previous, view.SelectedDen);
+        Assert.False(view.NeedsTimelineChoice);
+        Assert.Equal(DenWorldCatalog.Timelines, view.TimelineOptions.Select(t => t.Id));
     }
 
     [Fact]
@@ -109,7 +267,7 @@ public class DenPickerTests
                 Assert.Equal("White", timeline);
                 var view = new DenMapViewModel("SU_S01", "Shelter", timeline, world);
                 Assert.True(view.TryChangeTimeline("Rivulet", () => true));
-                view.SelectedDen = DenMapCatalog.Find("MS_S04");
+                view.SelectedDen = view.Map.Find("MS_S04");
                 Assert.True(view.CanUseDen);
                 Assert.Equal("White", editor!.DenTimeline);
                 Assert.False(session.IsDirty);
@@ -261,7 +419,7 @@ public class DenPickerTests
         var view = new DenMapViewModel("CUSTOM_ROOM", "Shelter", "White", TestWorld());
         Assert.False(view.HasCurrentDen);
         Assert.False(view.CanUseDen);
-        Assert.Equal(DenMapCatalog.All.Count - 1, view.Matches.Count);
+        Assert.Equal(DenMapCatalog.Downpour.Dens.Count - 1, view.Matches.Count);
         view.Search = "outskirts";
         Assert.Equal(4, view.Matches.Count);
         Assert.All(view.Matches, d => Assert.Equal("SU", d.RegionCode));
@@ -279,7 +437,7 @@ public class DenPickerTests
     {
         var viewport = new DenMapViewport();
         viewport.Resize(new Size(900, 600));
-        viewport.Focus(DenMapCatalog.Find("SU_S01")!);
+        viewport.Focus(DenMapCatalog.Downpour.Find("SU_S01")!);
         var pointer = new Point(320, 240);
         Point before = viewport.ToImage(pointer);
         viewport.Zoom(1.4, pointer);
@@ -292,14 +450,18 @@ public class DenPickerTests
     {
         var viewport = new DenMapViewport();
         viewport.Resize(new Size(900, 600));
-        foreach (var den in DenMapCatalog.All)
+        foreach (var map in DenMapCatalog.Maps)
         {
-            viewport.Focus(den);
-            viewport.Zoom(1.7, new Point(450, 300));
-            viewport.Pan(new Vector(20, -15));
-            viewport.Resize(new Size(1000, 650));
-            Point point = viewport.ToScreen(new Point(den.X, den.Y));
-            Assert.Equal(den, viewport.HitTest(point, DenMapCatalog.All));
+            viewport.SetMap(map);
+            foreach (var den in map.Dens)
+            {
+                viewport.Focus(den);
+                viewport.Zoom(1.7, new Point(450, 300));
+                viewport.Pan(new Vector(20, -15));
+                viewport.Resize(new Size(1000, 650));
+                Point point = viewport.ToScreen(new Point(den.X, den.Y));
+                Assert.Equal(den, viewport.HitTest(point, map.Dens));
+            }
         }
         viewport.Fit();
         viewport.Zoom(2, new Point(500, 325));
@@ -308,14 +470,19 @@ public class DenPickerTests
         Assert.True(viewport.OffsetY <= 40);
     }
 
-    [Fact]
-    public void Published_resource_is_the_exact_image_used_for_the_catalog()
+    [Theory]
+    [InlineData("downpour", "DA6A137E63EA9206AAC046F559B75FBEFB42F2EBAE0E72A715CB31D2079E6632")]
+    [InlineData("vanilla", "485CD780D3EE3C53F3FB26E8EE39EED94820C9C2CD82351EBCFED3EB4D04287B")]
+    [InlineData("artificer", "B1D59714E743DAD9B682BD4B8F62D3009B0FACFC16F9E746792B317C40FA398F")]
+    [InlineData("spearmaster", "BEA2284ECA99525444E1B3778FC791B667BD85A659CA2C03C2C700FD192A8488")]
+    [InlineData("rivulet", "F8BADA12AB28BC575A5AEAC0918D139F95D90082A18710FEC75B9E54BABA755E")]
+    [InlineData("saint", "763DD943306F98EE85BF210A3AA3D02EAFE3106F400AE607C8E1F5332E085536")]
+    public void Published_resource_is_the_exact_image_used_for_the_catalog(string id, string hash)
     {
         var resources = new ResourceManager("RainWorldCompanion.g", typeof(DenMapCanvas).Assembly);
-        using var stream = resources.GetStream("assets/maps/downpour.png");
+        using var stream = resources.GetStream($"assets/maps/{id}.png");
         Assert.NotNull(stream);
-        Assert.Equal("DA6A137E63EA9206AAC046F559B75FBEFB42F2EBAE0E72A715CB31D2079E6632",
-            Convert.ToHexString(SHA256.HashData(stream)));
+        Assert.Equal(hash, Convert.ToHexString(SHA256.HashData(stream)));
     }
 
     private sealed class FakePicker : IDenMapPicker
@@ -326,11 +493,15 @@ public class DenPickerTests
         public string? ResultTimeline { get; init; }
         public Func<string, DenWorldCatalog, DenMapSelection?>? OnPick { get; init; }
         public bool LoseWorldAfterPick { get; init; }
+        public bool DisableExpansionAfterPick { get; init; }
+        public bool WorldUnavailable { get; init; }
+        public bool Expanded { get; init; } = true;
         public string? Current { get; private set; }
         public string? Field { get; private set; }
         public int Calls { get; private set; }
         public DenMapAvailability GetAvailability(string slugcatId) => new(Available, Available ? "Ready" : "Downpour is disabled.");
-        public DenWorldCatalog LoadWorld() => LoseWorldAfterPick && Calls > 0 ? DenWorldCatalog.Unknown : TestWorld();
+        public DenWorldCatalog LoadWorld() => WorldUnavailable || LoseWorldAfterPick && Calls > 0
+            ? DenWorldCatalog.Unknown : TestWorld(Expanded && !(DisableExpansionAfterPick && Calls > 0));
         public DenMapSelection? Pick(string currentRoomId, string fieldName, string timeline, DenWorldCatalog world)
         {
             Calls++;
@@ -341,11 +512,13 @@ public class DenPickerTests
         }
     }
 
-    private static DenWorldCatalog TestWorld()
+    private static DenWorldCatalog TestWorld(bool downpourEnabled = true)
     {
         var files = new Dictionary<string, string>();
-        files["world/indexmaps/roomindexmap2.txt"] = string.Join("\n", DenMapCatalog.All.Select((d, i) => $"{i} {d.RoomId}"));
-        foreach (var region in DenMapCatalog.All.GroupBy(d => d.RegionCode.ToLowerInvariant()))
+        var dens = (downpourEnabled ? DenMapCatalog.Maps : new[] { DenMapCatalog.Vanilla })
+            .SelectMany(m => m.Dens).DistinctBy(d => d.RoomId).ToArray();
+        files["world/indexmaps/roomindexmap2.txt"] = string.Join("\n", dens.Select((d, i) => $"{i} {d.RoomId}"));
+        foreach (var region in dens.GroupBy(d => d.RegionCode.ToLowerInvariant()))
         {
             files[$"world/{region.Key}/world_{region.Key}.txt"] = "ROOMS\n" + string.Join("\n", region.Select(d => $"{d.RoomId} : ROOM : SHELTER")) + "\nEND ROOMS";
             files[$"world/{region.Key}/properties.txt"] = "";
@@ -353,7 +526,7 @@ public class DenPickerTests
         files["world/ms/properties.txt"] = string.Join("\n", DenWorldCatalog.Timelines.Where(t => t != "Rivulet")
             .Select(t => $"Broken Shelters: {t}: MS_S04"));
         files["world/oe/properties.txt"] = "Broken Shelters: Yellow: OE_S06";
-        return DenWorldCatalog.Read(path => files.GetValueOrDefault(path));
+        return DenWorldCatalog.Read(path => files.GetValueOrDefault(path), downpourEnabled);
     }
 
     [Theory]

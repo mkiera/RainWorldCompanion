@@ -20,7 +20,7 @@
                 <Button Content="Current den" Margin="6,0,0,0" Click="FocusCurrent" IsEnabled="{Binding HasCurrentDen}" Style="{StaticResource Button.Small}" />
             </StackPanel>
             <StackPanel>
-                <TextBlock Text="DOWNPOUR WORLD MAP" FontWeight="SemiBold" FontSize="17" />
+                <TextBlock Text="{Binding MapTitle}" FontWeight="SemiBold" FontSize="17" />
                 <TextBlock Text="Scroll to zoom. Drag to pan. Select a den to inspect it." Style="{StaticResource Text.Muted}" Margin="0,3,16,0" />
             </StackPanel>
         </DockPanel>
@@ -30,7 +30,7 @@
                 <ColumnDefinition Width="280" />
             </Grid.ColumnDefinitions>
             <Border BorderBrush="{DynamicResource Brush.Border}" BorderThickness="1" Background="Black">
-                <controls:DenMapCanvas x:Name="Map" AutomationProperties.Name="Downpour den map"
+                <controls:DenMapCanvas x:Name="Map" AutomationProperties.Name="{Binding MapTitle}"
                                        AutomationProperties.HelpText="Drag to pan and scroll to zoom. Use the den list to select with the keyboard." />
             </Border>
             <Grid Grid.Column="1" Margin="16,0,0,0">

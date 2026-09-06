@@ -16,6 +16,9 @@ public sealed partial class DenMapViewModel : ObservableObject
     private MappedDen? _pendingDen;
     private string? _selectionProblem;
     public string Timeline { get; private set; }
+    public DenMapDefinition Map => DenMapCatalog.ForTimeline(Timeline, _world.DownpourEnabled)
+        ?? (_world.DownpourEnabled ? DenMapCatalog.Downpour : DenMapCatalog.Vanilla);
+    public string MapTitle => Map.Title;
     public IReadOnlyList<DenTimelineOption> TimelineOptions { get; private set; }
     public bool NeedsTimelineChoice => _pendingDen is not null;
     public string TimelineAdvice => _selectionProblem ?? (_pendingDen is not null
@@ -26,17 +29,16 @@ public sealed partial class DenMapViewModel : ObservableObject
     {
         _world = world;
         Timeline = timeline;
-        TimelineOptions = DenWorldCatalog.Timelines.Append(timeline).Distinct().Select(t => new DenTimelineOption(t)).ToArray();
+        TimelineOptions = AllTimelineOptions();
         FieldName = fieldName;
         CurrentRoomId = currentRoomId.Trim();
-        CurrentDen = DenMapCatalog.Find(currentRoomId);
         selectedDen = CurrentDen;
         matches = VisibleDens;
     }
 
     public string FieldName { get; }
     public string CurrentRoomId { get; }
-    public MappedDen? CurrentDen { get; }
+    public MappedDen? CurrentDen => Map.Find(CurrentRoomId);
     public bool HasCurrentDen => CurrentDen is not null;
     public string CurrentText => CurrentDen is not null ? $"Current: {CurrentRoomId}"
         : string.IsNullOrEmpty(CurrentRoomId) ? "No current den is set." : $"{CurrentRoomId} is not on this map.";
@@ -44,8 +46,8 @@ public sealed partial class DenMapViewModel : ObservableObject
     [ObservableProperty]
     private string search = "";
 
-    public IReadOnlyList<MappedDen> VisibleDens => DenMapCatalog.All.Where(IsAvailable).ToArray();
-    public bool IsAvailable(MappedDen den) => _world.Check(den.RoomId, Timeline).Available;
+    public IReadOnlyList<MappedDen> VisibleDens => Map.Dens.Where(IsAvailable).ToArray();
+    public bool IsAvailable(MappedDen den) => Map.Find(den.RoomId) is not null && _world.Check(den.RoomId, Timeline).Available;
 
     [ObservableProperty]
     private IReadOnlyList<MappedDen> matches;
@@ -76,10 +78,15 @@ public sealed partial class DenMapViewModel : ObservableObject
     public bool TryChangeTimeline(string requested, Func<bool> confirm)
     {
         if (requested == Timeline) return true;
-        if (!DenWorldCatalog.Timelines.Contains(requested)) return false;
+        if (!_world.SupportedTimelines.Contains(requested)) return false;
+        if (_pendingDen is not null && !CompatibleTimelines(_pendingDen).Contains(requested)) return false;
         if (_pendingDen is not null)
         {
-            if (!confirm()) return false;
+            if (!confirm())
+            {
+                ClearPendingDen();
+                return false;
+            }
         }
         else if (!_timelineConfirmed)
         {
@@ -90,11 +97,16 @@ public sealed partial class DenMapViewModel : ObservableObject
         bool fromMarker = _pendingDen is not null;
         Timeline = requested;
         OnPropertyChanged(nameof(Timeline));
+        OnPropertyChanged(nameof(Map));
+        OnPropertyChanged(nameof(MapTitle));
+        OnPropertyChanged(nameof(CurrentDen));
+        OnPropertyChanged(nameof(HasCurrentDen));
+        OnPropertyChanged(nameof(CurrentText));
         ClearPendingDen();
         if (fromMarker) Search = "";
         OnSearchChanged(Search);
         OnPropertyChanged(nameof(VisibleDens));
-        SelectedDen = candidate is not null && IsAvailable(candidate) ? candidate : null;
+        SelectedDen = candidate is not null && IsAvailable(candidate) ? Map.Find(candidate.RoomId) : null;
         OnPropertyChanged(nameof(SelectedDen));
         OnPropertyChanged(nameof(CanUseDen));
         OnPropertyChanged(nameof(SelectionAdvice));
@@ -107,10 +119,10 @@ public sealed partial class DenMapViewModel : ObservableObject
         if (IsAvailable(den))
         {
             Search = "";
-            SelectedDen = den;
+            SelectedDen = Map.Find(den.RoomId);
             return true;
         }
-        var alternatives = _world.AvailableTimelines(den.RoomId);
+        var alternatives = CompatibleTimelines(den);
         if (alternatives.Count == 0)
         {
             _selectionProblem = $"No installed timeline could be verified for {den.RoomId}.";
@@ -134,8 +146,14 @@ public sealed partial class DenMapViewModel : ObservableObject
     {
         _pendingDen = null;
         _selectionProblem = null;
-        TimelineOptions = DenWorldCatalog.Timelines.Append(Timeline).Distinct().Select(t => new DenTimelineOption(t)).ToArray();
+        TimelineOptions = AllTimelineOptions();
         OnPropertyChanged(nameof(TimelineOptions));
         OnPropertyChanged(nameof(TimelineAdvice));
     }
+
+    private IReadOnlyList<DenTimelineOption> AllTimelineOptions() => _world.SupportedTimelines.Append(Timeline)
+        .Distinct().Select(t => new DenTimelineOption(t)).ToArray();
+
+    private IReadOnlyList<string> CompatibleTimelines(MappedDen den) => _world.AvailableTimelines(den.RoomId)
+        .Where(t => DenMapCatalog.ForTimeline(t, _world.DownpourEnabled)?.Find(den.RoomId) is not null).ToArray();
 }

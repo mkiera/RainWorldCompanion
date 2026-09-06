@@ -11,6 +11,7 @@ public partial class DenMapDialog : Window
 {
     private readonly DenMapViewModel _view;
     private bool _fromMap;
+    private bool _changingTimeline;
 
     public DenMapDialog(string currentRoomId, string fieldName, string timeline, DenWorldCatalog world)
     {
@@ -20,7 +21,7 @@ public partial class DenMapDialog : Window
         Title = $"Choose a den: {fieldName}";
         Width = Math.Min(Width, SystemParameters.WorkArea.Width);
         Height = Math.Min(Height, SystemParameters.WorkArea.Height);
-        Map.Load();
+        Map.Load(_view.Map);
         Map.CurrentDen = _view.CurrentDen;
         Map.IsAvailable = _view.IsAvailable;
         Map.DenSelected += SelectFromMap;
@@ -41,10 +42,15 @@ public partial class DenMapDialog : Window
 
     private void TimelineChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (DataContext is not DenMapViewModel view || TimelineBox.SelectedValue is not string requested || requested == view.Timeline)
+        if (_changingTimeline || DataContext is not DenMapViewModel view || TimelineBox.SelectedValue is not string requested || requested == view.Timeline)
             return;
-        bool accepted = view.TryChangeTimeline(requested, () => ConfirmTimelineChange(requested));
-        if (!accepted) TimelineBox.SelectedValue = view.Timeline;
+        _changingTimeline = true;
+        try
+        {
+            if (!view.TryChangeTimeline(requested, () => ConfirmTimelineChange(requested)))
+                TimelineBox.SelectedValue = view.Timeline;
+        }
+        finally { _changingTimeline = false; }
     }
 
     private bool ConfirmTimelineChange(string requested) => MessageBox.Show(this,
@@ -56,26 +62,33 @@ public partial class DenMapDialog : Window
     private void SelectFromMap(MappedDen den)
     {
         _fromMap = true;
+        _changingTimeline = true;
         try
         {
-            if (_view.TrySelectDen(den, ConfirmTimelineChange)) DenList.ScrollIntoView(den);
+            if (_view.TrySelectDen(den, ConfirmTimelineChange)) DenList.ScrollIntoView(_view.SelectedDen);
             else if (_view.NeedsTimelineChoice) TimelineBox.IsDropDownOpen = true;
         }
         finally
         {
             _fromMap = false;
+            _changingTimeline = false;
         }
     }
 
     private void SelectionChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(DenMapViewModel.Map))
+        {
+            Map.Load(_view.Map);
+            Map.CurrentDen = _view.CurrentDen;
+        }
         if (e.PropertyName == nameof(DenMapViewModel.VisibleDens))
         {
             Map.InvalidateVisual();
         }
         if (e.PropertyName == nameof(DenMapViewModel.SelectedDen))
         {
-            Map.Select(_view.SelectedDen, center: !_fromMap);
+            Map.Select(_view.SelectedDen, center: !_fromMap || Map.Viewport.IsFitted);
             if (_view.SelectedDen is not null) DenList.ScrollIntoView(_view.SelectedDen);
         }
     }

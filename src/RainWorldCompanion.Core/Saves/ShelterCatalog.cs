@@ -36,7 +36,7 @@ public static class ShelterCatalog
         "SH_S03", "SH_S04", "SH_S05", "SH_S06", "SH_S07", "SH_S08",
         "SH_S09", "SH_S10", "SH_S11", "SI_S03", "SI_S04", "SI_S05", "SI_S06", "SL_S02",
         "SL_S03", "SL_S04", "SL_S05", "SL_S06", "SL_S07", "SL_S08",
-        "SL_S09", "SL_S10", "SL_S11", "SL_S13", "SL_S15", "SS_S01", "SS_S02", "SS_S03",
+        "SL_S09", "SL_S10", "SL_S11", "SL_S13", "SL_S15", "SL_SCRUSHED", "SL_STOP", "SS_S01", "SS_S02", "SS_S03",
         "SS_S04", "SS_S05", "SU_S01", "SU_S03", "SU_S04", "SU_S05", "UG_S01r",
         "UG_S02l", "UG_S03", "UG_S04", "UW_S01", "UW_S02", "UW_S03",
         "UW_S04", "UW_S05", "UW_S06", "UW_S07", "VS_S01", "VS_S02",

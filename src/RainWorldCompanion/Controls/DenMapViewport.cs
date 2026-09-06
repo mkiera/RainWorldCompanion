@@ -10,8 +10,17 @@ public sealed class DenMapViewport
     public double OffsetY { get; private set; }
     public Size Size { get; private set; }
     public bool IsFitted { get; private set; } = true;
+    public int ImageWidth { get; private set; } = DenMapCatalog.Downpour.ImageWidth;
+    public int ImageHeight { get; private set; } = DenMapCatalog.Downpour.ImageHeight;
     public double FitScale => Size.Width > 0 && Size.Height > 0
-        ? Math.Min(Size.Width / DenMapCatalog.ImageWidth, Size.Height / DenMapCatalog.ImageHeight) : 1;
+        ? Math.Min(Size.Width / ImageWidth, Size.Height / ImageHeight) : 1;
+
+    public void SetMap(DenMapDefinition map)
+    {
+        ImageWidth = map.ImageWidth;
+        ImageHeight = map.ImageHeight;
+        Fit();
+    }
 
     public Point ToScreen(Point image) => new(image.X * Scale + OffsetX, image.Y * Scale + OffsetY);
     public Point ToImage(Point screen) => new((screen.X - OffsetX) / Scale, (screen.Y - OffsetY) / Scale);
@@ -35,8 +44,8 @@ public sealed class DenMapViewport
     {
         IsFitted = true;
         Scale = FitScale;
-        OffsetX = (Size.Width - DenMapCatalog.ImageWidth * Scale) / 2;
-        OffsetY = (Size.Height - DenMapCatalog.ImageHeight * Scale) / 2;
+        OffsetX = (Size.Width - ImageWidth * Scale) / 2;
+        OffsetY = (Size.Height - ImageHeight * Scale) / 2;
     }
 
     public void Zoom(double factor, Point anchor)
@@ -80,8 +89,8 @@ public sealed class DenMapViewport
 
     private void Clamp()
     {
-        OffsetX = ClampAxis(OffsetX, Size.Width, DenMapCatalog.ImageWidth * Scale);
-        OffsetY = ClampAxis(OffsetY, Size.Height, DenMapCatalog.ImageHeight * Scale);
+        OffsetX = ClampAxis(OffsetX, Size.Width, ImageWidth * Scale);
+        OffsetY = ClampAxis(OffsetY, Size.Height, ImageHeight * Scale);
     }
 
     private static double ClampAxis(double offset, double viewport, double image) => image <= viewport

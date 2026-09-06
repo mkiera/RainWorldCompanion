@@ -243,6 +243,11 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         CanChooseDenOnMap = availability?.Available ?? false;
         DenMapStatus = availability?.Reason ?? "Set a Rain World installation folder in Settings to use the map.";
         _denWorld = CanChooseDenOnMap ? _denMapPicker!.LoadWorld() : DenWorldCatalog.Unknown;
+        if (CanChooseDenOnMap && !_denWorld.HasVerifiedShelters)
+        {
+            CanChooseDenOnMap = false;
+            DenMapStatus = "The installed shelter data could not be read. Type a den or use the suggestions.";
+        }
         OnPropertyChanged(nameof(CanChooseDenOnMap));
         OnPropertyChanged(nameof(DenMapStatus));
         if (!_loading)
@@ -282,7 +287,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
             }
 
             var access = _denWorld.Check(selected.RoomId, selected.Timeline);
-            if (!access.Available || DenMapCatalog.Find(selected.RoomId) is null)
+            if (!access.Available || DenMapCatalog.ForTimeline(selected.Timeline, _denWorld.DownpourEnabled)?.Find(selected.RoomId) is null)
             {
                 DenMapStatus = _denWorld.Explanation(selected.RoomId, selected.Timeline);
                 OnPropertyChanged(nameof(DenMapStatus));

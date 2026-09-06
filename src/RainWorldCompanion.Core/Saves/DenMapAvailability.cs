@@ -3,13 +3,13 @@ using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Saves;
 
-public sealed record DenMapAvailability(bool Available, string Reason)
+public sealed record DenMapAvailability(bool Available, string Reason, bool DownpourEnabled = false)
 {
     public static DenMapAvailability Check(string slugcatId, ExpansionPresence expansions, OptionsRead options)
     {
-        if (!new[] { "White", "Yellow", "Red", "Gourmand" }.Contains(slugcatId, StringComparer.OrdinalIgnoreCase))
+        if (!DenWorldCatalog.Timelines.Contains(slugcatId, StringComparer.OrdinalIgnoreCase))
         {
-            return new(false, "The Downpour map supports Survivor, Monk, Hunter, and Gourmand.");
+            return new(false, "There is no supplied map for this campaign. Type a den below.");
         }
 
         if (!expansions.CheckedTheInstall)
@@ -17,21 +17,18 @@ public sealed record DenMapAvailability(bool Available, string Reason)
             return new(false, "Set a readable Rain World installation folder in Settings to use the map.");
         }
 
-        if (!expansions.Downpour)
-        {
-            return new(false, "The map requires Downpour to be installed and enabled.");
-        }
-
-        if (!options.Read)
+        if (expansions.Downpour && !options.Read)
         {
             return new(false, "The game's options could not be read, so Downpour's enabled state is unknown.");
         }
 
-        if (!options.EnabledModIds.Contains(ExpansionDetector.DownpourModId, StringComparer.OrdinalIgnoreCase))
+        bool downpourEnabled = expansions.Downpour && options.EnabledModIds.Contains(
+            ExpansionDetector.DownpourModId, StringComparer.OrdinalIgnoreCase);
+        if (!downpourEnabled && !new[] { "White", "Yellow", "Red" }.Contains(slugcatId, StringComparer.OrdinalIgnoreCase))
         {
-            return new(false, "Enable More Slugcats Expansion in Rain World to use the Downpour map.");
+            return new(false, "This campaign's map requires More Slugcats Expansion to be installed and enabled.");
         }
 
-        return new(true, "Choose a den on the Downpour world map.");
+        return new(true, "Choose a den on the world map.", downpourEnabled);
     }
 }

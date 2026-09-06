@@ -5,6 +5,31 @@ namespace RainWorldCompanion.Tests;
 public class DenWorldTests
 {
     [Fact]
+    public void Vanilla_reader_ignores_installed_and_stale_merged_Downpour_files()
+    {
+        using var install = new TempDirectory("den-vanilla");
+        string assets = Path.Combine(install.Path, "RainWorld_Data", "StreamingAssets");
+        void Write(string relative, string value)
+        {
+            string path = Path.Combine(assets, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, value);
+        }
+        Write("world/indexmaps/roomindexmap2.txt", "0 SU_S01\n1 SU_S05");
+        Write("world/su/world_su.txt", "ROOMS\nSU_S01 : ROOM : SHELTER\nEND ROOMS");
+        Write("world/su/properties.txt", "");
+        Write("mergedmods/world/su/world_su.txt", "ROOMS\nSU_S05 : ROOM : SHELTER\nEND ROOMS");
+        Write("mods/moreslugcats/world/su/properties.txt", "Broken Shelters: White: SU_S01");
+        var vanilla = DenWorldCatalog.Load(install.Path, false);
+        Assert.True(vanilla.Check("SU_S01", "White").Available);
+        Assert.False(vanilla.Check("SU_S05", "White").Available);
+        Assert.False(vanilla.Check("SU_S01", "Saint").Available);
+        Assert.Equal(new[] { "Red", "White", "Yellow" }, vanilla.SupportedTimelines);
+        Assert.False(vanilla.DownpourEnabled);
+        Assert.True(DenWorldCatalog.Load(install.Path, true).Check("SU_S05", "White").Available);
+    }
+
+    [Fact]
     public void Installed_reader_uses_merged_rules_and_does_not_guess_when_merges_are_missing()
     {
         using var install = new TempDirectory("den-world");

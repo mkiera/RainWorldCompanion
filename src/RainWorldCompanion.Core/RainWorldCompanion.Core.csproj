@@ -5,7 +5,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Saves\DownpourDens.json" />
+    <EmbeddedResource Include="Saves\*Dens.json" />
   </ItemGroup>
 
   <ItemGroup>

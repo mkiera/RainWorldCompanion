@@ -23,7 +23,11 @@ public sealed class DenMapPicker(
     public DenMapAvailability GetAvailability(string slugcatId) => DenMapAvailability.Check(
         slugcatId, ExpansionDetector.Detect(installPath()), OptionsFile.Read(saveRoot()));
 
-    public DenWorldCatalog LoadWorld() => DenWorldCatalog.Load(installPath());
+    public DenWorldCatalog LoadWorld()
+    {
+        var availability = GetAvailability("White");
+        return availability.Available ? DenWorldCatalog.Load(installPath(), availability.DownpourEnabled) : DenWorldCatalog.Unknown;
+    }
 
     public DenMapSelection? Pick(string currentRoomId, string fieldName, string timeline, DenWorldCatalog world)
     {

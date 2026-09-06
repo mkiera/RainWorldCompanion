@@ -9,8 +9,16 @@ public sealed class DenWorldCatalog
 
     public static DenWorldCatalog Unknown { get; } = new(new());
     private readonly Dictionary<string, Dictionary<string, DenAccess>> _access;
+    public bool DownpourEnabled { get; }
+    public bool HasVerifiedShelters { get; }
+    public IReadOnlyList<string> SupportedTimelines => DownpourEnabled ? Timelines : new[] { "Red", "White", "Yellow" };
 
-    private DenWorldCatalog(Dictionary<string, Dictionary<string, DenAccess>> access) => _access = access;
+    private DenWorldCatalog(Dictionary<string, Dictionary<string, DenAccess>> access, bool downpourEnabled = true)
+    {
+        _access = access;
+        DownpourEnabled = downpourEnabled;
+        HasVerifiedShelters = access.Values.Any(rooms => rooms.Values.Any(den => den.Available));
+    }
 
     public static string EffectiveTimeline(string campaign, string? timeline) =>
         string.IsNullOrWhiteSpace(timeline) ? campaign : timeline.Trim();
@@ -19,7 +27,7 @@ public sealed class DenWorldCatalog
         _access.TryGetValue(timeline, out var rooms) && rooms.TryGetValue(room.Trim(), out var access)
             ? access : new(room.Trim(), false, "The installed world data does not verify this den for this timeline.");
 
-    public IReadOnlyList<string> AvailableTimelines(string room) => Timelines.Where(t => Check(room, t).Available).ToArray();
+    public IReadOnlyList<string> AvailableTimelines(string room) => SupportedTimelines.Where(t => Check(room, t).Available).ToArray();
 
     public string Explanation(string room, string timeline)
     {
@@ -31,14 +39,19 @@ public sealed class DenWorldCatalog
             $" Available timelines: {alternatives}. Choosing another timeline changes the whole campaign world.");
     }
 
-    public static DenWorldCatalog Load(string? installPath)
+    public static DenWorldCatalog Load(string? installPath, bool downpourEnabled = true)
     {
-        if (string.IsNullOrWhiteSpace(installPath)) return Unknown;
+        if (string.IsNullOrWhiteSpace(installPath)) return new(new(), downpourEnabled);
         try
         {
             string assets = Path.Combine(installPath, "RainWorld_Data", "StreamingAssets");
             return Read(relative =>
             {
+                if (!downpourEnabled)
+                {
+                    string vanilla = Path.Combine(assets, relative);
+                    return File.Exists(vanilla) ? File.ReadAllText(vanilla) : null;
+                }
                 string merged = Path.Combine(assets, "mergedmods", relative);
                 if (File.Exists(merged)) return File.ReadAllText(merged);
                 string modification = Path.Combine(assets, "mods", "moreslugcats", "modify", relative);
@@ -49,15 +62,15 @@ public sealed class DenWorldCatalog
                     if (File.Exists(path)) return File.ReadAllText(path);
                 }
                 return null;
-            });
+            }, downpourEnabled);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            return Unknown;
+            return new(new(), downpourEnabled);
         }
     }
 
-    public static DenWorldCatalog Read(Func<string, string?> readFile)
+    public static DenWorldCatalog Read(Func<string, string?> readFile, bool downpourEnabled = true)
     {
         var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (string line in Lines(readFile("world/indexmaps/roomindexmap2.txt")))
@@ -65,16 +78,18 @@ public sealed class DenWorldCatalog
             string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 2 && int.TryParse(parts[0], out _)) index[parts[1]] = parts[1];
         }
-        var result = Timelines.ToDictionary(t => t,
+        var timelines = downpourEnabled ? Timelines : new[] { "Red", "White", "Yellow" };
+        var result = timelines.ToDictionary(t => t,
             _ => new Dictionary<string, DenAccess>(StringComparer.OrdinalIgnoreCase), StringComparer.Ordinal);
-        var dens = ShelterCatalog.All.Concat(DenMapCatalog.All.Select(d => d.RoomId))
-            .Distinct(StringComparer.OrdinalIgnoreCase).GroupBy(d => ShelterCatalog.RegionOf(d)!);
+        var dens = ShelterCatalog.All.Concat(index.Values)
+            .Distinct(StringComparer.OrdinalIgnoreCase).Where(d => ShelterCatalog.RegionOf(d) is not null)
+            .GroupBy(d => ShelterCatalog.RegionOf(d)!);
         foreach (var region in dens)
         {
             string prefix = $"world/{region.Key.ToLowerInvariant()}/";
             string? world = readFile(prefix + $"world_{region.Key.ToLowerInvariant()}.txt");
             string? properties = readFile(prefix + "properties.txt");
-            foreach (string timeline in Timelines)
+            foreach (string timeline in timelines)
             {
                 var active = ActiveLines(world, timeline).ToArray();
                 var rooms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -100,7 +115,7 @@ public sealed class DenWorldCatalog
                 }
                 foreach (var entry in exclusive.Where(e => !e.Value.Contains(timeline))) hidden.Add(entry.Key);
                 var broken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                string? variant = readFile(prefix + $"properties-{timeline.ToLowerInvariant()}.txt");
+                string? variant = downpourEnabled ? readFile(prefix + $"properties-{timeline.ToLowerInvariant()}.txt") : null;
                 foreach (string line in Lines(variant ?? properties))
                 {
                     string[] parts = line.Split(':', StringSplitOptions.TrimEntries);
@@ -124,7 +139,7 @@ public sealed class DenWorldCatalog
                 }
             }
         }
-        return new(result);
+        return new(result, downpourEnabled);
     }
 
     private static IEnumerable<string> Lines(string? text) => (text ?? "").Split('\n')

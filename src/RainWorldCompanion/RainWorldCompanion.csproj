@@ -6,6 +6,11 @@
 
   <ItemGroup>
     <Resource Include="..\..\art\maps\World_Map_(Downpour).png" Link="Assets\Maps\Downpour.png" />
+    <Resource Include="..\..\art\maps\World_Map_(Vanilla).png" Link="Assets\Maps\Vanilla.png" />
+    <Resource Include="..\..\art\maps\World_Map_(Artificer).png" Link="Assets\Maps\Artificer.png" />
+    <Resource Include="..\..\art\maps\World_Map_(Spearmaster).png" Link="Assets\Maps\Spearmaster.png" />
+    <Resource Include="..\..\art\maps\World_Map_(Rivulet).png" Link="Assets\Maps\Rivulet.png" />
+    <Resource Include="..\..\art\maps\World_Map_(Saint).png" Link="Assets\Maps\Saint.png" />
   </ItemGroup>
 
   <ItemGroup>

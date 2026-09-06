@@ -8,7 +8,8 @@ namespace RainWorldCompanion.Controls;
 
 public sealed class DenMapCanvas : FrameworkElement
 {
-    private static readonly Lazy<BitmapSource> MapImage = new(LoadImage);
+    private BitmapSource? _image;
+    private DenMapDefinition _map = DenMapCatalog.Downpour;
     private Point? _press;
     private Point _last;
     private bool _dragged;
@@ -28,7 +29,18 @@ public sealed class DenMapCanvas : FrameworkElement
     public Func<MappedDen, bool> IsAvailable { get; set; } = _ => false;
     public event Action<MappedDen>? DenSelected;
 
-    public void Load() => _ = MapImage.Value;
+    public void Load(DenMapDefinition map)
+    {
+        if (_image is not null && _map == map) return;
+        var image = LoadImage(map);
+        _map = map;
+        _image = image;
+        _hovered = null;
+        _selected = null;
+        ToolTip = null;
+        Viewport.SetMap(map);
+        InvalidateVisual();
+    }
 
     public void Select(MappedDen? den, bool center)
     {
@@ -68,9 +80,10 @@ public sealed class DenMapCanvas : FrameworkElement
     protected override void OnRender(DrawingContext dc)
     {
         dc.DrawRectangle(Brushes.Black, null, new Rect(RenderSize));
-        dc.DrawImage(MapImage.Value, new Rect(Viewport.OffsetX, Viewport.OffsetY,
-            DenMapCatalog.ImageWidth * Viewport.Scale, DenMapCatalog.ImageHeight * Viewport.Scale));
-        foreach (MappedDen den in DenMapCatalog.All)
+        if (_image is null) return;
+        dc.DrawImage(_image, new Rect(Viewport.OffsetX, Viewport.OffsetY,
+            _map.ImageWidth * Viewport.Scale, _map.ImageHeight * Viewport.Scale));
+        foreach (MappedDen den in _map.Dens)
         {
             Point center = Viewport.ToScreen(new Point(den.X, den.Y));
             if (center.X < -30 || center.Y < -30 || center.X > ActualWidth + 30 || center.Y > ActualHeight + 30)
@@ -80,6 +93,13 @@ public sealed class DenMapCanvas : FrameworkElement
             bool selected = den == _selected;
             bool current = den == CurrentDen;
             double radius = Math.Max(4, 12 * Viewport.Scale);
+            if (!den.HasMapIcon)
+            {
+                double scale = Viewport.Scale;
+                dc.DrawRectangle(Brushes.Black, null, new Rect(center.X - 12 * scale, center.Y - 14 * scale, 24 * scale, 28 * scale));
+                dc.DrawRectangle(Brushes.White, null, new Rect(center.X - 9 * scale, center.Y - 11 * scale, 18 * scale, 22 * scale));
+                dc.DrawRectangle(Brushes.Black, null, new Rect(center.X - 5 * scale, center.Y - 11 * scale, 10 * scale, 17 * scale));
+            }
             bool available = IsAvailable(den);
             if (!available)
             {
@@ -130,7 +150,7 @@ public sealed class DenMapCanvas : FrameworkElement
             _last = point;
             return;
         }
-        MappedDen? hovered = Viewport.HitTest(point, DenMapCatalog.All);
+        MappedDen? hovered = Viewport.HitTest(point, _map.Dens);
         if (_hovered != hovered)
         {
             _hovered = hovered;
@@ -144,7 +164,7 @@ public sealed class DenMapCanvas : FrameworkElement
         bool click = _press is not null && !_dragged;
         _press = null;
         ReleaseMouseCapture();
-        if (click && Viewport.HitTest(e.GetPosition(this), DenMapCatalog.All) is { } den)
+        if (click && Viewport.HitTest(e.GetPosition(this), _map.Dens) is { } den)
         {
             DenSelected?.Invoke(den);
         }
@@ -173,14 +193,14 @@ public sealed class DenMapCanvas : FrameworkElement
         base.OnKeyDown(e);
     }
 
-    private static BitmapSource LoadImage()
+    private static BitmapSource LoadImage(DenMapDefinition map)
     {
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
-        image.UriSource = new Uri("pack://application:,,,/RainWorldCompanion;component/Assets/Maps/Downpour.png");
+        image.UriSource = new Uri($"pack://application:,,,/RainWorldCompanion;component/Assets/Maps/{map.Id}.png");
         image.EndInit();
-        if (image.PixelWidth != DenMapCatalog.ImageWidth || image.PixelHeight != DenMapCatalog.ImageHeight)
+        if (image.PixelWidth != map.ImageWidth || image.PixelHeight != map.ImageHeight)
         {
             throw new InvalidOperationException("The map dimensions do not match the den catalog.");
         }
