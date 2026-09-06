@@ -5,6 +5,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Saves\DownpourDens.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The managed wrapper only. The native steam_api64.dll is not in this package and is not
          shipped with this app either: MeadowSteam loads the copy in the player's own Rain World
          folder, which is the same file the game itself uses. -->

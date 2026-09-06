@@ -821,8 +821,13 @@
                 <!-- The shelter the player wakes up in. Typing filters the list; anything can be typed. -->
                 <StackPanel Margin="0,4,0,0">
                     <TextBlock Text="Shelter" Style="{StaticResource Text.Tiny}" />
-                    <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
-                             Text="{Binding DenPos, UpdateSourceTrigger=PropertyChanged}" />
+                    <WrapPanel>
+                        <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
+                                 Text="{Binding DenPos, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Content="Choose on map…" Margin="8,0,0,0" Style="{StaticResource Button.Small}"
+                                Command="{Binding ChooseShelterOnMapCommand}" IsEnabled="{Binding CanChooseDenOnMap}"
+                                ToolTip="{Binding DenMapStatus}" ToolTipService.ShowOnDisabled="True" />
+                    </WrapPanel>
                     <ItemsControl ItemsSource="{Binding ShelterMatches}" Margin="0,4,0,0"
                                   ItemTemplate="{StaticResource ShelterSuggestionTemplate}"
                                   ItemsPanel="{StaticResource WrapPanelTemplate}" />
@@ -830,11 +835,17 @@
 
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Text="Last shelter" Style="{StaticResource Text.Tiny}" />
-                    <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
-                             Text="{Binding LastDenPos, UpdateSourceTrigger=PropertyChanged}" />
+                    <WrapPanel>
+                        <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
+                                 Text="{Binding LastDenPos, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Content="Choose on map…" Margin="8,0,0,0" Style="{StaticResource Button.Small}"
+                                Command="{Binding ChooseLastShelterOnMapCommand}" IsEnabled="{Binding CanChooseDenOnMap}"
+                                ToolTip="{Binding DenMapStatus}" ToolTipService.ShowOnDisabled="True" />
+                    </WrapPanel>
                     <ItemsControl ItemsSource="{Binding LastShelterMatches}" Margin="0,4,0,0"
                                   ItemTemplate="{StaticResource LastShelterSuggestionTemplate}"
                                   ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                    <TextBlock Text="{Binding DenMapStatus}" Style="{StaticResource Text.Muted}" Margin="0,5,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <DockPanel Margin="0,12,0,7">

@@ -5,6 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="..\..\art\maps\World_Map_(Downpour).png" Link="Assets\Maps\Downpour.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="RainWorldCompanion.App.Tests" />
   </ItemGroup>
 

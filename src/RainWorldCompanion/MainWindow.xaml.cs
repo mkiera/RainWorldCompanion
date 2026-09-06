@@ -17,6 +17,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
         Closed += OnClosed;
+        Activated += (_, _) => (DataContext as MainViewModel)?.RefreshEditorMapAvailability();
     }
 
     /// <summary>

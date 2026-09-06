@@ -7,6 +7,7 @@ using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.System;
+using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
@@ -165,6 +166,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     private readonly SaveEditSession _session;
     private readonly CampaignRecordRef _campaign;
     private readonly CampaignSummary _original;
+    private readonly IDenMapPicker? _denMapPicker;
     private readonly List<RawFieldRow> _rawFields = new();
 
     private bool _loading = true;
@@ -176,11 +178,14 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         CampaignRecordRef campaign,
         CampaignSummary original,
         ExpansionPresence? expansions = null,
-        bool devourmentInstalled = false)
+        bool devourmentInstalled = false,
+        IDenMapPicker? denMapPicker = null)
     {
         _session = session;
         _campaign = campaign;
         _original = original;
+        _denMapPicker = denMapPicker;
+        RefreshMapAvailability();
 
         DisplayName = SlugcatCatalog.ForId(campaign.SlugcatId).DisplayName;
         IsHunter = RedsIllness.IsHunter(campaign.SlugcatId);
@@ -225,6 +230,65 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     public string DisplayName { get; }
 
     public bool IsHunter { get; }
+
+    public bool CanChooseDenOnMap { get; private set; }
+
+    public string DenMapStatus { get; private set; } = "Set a Rain World installation folder in Settings to use the map.";
+
+    public void RefreshMapAvailability()
+    {
+        var availability = _denMapPicker?.GetAvailability(_campaign.SlugcatId);
+        CanChooseDenOnMap = availability?.Available ?? false;
+        DenMapStatus = availability?.Reason ?? "Set a Rain World installation folder in Settings to use the map.";
+        OnPropertyChanged(nameof(CanChooseDenOnMap));
+        OnPropertyChanged(nameof(DenMapStatus));
+    }
+
+    [RelayCommand]
+    private void ChooseShelterOnMap() => ChooseDenOnMap(lastShelter: false);
+
+    [RelayCommand]
+    private void ChooseLastShelterOnMap() => ChooseDenOnMap(lastShelter: true);
+
+    private void ChooseDenOnMap(bool lastShelter)
+    {
+        RefreshMapAvailability();
+        if (!CanChooseDenOnMap || _denMapPicker is null)
+        {
+            return;
+        }
+
+        try
+        {
+            string? selected = _denMapPicker.Pick(lastShelter ? LastDenPos : DenPos,
+                lastShelter ? "Last shelter" : "Shelter");
+            if (selected is null)
+            {
+                return;
+            }
+
+            RefreshMapAvailability();
+            if (!CanChooseDenOnMap)
+            {
+                return;
+            }
+
+            if (lastShelter)
+            {
+                UseLastShelter(selected);
+            }
+            else
+            {
+                UseShelter(selected);
+            }
+        }
+        catch (Exception ex) when (ex is global::System.IO.IOException or InvalidOperationException
+            or NotSupportedException or FormatException or global::System.Text.Json.JsonException)
+        {
+            DenMapStatus = "The map could not be loaded. You can still type a room name or use the suggestions.";
+            OnPropertyChanged(nameof(DenMapStatus));
+        }
+    }
 
     public ObservableCollection<FlagEditRow> Flags { get; }
 
