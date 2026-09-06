@@ -5,6 +5,30 @@ namespace RainWorldCompanion.Tests;
 public class DenWorldTests
 {
     [Fact]
+    public void Watcher_rooms_can_be_verified_without_adding_a_map_timeline()
+    {
+        using var install = new TempDirectory("watcher-room-validation");
+        string assets = Path.Combine(install.Path, "RainWorld_Data", "StreamingAssets");
+        void Write(string relative, string value)
+        {
+            string path = Path.Combine(assets, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, value);
+        }
+        Write("world/indexmaps/roomindexmap2.txt", "0 WRFA_A01\n1 WRFA_S01");
+        Write("mods/watcher/world/wrfa/world_wrfa.txt", "ROOMS\nWRFA_A01 : WRFA_S01\nWRFA_S01 : WRFA_A01 : SHELTER\nEND ROOMS");
+        Write("mods/watcher/world/wrfa/properties.txt", "");
+        var disabled = DenWorldCatalog.Load(install.Path, false, false);
+        Assert.False(disabled.Check("WRFA_A01", "Watcher").RoomExists);
+        var enabled = DenWorldCatalog.Load(install.Path, false, true);
+        Assert.True(enabled.Check("WRFA_A01", "Watcher").RoomExists);
+        Assert.False(enabled.Check("WRFA_A01", "Watcher").Available);
+        Assert.True(enabled.Check("WRFA_S01", "Watcher").Available);
+        Assert.DoesNotContain("Watcher", enabled.SupportedTimelines);
+        Assert.Null(DenMapCatalog.ForTimeline("Watcher", false));
+    }
+
+    [Fact]
     public void Vanilla_reader_ignores_installed_and_stale_merged_Downpour_files()
     {
         using var install = new TempDirectory("den-vanilla");
@@ -71,7 +95,9 @@ public class DenWorldTests
             """);
         var world = DenWorldCatalog.Read(path => files.GetValueOrDefault(path));
         Assert.False(world.Check("OE_S01", "White").Available);
+        Assert.False(world.Check("OE_S01", "White").RoomExists);
         Assert.True(world.Check("OE_S01", "Red").Available);
+        Assert.True(world.Check("OE_S01", "Red").RoomExists);
         Assert.True(world.Check("OE_S01", "Gourmand").Available);
         Assert.False(world.Check("OE_S02", "White").Available);
         Assert.True(world.Check("OE_S02", "Yellow").Available);

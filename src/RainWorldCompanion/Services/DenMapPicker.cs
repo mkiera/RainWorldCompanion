@@ -25,8 +25,13 @@ public sealed class DenMapPicker(
 
     public DenWorldCatalog LoadWorld()
     {
-        var availability = GetAvailability("White");
-        return availability.Available ? DenWorldCatalog.Load(installPath(), availability.DownpourEnabled) : DenWorldCatalog.Unknown;
+        string? path = installPath();
+        var expansions = ExpansionDetector.Detect(path);
+        var options = OptionsFile.Read(saveRoot());
+        var availability = DenMapAvailability.Check("White", expansions, options);
+        bool watcherEnabled = expansions.Watcher && options.Read
+            && options.EnabledModIds.Contains(ExpansionDetector.WatcherModId, StringComparer.OrdinalIgnoreCase);
+        return availability.Available ? DenWorldCatalog.Load(path, availability.DownpourEnabled, watcherEnabled) : DenWorldCatalog.Unknown;
     }
 
     public DenMapSelection? Pick(string currentRoomId, string fieldName, string timeline, DenWorldCatalog world)

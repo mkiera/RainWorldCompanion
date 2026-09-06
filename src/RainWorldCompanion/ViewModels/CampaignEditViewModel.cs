@@ -242,7 +242,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         var availability = _denMapPicker?.GetAvailability(_campaign.SlugcatId);
         CanChooseDenOnMap = availability?.Available ?? false;
         DenMapStatus = availability?.Reason ?? "Set a Rain World installation folder in Settings to use the map.";
-        _denWorld = CanChooseDenOnMap ? _denMapPicker!.LoadWorld() : DenWorldCatalog.Unknown;
+        _denWorld = _denMapPicker?.LoadWorld() ?? DenWorldCatalog.Unknown;
         if (CanChooseDenOnMap && !_denWorld.HasVerifiedShelters)
         {
             CanChooseDenOnMap = false;
@@ -1062,17 +1062,21 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         OnPropertyChanged(nameof(HasWarnings));
     }
 
-    private string CanonicalShelter(string room) => CanChooseDenOnMap
+    private string CanonicalShelter(string room) => _denWorld.HasVerifiedShelters
         ? _denWorld.Check(room, DenTimeline).RoomId
-        : ShelterCatalog.All.FirstOrDefault(d => string.Equals(d, room.Trim(), StringComparison.OrdinalIgnoreCase)) ?? room.Trim();
+        : ShelterCatalog.All.FirstOrDefault(d => string.Equals(d, room.Trim(), StringComparison.OrdinalIgnoreCase))
+            ?? CampaignSpawnCatalog.Find(_campaign.SlugcatId, room) ?? room.Trim();
 
     private void AddDenWorldWarning(string room, string label)
     {
-        if (string.IsNullOrWhiteSpace(room) || !ShelterCatalog.IsKnown(room)) return;
+        if (string.IsNullOrWhiteSpace(room)) return;
+        var access = _denWorld.Check(room, DenTimeline);
+        bool shelter = ShelterCatalog.IsKnown(room);
+        if (!shelter && !access.RoomExists && CampaignSpawnCatalog.Find(_campaign.SlugcatId, room) is null) return;
         string canonical = CanonicalShelter(room);
         if (!string.Equals(room.Trim(), canonical, StringComparison.Ordinal))
             Warnings.Add($"{label}: use the exact room ID {canonical}. The game's save lookup is case-sensitive.");
-        if (CanChooseDenOnMap && !_denWorld.Check(room, DenTimeline).Available)
+        if (shelter && _denWorld.HasVerifiedShelters && _denWorld.CanVerifyTimeline(DenTimeline) && !access.Available)
             Warnings.Add($"{label} ({room}): " + _denWorld.Explanation(room, DenTimeline));
     }
 
@@ -1161,16 +1165,14 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     {
         string trimmed = value.Trim();
 
-        if (trimmed.Length == 0 || ShelterCatalog.IsKnown(trimmed))
+        if (trimmed.Length == 0 || ShelterCatalog.IsKnown(trimmed)
+            || CampaignSpawnCatalog.Find(_campaign.SlugcatId, trimmed) is not null
+            || _denWorld.Check(trimmed, DenTimeline).RoomExists)
         {
             return;
         }
 
-        string region = ShelterCatalog.RegionOf(trimmed) ?? "";
-
-        Warnings.Add(RegionCatalog.IsKnown(region)
-            ? $"{label} {trimmed} is not a shelter this app knows of in {RegionCatalog.ForCode(region).DisplayName}. If it came from a mod this is fine."
-            : $"{label} {trimmed} is not a shelter this app knows of. The game puts the player in the wrong place, or nowhere, if the room does not exist.");
+        Warnings.Add($"The app cannot verify {label.ToLowerInvariant()} room {trimmed}. Check its spelling and your game installation. Modded rooms may still be valid.");
     }
 
     private static bool TryNumber(string value, out int parsed)
