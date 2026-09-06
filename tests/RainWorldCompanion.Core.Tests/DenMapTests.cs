@@ -37,8 +37,8 @@ public class DenMapTests
     [Fact]
     public void Catalog_has_one_entry_per_depicted_den_across_fifteen_regions()
     {
-        Assert.Equal(110, DenMapCatalog.All.Count);
-        Assert.Equal(110, DenMapCatalog.All.Select(d => (d.X, d.Y)).Distinct().Count());
+        Assert.Equal(113, DenMapCatalog.All.Count);
+        Assert.Equal(113, DenMapCatalog.All.Select(d => (d.X, d.Y)).Distinct().Count());
         Assert.Equal(15, DenMapCatalog.All.Select(d => d.RegionCode).Distinct().Count());
         Assert.All(DenMapCatalog.All, den =>
         {
@@ -57,10 +57,21 @@ public class DenMapTests
     [InlineData("SH_S06", 7580, 2477)]
     [InlineData("MS_LAB5", 10524, 3350)]
     [InlineData("SL_S07", 7911, 3454)]
+    [InlineData("OE_S02", 2604, 3299)]
+    [InlineData("OE_S05x", 1370, 3273)]
+    [InlineData("OE_SEXTRA", 419, 3183)]
     public void Landmarks_keep_their_verified_image_positions(string room, double x, double y)
     {
         var den = Assert.IsType<MappedDen>(DenMapCatalog.Find(room));
         Assert.Equal(x, den.X);
         Assert.Equal(y, den.Y);
+    }
+
+    [Fact]
+    public void Outer_Expanse_includes_both_ordinary_and_ancient_shelters()
+    {
+        string[] expected = ["OE_EXSHELTER", "OE_MIDSHELTER", "OE_S01", "OE_S02", "OE_S03", "OE_S04", "OE_S05x", "OE_S06", "OE_SEXTRA", "OE_SFINAL"];
+        Assert.Equal(expected, DenMapCatalog.All.Where(den => den.RegionCode == "OE").Select(den => den.RoomId));
+        Assert.Equal(expected, ShelterCatalog.ForRegion("OE"));
     }
 }

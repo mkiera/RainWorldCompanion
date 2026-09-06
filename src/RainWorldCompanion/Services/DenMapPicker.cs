@@ -6,10 +6,13 @@ using RainWorldCompanion.Views;
 
 namespace RainWorldCompanion.Services;
 
+public sealed record DenMapSelection(string RoomId, string Timeline);
+
 public interface IDenMapPicker
 {
     DenMapAvailability GetAvailability(string slugcatId);
-    string? Pick(string currentRoomId, string fieldName);
+    DenWorldCatalog LoadWorld();
+    DenMapSelection? Pick(string currentRoomId, string fieldName, string timeline, DenWorldCatalog world);
 }
 
 public sealed class DenMapPicker(
@@ -20,9 +23,11 @@ public sealed class DenMapPicker(
     public DenMapAvailability GetAvailability(string slugcatId) => DenMapAvailability.Check(
         slugcatId, ExpansionDetector.Detect(installPath()), OptionsFile.Read(saveRoot()));
 
-    public string? Pick(string currentRoomId, string fieldName)
+    public DenWorldCatalog LoadWorld() => DenWorldCatalog.Load(installPath());
+
+    public DenMapSelection? Pick(string currentRoomId, string fieldName, string timeline, DenWorldCatalog world)
     {
-        var dialog = new DenMapDialog(currentRoomId, fieldName) { Owner = owner() };
-        return dialog.ShowDialog() == true ? dialog.SelectedRoomId : null;
+        var dialog = new DenMapDialog(currentRoomId, fieldName, timeline, world) { Owner = owner() };
+        return dialog.ShowDialog() == true ? dialog.Selection : null;
     }
 }

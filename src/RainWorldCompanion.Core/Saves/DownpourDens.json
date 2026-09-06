@@ -180,6 +180,12 @@
     "Y": 3031
   },
   {
+    "RoomId": "OE_S02",
+    "RegionCode": "OE",
+    "X": 2604,
+    "Y": 3299
+  },
+  {
     "RoomId": "OE_S03",
     "RegionCode": "OE",
     "X": 2772,
@@ -192,10 +198,22 @@
     "Y": 2921
   },
   {
+    "RoomId": "OE_S05x",
+    "RegionCode": "OE",
+    "X": 1370,
+    "Y": 3273
+  },
+  {
     "RoomId": "OE_S06",
     "RegionCode": "OE",
     "X": 1434,
     "Y": 3418
+  },
+  {
+    "RoomId": "OE_SEXTRA",
+    "RegionCode": "OE",
+    "X": 419,
+    "Y": 3183
   },
   {
     "RoomId": "OE_SFINAL",
@@ -204,13 +222,13 @@
     "Y": 3121
   },
   {
-    "RoomId": "DS_S01R",
+    "RoomId": "DS_S01r",
     "RegionCode": "DS",
     "X": 4865,
     "Y": 3471
   },
   {
-    "RoomId": "DS_S02L",
+    "RoomId": "DS_S02l",
     "RegionCode": "DS",
     "X": 5396,
     "Y": 3467
@@ -654,7 +672,7 @@
     "Y": 3143
   },
   {
-    "RoomId": "MS_BITTERSHELTER",
+    "RoomId": "MS_bittershelter",
     "RegionCode": "MS",
     "X": 11052,
     "Y": 2930

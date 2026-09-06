@@ -25,6 +25,7 @@ public sealed class DenMapCanvas : FrameworkElement
 
     public DenMapViewport Viewport { get; } = new();
     public MappedDen? CurrentDen { get; set; }
+    public Func<MappedDen, bool> IsAvailable { get; set; } = _ => false;
     public event Action<MappedDen>? DenSelected;
 
     public void Load() => _ = MapImage.Value;
@@ -79,6 +80,14 @@ public sealed class DenMapCanvas : FrameworkElement
             bool selected = den == _selected;
             bool current = den == CurrentDen;
             double radius = Math.Max(4, 12 * Viewport.Scale);
+            bool available = IsAvailable(den);
+            if (!available)
+            {
+                dc.PushOpacity(0.6);
+                dc.DrawEllipse(Brushes.Black, null, center, 14 * Viewport.Scale, 14 * Viewport.Scale);
+                dc.Pop();
+                continue;
+            }
             if (current)
             {
                 dc.DrawEllipse(null, new Pen(Brushes.Cyan, 2), center, radius + 4, radius + 4);
@@ -125,7 +134,7 @@ public sealed class DenMapCanvas : FrameworkElement
         if (_hovered != hovered)
         {
             _hovered = hovered;
-            ToolTip = hovered?.Label;
+            ToolTip = hovered is null ? null : hovered.Label + (IsAvailable(hovered) ? "" : " (click to choose a compatible timeline)");
             InvalidateVisual();
         }
     }
