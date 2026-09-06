@@ -12,8 +12,8 @@
                 <TextBlock Text="Live world map" FontSize="23" FontWeight="SemiBold"/>
                 <TextBlock Text="{Binding ConnectionText}" HorizontalAlignment="Right" VerticalAlignment="Center" TextWrapping="Wrap"/>
             </DockPanel>
-            <Expander Header="Session and mod details" Foreground="{DynamicResource Brush.Text}" Margin="0,6,0,0">
-                <WrapPanel Margin="0,6,0,0">
+            <Expander Foreground="{DynamicResource Brush.Text}" Margin="0,6,0,0">
+                <Expander.Header><TextBlock Text="Session and mod details" Foreground="{DynamicResource Brush.Text}"/></Expander.Header><WrapPanel Margin="0,6,0,0">
                     <StackPanel Margin="0,0,24,6"><TextBlock Text="Campaign / timeline" Style="{StaticResource Text.Muted}"/><TextBlock Text="{Binding Campaign}"/><TextBlock Text="{Binding Timeline}"/></StackPanel>
                     <StackPanel Margin="0,0,24,6"><TextBlock Text="Game" Style="{StaticResource Text.Muted}"/><TextBlock Text="{Binding GameState}"/><TextBlock Text="{Binding GameVersion}"/></StackPanel>
                     <StackPanel Margin="0,0,24,6"><TextBlock Text="{Binding InstalledVersion, StringFormat=Installed: {0}}"/><TextBlock Text="{Binding RunningVersion, StringFormat=Running: {0}}"/><TextBlock Text="{Binding Expansions}"/></StackPanel>
@@ -27,9 +27,9 @@
                 <Button Content="Fit world" Click="FitWorld" Style="{StaticResource Button.Small}" Margin="0,0,6,0"/>
                 <Button Content="+" Click="ZoomIn" AutomationProperties.Name="Zoom in" Style="{StaticResource Button.Small}" Margin="0,0,6,0"/>
                 <Button Content="-" Click="ZoomOut" AutomationProperties.Name="Zoom out" Style="{StaticResource Button.Small}" Margin="0,0,12,0"/>
-                <ComboBox x:Name="MapChoice" ItemsSource="{Binding MapView.Maps}" DisplayMemberPath="Id" SelectedItem="{Binding MapView.Map, Mode=OneWay}"
+                <ComboBox x:Name="MapChoice" ItemsSource="{Binding MapView.Maps}" SelectedItem="{Binding MapView.Map, Mode=OneWay}"
                           SelectionChanged="MapChosen" MinWidth="140" AutomationProperties.Name="World map">
-                    <ComboBox.Style><Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                    <ComboBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Id}"/></DataTemplate></ComboBox.ItemTemplate><ComboBox.Style><Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
                         <Style.Triggers><DataTrigger Binding="{Binding MapView.AutomaticMap}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers>
                     </Style></ComboBox.Style>
                 </ComboBox>
@@ -40,7 +40,7 @@
                 <controls:LiveMapCanvas x:Name="WorldMap" AutomationProperties.Name="Live world map"/>
                 <Grid Grid.Column="1" Margin="12,0,0,0">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-                    <TextBox Text="{Binding MapView.Query, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Search room ID" ToolTip="Search room ID"/>
+                    <StackPanel><TextBlock Text="Search room ID" Margin="0,0,0,4"/><TextBox Text="{Binding MapView.Query, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Search room ID" ToolTip="Search room ID"/></StackPanel>
                     <ListBox Grid.Row="1" MaxHeight="110" ItemsSource="{Binding MapView.SearchResults}" DisplayMemberPath="RoomId"
                              SelectedItem="{Binding MapView.SelectedRoom}" SelectionChanged="SearchRoomSelected" AutomationProperties.Name="Room results" Margin="0,4,0,8"/>
                     <TextBlock Grid.Row="2" Text="PLAYERS" FontWeight="SemiBold" Margin="0,0,0,6"/>
