@@ -11,7 +11,71 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
-## Unreleased
+## 1.3.0 - 2026-09-05
+
+- The app opens with the live save selected and the save library visible. The
+  library is on the left of the backups tab.
+- Mod lists can be imported from and exported to `.rwmods` files. The Mods
+  window keeps named profiles and recent pre-Apply lists for loading, exporting,
+  and returning to an earlier setup.
+- The live save's mod settings can be selected, exported to or imported from
+  `.rwconfigs` files, and deleted. Each replace or delete makes a safety
+  snapshot first.
+- Meadow lists, searches, and joins Rain Meadow lobbies, including lobbies
+  friends are in. It can match a lobby's mods before starting Rain World and
+  guides you through installing or enabling Rain Meadow when needed.
+- New installs open in dark mode. Exported game logs include
+  `BepInEx/LogOutput.log` when it exists.
+
+## 1.3.0-beta.3 - 2026-09-05
+
+- New installs open in dark mode. Existing settings files without a theme keep
+  light mode.
+- Log bundles include `BepInEx/LogOutput.log` when it exists.
+
+## 1.3.0-beta.2 - 2026-09-05
+
+- The live save's SETTINGS list has a tick box on each mod. Ticked settings
+  can be exported to a `.rwconfigs` file to share, and a `.rwconfigs` file
+  from somebody else can be imported, picking which mods to take. A safety
+  snapshot is taken before anything is replaced.
+- Ticked settings can be deleted from the save folder. A safety snapshot is
+  taken first, and restoring it puts them back.
+- Join in the Meadow window asks Steam once more before starting the game, so
+  a lobby that closed or filled up since the last Refresh is reported instead
+  of joined.
+- After Sync mods and join, the Mods window closes by itself once Apply has
+  run, and the Meadow window says which lobby it is joining. The join buttons
+  come back when Rain World closes, and stay away while it is open.
+
+## 1.3.0-beta.1 - 2026-09-04
+
+- Meadow in the top bar lists the Rain Meadow lobbies that are up, says which
+  ones your friends are in, and starts Rain World straight into the one you
+  pick. A lobby id, a join code, or a Steam invite link can be pasted in
+  instead. Steam is asked only when Refresh is pressed, and it shows Rain
+  World as running for the second or two that takes and at no other time.
+- The lobby list has a search box. It matches a lobby's name, mode, campaign,
+  who is in it, and the mods it needs.
+- Joining a lobby can match its mods first, turning on what it needs and off
+  what it does not, in the order it loads them. The game then has nothing left
+  to change and does not restart to sync them. Mods the lobby says nothing
+  about stay as they are, and Join on its own is offered only when nothing
+  needs to change.
+- The Meadow button is there without the mod too, with a dot on it when Rain
+  Meadow is missing or turned off. The window then says what the mod is and
+  offers its Workshop page or turns it on, and Refresh moves on to the lobbies
+  once it is.
+
+## 1.2.5-beta.1 - 2026-09-04
+
+- The app opens with the live save selected and the save library visible. The
+  library is on the left of the backups tab.
+- Mod lists can be imported from and exported to `.rwmods` files. Importing
+  previews the selection and load order before anything changes.
+- The Mods window keeps named profiles and the ten most recent lists replaced
+  by Apply. Profiles and earlier lists can be loaded into the checklist or
+  exported, and loading one still waits for Apply before changing the game.
 
 ## 1.2.4 - 2026-09-01
 

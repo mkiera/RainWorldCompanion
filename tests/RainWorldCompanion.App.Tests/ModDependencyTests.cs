@@ -204,4 +204,73 @@ public class ModDependencyTests
         Assert.True(Row(window, "slugbase").Wanted);
         Assert.Equal("", window.ResultText);
     }
+
+    [Fact]
+    public void Importing_a_list_ticks_its_installed_mods_for_review()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("slugbase");
+        machine.InstallMod("pearlcat");
+        string path = Path.Combine(machine.Root.Path, "friends.rwmods");
+        ModListFile.Write(path, new ModListSnapshot
+        {
+            ReadTheEnabledList = true,
+            Mods =
+            [
+                new ModEntry { Id = "pearlcat", Name = "Pearlcat" },
+                new ModEntry { Id = "not-installed", Name = "Not installed" },
+            ],
+        });
+
+        ModSyncViewModel window = machine.Window();
+        window.ImportList(path);
+
+        Assert.False(Row(window, "slugbase").Wanted);
+        Assert.True(Row(window, "pearlcat").Wanted);
+        Assert.True(Assert.Single(window.Missing).Wanted);
+        Assert.Equal("Match imported list", window.MatchListButtonText);
+        Assert.Contains("Imported 2 mods", window.ResultText);
+    }
+
+    [Fact]
+    public void Exporting_a_list_writes_the_mods_ticked_in_the_window()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("slugbase");
+        machine.InstallMod("pearlcat");
+        ModSyncViewModel window = machine.Window();
+        Row(window, "pearlcat").Wanted = true;
+        string path = Path.Combine(machine.Root.Path, "friends.rwmods");
+
+        window.ExportList(path);
+
+        ModListSnapshot exported = ModListFile.Read(path);
+        Assert.Equal(new[] { "pearlcat" }, exported.Mods.Select(mod => mod.Id));
+        Assert.Contains("Exported 1 mod", window.ResultText);
+    }
+
+    [Fact]
+    public void Exporting_an_imported_list_keeps_its_checked_missing_mods()
+    {
+        using var machine = new Machine();
+        machine.InstallMod("pearlcat");
+        string importedPath = Path.Combine(machine.Root.Path, "imported.rwmods");
+        ModListFile.Write(importedPath, new ModListSnapshot
+        {
+            ReadTheEnabledList = true,
+            Mods =
+            [
+                new ModEntry { Id = "pearlcat", Name = "Pearlcat" },
+                new ModEntry { Id = "not-installed", Name = "Not installed" },
+            ],
+        });
+        ModSyncViewModel window = machine.Window();
+        window.ImportList(importedPath);
+        string exportedPath = Path.Combine(machine.Root.Path, "exported.rwmods");
+
+        window.ExportList(exportedPath);
+
+        ModListSnapshot exported = ModListFile.Read(exportedPath);
+        Assert.Equal(new[] { "pearlcat", "not-installed" }, exported.Mods.Select(mod => mod.Id));
+    }
 }

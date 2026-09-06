@@ -57,6 +57,34 @@ public class ModSyncPlanTests
     }
 
     [Fact]
+    public void A_recorded_load_order_difference_is_something_to_apply()
+    {
+        ModEntry first = ModLists.Mod("first");
+        first.LoadOrder = 0;
+        ModEntry second = ModLists.Mod("second");
+        second.LoadOrder = 1;
+        CurrentMods machine = Machine(new[] { first, second }, first, second);
+        ModEntry recordedFirst = ModLists.Mod("first");
+        recordedFirst.LoadOrder = 1;
+        ModEntry recordedSecond = ModLists.Mod("second");
+        recordedSecond.LoadOrder = 0;
+
+        ModSyncPlan plan = ModSyncPlan.Build(
+            ModLists.Snapshot(null, recordedFirst, recordedSecond),
+            machine);
+
+        Assert.False(plan.NothingToDo);
+        Assert.True(Row(plan, "first").OrderChanges);
+        Assert.True(Row(plan, "second").OrderChanges);
+        Assert.Equal(1, plan.Resolve(machine).LoadOrder["first"]);
+        Assert.Equal(0, plan.Resolve(machine).LoadOrder["second"]);
+
+        plan.WantEverythingOnNow();
+
+        Assert.True(plan.NothingToDo);
+    }
+
+    [Fact]
     public void Turning_an_on_mod_off_by_hand_takes_it_out_of_both()
     {
         ModEntry first = ModLists.Mod("first");
@@ -122,6 +150,7 @@ public class ModSyncPlanTests
         ModSyncRow row = Row(plan, "gone");
 
         Assert.False(row.Installed);
+        Assert.True(row.Wanted);
         Assert.Equal("12345", row.WorkshopId);
 
         row.Wanted = true;

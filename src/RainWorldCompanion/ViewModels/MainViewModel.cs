@@ -1,4 +1,5 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -57,6 +58,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private SaveLibrary? _library;
 
     private ModSyncService? _modSync;
+    private ModConfigService? _modConfigs;
+    private ModConfigSectionViewModel? _watchedConfigs;
 
     // One editor at a time: each holds a session over a whole slot file, so two would work from
     // bytes the other had already changed.
@@ -244,6 +247,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSettingsCommand))]
     private bool isGameRunning;
 
     [ObservableProperty]
@@ -267,6 +272,16 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenModSyncCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OpenMeadowCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TakeSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreWholeSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(StoreCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SendCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSettingsCommand))]
     private bool isBusy;
 
     [ObservableProperty]
@@ -297,7 +312,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBackupsTabSelected))]
-    private bool isLibraryTabSelected;
+    private bool isLibraryTabSelected = true;
 
     public bool IsBackupsTabSelected
     {
@@ -315,7 +330,20 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDetail))]
     [NotifyPropertyChangedFor(nameof(HasNoDetail))]
+    [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteSettingsCommand))]
     private SnapshotDetailViewModel? detail;
+
+    // The Meadow button is always there. This marks it when the mod is missing or off, so the
+    // button says so before it is pressed.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MeadowButtonHint))]
+    private bool meadowNeedsSetup;
+
+    public string MeadowButtonHint => MeadowNeedsSetup
+        ? "Rain Meadow is not on. Open this to install it or turn it on."
+        : "See which Rain Meadow lobbies are up, match their mods, and join one.";
 
     [ObservableProperty]
     private string savePathText = "";
@@ -627,6 +655,31 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         Detail = built;
+        WatchConfigSelection(built?.Configs);
+    }
+
+    // Export and Delete follow the ticks in the live panel's settings list.
+    private void WatchConfigSelection(ModConfigSectionViewModel? section)
+    {
+        if (_watchedConfigs is { } previous)
+        {
+            previous.PropertyChanged -= OnConfigSelectionChanged;
+        }
+
+        _watchedConfigs = section;
+        if (section is not null)
+        {
+            section.PropertyChanged += OnConfigSelectionChanged;
+        }
+    }
+
+    private void OnConfigSelectionChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ModConfigSectionViewModel.HasSelection))
+        {
+            ExportSettingsCommand.NotifyCanExecuteChanged();
+            DeleteSettingsCommand.NotifyCanExecuteChanged();
+        }
     }
 
     private SnapshotDetailViewModel? BuildDetail()
@@ -1841,6 +1894,291 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private bool CanTakeSettings() =>
         !IsBusy && !IsGameRunning && _library is not null && SelectedLibraryEntry is { Entry.HasConfigs: true };
 
+    [RelayCommand(CanExecute = nameof(CanImportSettings))]
+    private async Task ImportSettingsAsync()
+    {
+        var service = _modConfigs;
+        if (service is null || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "Import mod settings",
+            Filter = "Rain World mod settings (*.rwconfigs)|*.rwconfigs|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+        };
+
+        if (dialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        string source = dialog.FileName;
+        string name = Path.GetFileName(source);
+        ModConfigImport? import = null;
+        Exception? failure = null;
+
+        BeginBusy("Reading " + name, source);
+        try
+        {
+            import = await Task.Run(() => service.BeginImport(source));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (import is null)
+        {
+            Report($"\"{name}\" could not be read.", failure);
+            return;
+        }
+
+        using (import)
+        {
+            if (import.Offer.Recorded.Files.Count == 0)
+            {
+                var text = new StringBuilder($"\"{name}\" carries no mod settings this version keeps.");
+                if (import.Warnings.Count > 0)
+                {
+                    text.Append("\n\nNotes:\n").Append(FormatList(import.Warnings));
+                }
+
+                ShowMessage(text.ToString(), "Import mod settings", MessageBoxImage.Warning);
+                return;
+            }
+
+            // Read before the dialog, the same as Take: the safety copy records the list from before.
+            ModListSnapshot? modsBefore = ModsBeforeThis();
+
+            var picker = new TakeSettingsDialog(name, import.Offer);
+            if (ShowDialog(picker) != true)
+            {
+                return;
+            }
+
+            var chosen = picker.Chosen;
+            var progress = new Progress<string>(message => BusyMessage = message);
+            SettingsWriteResult? result = null;
+            failure = null;
+
+            BeginBusy("Taking settings from " + name, "Taking a safety snapshot");
+            try
+            {
+                result = await Task.Run(() => import.Apply(chosen, modsBefore, progress, CancellationToken.None));
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+            finally
+            {
+                EndBusy();
+            }
+
+            await ReloadAsync();
+
+            if (result is null)
+            {
+                Report("The settings could not be taken.", failure);
+                return;
+            }
+
+            if (import.Warnings.Count > 0)
+            {
+                result = result with { Warnings = result.Warnings.Concat(import.Warnings).ToList() };
+            }
+
+            ReportSettingsResult(result, name);
+        }
+    }
+
+    private bool CanImportSettings() =>
+        !IsBusy && !IsGameRunning && _modConfigs is not null && Detail is { IsLive: true };
+
+    [RelayCommand(CanExecute = nameof(CanExportSettings))]
+    private async Task ExportSettingsAsync()
+    {
+        var service = _modConfigs;
+        if (service is null || IsBusy || Detail is not { IsLive: true, Configs: { HasSelection: true } section })
+        {
+            return;
+        }
+
+        IReadOnlyList<string> chosen = section.SelectedModIds;
+        string suggested = chosen.Count == 1 ? chosen[0] + " settings" : "mod settings";
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export mod settings",
+            Filter = "Rain World mod settings (*.rwconfigs)|*.rwconfigs|All files (*.*)|*.*",
+            DefaultExt = ModConfigArchive.Extension,
+            AddExtension = true,
+            FileName = SafeFileName(suggested) + ModConfigArchive.Extension,
+        };
+
+        if (dialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        string destination = dialog.FileName;
+        int count = 0;
+        Exception? failure = null;
+
+        BeginBusy("Exporting mod settings", destination);
+        try
+        {
+            count = await Task.Run(() => service.Export(destination, chosen));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The settings could not be exported.", failure);
+            return;
+        }
+
+        ShowMessage(
+            (count == 1 ? "1 settings file" : count + " settings files")
+                + $" for {FormatMods(chosen)} exported to:\n{destination}",
+            "Export mod settings",
+            MessageBoxImage.Information);
+    }
+
+    private bool CanExportSettings() =>
+        !IsBusy && _modConfigs is not null && Detail is { IsLive: true, Configs.HasSelection: true };
+
+    [RelayCommand(CanExecute = nameof(CanDeleteSettings))]
+    private async Task DeleteSettingsAsync()
+    {
+        var service = _modConfigs;
+        if (service is null || IsBusy || IsGameRunning
+            || Detail is not { IsLive: true, Configs: { HasSelection: true } section })
+        {
+            return;
+        }
+
+        IReadOnlyList<string> chosen = section.SelectedModIds;
+        IReadOnlyList<ModConfigEntry> files;
+        try
+        {
+            files = service.FilesOf(chosen);
+        }
+        catch (Exception ex)
+        {
+            Report("The settings could not be read.", ex);
+            return;
+        }
+
+        if (files.Count == 0)
+        {
+            ShowMessage(
+                "None of the ticked mods has settings in the save folder any more.",
+                "Delete mod settings",
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        string question = $"Delete the settings of {FormatMods(chosen)}?\n\n"
+            + (files.Count == 1 ? "This file goes:\n" : $"These {files.Count} files go:\n")
+            + FormatList(files.Select(file => file.RelativePath).ToList())
+            + "\n\nA safety snapshot is taken first, and restoring it puts them back.";
+
+        if (!AskYesNo(question, "Delete mod settings"))
+        {
+            return;
+        }
+
+        ModListSnapshot? modsBefore = ModsBeforeThis();
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SettingsDeleteResult? result = null;
+        Exception? failure = null;
+
+        BeginBusy("Deleting mod settings", "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(() => service.Delete(chosen, modsBefore, progress, CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (result is null)
+        {
+            Report("The settings could not be deleted.", failure);
+            return;
+        }
+
+        ReportSettingsDeleted(result, chosen);
+    }
+
+    private bool CanDeleteSettings() =>
+        !IsBusy && !IsGameRunning && _modConfigs is not null && Detail is { IsLive: true, Configs.HasSelection: true };
+
+    private void ReportSettingsDeleted(SettingsDeleteResult result, IReadOnlyList<string> mods)
+    {
+        var text = new StringBuilder();
+
+        if (result.Success)
+        {
+            text.Append(result.SettingsDeleted == 1 ? "1 settings file" : result.SettingsDeleted + " settings files")
+                .Append(" of ").Append(FormatMods(mods)).Append(" deleted.");
+
+            if (result.SafetySnapshot is { } safety)
+            {
+                text.Append("\n\nSafety snapshot of your previous saves: ").Append(safety.Id);
+                text.Append("\n\nRestoring it puts the settings back.");
+            }
+
+            if (result.Warnings.Count > 0)
+            {
+                text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+            }
+
+            ShowMessage(text.ToString(), "Delete mod settings", MessageBoxImage.Information);
+            return;
+        }
+
+        text.Append(FormatList(result.Errors));
+
+        if (result.Warnings.Count > 0)
+        {
+            text.Append("\n\nNotes:\n").Append(FormatList(result.Warnings));
+        }
+
+        ShowMessage(text.ToString(), "Delete mod settings", MessageBoxImage.Error);
+    }
+
+    private static string FormatMods(IReadOnlyList<string> ids) => ids.Count switch
+    {
+        0 => "no mod",
+        1 => ids[0],
+        2 => ids[0] + " and " + ids[1],
+        _ => string.Join(", ", ids.Take(ids.Count - 1)) + " and " + ids[^1],
+    };
+
     private void ReportSettingsResult(SettingsWriteResult result, string sourceName)
     {
         var text = new StringBuilder();
@@ -2753,6 +3091,79 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private bool CanOpenModSync() => !IsBusy && _modSync is not null;
 
+    // Nothing here touches the save folder until the mods are applied, and that path does its own
+    // checking, so this stays available while the game is running.
+    [RelayCommand(CanExecute = nameof(CanOpenMeadow))]
+    private void OpenMeadow()
+    {
+        if (_modSync is not { } service)
+        {
+            return;
+        }
+
+        var view = new MeadowViewModel(
+            service,
+            SyncModsFor,
+            start => MeadowLauncher.Start(start, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)),
+            url => WorkshopLink.Open(url, problem => ShowMessage(problem, "Rain Meadow", MessageBoxImage.Warning)))
+        {
+            IsGameRunning = IsGameRunning,
+        };
+
+        // The game poll keeps ticking under the modal window, so the window learns when the game
+        // it started has closed again.
+        PropertyChangedEventHandler follow = (_, e) =>
+        {
+            if (e.PropertyName == nameof(IsGameRunning))
+            {
+                view.IsGameRunning = IsGameRunning;
+            }
+        };
+
+        PropertyChanged += follow;
+        try
+        {
+            ShowDialog(new MeadowDialog(view));
+        }
+        finally
+        {
+            PropertyChanged -= follow;
+        }
+
+        // The window may have turned the mod on, and the button's marker reads from this.
+        _currentMods = service.ReadCurrent();
+        MeadowNeedsSetup = MeadowReadiness.From(_currentMods).Step != MeadowStep.Ready;
+        RebuildDetail();
+    }
+
+    private bool CanOpenMeadow() => !IsBusy && _modSync is not null;
+
+    // Shown over the Meadow window rather than instead of it, the same way a save's mod diff is,
+    // and the answer is whether anything was actually written.
+    private bool SyncModsFor(ModSyncRequest request)
+    {
+        if (_modSync is not { } service)
+        {
+            return false;
+        }
+
+        var view = new ModSyncViewModel(service) { OfferLaunch = false };
+        var window = new ModSyncDialog(view) { Owner = OwnerWindow };
+        view.MatchWanted(request);
+
+        // Apply is the last thing wanted from this window: the Meadow window carries on from it.
+        view.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ModSyncViewModel.AppliedSomething) && view.AppliedSomething)
+            {
+                window.Close();
+            }
+        };
+
+        window.ShowDialog();
+        return view.AppliedSomething;
+    }
+
     private ModSyncViewModel? ShowModSyncWindow()
     {
         if (_modSync is not { } service)
@@ -2966,6 +3377,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             });
         }
 
+        _modConfigs = _backupService is { } forConfigs ? new ModConfigService(forConfigs, _appVersion) : null;
+
         // The library borrows the backup service's safety snapshot for its loads: no backup
         // service, no library.
         _library = null;
@@ -3023,6 +3436,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             _liveFileCount = 0;
             _liveMeadow = null;
             _backupMeadow = new Dictionary<string, MeadowProfile>(StringComparer.OrdinalIgnoreCase);
+            MeadowNeedsSetup = false;
             LiveSlots.Clear();
             Backups.Clear();
             LibraryEntries.Clear();
@@ -3089,6 +3503,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             });
 
             _meadow = data.Meadow;
+            MeadowNeedsSetup = MeadowReadiness.From(data.Mods).Step != MeadowStep.Ready;
             _currentMods = data.Mods;
             _liveConfigs = data.Configs;
             _liveSlotData = data.Slots;
@@ -3175,10 +3590,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    /// <summary>
-    /// Whatever was selected wins if it is still there, then the newest backup, then the live save
-    /// card, so the panel is never blank.
-    /// </summary>
     private void RestoreSelection(string? keepId, string? keepEntryId, bool keepLive)
     {
         LibraryEntryViewModel? entry = null;
@@ -3189,7 +3600,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             entry = FindEntryById(keepEntryId);
             if (entry is null)
             {
-                backup = FindById(keepId) ?? (keepEntryId is null ? Backups.FirstOrDefault() : null);
+                backup = FindById(keepId);
             }
         }
 

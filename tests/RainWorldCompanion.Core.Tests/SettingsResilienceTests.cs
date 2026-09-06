@@ -368,8 +368,8 @@ public class SettingsResilienceTests
         var store = StoreWith(dir, """
         {
           "schemaVersion": 1,
-          "gameSavePath": "C:\saves",
-          "backupRootPath": "C:\backups"
+          "gameSavePath": "C:\\saves",
+          "backupRootPath": "C:\\backups"
         }
         """);
 

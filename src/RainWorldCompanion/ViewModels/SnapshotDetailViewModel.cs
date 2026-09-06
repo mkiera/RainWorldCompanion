@@ -205,7 +205,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     {
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForCurrent(mods),
-            configsSection: ModConfigSectionViewModel.ForCurrent(configs),
+            configsSection: ModConfigSectionViewModel.ForCurrent(configs, manageable: true),
             isLive: true,
             title: "Live save",
             subtitle: savePath,

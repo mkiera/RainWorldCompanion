@@ -99,8 +99,8 @@ and nothing is copied through a junction or symlink.
 
 `options` and `enabledMods.txt` are the one exception, and only the [Mods](#mods) window writes
 them. They are deliberately outside the backup scope: they hold which mods are on rather than
-anything about a run, so a restore leaves your mod list alone. The Mods window keeps its own
-record of the list you had before it changed anything.
+anything about a run, so a restore leaves your mod list alone. The Mods window keeps named lists
+and the 10 most recent lists captured before Apply separately from save backups.
 
 ---
 
@@ -116,10 +116,14 @@ you do not have is named instead, because that is the reason the mod may still n
 Every backup and library save records the mods and game version it was played with, and carries
 that record inside a `.rwsave` when it is exported. Restoring, loading or sending a save says how
 this machine has moved since those bytes were written: what is missing, what is turned off, and
-what sits at another version. None of it blocks the operation. The Mods window can take that list
-in one press with Match the save, and put yours back afterwards with Restore my previous mods. A
-mod you do not have gets a button to its Steam Workshop page, which opens in Steam where it is
-installed.
+what sits at another version. None of it blocks the operation. Match the save previews that list
+in the Mods window. Apply writes it after you review the ticks. A mod you do not have gets a button
+to its Steam Workshop page, which opens in Steam where it is installed.
+
+Current list can import and export `.rwmods` files. Importing previews the file and offers to keep
+it as a named profile. Saved lists holds those profiles and the 10 most recent lists captured
+before Apply. Loading any profile or earlier list returns to Current list for review. Applying an
+earlier list captures the list it replaces, so the change can be undone the same way.
 
 Mod settings travel too. A library save and a `.rwsave` carry the settings that were in
 `ModConfigs\` when the bytes were taken, and loading one asks which mods' settings to take, per
@@ -263,9 +267,10 @@ to `%LOCALAPPDATA%\RainWorldCompanion\backups`, library saves to
 `%LOCALAPPDATA%\RainWorldCompanion\settings.json`. All three folders can be pointed elsewhere in
 Settings, and none of them may sit inside another.
 
-The mod list you had before the Mods window last changed it is kept at
-`%LOCALAPPDATA%\RainWorldCompanion\modstate`, which is what Restore my previous mods reads. It is a
-record of which mods were on, not a save, so nothing in it is ever written into a slot.
+Mod list profiles and recent history are kept under
+`%LOCALAPPDATA%\RainWorldCompanion\modstate`. Each profile and history entry has its own JSON file,
+so one damaged entry does not hide the others. This folder records mod selection and load order.
+It contains no saves, mod files or mod configuration files, and it cannot be moved in Settings.
 
 Each backup is one folder named for the moment it was taken, for example `2026-08-24_19-31-07`,
 holding the copied files in the same layout they have in the save folder plus a `manifest.json`

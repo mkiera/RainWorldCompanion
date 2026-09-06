@@ -303,6 +303,7 @@ public class SettingsTests
 
         Assert.NotNull(settings);
         Assert.Equal(1, settings.SchemaVersion);
+        Assert.Equal(AppTheme.Dark, AppThemes.Parse(settings.Theme));
         Assert.False(string.IsNullOrWhiteSpace(settings.BackupRootPath));
     }
 
