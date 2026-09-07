@@ -78,6 +78,7 @@ def apply_reviewed(output):
     if current != before:
         raise ValueError("Catalog changed since matching. Run the pass again before applying.")
     evidence = json.loads((output / "results.json").read_text())["resolved"]
+    omissions = json.loads((SAVES / "RoomMapOmissions.json").read_text())
     overrides = json.loads((SAVES / "RoomMapOverrides.json").read_text())
     for map_id in TIMELINES:
         rooms = {e["RoomId"].upper(): e for e in current[map_id]}
@@ -86,6 +87,8 @@ def apply_reviewed(output):
             if change["map"] != map_id:
                 continue
             name = change["room"]
+            if name in omissions.get(map_id, {}):
+                continue
             old = rooms.get(name)
             if old and (old["MatchKind"] == "den-anchor" or old["MatchKind"].startswith("terrain-template")):
                 raise ValueError(f"Refusing to replace verified placement: {map_id} {name}")

@@ -29,6 +29,16 @@ class RoomRefinementTests(unittest.TestCase):
         offsets = [np.array(p) for p in [(100, 200), (100, 200), (400, 600), (400, 600)]]
         self.assertIsNone(local_translation(list(zip(sources, [s + d for s, d in zip(sources, offsets)]))))
 
+    def test_numeric_links_count_original_disconnected_exits(self):
+        text = "\n".join([
+            "CONDITIONAL LINKS", "Saint : A : 1 : C", "Saint : A : 2 : D", "END CONDITIONAL LINKS",
+            "ROOMS", "A : B, DISCONNECTED, E, DISCONNECTED", "END ROOMS"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "world.txt"
+            path.write_text(text)
+            graph = world_connections([path], "saint")
+        self.assertEqual(graph["A"], ["B", "C", "E", "D"])
+
     def test_translation_tolerates_one_outlier(self):
         sources = [np.array(p) for p in [(0, 0), (80, 0), (0, 80), (80, 80)]]
         targets = [s + (100, 200) for s in sources]

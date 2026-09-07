@@ -8,6 +8,17 @@ namespace RainWorldCompanion.App.Tests;
 
 public class LiveMapTests
 {
+    [Fact]
+    public void Live_player_in_an_omitted_room_gets_an_explanation()
+    {
+        var view = new LiveMapViewModel();
+        view.Adopt(new() { SessionId = "session", Campaign = "White", Timeline = "White",
+            EnabledExpansions = ["moreslugcats"], Players = [new() { Id = "one", RoomId = "SL_ECNIUS01" }] });
+        Assert.Null(view.Players[0].Placement);
+        Assert.Equal("Unavailable on this map", view.Players[0].MapStatus);
+        Assert.Contains("SL_D01", view.Players[0].UnavailableReason);
+    }
+
     [Theory]
     [InlineData("White", true, "Downpour")]
     [InlineData("White", false, "Vanilla")]

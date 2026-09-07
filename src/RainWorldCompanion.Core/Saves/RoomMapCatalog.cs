@@ -15,6 +15,23 @@ public sealed record MappedRoom(
 public static class RoomMapCatalog
 {
     private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<MappedRoom>>> Catalog = new(Load);
+    private static readonly Lazy<Dictionary<string, Dictionary<string, string>>> Omissions = new(LoadOmissions);
+
+    public static string? UnavailableReason(string mapId, string? roomId) =>
+        Omissions.Value.TryGetValue(mapId, out var rooms) && roomId is not null
+        && rooms.TryGetValue(roomId.Trim(), out var reason) ? reason : null;
+
+    private static Dictionary<string, Dictionary<string, string>> LoadOmissions()
+    {
+        using var stream = typeof(RoomMapCatalog).Assembly.GetManifestResourceStream(
+            "RainWorldCompanion.Core.Saves.RoomMapOmissions.json")
+            ?? throw new InvalidDataException("The room map omissions are missing.");
+        var data = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(stream)
+            ?? throw new InvalidDataException("The room map omissions are empty.");
+        return data.ToDictionary(pair => pair.Key,
+            pair => new Dictionary<string, string>(pair.Value, StringComparer.OrdinalIgnoreCase),
+            StringComparer.OrdinalIgnoreCase);
+    }
 
     public static IReadOnlyList<MappedRoom> ForMap(string mapId)
     {
@@ -43,7 +60,7 @@ public static class RoomMapCatalog
         {
             var map = knownMaps[mapId];
             if (rooms.Length == 0 || rooms.Select(room => room.RoomId).Distinct(StringComparer.OrdinalIgnoreCase).Count() != rooms.Length
-                || rooms.Any(room => !IsValid(room, map.ImageWidth, map.ImageHeight)))
+                || rooms.Any(room => !IsValid(room, map.ImageWidth, map.ImageHeight) || UnavailableReason(mapId, room.RoomId) is not null))
             {
                 throw new InvalidDataException($"The {mapId} room map catalog contains invalid entries.");
             }

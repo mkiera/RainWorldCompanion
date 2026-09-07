@@ -25,5 +25,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Saves/*RoomMapCatalog.json" />
+    <EmbeddedResource Include="Saves/RoomMapOmissions.json" />
   </ItemGroup>
 </Project>

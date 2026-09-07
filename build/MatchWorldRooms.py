@@ -49,6 +49,7 @@ def world_connections(paths, timeline):
             elif section == "CONDITIONAL LINKS" and len(parts) >= 3:
                 rules.append(parts)
     hidden = set()
+    replacements = []
     for parts in rules:
         applies = campaign_matches(parts[0], timeline)
         if parts[1] == "EXCLUSIVEROOM" and not applies or parts[1] == "HIDEROOM" and applies:
@@ -56,11 +57,14 @@ def world_connections(paths, timeline):
         elif applies and len(parts) == 4 and parts[1] in rooms:
             links = rooms[parts[1]]
             if parts[2].isdigit():
-                index = int(parts[2])
-                if index < len(links):
-                    links[index] = parts[3]
+                disconnected = [i for i, link in enumerate(links) if link == "DISCONNECTED"]
+                ordinal = int(parts[2]) - 1
+                if 0 <= ordinal < len(disconnected):
+                    replacements.append((parts[1], disconnected[ordinal], parts[3]))
             else:
                 rooms[parts[1]] = [parts[3] if link == parts[2] else link for link in links]
+    for name, index, destination in replacements:
+        rooms[name][index] = destination
     return {name: [link for link in links if link != "DISCONNECTED" and link not in hidden]
             for name, links in rooms.items() if name not in hidden}
 
@@ -301,6 +305,7 @@ def main():
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         results = list(pool.map(run, tasks))
     if args.apply:
+        omissions = json.loads((SAVES / "RoomMapOmissions.json").read_text(encoding="utf-8"))
         overrides_path = SAVES / "RoomMapOverrides.json"
         overrides = json.loads(overrides_path.read_text(encoding="utf-8"))
         catalog_path = SAVES / "RoomMapCatalog.json"
@@ -311,6 +316,8 @@ def main():
             corrected = {entry["RoomId"].upper(): entry for entry in overrides.get(map_id, [])}
             for entry in result["entries"]:
                 name = entry["RoomId"].upper()
+                if name in omissions.get(map_id, {}):
+                    continue
                 if name in existing:
                     if existing[name]["MatchKind"] == "den-anchor":
                         continue

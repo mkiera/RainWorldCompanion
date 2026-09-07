@@ -52,7 +52,7 @@
                                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                 <TextBlock Text="{Binding RoomId}" TextWrapping="Wrap"/>
                                 <WrapPanel><TextBlock Text="{Binding Source}" Margin="0,0,8,0"/><TextBlock Text="{Binding State}"/></WrapPanel>
-                                <TextBlock Text="{Binding MapStatus}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding MapStatus}" ToolTip="{Binding UnavailableReason}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap"/>
                             </StackPanel>
                         </DataTemplate></ListBox.ItemTemplate>
                     </ListBox>

@@ -221,6 +221,10 @@ def main():
             by_id = {room["RoomId"].upper(): room for room in catalog[map_id]}
             by_id.update({room["RoomId"].upper(): room for room in overrides})
             catalog[map_id] = sorted(by_id.values(), key=lambda room: (room["RegionCode"], room["RoomId"]))
+    omissions = json.loads((SAVES / "RoomMapOmissions.json").read_text(encoding="utf-8"))
+    for map_id, names in omissions.items():
+        excluded = {name.upper() for name in names}
+        catalog[map_id] = [room for room in catalog[map_id] if room["RoomId"].upper() not in excluded]
     OUTPUT.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
 
 
