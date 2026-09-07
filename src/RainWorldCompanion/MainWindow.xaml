@@ -2051,17 +2051,9 @@
                             Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}"
                             Margin="0,0,4,0" Command="{Binding OpenLiveFeaturesCommand}"
                             ToolTip="Open the live map and Companion Game Hook setup." />
-                    <Button Content="Back to saves" Margin="0,0,4,0" Command="{Binding OpenSavesCommand}">
-                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource Button.Small}">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <MultiDataTrigger><MultiDataTrigger.Conditions>
-                                    <Condition Binding="{Binding IsLivePageVisible}" Value="True" />
-                                    <Condition Binding="{Binding IsGameRunning}" Value="False" />
-                                </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible" /></MultiDataTrigger>
-                            </Style.Triggers>
-                        </Style></Button.Style>
-                    </Button>
+                    <Button Content="Back to saves" Margin="0,0,4,0" Command="{Binding OpenSavesCommand}"
+                            Style="{StaticResource Button.Small}"
+                            Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}" />
                     <Button Content="Updates" Style="{StaticResource Button.Small}"
                             Command="{Binding OpenUpdatesCommand}" />
                     <Button Style="{StaticResource Button.Icon}"

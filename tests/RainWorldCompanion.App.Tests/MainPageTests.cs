@@ -23,7 +23,13 @@ public class MainPageTests
             Assert.True(view.IsLivePageVisible);
             Assert.False(view.IsSavePageVisible);
             view.OpenSavesCommand.Execute(null);
+            Assert.True(view.IsSavePageVisible);
+            Assert.False(view.IsCurrentPageReady);
+            view.IsGameRunning = true;
+            Assert.True(view.IsSavePageVisible);
+            view.OpenLiveFeaturesCommand.Execute(null);
             Assert.True(view.IsLivePageVisible);
+            Assert.True(view.IsCurrentPageReady);
             view.IsGameRunning = false;
             Assert.True(view.IsSavePageVisible);
             Assert.Same(live, view.Live);

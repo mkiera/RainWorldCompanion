@@ -190,6 +190,7 @@ public sealed class SettingsStore
         settings.BackupRootPath = ReadString(root, "backupRootPath", settings.BackupRootPath);
         settings.LibraryRootPath = ReadString(root, "libraryRootPath", settings.LibraryRootPath);
         settings.GameInstallPath = ReadStringOrNull(root, "gameInstallPath");
+        settings.LiveMapSpoilerMode = ReadBool(root, "liveMapSpoilerMode", settings.LiveMapSpoilerMode);
         settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
         settings.Theme = ReadString(root, "theme", "light");

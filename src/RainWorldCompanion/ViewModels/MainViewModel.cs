@@ -481,6 +481,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         AdoptTheme();
+        Live.MapView.SpoilerMode = _settings.LiveMapSpoilerMode;
+        Live.MapView.PropertyChanged += OnLiveMapPreferenceChanged;
 
         await FillInMissingPathsAsync();
         await ApplySettingsAsync();

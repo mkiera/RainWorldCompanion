@@ -12,6 +12,18 @@ namespace RainWorldCompanion.Tests;
 /// </summary>
 public class SettingsResilienceTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Live_map_spoiler_choice_survives_saving_a_settings_copy(bool enabled)
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "settings.json");
+        new SettingsStore(path).Save(new AppSettings { LiveMapSpoilerMode = enabled }.Clone());
+
+        Assert.Equal(enabled, new SettingsStore(path).ReadForStartup()!.LiveMapSpoilerMode);
+    }
+
     private static SettingsStore StoreWith(TempDirectory dir, string json)
     {
         var path = Path.Combine(dir.Path, "settings.json");

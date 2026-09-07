@@ -78,6 +78,7 @@ public sealed partial class MainViewModel
 
     private void StopLiveFeatures()
     {
+        Live.MapView.PropertyChanged -= OnLiveMapPreferenceChanged;
         if (_liveTimer is not null)
         {
             _liveTimer.Stop();
@@ -105,6 +106,12 @@ public sealed partial class MainViewModel
     private void AdoptLiveConnection() => Live.AdoptConnection(
         _liveServer?.Status ?? LiveConnectionStatus.Waiting, _liveServer?.Snapshot, IsGameRunning);
 
+    private void OnLiveMapPreferenceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LiveMapViewModel.SpoilerMode))
+            PersistSetting(settings => settings.LiveMapSpoilerMode = Live.MapView.SpoilerMode);
+    }
+
     [RelayCommand]
     private void OpenLiveFeatures()
     {
@@ -114,7 +121,7 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void OpenSaves()
     {
-        if (!IsGameRunning) IsLivePageVisible = false;
+        IsLivePageVisible = false;
     }
 
     private async void OnLiveTimerTick(object? sender, EventArgs args) => await PollLiveFeaturesAsync();
