@@ -76,16 +76,27 @@ public class SpoilerMapTests
     }
 
     [Fact]
-    public void Reveal_excludes_unvisited_overlap_and_everything_outside_room_bounds()
+    public void Reveal_preserves_visited_overlap_and_hides_everything_outside_visited_bounds()
     {
         var visited = new MappedRoom("known", "SU", 10, 10, [new(0, 0, 20, 20)], "test");
         var unknown = new MappedRoom("unknown", "SU", 20, 10, [new(15, 0, 20, 20)], "test");
         var geometry = LiveMapCanvas.CreateReveal([visited, unknown], new HashSet<string> { "known" });
         Assert.True(geometry.FillContains(new Point(5, 5)));
-        Assert.False(geometry.FillContains(new Point(18, 5)));
+        Assert.True(geometry.FillContains(new Point(18, 5)));
         Assert.False(geometry.FillContains(new Point(30, 5)));
         Assert.False(geometry.FillContains(new Point(5, 25)));
         Assert.True(LiveMapCanvas.CreateReveal([visited], new HashSet<string>()).IsEmpty());
+    }
+
+    [Fact]
+    public void Visited_shelter_icons_are_revealed_without_revealing_the_unvisited_approach()
+    {
+        var den = RoomMapCatalog.Find("Downpour", "SB_S06")!;
+        var approach = RoomMapCatalog.Find("Downpour", "SB_GOR01")!;
+        var geometry = LiveMapCanvas.CreateReveal(RoomMapCatalog.ForMap("Downpour"),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "SB_S06", "SB_H03" });
+        Assert.True(geometry.FillContains(new Point(den.X, den.Y)));
+        Assert.False(geometry.FillContains(new Point(approach.X, approach.Y)));
     }
 
     private static LiveSnapshot Snapshot() => new()

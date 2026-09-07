@@ -45,23 +45,19 @@ public sealed class LiveMapCanvas : FrameworkElement
     public static Geometry CreateReveal(IEnumerable<MappedRoom> rooms, IReadOnlySet<string> visited)
     {
         var visible = new GeometryGroup { FillRule = FillRule.Nonzero };
-        var hidden = new GeometryGroup { FillRule = FillRule.Nonzero };
         foreach (var room in rooms)
         {
+            if (!visited.Contains(room.RoomId)) continue;
+            if (room.Bounds.Count == 0)
+                visible.Children.Add(new EllipseGeometry(new Point(room.X, room.Y), 12, 12));
             foreach (var bounds in room.Bounds)
             {
                 var rectangle = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-                if (visited.Contains(room.RoomId)) visible.Children.Add(new RectangleGeometry(rectangle));
-                else
-                {
-                    rectangle.Inflate(1, 1);
-                    hidden.Children.Add(new RectangleGeometry(rectangle));
-                }
+                visible.Children.Add(new RectangleGeometry(rectangle));
             }
         }
-        var reveal = new CombinedGeometry(GeometryCombineMode.Exclude, visible, hidden);
-        reveal.Freeze();
-        return reveal;
+        visible.Freeze();
+        return visible;
     }
 
     private DenMapDefinition? _map;
@@ -171,10 +167,11 @@ public sealed class LiveMapCanvas : FrameworkElement
         {
             bool visited = _visited.Contains(room.RoomId);
             var brush = visited ? Brushes.DeepSkyBlue : Brushes.LightCoral;
+            if (room.Bounds.Count == 0)
+                dc.DrawEllipse(null, new Pen(brush, 1 / Viewport.Scale), new Point(room.X, room.Y), 12, 12);
             foreach (var bounds in room.Bounds)
             {
                 var rectangle = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
-                if (!visited) rectangle.Inflate(1, 1);
                 dc.DrawRectangle(null, new Pen(brush, 1 / Viewport.Scale), rectangle);
             }
         }
@@ -187,7 +184,7 @@ public sealed class LiveMapCanvas : FrameworkElement
                 DrawDiagnosticText(dc, room.RoomId, point + new Vector(5, 5), _visited.Contains(room.RoomId) ? Brushes.DeepSkyBlue : Brushes.LightCoral);
             }
         int visitedCount = rooms.Count(r => _visited.Contains(r.RoomId));
-        DrawDiagnosticText(dc, $"SPOILER DETAILS: {( _spoilerMode ? "mask active" : "spoiler mode off, mask preview" )}\nBlue: visited bounds. Green: revealed. Red: excluded (+1 px).\n{visitedCount} visited / {rooms.Count - visitedCount} unvisited mapped rooms. Dim artwork is reference only.", new Point(12, 12), Brushes.White);
+        DrawDiagnosticText(dc, $"SPOILER DETAILS: {( _spoilerMode ? "mask active" : "spoiler mode off, mask preview" )}\nBlue: visited bounds. Green: revealed. Red: unvisited bounds.\n{visitedCount} visited / {rooms.Count - visitedCount} unvisited mapped rooms. Dim artwork is reference only.", new Point(12, 12), Brushes.White);
     }
 
     private void DrawDiagnosticText(DrawingContext dc, string value, Point point, Brush brush)
