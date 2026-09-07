@@ -5,6 +5,34 @@
         Title="Live features" Width="1200" Height="800" MinWidth="660" MinHeight="480"
         WindowStartupLocation="CenterOwner" Background="{DynamicResource Brush.Window}"
         Foreground="{DynamicResource Brush.Text}" FontFamily="Segoe UI" FontSize="13">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolVisibility"/>
+        <Style x:Key="Map.RoomAction" TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Text}"/>
+            <Setter Property="Padding" Value="12,7"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="MenuItem">
+                    <Border x:Name="Row" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter ContentSource="Header" RecognizesAccessKey="False"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True"><Setter TargetName="Row" Property="Background" Value="{DynamicResource Brush.Selection}"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Foreground" Value="{DynamicResource Brush.TextMuted}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Map.RoomMenu" TargetType="ContextMenu">
+            <Setter Property="ItemContainerStyle" Value="{StaticResource Map.RoomAction}"/>
+            <Setter Property="Template">
+                <Setter.Value><ControlTemplate TargetType="ContextMenu">
+                    <Border Background="{DynamicResource Brush.Panel}" BorderBrush="{DynamicResource Brush.BorderStrong}" BorderThickness="1" CornerRadius="4" Padding="3">
+                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                    </Border>
+                </ControlTemplate></Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid Margin="16">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,12">
@@ -49,7 +77,11 @@
                              HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                         <ListBox.ItemTemplate><DataTemplate>
                             <StackPanel Margin="0,2">
-                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                <DockPanel>
+                                    <Ellipse Width="9" Height="9" Fill="{Binding ControlLight}" Margin="0,0,6,0" ToolTip="{Binding ControlStatus}" Visibility="{Binding IsMeadow, Converter={StaticResource BoolVisibility}}"/>
+                                    <TextBlock DockPanel.Dock="Right" Text="HOST" FontSize="10" Margin="6,0,0,0" VerticalAlignment="Center" Visibility="{Binding IsHost, Converter={StaticResource BoolVisibility}}"/>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                </DockPanel>
                                 <TextBlock Text="{Binding RoomId}" TextWrapping="Wrap"/>
                                 <WrapPanel><TextBlock Text="{Binding Source}" Margin="0,0,8,0"/><TextBlock Text="{Binding State}"/></WrapPanel>
                                 <TextBlock Text="{Binding MapStatus}" ToolTip="{Binding UnavailableReason}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap"/>
@@ -59,10 +91,31 @@
                     <StackPanel Grid.Row="4" Margin="0,8,0,0">
                         <CheckBox Content="Follow selected player" IsChecked="{Binding MapView.IsFollowing, Mode=OneWay}" Click="FollowSelected"/>
                         <TextBlock Text="{Binding MapView.FollowStatus}" TextWrapping="Wrap" Style="{StaticResource Text.Muted}" Margin="0,4,0,0"/>
+                        <CheckBox Content="Allow host control" IsChecked="{Binding AllowHostControl, Mode=OneWay}"
+                                  Click="HostControlChanged" Margin="0,12,0,0"
+                                  ToolTip="Off by default. Permit the current Rain Meadow host to teleport your local player, including cross-region Teleport all. Turn off to revoke permission and cancel pending host requests.">
+                            <CheckBox.Style><Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
+                                <Setter Property="IsEnabled" Value="{Binding CanSetHostControl}"/>
+                                <Style.Triggers><DataTrigger Binding="{Binding IsMapActionRunning}" Value="True"><Setter Property="IsEnabled" Value="False"/></DataTrigger></Style.Triggers>
+                            </Style></CheckBox.Style>
+                        </CheckBox>
+                        <StackPanel Margin="0,12,0,0" Visibility="{Binding IsMeadow, Converter={StaticResource BoolVisibility}}">
+                            <Button Content="Teleport all" Command="{Binding TeleportAllCommand}" Style="{StaticResource Button.Small}" ToolTip="{Binding TeleportAllReason}" ToolTipService.ShowOnDisabled="True"/>
+                            <TextBlock Text="{Binding TeleportAllReason}" TextWrapping="Wrap" Margin="0,5,0,0" Style="{StaticResource Text.Muted}"/>
+                            <TextBlock Text="Red: mod missing. Yellow: control off. Green: control on." TextWrapping="Wrap" Margin="0,8,0,0" Style="{StaticResource Text.Muted}"/>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Grid>
-            <TextBlock Grid.Row="2" Text="{Binding MapView.CoverageText}" TextWrapping="Wrap" Style="{StaticResource Text.Muted}" Margin="0,6,0,0"/>
+            <StackPanel Grid.Row="2" Margin="0,6,0,0">
+                <TextBlock Text="{Binding MapActionText}" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding HostActionText}" TextWrapping="Wrap">
+                    <TextBlock.Style><Style TargetType="TextBlock">
+                        <Style.Triggers><DataTrigger Binding="{Binding HostActionText}" Value=""><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers>
+                    </Style></TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding MapView.CoverageText}" TextWrapping="Wrap" Style="{StaticResource Text.Muted}"/>
+            </StackPanel>
         </Grid>
         <DockPanel Grid.Row="2" Margin="0,10,0,0">
             <Button Content="{Binding InstallLabel}" Command="{Binding InstallCommand}" Style="{StaticResource Button.Small}" DockPanel.Dock="Right" Margin="12,0,0,0"/>

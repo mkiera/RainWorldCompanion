@@ -1,7 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
-    <CompanionModVersion Condition="'$(CompanionModVersion)' == ''">1.0.0</CompanionModVersion>
     <Version>$(CompanionModVersion)</Version>
     <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json</RestoreAdditionalProjectSources>
   </PropertyGroup>

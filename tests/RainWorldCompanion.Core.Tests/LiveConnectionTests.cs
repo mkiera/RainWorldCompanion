@@ -8,6 +8,113 @@ namespace RainWorldCompanion.Tests;
 
 public sealed class LiveConnectionTests
 {
+    [Fact]
+    public async Task Teleport_is_sent_once_and_completes_only_on_its_reply()
+    {
+        using var fixture = new ServerFixture();
+        using var client = await fixture.Connect();
+        using var reader = new StreamReader(client.GetStream());
+        var snapshot = new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1, State = "gameplay",
+            Players = [new() { Id = "local:0", IsLocal = true, Dead = false }] };
+        async Task<LiveCommandReply> Exchange()
+        {
+            snapshot.Sequence++;
+            await fixture.Send(client, snapshot);
+            return LiveJson.Deserialize<LiveCommandReply>((await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)))!);
+        }
+        Assert.Null((await Exchange()).Command);
+        var pending = fixture.Server.TeleportAsync("game", "local:0", "SU_A43", "SU");
+        var command = (await Exchange()).Command!;
+        Assert.Equal("SU_A43", command.RoomId);
+        Assert.Equal("game", command.GameplayId);
+        Assert.False(pending.IsCompleted);
+        snapshot.CommandResult = new() { Id = "different", Success = true };
+        Assert.Null((await Exchange()).Command);
+        Assert.False(pending.IsCompleted);
+        snapshot.CommandResult = new() { Id = command.Id, Success = true, Message = "Moved." };
+        await Exchange();
+        Assert.True((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Success);
+    }
+
+    [Fact]
+    public async Task Group_command_requires_readiness_and_preserves_group_flag()
+    {
+        using var fixture = new ServerFixture();
+        using var client = await fixture.Connect();
+        using var reader = new StreamReader(client.GetStream());
+        var snapshot = new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1, State = "gameplay",
+            IsOnline = true, IsHost = true, AllowHostControl = true, SupportsTeleportAll = true,
+            TeleportAllUnavailableReason = "Guest: control off" };
+        async Task<LiveCommandReply> Exchange()
+        {
+            snapshot.Sequence++;
+            await fixture.Send(client, snapshot);
+            return LiveJson.Deserialize<LiveCommandReply>((await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)))!);
+        }
+        await Exchange();
+        Assert.Contains("Guest", (await fixture.Server.TeleportAllAsync("game", "HI_A01", "HI")).Message);
+        snapshot.TeleportAllUnavailableReason = "";
+        await Exchange();
+        var pending = fixture.Server.TeleportAllAsync("game", "HI_A01", "HI");
+        var command = (await Exchange()).Command!;
+        Assert.True(command.TeleportAll);
+        Assert.Equal("HI", command.Region);
+        Assert.Null((await Exchange()).Command);
+        Assert.False(pending.IsCompleted);
+        snapshot.CommandResult = new() { Id = command.Id, Success = true };
+        await Exchange();
+        Assert.True((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Success);
+    }
+
+    [Theory]
+    [InlineData("previous-game", "local:0")]
+    [InlineData("game", "remote")]
+    public async Task Teleport_rejects_stale_gameplay_and_remote_players(string gameplay, string player)
+    {
+        using var fixture = new ServerFixture();
+        using var client = await fixture.Connect();
+        await fixture.Send(client, new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1, Sequence = 1, State = "gameplay",
+            Players = [new() { Id = "local:0", IsLocal = true, Dead = false }, new() { Id = "remote", Dead = false }] });
+        await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
+        Assert.False((await fixture.Server.TeleportAsync(gameplay, player, "SU_A43", "SU")).Success);
+    }
+
+    [Fact]
+    public async Task Host_control_defaults_off_and_can_be_set_from_the_game_menu()
+    {
+        using var fixture = new ServerFixture();
+        using var client = await fixture.Connect();
+        using var reader = new StreamReader(client.GetStream());
+        var snapshot = new LiveSnapshot { SessionId = "session", CommandVersion = 1, Sequence = 1 };
+        await fixture.Send(client, snapshot);
+        await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.False(fixture.Server.Snapshot!.AllowHostControl);
+        var pending = fixture.Server.SetHostControlAsync(true);
+        snapshot.Sequence++;
+        await fixture.Send(client, snapshot);
+        var command = LiveJson.Deserialize<LiveCommandReply>((await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)))!).Command!;
+        Assert.True(command.AllowHostControl);
+        snapshot.Sequence++;
+        snapshot.AllowHostControl = true;
+        snapshot.CommandResult = new() { Id = command.Id, Success = true };
+        await fixture.Send(client, snapshot);
+        Assert.True((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Success);
+        Assert.True(fixture.Server.Snapshot!.AllowHostControl);
+    }
+
+    [Fact]
+    public async Task Disconnect_cancels_a_pending_teleport()
+    {
+        using var fixture = new ServerFixture();
+        using var client = await fixture.Connect();
+        await fixture.Send(client, new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1, Sequence = 1, State = "gameplay",
+            Players = [new() { Id = "local:0", IsLocal = true, Dead = false }] });
+        await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
+        var pending = fixture.Server.TeleportAsync("game", "local:0", "SU_A43", "SU");
+        client.Close();
+        Assert.False((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Success);
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData(false)]

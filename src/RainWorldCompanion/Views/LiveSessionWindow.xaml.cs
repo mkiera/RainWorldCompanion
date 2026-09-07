@@ -22,8 +22,55 @@ public partial class LiveSessionWindow : Window
         WorldMap.PlayerFollowed += _map.FollowPlayer;
         WorldMap.RoomSelected += room => { _map.SelectedRoom = room; WorldMap.SelectedRoom = room; WorldMap.InvalidateVisual(); };
         WorldMap.ManuallyPanned += _map.StopFollowing;
+        WorldMap.RoomContextRequested += room => OpenRoomMenu(view, room);
         Loaded += (_, _) => UpdateMap();
         Closed += (_, _) => _map.Updated -= UpdateMap;
+    }
+
+    private void OpenRoomMenu(LiveSessionViewModel view, MappedRoom room)
+    {
+        string? reason = view.TeleportUnavailableReason(room);
+        var teleport = new MenuItem
+        {
+            Header = "Teleport me here", IsEnabled = reason == null,
+            ToolTip = reason ?? $"Move {view.TeleportPlayer?.Name} to {room.RoomId}. Changing regions brings all local co-op players."
+        };
+        ToolTipService.SetShowOnDisabled(teleport, true);
+        string? gameplayId = view.CurrentGameplayId;
+        teleport.Click += async (_, _) => await view.TeleportHereAsync(room, gameplayId);
+        var menu = new ContextMenu { PlacementTarget = WorldMap, Style = (Style)FindResource("Map.RoomMenu") };
+        menu.Items.Add(new MenuItem { Header = room.RoomId, IsEnabled = false });
+        menu.Items.Add(teleport);
+        if (view.IsMeadowHost)
+        {
+            string? allReason = view.TeleportAllUnavailableReason(room);
+            var all = new MenuItem { Header = "Teleport all here", IsEnabled = allReason == null, ToolTip = allReason ?? "Move everyone, including across regions." };
+            ToolTipService.SetShowOnDisabled(all, true);
+            all.Click += async (_, _) => await view.TeleportAllHereAsync(room, gameplayId);
+            menu.Items.Add(all);
+            foreach (var player in _map.Players.Where(p => !p.IsLocal))
+            {
+                string? unavailable = view.HostTeleportUnavailableReason(room, player.Id);
+                var action = new MenuItem { Header = "Teleport " + player.Name + " here", IsEnabled = unavailable == null,
+                    ToolTip = unavailable ?? "Request a teleport from this player's mod." };
+                ToolTipService.SetShowOnDisabled(action, true);
+                action.Click += async (_, _) => await view.TeleportPlayerHereAsync(room, player.Id, gameplayId);
+                menu.Items.Add(action);
+            }
+        }
+        WorldMap.ContextMenu = menu;
+        menu.Closed += (_, _) => { if (ReferenceEquals(WorldMap.ContextMenu, menu)) WorldMap.ContextMenu = null; };
+        menu.IsOpen = true;
+    }
+
+    private async void HostControlChanged(object sender, RoutedEventArgs e)
+    {
+        if (DataContext is LiveSessionViewModel view && sender is CheckBox toggle)
+        {
+            bool enabled = toggle.IsChecked == true;
+            toggle.IsChecked = view.AllowHostControl;
+            await view.SetHostControlAsync(enabled);
+        }
     }
 
     private void UpdateMap()

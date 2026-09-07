@@ -19,6 +19,15 @@ public sealed class LiveDiscovery
 
 public sealed class LiveSnapshot
 {
+    public int CommandVersion { get; set; }
+    public string GameplayId { get; set; } = "";
+    public bool IsOnline { get; set; }
+    public bool IsHost { get; set; }
+    public bool SupportsTeleportAll { get; set; }
+    public string TeleportAllUnavailableReason { get; set; } = "";
+    public string HostActionText { get; set; } = "";
+    public bool AllowHostControl { get; set; }
+    public LiveCommandResult? CommandResult { get; set; }
     public string Token { get; set; } = "";
     public string SessionId { get; set; } = "";
     public long Sequence { get; set; }
@@ -33,6 +42,32 @@ public sealed class LiveSnapshot
     public LivePlayer[] Players { get; set; } = Array.Empty<LivePlayer>();
 }
 
+public sealed class LiveCommand
+{
+    public bool TeleportAll { get; set; }
+    public bool? AllowHostControl { get; set; }
+    public string Id { get; set; } = "";
+    public string SessionId { get; set; } = "";
+    public string GameplayId { get; set; } = "";
+    public string PlayerId { get; set; } = "";
+    public string RoomId { get; set; } = "";
+    public string Region { get; set; } = "";
+    public long ExpiresUtcTicks { get; set; }
+}
+
+public sealed class LiveCommandReply
+{
+    public string Token { get; set; } = "";
+    public LiveCommand? Command { get; set; }
+}
+
+public sealed class LiveCommandResult
+{
+    public string Id { get; set; } = "";
+    public bool Success { get; set; }
+    public string Message { get; set; } = "";
+}
+
 public sealed class LivePlayer
 {
     public string Id { get; set; } = "";
@@ -41,6 +76,9 @@ public sealed class LivePlayer
     public string? Region { get; set; }
     public bool? Dead { get; set; }
     public bool IsLocal { get; set; }
+    public bool AllowsHostControl { get; set; }
+    public string? CompanionVersion { get; set; }
+    public bool IsHost { get; set; }
 }
 
 public static class LiveJson

@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\..\src\RWCompanion.Mod\HostControlPermission.cs" Link="HostControlPermission.cs" />
   </ItemGroup>
 
   <ItemGroup>

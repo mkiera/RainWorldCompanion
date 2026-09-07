@@ -5,8 +5,12 @@ using RainWorldCompanion.LiveProtocol;
 namespace RainWorldCompanion.ViewModels;
 
 public sealed record LiveMapPlayer(string Id, string Name, string RoomId, string Region, string State,
-    bool IsLocal, MappedRoom? Placement, string? UnavailableReason = null)
+    bool IsLocal, MappedRoom? Placement, string? UnavailableReason = null,
+    bool IsMeadow = false, string? CompanionVersion = null, bool AllowsHostControl = false, bool IsHost = false)
 {
+    public string ControlLight => string.IsNullOrEmpty(CompanionVersion) ? "#E05C64" : AllowsHostControl ? "#58C785" : "#E8BD52";
+    public string ControlStatus => string.IsNullOrEmpty(CompanionVersion) ? "No compatible rwcompanion mod detected"
+        : $"rwcompanion {CompanionVersion}: host control {(AllowsHostControl ? "on" : "off")}";
     public string Source => IsLocal ? "Local" : "Online";
     public string MapStatus => RoomId == "Location unavailable" ? RoomId
         : Placement is null ? UnavailableReason is null ? "Not on this map" : "Unavailable on this map"
@@ -51,7 +55,8 @@ public sealed partial class LiveMapViewModel : ObservableObject
             string.IsNullOrWhiteSpace(p.RoomId) ? "Location unavailable" : p.RoomId,
             p.Region ?? "Unknown", p.Dead switch { true => "Dead", false => "Alive", null => "Unknown" }, p.IsLocal,
             Map is null || string.IsNullOrWhiteSpace(p.RoomId) ? null : RoomMapCatalog.Find(Map.Id, p.RoomId),
-            Map is null ? null : RoomMapCatalog.UnavailableReason(Map.Id, p.RoomId))).ToArray() ?? [];
+            Map is null ? null : RoomMapCatalog.UnavailableReason(Map.Id, p.RoomId),
+            snapshot.IsOnline, p.CompanionVersion, p.AllowsHostControl, p.IsHost)).ToArray() ?? [];
         if (!Players.SequenceEqual(rows)) Players = rows;
         SelectedPlayer = Players.FirstOrDefault(p => p.Id == selectedId);
         if (FollowedPlayerId is not null && !Players.Any(p => p.Id == FollowedPlayerId)) StopFollowing();

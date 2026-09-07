@@ -12,6 +12,12 @@ internal sealed class LiveTransport
     private long _publishedAt;
     private CancellationTokenSource? _stop;
     private TcpClient? _client;
+    private LiveCommand? _command;
+
+    internal LiveCommand? TakeCommand()
+    {
+        lock (_sync) { var command = _command; _command = null; return command; }
+    }
 
     internal void Publish(LiveSnapshot snapshot)
     {
@@ -51,6 +57,7 @@ internal sealed class LiveTransport
                 await connect;
                 using var registration = stop.Register(client.Close);
                 using var writer = new StreamWriter(client.GetStream(), new UTF8Encoding(false)) { AutoFlush = true };
+                using var reader = new StreamReader(client.GetStream(), Encoding.UTF8);
                 long lastSequence = -1;
                 while (!stop.IsCancellationRequested)
                 {
@@ -66,6 +73,11 @@ internal sealed class LiveTransport
                             if (await Task.WhenAny(write, Task.Delay(2000, stop)) != write) break;
                             await write;
                             lastSequence = snapshot.Sequence;
+                            var read = ReadReply(reader);
+                            if (await Task.WhenAny(read, Task.Delay(3000, stop)) != read) break;
+                            var reply = LiveJson.Deserialize<LiveCommandReply>(await read);
+                            if (reply.Token != discovery.Token) break;
+                            lock (_sync) _command = reply.Command ?? _command;
                         }
                     }
                     await Task.Delay(200, stop);
@@ -75,5 +87,18 @@ internal sealed class LiveTransport
             try { await Task.Delay(1000, stop); }
             catch (OperationCanceledException) { }
         }
+    }
+
+    private static async Task<string> ReadReply(StreamReader reader)
+    {
+        var text = new StringBuilder();
+        var character = new char[1];
+        while (await reader.ReadAsync(character, 0, 1) != 0)
+        {
+            if (character[0] == '\n') return text.ToString();
+            if (text.Length >= 4096) throw new IOException("Command exceeds the size limit.");
+            text.Append(character[0]);
+        }
+        throw new IOException("Command connection closed.");
     }
 }

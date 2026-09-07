@@ -1,1 +1,1 @@
-{"id":"rwcompanion","name":"RainWorld Companion","version":"1.0.0","authors":"mkiera","description":"Shares live session and player room information with RainWorld Companion on this computer.","requirements":[],"requirements_names":[],"tags":["Tools"]}
+{"id":"rwcompanion","name":"RainWorld Companion","version":"1.0.5","authors":"mkiera","description":"Shares live player locations and accepts local map teleport commands from RainWorld Companion.","requirements":[],"requirements_names":[],"tags":["Tools"]}

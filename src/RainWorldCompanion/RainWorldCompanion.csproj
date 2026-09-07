@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <Target Name="PackageCompanionMod" BeforeTargets="PrepareForBuild" Condition="'$(DesignTimeBuild)' != 'true' And !$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('_wpftmp'))">
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\build\PackageCompanionMod.ps1&quot; -Configuration $(Configuration)" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\build\PackageCompanionMod.ps1&quot; -Configuration $(Configuration) -ModVersion $(CompanionModVersion)" />
   </Target>
 
   <ItemGroup>

@@ -24,6 +24,26 @@ internal static class GameAccess
     }
 
     internal static string Text(object? target, string name) => Convert.ToString(Get(target, name)) ?? "";
+    internal static void Set(object target, string name, object? value)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+        var type = target as Type ?? target.GetType();
+        var instance = target is Type ? null : target;
+        if (type.GetField(name, flags) is { } field) field.SetValue(instance, value);
+        else if (type.GetProperty(name, flags) is { } property) property.SetValue(instance, value, null);
+        else throw new MissingMemberException(type.FullName, name);
+    }
+
+    internal static object? Call(object target, string name, params object?[] arguments)
+    {
+        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+        var type = target as Type ?? target.GetType();
+        var method = type.GetMethods(flags).FirstOrDefault(m => m.Name == name && m.GetParameters().Length == arguments.Length
+            && m.GetParameters().Select((p, i) => arguments[i] == null ? !p.ParameterType.IsValueType || Nullable.GetUnderlyingType(p.ParameterType) != null
+                : (Nullable.GetUnderlyingType(p.ParameterType) ?? p.ParameterType).IsInstanceOfType(arguments[i])).All(match => match))
+            ?? throw new MissingMethodException(type.FullName, name);
+        return method.Invoke(target is Type ? null : target, arguments);
+    }
     internal static string EnumValue(object? value) => Text(value, "value");
     internal static IEnumerable<object> Items(object? value) => value is IEnumerable items ? items.Cast<object>() : Enumerable.Empty<object>();
 }

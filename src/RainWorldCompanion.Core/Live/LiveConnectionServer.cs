@@ -24,6 +24,55 @@ public sealed class LiveConnectionServer : IDisposable
     private string _lastEvent = "Listener has not started.";
     private string? _observedModVersion;
     private int? _observedProtocol;
+    private LiveCommand? _queuedCommand;
+    private TaskCompletionSource<LiveCommandResult>? _commandCompletion;
+    private string? _commandId;
+
+    public Task<LiveCommandResult> TeleportAsync(string gameplayId, string playerId, string roomId, string region)
+        => SendCommandAsync(gameplayId, playerId, roomId, region, null);
+
+    public Task<LiveCommandResult> TeleportAllAsync(string gameplayId, string roomId, string region)
+        => SendCommandAsync(gameplayId, "", roomId, region, null, true);
+
+    public Task<LiveCommandResult> SetHostControlAsync(bool enabled) => SendCommandAsync("", "", "", "", enabled);
+
+    private async Task<LiveCommandResult> SendCommandAsync(string gameplayId, string playerId, string roomId, string region, bool? allowHostControl, bool teleportAll = false)
+    {
+        string action = allowHostControl.HasValue ? "Host control update" : "Teleport";
+        TaskCompletionSource<LiveCommandResult> completion;
+        lock (_stateLock)
+        {
+            if (Status != LiveConnectionStatus.Connected || Snapshot is not { CommandVersion: 1 } snapshot)
+                return new() { Message = "Connect an updated rwcompanion mod first." };
+            if (allowHostControl == null && (snapshot.State is not ("gameplay" or "paused")
+                || string.IsNullOrEmpty(gameplayId) || snapshot.GameplayId != gameplayId))
+                return new() { Message = "Connect an updated rwcompanion mod during gameplay first." };
+            if (teleportAll && (!snapshot.IsHost || !snapshot.AllowHostControl || !snapshot.SupportsTeleportAll || !string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason)))
+                return new() { Message = string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason) ? "Teleport all requires an updated host mod and everyone's permission." : snapshot.TeleportAllUnavailableReason };
+            if (allowHostControl == null && !teleportAll && !snapshot.Players.Any(p => p.Id == playerId && p.Dead == false
+                && (p.IsLocal || snapshot.IsHost && p.AllowsHostControl && !string.IsNullOrEmpty(p.CompanionVersion))))
+                return new() { Message = "Choose a living local player or an online player who allows host control." };
+            if (_commandCompletion is not null) return new() { Message = "A live command is already in progress." };
+            if (allowHostControl == null && (string.IsNullOrWhiteSpace(roomId) || roomId.Length > 100 || string.IsNullOrWhiteSpace(region) || region.Length > 20))
+                return new() { Message = "Invalid destination." };
+            _queuedCommand = new()
+            {
+                Id = Guid.NewGuid().ToString("N"), SessionId = snapshot.SessionId, GameplayId = gameplayId,
+                PlayerId = playerId, RoomId = roomId, Region = region, ExpiresUtcTicks = DateTime.UtcNow.AddSeconds(5).Ticks,
+                AllowHostControl = allowHostControl, TeleportAll = teleportAll
+            };
+            _commandId = _queuedCommand.Id;
+            _commandCompletion = completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        try { return await completion.Task.WaitAsync(TimeSpan.FromSeconds(60), _stop.Token); }
+        catch (TimeoutException) { return new() { Message = action + " reply timed out. Check the game before trying again." }; }
+        catch (OperationCanceledException) { return new() { Message = "The live connection closed before the command reply." }; }
+        finally
+        {
+            lock (_stateLock)
+                if (_commandCompletion == completion) { _queuedCommand = null; _commandCompletion = null; _commandId = null; }
+        }
+    }
 
     public LiveDiagnostics CaptureDiagnostics()
     {
@@ -90,6 +139,7 @@ public sealed class LiveConnectionServer : IDisposable
         long sequence = -1;
         var lastAccepted = DateTime.UtcNow;
         using var reader = new StreamReader(client.GetStream(), Encoding.UTF8, false, 4096, true);
+        using var writer = new StreamWriter(client.GetStream(), new UTF8Encoding(false), 4096, true) { AutoFlush = true };
         try
         {
             while (!_stop.IsCancellationRequested)
@@ -131,6 +181,18 @@ public sealed class LiveConnectionServer : IDisposable
                 lock (_stateLock) { _accepted++; _lastAccepted = DateTimeOffset.UtcNow; _lastEvent = "Authenticated snapshot accepted."; }
                 incoming.Token = "";
                 SetState(LiveConnectionStatus.Connected, incoming);
+                if (incoming.CommandVersion == 1)
+                {
+                    LiveCommand? command;
+                    lock (_stateLock)
+                    {
+                        if (incoming.CommandResult is { } result && result.Id == _commandId)
+                            _commandCompletion?.TrySetResult(result);
+                        command = _queuedCommand;
+                        _queuedCommand = null;
+                    }
+                    await writer.WriteLineAsync(LiveJson.Serialize(new LiveCommandReply { Token = _token, Command = command }).AsMemory(), timeout.Token);
+                }
             }
         }
         catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or global::System.Runtime.Serialization.SerializationException or ArgumentException or InvalidOperationException or global::System.Xml.XmlException)
@@ -140,6 +202,11 @@ public sealed class LiveConnectionServer : IDisposable
         }
         finally
         {
+            lock (_stateLock)
+            {
+                _queuedCommand = null;
+                _commandCompletion?.TrySetResult(new() { Message = "Disconnected before the command reply. Check the game after reconnecting." });
+            }
             if (authenticated && Status != LiveConnectionStatus.Incompatible) SetState(LiveConnectionStatus.Disconnected, null);
         }
     }

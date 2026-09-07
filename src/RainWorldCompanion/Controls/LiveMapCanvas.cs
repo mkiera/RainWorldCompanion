@@ -24,6 +24,7 @@ public sealed class LiveMapCanvas : FrameworkElement
     public event Action<string>? PlayerSelected;
     public event Action<string>? PlayerFollowed;
     public event Action<MappedRoom?>? RoomSelected;
+    public event Action<MappedRoom>? RoomContextRequested;
     public event Action? ManuallyPanned;
 
     public LiveMapCanvas()
@@ -165,6 +166,14 @@ public sealed class LiveMapCanvas : FrameworkElement
             if (HitPlayer(point) is { } player) PlayerSelected?.Invoke(player.Id);
             else RoomSelected?.Invoke(HitRoom(point));
         }
+        e.Handled = true;
+    }
+
+    protected override void OnMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        var room = HitRoom(e.GetPosition(this));
+        RoomSelected?.Invoke(room);
+        if (room != null) RoomContextRequested?.Invoke(room);
         e.Handled = true;
     }
 
