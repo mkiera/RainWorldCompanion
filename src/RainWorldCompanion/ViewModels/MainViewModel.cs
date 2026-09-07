@@ -906,11 +906,14 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             record,
             campaign.Summary,
             ExpansionDetector.Detect(_settings.GameInstallPath),
-            _currentMods?.Has(ModConfigReader.DevourmentModId) ?? false);
+            _currentMods?.Has(ModConfigReader.DevourmentModId) ?? false,
+            new DenMapPicker(() => _settings.GameInstallPath, () => _backupService?.SaveRoot, () => OwnerWindow));
         _openEditor = campaign;
     }
 
     private bool CanBeginEdit() => !IsBusy && !IsGameRunning;
+
+    public void RefreshEditorMapAvailability() => _openEditor?.Edit?.RefreshMapAvailability();
 
     [RelayCommand]
     private void CancelEdit(CampaignViewModel? campaign)
