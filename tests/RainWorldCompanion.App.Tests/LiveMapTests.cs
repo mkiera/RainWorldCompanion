@@ -38,7 +38,7 @@ public class LiveMapTests
     }
 
     [Fact]
-    public void Following_survives_unavailable_rooms_and_stops_when_player_leaves_or_session_ends()
+    public void Following_survives_death_reload_and_restores_the_selected_player()
     {
         var view = new LiveMapViewModel { SpoilerMode = false };
         var snapshot = new LiveSnapshot { SessionId = "one", Campaign = "White", Timeline = "White", EnabledExpansions = ["moreslugcats"],
@@ -54,15 +54,34 @@ public class LiveMapTests
         snapshot.Players[0].RoomId = "SU_S03";
         view.Adopt(snapshot);
         Assert.NotNull(view.FollowedPlayer?.Placement);
+        view.SelectedPlayer = view.Players[0];
         snapshot.Players = [];
         view.Adopt(snapshot);
-        Assert.False(view.IsFollowing);
+        Assert.True(view.IsFollowing);
+        Assert.Null(view.FollowedPlayer);
+        Assert.Null(view.SelectedPlayer);
+        Assert.Contains("waiting", view.FollowStatus);
+        view.Adopt(null);
+        Assert.True(view.IsFollowing);
         snapshot.Players = [new() { Id = "peer", RoomId = "SU_S04" }];
         view.Adopt(snapshot);
+        Assert.Equal("peer", view.FollowedPlayerId);
+        Assert.Equal("peer", view.SelectedPlayer?.Id);
+        Assert.NotNull(view.FollowedPlayer?.Placement);
+    }
+
+    [Fact]
+    public void Following_stops_when_a_different_mod_session_connects()
+    {
+        var view = new LiveMapViewModel { SpoilerMode = false };
+        view.Adopt(new() { SessionId = "one", Campaign = "White", Timeline = "White",
+            EnabledExpansions = ["moreslugcats"], Players = [new() { Id = "peer", RoomId = "SU_S04" }] });
         view.FollowPlayer("peer");
         view.Adopt(null);
-        Assert.Empty(view.Players);
+        view.Adopt(new() { SessionId = "two", Campaign = "White", Timeline = "White",
+            EnabledExpansions = ["moreslugcats"], Players = [new() { Id = "peer", RoomId = "SU_S04" }] });
         Assert.False(view.IsFollowing);
+        Assert.Null(view.SelectedPlayer);
     }
 
     [Fact]

@@ -22,6 +22,7 @@ public sealed record LiveMapPlayer(string Id, string Name, string RoomId, string
 public sealed partial class LiveMapViewModel : ObservableObject
 {
     private string? _sessionId;
+    private string? _selectedPlayerId;
     private LiveSnapshot? _snapshot;
     private HashSet<string> _visited = new(StringComparer.OrdinalIgnoreCase);
     [ObservableProperty] private bool spoilerMode = true;
@@ -50,7 +51,8 @@ public sealed partial class LiveMapViewModel : ObservableObject
     public IReadOnlyList<DenMapDefinition> Maps => DenMapCatalog.Maps;
     public bool IsFollowing => FollowedPlayerId is not null;
     public string FollowStatus => FollowedPlayerId is null ? "Double-click a player to follow. Drag or Fit world to stop."
-        : FollowedPlayer is { } player ? $"Following {player.Name}" + (player.Placement is null ? ": waiting for a mapped room" : "") : "";
+        : FollowedPlayer is { } player ? $"Following {player.Name}" + (player.Placement is null ? ": waiting for a mapped room" : "")
+        : "Following player: waiting for them to load.";
     public LiveMapPlayer? FollowedPlayer => Players.FirstOrDefault(p => p.Id == FollowedPlayerId);
     public event Action? Updated;
 
@@ -59,9 +61,13 @@ public sealed partial class LiveMapViewModel : ObservableObject
         _snapshot = snapshot;
         _visited = new(snapshot is { HasExplorationData: true } ? snapshot.VisitedRooms ?? [] : [], StringComparer.OrdinalIgnoreCase);
         if (SelectedRoom != null && !IsRoomVisible(SelectedRoom.RoomId)) SelectedRoom = null;
-        if (_sessionId != snapshot?.SessionId) { StopFollowing(); SelectedPlayer = null; }
-        _sessionId = snapshot?.SessionId;
-        var selectedId = SelectedPlayer?.Id;
+        if (snapshot is not null && _sessionId != snapshot.SessionId)
+        {
+            StopFollowing();
+            SelectedPlayer = null;
+            _selectedPlayerId = null;
+        }
+        if (snapshot is not null) _sessionId = snapshot.SessionId;
         ReportedTimeline = snapshot is null ? "Unknown" : DenWorldCatalog.EffectiveTimeline(snapshot.Campaign, snapshot.Timeline);
         AutomaticMap = snapshot is not null && !string.IsNullOrWhiteSpace(ReportedTimeline);
         if (AutomaticMap)
@@ -73,8 +79,7 @@ public sealed partial class LiveMapViewModel : ObservableObject
             !IsRoomVisible(p.RoomId) ? "Hidden by spoiler mode" : Map is null ? null : RoomMapCatalog.UnavailableReason(Map.Id, p.RoomId),
             snapshot.IsOnline, p.CompanionVersion, p.AllowsHostControl, p.IsHost)).ToArray() ?? [];
         if (!Players.SequenceEqual(rows)) Players = rows;
-        SelectedPlayer = Players.FirstOrDefault(p => p.Id == selectedId);
-        if (FollowedPlayerId is not null && !Players.Any(p => p.Id == FollowedPlayerId)) StopFollowing();
+        SelectedPlayer = Players.FirstOrDefault(p => p.Id == _selectedPlayerId);
         UpdateSearch();
         UpdateCoverage();
         OnPropertyChanged(nameof(SpoilerStatus));
@@ -88,6 +93,11 @@ public sealed partial class LiveMapViewModel : ObservableObject
         if (SelectedPlayer is null) return;
         FollowedPlayerId = id;
         Updated?.Invoke();
+    }
+
+    partial void OnSelectedPlayerChanged(LiveMapPlayer? value)
+    {
+        if (value is not null) _selectedPlayerId = value.Id;
     }
 
     public void StopFollowing()
