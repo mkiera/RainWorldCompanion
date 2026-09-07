@@ -7111,6 +7111,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "sb_c09",
+      "RegionCode": "SB",
+      "X": 4189.0,
+      "Y": 4807.0,
+      "Bounds": [
+        {
+          "X": 4166,
+          "Y": 4757,
+          "Width": 46,
+          "Height": 100
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
+    },
+    {
       "RoomId": "sb_d01",
       "RegionCode": "SB",
       "X": 3412.5,
@@ -7484,6 +7499,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "sb_l01",
+      "RegionCode": "SB",
+      "X": 4327.0,
+      "Y": 4890.0,
+      "Bounds": [
+        {
+          "X": 4222,
+          "Y": 4827,
+          "Width": 210,
+          "Height": 126
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
     },
     {
       "RoomId": "GATE_SH_SL",
@@ -17028,6 +17058,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "sb_l01",
+      "RegionCode": "SB",
+      "X": 1668.0,
+      "Y": 4398.0,
+      "Bounds": [
+        {
+          "X": 1563,
+          "Y": 4335,
+          "Width": 210,
+          "Height": 126
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
+    },
+    {
       "RoomId": "GATE_SH_SL",
       "RegionCode": "SH",
       "X": 4914.0,
@@ -24905,6 +24950,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "LC_PIPES02",
+      "RegionCode": "LC",
+      "X": 7469.5,
+      "Y": 1002.0,
+      "Bounds": [
+        {
+          "X": 7401,
+          "Y": 989,
+          "Width": 137,
+          "Height": 26
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
+    },
+    {
       "RoomId": "LC_PIPES03",
       "RegionCode": "LC",
       "X": 7693.5,
@@ -26690,6 +26750,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "LM_E02",
+      "RegionCode": "LM",
+      "X": 6860.5,
+      "Y": 4969.0,
+      "Bounds": [
+        {
+          "X": 6809,
+          "Y": 4953,
+          "Width": 103,
+          "Height": 32
+        }
+      ],
+      "MatchKind": "terrain-template-graph"
+    },
+    {
       "RoomId": "LM_ECNIUS01",
       "RegionCode": "LM",
       "X": 6309.5,
@@ -27605,6 +27680,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "sb_c09",
+      "RegionCode": "SB",
+      "X": 2009.0,
+      "Y": 6007.0,
+      "Bounds": [
+        {
+          "X": 1986,
+          "Y": 5957,
+          "Width": 46,
+          "Height": 100
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
+    },
+    {
       "RoomId": "sb_d01",
       "RegionCode": "SB",
       "X": 1232.5,
@@ -27978,6 +28068,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "sb_l01",
+      "RegionCode": "SB",
+      "X": 2147.0,
+      "Y": 6090.0,
+      "Bounds": [
+        {
+          "X": 2042,
+          "Y": 6027,
+          "Width": 210,
+          "Height": 126
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
     },
     {
       "RoomId": "SH_CURVE",
@@ -33682,6 +33787,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "DM_FAKEGATE_UNDER",
+      "RegionCode": "DM",
+      "X": 8356.5,
+      "Y": 2831.5,
+      "Bounds": [
+        {
+          "X": 8335,
+          "Y": 2821,
+          "Width": 43,
+          "Height": 21
+        }
+      ],
+      "MatchKind": "terrain-template-graph"
+    },
+    {
       "RoomId": "DM_I01",
       "RegionCode": "DM",
       "X": 7862.0,
@@ -37852,6 +37972,21 @@
       "MatchKind": "terrain-template-connected"
     },
     {
+      "RoomId": "GATE_UW_SL",
+      "RegionCode": "LM",
+      "X": 5994.0,
+      "Y": 2896.5,
+      "Bounds": [
+        {
+          "X": 5974,
+          "Y": 2886,
+          "Width": 40,
+          "Height": 21
+        }
+      ],
+      "MatchKind": "terrain-template-transfer"
+    },
+    {
       "RoomId": "LM_A02",
       "RegionCode": "LM",
       "X": 6807.0,
@@ -38375,6 +38510,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "LM_E02",
+      "RegionCode": "LM",
+      "X": 6860.5,
+      "Y": 3769.0,
+      "Bounds": [
+        {
+          "X": 6809,
+          "Y": 3753,
+          "Width": 103,
+          "Height": 32
+        }
+      ],
+      "MatchKind": "terrain-template-graph"
     },
     {
       "RoomId": "LM_ECNIUS01",
@@ -39367,6 +39517,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "sb_c09",
+      "RegionCode": "SB",
+      "X": 2009.0,
+      "Y": 4807.0,
+      "Bounds": [
+        {
+          "X": 1986,
+          "Y": 4757,
+          "Width": 46,
+          "Height": 100
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
+    },
+    {
       "RoomId": "sb_d01",
       "RegionCode": "SB",
       "X": 1232.5,
@@ -39740,6 +39905,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "sb_l01",
+      "RegionCode": "SB",
+      "X": 2147.0,
+      "Y": 4890.0,
+      "Bounds": [
+        {
+          "X": 2042,
+          "Y": 4827,
+          "Width": 210,
+          "Height": 126
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
     },
     {
       "RoomId": "SH_CURVE",
@@ -51909,6 +52089,21 @@
       "MatchKind": "terrain-template"
     },
     {
+      "RoomId": "sb_c09",
+      "RegionCode": "SB",
+      "X": 2009.0,
+      "Y": 4807.0,
+      "Bounds": [
+        {
+          "X": 1986,
+          "Y": 4757,
+          "Width": 46,
+          "Height": 100
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
+    },
+    {
       "RoomId": "sb_d01",
       "RegionCode": "SB",
       "X": 1232.5,
@@ -52282,6 +52477,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "sb_l01",
+      "RegionCode": "SB",
+      "X": 2147.0,
+      "Y": 4890.0,
+      "Bounds": [
+        {
+          "X": 2042,
+          "Y": 4827,
+          "Width": 210,
+          "Height": 126
+        }
+      ],
+      "MatchKind": "terrain-template-patches"
     },
     {
       "RoomId": "GATE_SH_SL",
@@ -53227,6 +53437,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "sh_d03",
+      "RegionCode": "SH",
+      "X": 6861.0,
+      "Y": 2416.0,
+      "Bounds": [
+        {
+          "X": 6811,
+          "Y": 2380,
+          "Width": 100,
+          "Height": 72
+        }
+      ],
+      "MatchKind": "terrain-template-graph"
     },
     {
       "RoomId": "sh_e02",
@@ -66339,6 +66564,21 @@
         }
       ],
       "MatchKind": "terrain-template"
+    },
+    {
+      "RoomId": "sl_a12",
+      "RegionCode": "SL",
+      "X": 6509.0,
+      "Y": 2690.0,
+      "Bounds": [
+        {
+          "X": 6499,
+          "Y": 2675,
+          "Width": 20,
+          "Height": 30
+        }
+      ],
+      "MatchKind": "terrain-template-graph"
     },
     {
       "RoomId": "sl_a13",

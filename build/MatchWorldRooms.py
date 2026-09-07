@@ -2,6 +2,7 @@ import argparse
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import json
+import re
 from pathlib import Path
 
 import cv2
@@ -15,6 +16,55 @@ TIMELINES = {"Vanilla": "white", "Downpour": "gourmand", "Artificer": "artificer
              "Spearmaster": "spear", "Rivulet": "rivulet", "Saint": "saint"}
 
 
+def campaign_matches(selector, timeline):
+    selector = selector.lower()
+    excluded = selector.startswith("x-")
+    names = selector[2:] if excluded else selector
+    matches = timeline.lower() in {name.strip() for name in names.split(",")}
+    return not matches if excluded else matches
+
+
+def world_connections(paths, timeline):
+    rooms, rules = {}, []
+    for path in paths:
+        if not path.exists():
+            continue
+        section = None
+        for raw in path.read_text(encoding="utf-8-sig").splitlines():
+            line = raw.split("//", 1)[0].strip()
+            if line in ("ROOMS", "CONDITIONAL LINKS"):
+                section = line
+                continue
+            if line.startswith("END "):
+                section = None
+                continue
+            condition = re.match(r"^\(([^)]+)\)(.*)$", line)
+            if condition:
+                if not campaign_matches(condition[1], timeline):
+                    continue
+                line = condition[2]
+            parts = [part.strip().upper() for part in line.split(":")]
+            if section == "ROOMS" and len(parts) >= 2:
+                rooms[parts[0]] = [name.strip() for name in parts[1].split(",")]
+            elif section == "CONDITIONAL LINKS" and len(parts) >= 3:
+                rules.append(parts)
+    hidden = set()
+    for parts in rules:
+        applies = campaign_matches(parts[0], timeline)
+        if parts[1] == "EXCLUSIVEROOM" and not applies or parts[1] == "HIDEROOM" and applies:
+            hidden.add(parts[2])
+        elif applies and len(parts) == 4 and parts[1] in rooms:
+            links = rooms[parts[1]]
+            if parts[2].isdigit():
+                index = int(parts[2])
+                if index < len(links):
+                    links[index] = parts[3]
+            else:
+                rooms[parts[1]] = [parts[3] if link == parts[2] else link for link in links]
+    return {name: [link for link in links if link != "DISCONNECTED" and link not in hidden]
+            for name, links in rooms.items() if name not in hidden}
+
+
 def source_rooms(installation, region, timeline, vanilla):
     code = region.lower()
     directories = [installation / "world" / code]
@@ -25,19 +75,7 @@ def source_rooms(installation, region, timeline, vanilla):
     world_paths = [directory / f"world_{code}.txt" for directory in directories]
     if not vanilla:
         world_paths.append(installation / "mods/moreslugcats/modify/world" / code / f"world_{code}.txt")
-    for world in world_paths:
-        if not world.exists():
-            continue
-        in_rooms = False
-        for line in world.read_text(encoding="utf-8-sig").splitlines():
-            if line.strip() == "ROOMS":
-                in_rooms = True
-            elif line.strip() == "END ROOMS":
-                in_rooms = False
-            elif in_rooms:
-                parts = line.split(":")
-                if len(parts) > 1:
-                    connections[parts[0].strip().upper()] = [name.strip().upper() for name in parts[1].split(",") if name.strip() != "DISCONNECTED"]
+    connections = world_connections(world_paths, timeline)
     for directory in directories:
         for suffix in ("", f"-{timeline}"):
             metadata = directory / f"map_image_{code}{suffix}.txt"
