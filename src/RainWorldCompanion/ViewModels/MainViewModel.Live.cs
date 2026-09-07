@@ -28,7 +28,7 @@ public sealed partial class MainViewModel
             _developerWindow.Activate();
             return;
         }
-        var view = new DeveloperViewModel();
+        var view = new DeveloperViewModel(Live.MapView);
         _developerWindow = new DeveloperWindow(view, () => view.Refresh(_liveServer?.CaptureDiagnostics(), Live,
             new Dictionary<string, string>
             {

@@ -10,6 +10,7 @@ public partial class LiveSessionWindow : Window
 {
     private readonly LiveMapViewModel _map;
     private bool _updating;
+    private bool _lastSpoilerMode = true;
     private string? _centeredRoom;
     private string? _centeredPlayer;
     public LiveSessionWindow(LiveSessionViewModel view)
@@ -78,7 +79,11 @@ public partial class LiveSessionWindow : Window
         _updating = true;
         try
         {
+            if (_lastSpoilerMode != _map.SpoilerMode && WorldMap.ContextMenu is { } menu) menu.IsOpen = false;
+            _lastSpoilerMode = _map.SpoilerMode;
             WorldMap.Load(_map.Map);
+            WorldMap.SetExploration(_map.SpoilerMode, _map.VisitedRooms);
+            WorldMap.SpoilerDetailView = _map.SpoilerDetailView;
             WorldMap.Players = _map.Players;
             WorldMap.SelectedPlayerId = _map.SelectedPlayer?.Id;
             WorldMap.SelectedRoom = _map.SelectedRoom;

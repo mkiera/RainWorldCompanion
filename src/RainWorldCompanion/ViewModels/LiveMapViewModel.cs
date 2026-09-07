@@ -22,6 +22,18 @@ public sealed record LiveMapPlayer(string Id, string Name, string RoomId, string
 public sealed partial class LiveMapViewModel : ObservableObject
 {
     private string? _sessionId;
+    private LiveSnapshot? _snapshot;
+    private HashSet<string> _visited = new(StringComparer.OrdinalIgnoreCase);
+    [ObservableProperty] private bool spoilerMode = true;
+    [ObservableProperty] private bool spoilerDetailView;
+    partial void OnSpoilerDetailViewChanged(bool value) => Updated?.Invoke();
+    public IReadOnlySet<string> VisitedRooms => _visited;
+    public bool IsRoomVisible(string? roomId) => !SpoilerMode || roomId != null && _visited.Contains(roomId);
+    public string SpoilerStatus => !SpoilerMode ? "All rooms visible."
+        : _snapshot?.HasExplorationData == true ? $"Spoiler mode: {_visited.Count} visited rooms from this campaign."
+        : "Spoiler mode: waiting for campaign exploration data. Requires rwcompanion 1.0.6 or newer.";
+
+    partial void OnSpoilerModeChanged(bool value) => Adopt(_snapshot);
     [ObservableProperty] private DenMapDefinition? map = DenMapCatalog.Downpour;
     [ObservableProperty] private bool automaticMap;
     [ObservableProperty] private string reportedTimeline = "Unknown";
@@ -44,6 +56,9 @@ public sealed partial class LiveMapViewModel : ObservableObject
 
     public void Adopt(LiveSnapshot? snapshot)
     {
+        _snapshot = snapshot;
+        _visited = new(snapshot is { HasExplorationData: true } ? snapshot.VisitedRooms ?? [] : [], StringComparer.OrdinalIgnoreCase);
+        if (SelectedRoom != null && !IsRoomVisible(SelectedRoom.RoomId)) SelectedRoom = null;
         if (_sessionId != snapshot?.SessionId) { StopFollowing(); SelectedPlayer = null; }
         _sessionId = snapshot?.SessionId;
         var selectedId = SelectedPlayer?.Id;
@@ -52,15 +67,17 @@ public sealed partial class LiveMapViewModel : ObservableObject
         if (AutomaticMap)
             Map = DenMapCatalog.ForTimeline(ReportedTimeline, snapshot!.EnabledExpansions.Contains("moreslugcats", StringComparer.OrdinalIgnoreCase));
         var rows = snapshot?.Players.Select(p => new LiveMapPlayer(p.Id, p.Name,
-            string.IsNullOrWhiteSpace(p.RoomId) ? "Location unavailable" : p.RoomId,
-            p.Region ?? "Unknown", p.Dead switch { true => "Dead", false => "Alive", null => "Unknown" }, p.IsLocal,
-            Map is null || string.IsNullOrWhiteSpace(p.RoomId) ? null : RoomMapCatalog.Find(Map.Id, p.RoomId),
-            Map is null ? null : RoomMapCatalog.UnavailableReason(Map.Id, p.RoomId),
+            string.IsNullOrWhiteSpace(p.RoomId) ? "Location unavailable" : !IsRoomVisible(p.RoomId) ? "Unexplored room" : p.RoomId,
+            !IsRoomVisible(p.RoomId) ? "Unknown" : p.Region ?? "Unknown", p.Dead switch { true => "Dead", false => "Alive", null => "Unknown" }, p.IsLocal,
+            Map is null || string.IsNullOrWhiteSpace(p.RoomId) || !IsRoomVisible(p.RoomId) ? null : RoomMapCatalog.Find(Map.Id, p.RoomId),
+            !IsRoomVisible(p.RoomId) ? "Hidden by spoiler mode" : Map is null ? null : RoomMapCatalog.UnavailableReason(Map.Id, p.RoomId),
             snapshot.IsOnline, p.CompanionVersion, p.AllowsHostControl, p.IsHost)).ToArray() ?? [];
         if (!Players.SequenceEqual(rows)) Players = rows;
         SelectedPlayer = Players.FirstOrDefault(p => p.Id == selectedId);
         if (FollowedPlayerId is not null && !Players.Any(p => p.Id == FollowedPlayerId)) StopFollowing();
+        UpdateSearch();
         UpdateCoverage();
+        OnPropertyChanged(nameof(SpoilerStatus));
         OnPropertyChanged(nameof(FollowStatus));
         Updated?.Invoke();
     }
@@ -100,13 +117,13 @@ public sealed partial class LiveMapViewModel : ObservableObject
     private void UpdateSearch()
     {
         SearchResults = Map is null || string.IsNullOrWhiteSpace(Query) ? [] : RoomMapCatalog.ForMap(Map.Id)
-            .Where(r => r.RoomId.Contains(Query.Trim(), StringComparison.OrdinalIgnoreCase))
+            .Where(r => IsRoomVisible(r.RoomId) && r.RoomId.Contains(Query.Trim(), StringComparison.OrdinalIgnoreCase))
             .OrderBy(r => r.RoomId).Take(80).ToArray();
     }
 
     private void UpdateCoverage()
     {
         CoverageText = Map is null ? "No bundled map for this timeline. Player room names remain available."
-            : $"{RoomMapCatalog.ForMap(Map.Id).Count:N0} placed rooms · {Players.Count(p => p.Placement is not null)}/{Players.Count} players located. Unmatched rooms remain listed.";
+            : $"{RoomMapCatalog.ForMap(Map.Id).Count(r => IsRoomVisible(r.RoomId)):N0} placed rooms · {Players.Count(p => p.Placement is not null)}/{Players.Count} players located. Unmatched rooms remain listed.";
     }
 }

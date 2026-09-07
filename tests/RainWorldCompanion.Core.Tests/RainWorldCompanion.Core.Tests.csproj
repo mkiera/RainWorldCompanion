@@ -18,6 +18,8 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="..\..\src\RWCompanion.Mod\GameAccess.cs" Link="GameAccess.cs" />
+    <Compile Include="..\..\src\RWCompanion.Mod\VisitedRooms.cs" Link="VisitedRooms.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\HostControlPermission.cs" Link="HostControlPermission.cs" />
   </ItemGroup>
 

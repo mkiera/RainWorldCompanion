@@ -11,6 +11,59 @@ namespace RainWorldCompanion.Controls;
 public sealed class LiveMapCanvas : FrameworkElement
 {
     private BitmapSource? _image;
+    private bool _spoilerMode = true;
+    private HashSet<string> _visited = new(StringComparer.OrdinalIgnoreCase);
+    private Geometry _revealed = Geometry.Empty;
+    public static readonly DependencyProperty SpoilerDetailViewProperty = DependencyProperty.Register(
+        nameof(SpoilerDetailView), typeof(bool), typeof(LiveMapCanvas),
+        new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, (owner, _) => ((LiveMapCanvas)owner).ToolTip = null));
+    public bool SpoilerDetailView
+    {
+        get => (bool)GetValue(SpoilerDetailViewProperty);
+        set => SetValue(SpoilerDetailViewProperty, value);
+    }
+
+    public void SetExploration(bool enabled, IEnumerable<string> visited)
+    {
+        var next = new HashSet<string>(visited, StringComparer.OrdinalIgnoreCase);
+        if (_spoilerMode == enabled && _visited.SetEquals(next)) return;
+        _spoilerMode = enabled;
+        _visited = next;
+        RebuildReveal();
+        ToolTip = null;
+        _markers.Clear();
+        InvalidateVisual();
+    }
+
+    private bool IsRoomVisible(MappedRoom room) => !_spoilerMode || _visited.Contains(room.RoomId);
+
+    private void RebuildReveal()
+    {
+        _revealed = _map == null ? Geometry.Empty : CreateReveal(RoomMapCatalog.ForMap(_map.Id), _visited);
+    }
+
+    public static Geometry CreateReveal(IEnumerable<MappedRoom> rooms, IReadOnlySet<string> visited)
+    {
+        var visible = new GeometryGroup { FillRule = FillRule.Nonzero };
+        var hidden = new GeometryGroup { FillRule = FillRule.Nonzero };
+        foreach (var room in rooms)
+        {
+            foreach (var bounds in room.Bounds)
+            {
+                var rectangle = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                if (visited.Contains(room.RoomId)) visible.Children.Add(new RectangleGeometry(rectangle));
+                else
+                {
+                    rectangle.Inflate(1, 1);
+                    hidden.Children.Add(new RectangleGeometry(rectangle));
+                }
+            }
+        }
+        var reveal = new CombinedGeometry(GeometryCombineMode.Exclude, visible, hidden);
+        reveal.Freeze();
+        return reveal;
+    }
+
     private DenMapDefinition? _map;
     private Point? _press;
     private Point _last;
@@ -42,6 +95,7 @@ public sealed class LiveMapCanvas : FrameworkElement
         _image = map is null ? null : DenMapCanvas.LoadImage(map);
         if (map is not null) Viewport.SetMap(map);
         SelectedRoom = null;
+        RebuildReveal();
         _markers.Clear();
         InvalidateVisual();
     }
@@ -68,11 +122,22 @@ public sealed class LiveMapCanvas : FrameworkElement
         dc.DrawRectangle(Brushes.Black, null, new Rect(RenderSize));
         _markers.Clear();
         if (_map is null || _image is null) return;
-        dc.DrawImage(_image, new Rect(Viewport.OffsetX, Viewport.OffsetY, _map.ImageWidth * Viewport.Scale, _map.ImageHeight * Viewport.Scale));
-        foreach (var room in Players.Where(p => p.Placement is not null).Select(p => p.Placement!).DistinctBy(r => r.RoomId))
+        dc.PushTransform(new MatrixTransform(Viewport.Scale, 0, 0, Viewport.Scale, Viewport.OffsetX, Viewport.OffsetY));
+        if (SpoilerDetailView)
+        {
+            dc.PushOpacity(0.25);
+            dc.DrawImage(_image, new Rect(0, 0, _map.ImageWidth, _map.ImageHeight));
+            dc.Pop();
+        }
+        if (_spoilerMode) dc.PushClip(_revealed);
+        dc.DrawImage(_image, new Rect(0, 0, _map.ImageWidth, _map.ImageHeight));
+        if (_spoilerMode) dc.Pop();
+        dc.Pop();
+        if (SpoilerDetailView) DrawSpoilerDetails(dc);
+        foreach (var room in Players.Where(p => p.Placement is not null && IsRoomVisible(p.Placement)).Select(p => p.Placement!).DistinctBy(r => r.RoomId))
             DrawRoom(dc, room, Brushes.Cyan);
-        if (SelectedRoom is not null) DrawRoom(dc, SelectedRoom, Brushes.Gold);
-        foreach (var group in Players.Where(p => p.Placement is not null).GroupBy(p => p.Placement!.RoomId))
+        if (SelectedRoom is not null && IsRoomVisible(SelectedRoom)) DrawRoom(dc, SelectedRoom, Brushes.Gold);
+        foreach (var group in Players.Where(p => p.Placement is not null && IsRoomVisible(p.Placement)).GroupBy(p => p.Placement!.RoomId))
         {
             int index = 0;
             foreach (var player in group.OrderBy(p => p.Id, StringComparer.Ordinal))
@@ -95,6 +160,46 @@ public sealed class LiveMapCanvas : FrameworkElement
         }
     }
 
+    private void DrawSpoilerDetails(DrawingContext dc)
+    {
+        var rooms = RoomMapCatalog.ForMap(_map!.Id);
+        dc.PushTransform(new MatrixTransform(Viewport.Scale, 0, 0, Viewport.Scale, Viewport.OffsetX, Viewport.OffsetY));
+        dc.PushOpacity(0.35);
+        dc.DrawGeometry(Brushes.LimeGreen, null, _revealed);
+        dc.Pop();
+        foreach (var room in rooms)
+        {
+            bool visited = _visited.Contains(room.RoomId);
+            var brush = visited ? Brushes.DeepSkyBlue : Brushes.LightCoral;
+            foreach (var bounds in room.Bounds)
+            {
+                var rectangle = new Rect(bounds.X, bounds.Y, bounds.Width, bounds.Height);
+                if (!visited) rectangle.Inflate(1, 1);
+                dc.DrawRectangle(null, new Pen(brush, 1 / Viewport.Scale), rectangle);
+            }
+        }
+        dc.Pop();
+        if (Viewport.Scale >= 0.45)
+            foreach (var room in rooms)
+            {
+                var point = Viewport.ToScreen(new Point(room.X, room.Y));
+                if (point.X < 0 || point.X > ActualWidth || point.Y < 0 || point.Y > ActualHeight) continue;
+                DrawDiagnosticText(dc, room.RoomId, point + new Vector(5, 5), _visited.Contains(room.RoomId) ? Brushes.DeepSkyBlue : Brushes.LightCoral);
+            }
+        int visitedCount = rooms.Count(r => _visited.Contains(r.RoomId));
+        DrawDiagnosticText(dc, $"SPOILER DETAILS: {( _spoilerMode ? "mask active" : "spoiler mode off, mask preview" )}\nBlue: visited bounds. Green: revealed. Red: excluded (+1 px).\n{visitedCount} visited / {rooms.Count - visitedCount} unvisited mapped rooms. Dim artwork is reference only.", new Point(12, 12), Brushes.White);
+    }
+
+    private void DrawDiagnosticText(DrawingContext dc, string value, Point point, Brush brush)
+    {
+        var text = new FormattedText(value, CultureInfo.CurrentUICulture, FlowDirection.LeftToRight,
+            new Typeface("Segoe UI"), 12, brush, VisualTreeHelper.GetDpi(this).PixelsPerDip)
+            { MaxTextWidth = Math.Max(100, ActualWidth - 35), Trimming = TextTrimming.CharacterEllipsis };
+        dc.DrawRectangle(new SolidColorBrush(Color.FromArgb(225, 15, 17, 19)), null,
+            new Rect(point.X - 3, point.Y - 2, text.Width + 6, text.Height + 4));
+        dc.DrawText(text, point);
+    }
+
     private void DrawRoom(DrawingContext dc, MappedRoom room, Brush outline)
     {
         foreach (var rectangle in room.Bounds)
@@ -113,11 +218,11 @@ public sealed class LiveMapCanvas : FrameworkElement
     private LiveMapPlayer? HitPlayer(Point point) => _markers.Where(p => (p.Point - point).Length <= 13)
         .OrderBy(p => (p.Point - point).Length).Select(p => p.Player).FirstOrDefault();
 
-    private MappedRoom? HitRoom(Point point)
+    private MappedRoom? HitRoom(Point point, bool includeHidden = false)
     {
         if (_map is null) return null;
         Point image = Viewport.ToImage(point);
-        return RoomMapCatalog.ForMap(_map.Id).Where(r => r.Bounds.Any(b => new Rect(b.X, b.Y, b.Width, b.Height).Contains(image))
+        return RoomMapCatalog.ForMap(_map.Id).Where(r => includeHidden || IsRoomVisible(r)).Where(r => r.Bounds.Any(b => new Rect(b.X, b.Y, b.Width, b.Height).Contains(image))
                 || (Viewport.ToScreen(new Point(r.X, r.Y)) - point).Length < 10)
             .OrderBy(r => (new Point(r.X, r.Y) - image).Length).FirstOrDefault();
     }
@@ -149,6 +254,14 @@ public sealed class LiveMapCanvas : FrameworkElement
             if (!_dragged && (point - start).Length >= 4) { _dragged = true; ManuallyPanned?.Invoke(); }
             if (_dragged) { Viewport.Pan(point - _last); InvalidateVisual(); }
             _last = point;
+            return;
+        }
+        if (SpoilerDetailView)
+        {
+            var imagePoint = Viewport.ToImage(point);
+            var room = HitRoom(point, includeHidden: true);
+            string details = room == null ? "Outside mapped room bounds" : $"{room.RoomId}: {(_visited.Contains(room.RoomId) ? "visited" : "unvisited")}\n{room.Bounds.Count} rectangles. Placement: {room.MatchKind}";
+            ToolTip = $"{details}\nImage: {imagePoint.X:F1}, {imagePoint.Y:F1}\nSpoiler mask here: {(_revealed.FillContains(imagePoint) ? "revealed" : "hidden")}";
             return;
         }
         var player = HitPlayer(point);

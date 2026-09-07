@@ -52,6 +52,7 @@
         <Grid Grid.Row="1">
             <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
             <WrapPanel Margin="0,0,0,8">
+                <CheckBox Content="Spoiler mode" IsChecked="{Binding MapView.SpoilerMode}" VerticalAlignment="Center" Margin="0,0,12,0" ToolTip="Reveal only rooms visited in this campaign. The editor map stays fully visible."/>
                 <Button Content="Fit world" Click="FitWorld" Style="{StaticResource Button.Small}" Margin="0,0,6,0"/>
                 <Button Content="+" Click="ZoomIn" AutomationProperties.Name="Zoom in" Style="{StaticResource Button.Small}" Margin="0,0,6,0"/>
                 <Button Content="-" Click="ZoomOut" AutomationProperties.Name="Zoom out" Style="{StaticResource Button.Small}" Margin="0,0,12,0"/>
@@ -108,6 +109,7 @@
                 </Grid>
             </Grid>
             <StackPanel Grid.Row="2" Margin="0,6,0,0">
+                <TextBlock Text="{Binding MapView.SpoilerStatus}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding MapActionText}" TextWrapping="Wrap"/>
                 <TextBlock Text="{Binding HostActionText}" TextWrapping="Wrap">
                     <TextBlock.Style><Style TargetType="TextBlock">

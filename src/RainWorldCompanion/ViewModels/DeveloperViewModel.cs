@@ -18,6 +18,9 @@ public sealed record DiagnosticCategory(string Name, ObservableCollection<Diagno
 
 public sealed partial class DeveloperViewModel : ObservableObject
 {
+    public LiveMapViewModel MapView { get; }
+    public DeveloperViewModel(LiveMapViewModel? mapView = null) => MapView = mapView ?? new();
+
     private readonly Queue<(DateTimeOffset Time, double Rate, double Age)> _history = new();
     private DateTimeOffset? _previousTime;
     private long _previousAccepted;

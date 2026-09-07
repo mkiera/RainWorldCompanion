@@ -110,6 +110,7 @@ public sealed class Plugin : BaseUnityPlugin
                 EnabledExpansions = _enabledMods.Where(id => id is "moreslugcats" or "watcher").ToArray(),
                 Players = MeadowPlayers.Read() ?? (game == null ? Array.Empty<LivePlayer>() : ReadPlayers(game))
             };
+            VisitedRooms.Read(session, snapshot);
             _hostControl?.Describe(snapshot.Players);
             _transport.Publish(snapshot);
             _reportedFailure = false;

@@ -26,7 +26,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         _teleport = teleport;
         _setHostControl = setHostControl;
         _teleportAll = teleportAll;
-        MapView.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MapView.SelectedRoom)) RefreshGroupAction(); };
+        MapView.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(MapView.SelectedRoom) or nameof(MapView.SpoilerMode)) RefreshGroupAction(); };
     }
 
     [ObservableProperty] private bool isMapActionRunning;
@@ -53,6 +53,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         if (!string.IsNullOrEmpty(_snapshot.TeleportAllUnavailableReason)) return _snapshot.TeleportAllUnavailableReason;
         if (_snapshot.State is not ("gameplay" or "paused")) return "Enter campaign gameplay.";
         if (room == null) return "Select a destination room.";
+        if (!MapView.IsRoomVisible(room.RoomId)) return "This room is hidden by spoiler mode.";
         if (MapView.Map == null || RoomMapCatalog.Find(MapView.Map.Id, room.RoomId) != room) return "Choose a room on the current campaign map.";
         return null;
     }
@@ -86,6 +87,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     {
         if (IsMapActionRunning) return "Wait for the current map action to finish.";
         if (_teleport == null || _snapshot is not { IsHost: true, CommandVersion: 1, State: "gameplay" or "paused" }) return "Only the current host can request a teleport.";
+        if (!MapView.IsRoomVisible(room.RoomId)) return "This room is hidden by spoiler mode.";
         if (MapView.Map == null || RoomMapCatalog.Find(MapView.Map.Id, room.RoomId) != room) return "Choose a room on the current campaign map.";
         var player = _snapshot.Players.FirstOrDefault(p => p.Id == playerId && !p.IsLocal);
         if (player == null) return "The player has left the session.";
@@ -112,6 +114,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         if (IsMapActionRunning) return "Wait for the current map action to finish.";
         if (_teleport == null || _snapshot is not { CommandVersion: 1 }) return "Connect an updated rwcompanion mod to teleport.";
         if (_snapshot.State is not ("gameplay" or "paused")) return "Enter a campaign to teleport.";
+        if (!MapView.IsRoomVisible(room.RoomId)) return "This room is hidden by spoiler mode.";
         if (MapView.Map == null || RoomMapCatalog.Find(MapView.Map.Id, room.RoomId) != room) return "Choose a room on the current campaign map.";
         if (TeleportPlayer is not { State: "Alive" } player) return "A living local player is required.";
         if (_snapshot.IsOnline && !string.Equals(player.Region, room.RegionCode, StringComparison.OrdinalIgnoreCase))

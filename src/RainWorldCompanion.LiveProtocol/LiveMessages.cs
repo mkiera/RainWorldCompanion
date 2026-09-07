@@ -19,6 +19,8 @@ public sealed class LiveDiscovery
 
 public sealed class LiveSnapshot
 {
+    public bool HasExplorationData { get; set; }
+    public string[] VisitedRooms { get; set; } = Array.Empty<string>();
     public int CommandVersion { get; set; }
     public string GameplayId { get; set; } = "";
     public bool IsOnline { get; set; }

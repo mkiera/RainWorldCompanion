@@ -20,15 +20,18 @@ public class LiveTeleportTests
         snapshot.IsOnline = true;
         snapshot.IsHost = true;
         snapshot.Players[1].CompanionVersion = "1.0.4";
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         Assert.NotNull(view.HostTeleportUnavailableReason(Room(), "remote"));
         snapshot.Players[1].AllowsHostControl = true;
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         Assert.Null(view.HostTeleportUnavailableReason(Room(), "remote"));
         await view.TeleportPlayerHereAsync(Room(), "remote", "game");
         Assert.Equal("remote", target);
         Assert.Equal("Peer teleported.", view.MapActionText);
         snapshot.IsHost = false;
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         Assert.NotNull(view.HostTeleportUnavailableReason(Room(), "remote"));
     }
@@ -37,6 +40,7 @@ public class LiveTeleportTests
     public async Task A_context_menu_from_an_earlier_game_does_not_teleport()
     {
         var view = new LiveSessionViewModel(teleport: (_, _, _, _) => throw new Exception("Must not send."));
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, Snapshot(), true);
         await view.TeleportHereAsync(Room(), "earlier-game");
         Assert.Equal("Gameplay changed. Right-click the room again.", view.MapActionText);
@@ -53,6 +57,7 @@ public class LiveTeleportTests
             Assert.Equal("SU_A43", room, ignoreCase: true);
             return Task.FromResult(new LiveCommandResult { Success = true, Message = "Teleported." });
         });
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, Snapshot(), true);
         view.MapView.SelectedPlayer = view.MapView.Players.Single(p => !p.IsLocal);
         await view.TeleportHereAsync(Room());
@@ -68,6 +73,7 @@ public class LiveTeleportTests
         Assert.NotNull(view.TeleportUnavailableReason(Room()));
         var snapshot = Snapshot();
         snapshot.CommandVersion = 0;
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         Assert.NotNull(view.TeleportUnavailableReason(Room()));
     }
@@ -77,6 +83,7 @@ public class LiveTeleportTests
     {
         var completion = new TaskCompletionSource<LiveCommandResult>();
         var view = new LiveSessionViewModel(setHostControl: _ => completion.Task);
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, Snapshot(), true);
         Assert.False(view.AllowHostControl);
         var action = view.SetHostControlAsync(true);
@@ -98,6 +105,7 @@ public class LiveTeleportTests
         var snapshot = Snapshot();
         snapshot.IsOnline = snapshot.IsHost = snapshot.AllowHostControl = snapshot.SupportsTeleportAll = true;
         snapshot.TeleportAllUnavailableReason = "Guest: Allow host control is off";
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         view.MapView.SelectedRoom = Room();
         Assert.False(view.CanTeleportAll);
@@ -105,12 +113,14 @@ public class LiveTeleportTests
         await view.TeleportAllHereAsync(Room(), "game");
         Assert.Null(destination);
         snapshot.TeleportAllUnavailableReason = "";
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         Assert.True(view.CanTeleportAll);
         await view.TeleportAllHereAsync(Room(), "game");
         Assert.Equal(Room().RoomId, destination);
         Assert.Equal("Everyone arrived.", view.MapActionText);
         snapshot.IsHost = false;
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         Assert.False(view.CanTeleportAll);
     }
@@ -128,6 +138,7 @@ public class LiveTeleportTests
         snapshot.Players[1].AllowsHostControl = allowed;
         snapshot.Players[1].IsHost = true;
         snapshot.Players[1].RoomId = null;
+        view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
         var player = view.MapView.Players.Single(p => !p.IsLocal);
         Assert.Equal(color, player.ControlLight);

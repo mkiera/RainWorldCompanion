@@ -11,7 +11,7 @@ public class LiveMapTests
     [Fact]
     public void Live_player_in_an_omitted_room_gets_an_explanation()
     {
-        var view = new LiveMapViewModel();
+        var view = new LiveMapViewModel { SpoilerMode = false };
         view.Adopt(new() { SessionId = "session", Campaign = "White", Timeline = "White",
             EnabledExpansions = ["moreslugcats"], Players = [new() { Id = "one", RoomId = "SL_ECNIUS01" }] });
         Assert.Null(view.Players[0].Placement);
@@ -30,7 +30,7 @@ public class LiveMapTests
     [InlineData("Watcher", true, null)]
     public void Map_follows_actual_timeline_and_expansion(string timeline, bool downpour, string? expected)
     {
-        var view = new LiveMapViewModel();
+        var view = new LiveMapViewModel { SpoilerMode = false };
         view.Adopt(new() { SessionId = "session", Campaign = "White", Timeline = timeline,
             EnabledExpansions = downpour ? ["moreslugcats"] : [], Players = [new() { Id = "one", RoomId = "UNKNOWN_ROOM" }] });
         Assert.Equal(expected, view.Map?.Id);
@@ -40,7 +40,7 @@ public class LiveMapTests
     [Fact]
     public void Following_survives_unavailable_rooms_and_stops_when_player_leaves_or_session_ends()
     {
-        var view = new LiveMapViewModel();
+        var view = new LiveMapViewModel { SpoilerMode = false };
         var snapshot = new LiveSnapshot { SessionId = "one", Campaign = "White", Timeline = "White", EnabledExpansions = ["moreslugcats"],
             Players = [new() { Id = "peer", Name = "Peer", RoomId = "SU_S04" }] };
         view.Adopt(snapshot);
@@ -68,7 +68,7 @@ public class LiveMapTests
     [Fact]
     public void Search_preserves_canonical_den_names_and_follow_center_preserves_zoom()
     {
-        var view = new LiveMapViewModel();
+        var view = new LiveMapViewModel { SpoilerMode = false };
         view.Browse(DenMapCatalog.Rivulet);
         view.Query = "ms_BITTER";
         Assert.Contains(view.SearchResults, room => room.RoomId == "MS_bittershelter");
