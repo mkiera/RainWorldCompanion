@@ -43,10 +43,10 @@ public sealed class LiveConnectionServer : IDisposable
         lock (_stateLock)
         {
             if (Status != LiveConnectionStatus.Connected || Snapshot is not { CommandVersion: 1 } snapshot)
-                return new() { Message = "Connect an updated rwcompanion mod first." };
+                return new() { Message = "Connect an updated Companion Game Hook first." };
             if (allowHostControl == null && (snapshot.State is not ("gameplay" or "paused")
                 || string.IsNullOrEmpty(gameplayId) || snapshot.GameplayId != gameplayId))
-                return new() { Message = "Connect an updated rwcompanion mod during gameplay first." };
+                return new() { Message = "Connect an updated Companion Game Hook during gameplay first." };
             if (teleportAll && (!snapshot.IsHost || !snapshot.AllowHostControl || !snapshot.SupportsTeleportAll || !string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason)))
                 return new() { Message = string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason) ? "Teleport all requires an updated host mod and everyone's permission." : snapshot.TeleportAllUnavailableReason };
             if (allowHostControl == null && !teleportAll && !snapshot.Players.Any(p => p.Id == playerId && p.Dead == false

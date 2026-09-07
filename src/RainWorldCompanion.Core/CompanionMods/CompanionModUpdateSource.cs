@@ -41,7 +41,7 @@ public sealed class CompanionModUpdateSource(HttpClient client, string cacheFold
         response.EnsureSuccessStatusCode();
         var bytes = await ReadLimitedAsync(response.Content, 32 * 1024 * 1024, cancellationToken).ConfigureAwait(false);
         var hash = Convert.ToHexString(global::System.Security.Cryptography.SHA256.HashData(bytes));
-        if (!hash.Equals(release.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("The companion mod download failed verification.");
+        if (!hash.Equals(release.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("The Companion Game Hook download failed verification.");
         var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {

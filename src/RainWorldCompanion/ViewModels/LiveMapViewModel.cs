@@ -9,8 +9,8 @@ public sealed record LiveMapPlayer(string Id, string Name, string RoomId, string
     bool IsMeadow = false, string? CompanionVersion = null, bool AllowsHostControl = false, bool IsHost = false)
 {
     public string ControlLight => string.IsNullOrEmpty(CompanionVersion) ? "#E05C64" : AllowsHostControl ? "#58C785" : "#E8BD52";
-    public string ControlStatus => string.IsNullOrEmpty(CompanionVersion) ? "No compatible rwcompanion mod detected"
-        : $"rwcompanion {CompanionVersion}: host control {(AllowsHostControl ? "on" : "off")}";
+    public string ControlStatus => string.IsNullOrEmpty(CompanionVersion) ? "No compatible Companion Game Hook detected"
+        : $"Companion Game Hook {CompanionVersion}: host control {(AllowsHostControl ? "on" : "off")}";
     public string Source => IsLocal ? "Local" : "Online";
     public string MapStatus => RoomId == "Location unavailable" ? RoomId
         : Placement is null ? UnavailableReason is null ? "Not on this map" : "Unavailable on this map"
@@ -32,7 +32,7 @@ public sealed partial class LiveMapViewModel : ObservableObject
     public bool IsRoomVisible(string? roomId) => !SpoilerMode || roomId != null && _visited.Contains(roomId);
     public string SpoilerStatus => !SpoilerMode ? "All rooms visible."
         : _snapshot?.HasExplorationData == true ? $"Spoiler mode: {_visited.Count} visited rooms from this campaign."
-        : "Spoiler mode: waiting for campaign exploration data. Requires rwcompanion 1.0.6 or newer.";
+        : "Spoiler mode: waiting for campaign exploration data. Requires Companion Game Hook 1.0.6 or newer.";
 
     partial void OnSpoilerModeChanged(bool value) => Adopt(_snapshot);
     [ObservableProperty] private DenMapDefinition? map = DenMapCatalog.Downpour;

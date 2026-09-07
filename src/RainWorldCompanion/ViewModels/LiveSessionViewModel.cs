@@ -48,7 +48,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     {
         if (IsMapActionRunning) return "Wait for the current map action to finish.";
         if (_snapshot is not { IsOnline: true, IsHost: true }) return "Only the Meadow host can teleport everyone.";
-        if (_teleportAll == null || !_snapshot.SupportsTeleportAll) return "Update rwcompanion to 1.0.5 or newer.";
+        if (_teleportAll == null || !_snapshot.SupportsTeleportAll) return "Update Companion Game Hook to 1.0.5 or newer.";
         if (!_snapshot.AllowHostControl) return "You: Allow host control is off.";
         if (!string.IsNullOrEmpty(_snapshot.TeleportAllUnavailableReason)) return _snapshot.TeleportAllUnavailableReason;
         if (_snapshot.State is not ("gameplay" or "paused")) return "Enter campaign gameplay.";
@@ -91,7 +91,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         if (MapView.Map == null || RoomMapCatalog.Find(MapView.Map.Id, room.RoomId) != room) return "Choose a room on the current campaign map.";
         var player = _snapshot.Players.FirstOrDefault(p => p.Id == playerId && !p.IsLocal);
         if (player == null) return "The player has left the session.";
-        if (string.IsNullOrEmpty(player.CompanionVersion)) return "This player needs rwcompanion 1.0.4 or newer.";
+        if (string.IsNullOrEmpty(player.CompanionVersion)) return "This player needs Companion Game Hook 1.0.4 or newer.";
         if (!player.AllowsHostControl) return "This player has Allow host control turned off or is not in gameplay.";
         if (player.Dead != false) return "The player must be alive.";
         if (!string.Equals(player.Region, room.RegionCode, StringComparison.OrdinalIgnoreCase)) return "Choose a room in this player's loaded region.";
@@ -112,7 +112,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     public string? TeleportUnavailableReason(MappedRoom room)
     {
         if (IsMapActionRunning) return "Wait for the current map action to finish.";
-        if (_teleport == null || _snapshot is not { CommandVersion: 1 }) return "Connect an updated rwcompanion mod to teleport.";
+        if (_teleport == null || _snapshot is not { CommandVersion: 1 }) return "Connect an updated Companion Game Hook to teleport.";
         if (_snapshot.State is not ("gameplay" or "paused")) return "Enter a campaign to teleport.";
         if (!MapView.IsRoomVisible(room.RoomId)) return "This room is hidden by spoiler mode.";
         if (MapView.Map == null || RoomMapCatalog.Find(MapView.Map.Id, room.RoomId) != room) return "Choose a room on the current campaign map.";
@@ -164,7 +164,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     private string installedVersion = "";
 
     [ObservableProperty]
-    private string setupText = "rwcompanion is not installed.";
+    private string setupText = "Companion Game Hook is not installed.";
 
     [ObservableProperty]
     private string connectionText = "Waiting for the game connection.";
@@ -195,9 +195,9 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     private bool isWorking;
 
     [ObservableProperty]
-    private string installLabel = "Install and enable rwcompanion";
+    private string installLabel = "Install and enable Companion Game Hook";
 
-    public string IndicatorText => Installed ? $"rwcompanion {InstalledVersion}" : "rwcompanion: not installed";
+    public string IndicatorText => Installed ? $"Companion Game Hook {InstalledVersion}" : "Companion Game Hook: not installed";
 
     public void AdoptSetup(bool exists, bool ready, string? version, string description)
     {
@@ -205,7 +205,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         SetupReady = ready;
         InstalledVersion = version ?? "unknown version";
         SetupText = description;
-        InstallLabel = ready ? "Repair rwcompanion" : exists ? "Enable or repair rwcompanion" : "Install and enable rwcompanion";
+        InstallLabel = ready ? "Repair Companion Game Hook" : exists ? "Enable or repair Companion Game Hook" : "Install and enable Companion Game Hook";
     }
 
     public void AdoptConnection(LiveConnectionStatus status, LiveSnapshot? snapshot, bool gameRunning)

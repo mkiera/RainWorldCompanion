@@ -22,7 +22,7 @@ public sealed class CompanionModManager
     public CompanionModStatus Inspect(bool enabled, string appVersion, int protocolVersion)
     {
         if (!Directory.Exists(InstallFolder))
-            return new(false, enabled, false, null, "rwcompanion is not installed.");
+            return new(false, enabled, false, null, "Companion Game Hook is not installed.");
         try
         {
             RejectLinks(InstallFolder);
@@ -30,11 +30,11 @@ public sealed class CompanionModManager
             CompanionModPackage.ValidateFolder(InstallFolder, manifest);
             var compatible = manifest.IsCompatible(appVersion, protocolVersion);
             return new(true, enabled, compatible, manifest.Version,
-                !compatible ? "Update Companion or repair the mod to use a compatible version." : !enabled ? "rwcompanion is disabled." : null);
+                !compatible ? "Update Companion or repair the mod to use a compatible version." : !enabled ? "Companion Game Hook is disabled." : null);
         }
         catch (Exception error) when (Expected(error))
         {
-            return new(true, enabled, false, null, "The installed companion mod needs repair: " + error.Message);
+            return new(true, enabled, false, null, "The installed Companion Game Hook needs repair: " + error.Message);
         }
     }
 
@@ -51,7 +51,7 @@ public sealed class CompanionModManager
 
     private CompanionModInstallResult Install(string zipPath, string expectedHash, string appVersion, int protocol, CancellationToken cancellationToken)
     {
-        if (_isGameRunning()) return new(CompanionModInstallOutcome.Deferred, null, "Close Rain World to install the companion mod.");
+        if (_isGameRunning()) return new(CompanionModInstallOutcome.Deferred, null, "Close Rain World to install the Companion Game Hook.");
         var movedPrevious = false;
         try
         {
@@ -59,7 +59,7 @@ public sealed class CompanionModManager
             RejectLinks(InstallFolder);
             Recover();
             if (!CompanionModPackage.Hash(zipPath).Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("The companion mod download failed verification.");
+                throw new InvalidDataException("The Companion Game Hook download failed verification.");
             RejectLinks(StageFolder, false);
             RemoveOwnedFolder(StageFolder);
             Directory.CreateDirectory(StageFolder);
@@ -67,7 +67,7 @@ public sealed class CompanionModManager
             {
                 long total = 0;
                 var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                if (archive.Entries.Count > 120) throw new InvalidDataException("The companion mod package contains too many files.");
+                if (archive.Entries.Count > 120) throw new InvalidDataException("The Companion Game Hook package contains too many files.");
                 foreach (var entry in archive.Entries)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -75,18 +75,18 @@ public sealed class CompanionModManager
                     var path = CompanionModPackage.ContainedPath(StageFolder, entry.FullName);
                     total += entry.Length;
                     if (total > 32 * 1024 * 1024 || !paths.Add(path) || ((entry.ExternalAttributes >> 16) & 0xF000) == 0xA000)
-                        throw new InvalidDataException("The companion mod package contains unsupported entries.");
+                        throw new InvalidDataException("The Companion Game Hook package contains unsupported entries.");
                     Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                     entry.ExtractToFile(path);
                 }
             }
             var manifest = CompanionModPackage.ReadManifest(StageFolder);
             CompanionModPackage.ValidateFolder(StageFolder, manifest);
-            if (!manifest.IsCompatible(appVersion, protocol)) throw new InvalidDataException("The companion mod package is incompatible with this Companion version.");
+            if (!manifest.IsCompatible(appVersion, protocol)) throw new InvalidDataException("The Companion Game Hook package is incompatible with this Companion version.");
             var expectedFiles = manifest.Files.Keys.Append(CompanionModPackage.ManifestName).ToHashSet(StringComparer.OrdinalIgnoreCase);
             if (Directory.EnumerateFiles(StageFolder, "*", SearchOption.AllDirectories)
                 .Any(path => !expectedFiles.Contains(Path.GetRelativePath(StageFolder, path).Replace('\\', '/'))))
-                throw new InvalidDataException("The companion mod package contains unlisted files.");
+                throw new InvalidDataException("The Companion Game Hook package contains unlisted files.");
             cancellationToken.ThrowIfCancellationRequested();
             if (_isGameRunning()) return new(CompanionModInstallOutcome.Deferred, manifest.Version, "The update is ready and will install after Rain World closes.");
             RemoveOwnedFolder(PreviousFolder);
@@ -127,7 +127,7 @@ public sealed class CompanionModManager
 
     private void RemoveOwnedFolder(string path)
     {
-        if (path != StageFolder && path != PreviousFolder) throw new InvalidOperationException("Unexpected companion mod folder.");
+        if (path != StageFolder && path != PreviousFolder) throw new InvalidOperationException("Unexpected Companion Game Hook folder.");
         if (!Directory.Exists(path)) return;
         RejectLinks(path);
         Directory.Delete(path, true);
@@ -137,12 +137,12 @@ public sealed class CompanionModManager
     {
         for (var parent = new DirectoryInfo(path); parent is not null; parent = parent.Parent)
             if (parent.Exists && (parent.Attributes & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("Companion mod installation through linked folders is not supported.");
+                throw new IOException("Companion Game Hook installation through linked folders is not supported.");
         if (!Directory.Exists(path) || !descend) return;
         foreach (var entry in Directory.EnumerateFileSystemEntries(path))
         {
             var attributes = File.GetAttributes(entry);
-            if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("The companion mod folder contains a linked file or folder.");
+            if ((attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("The Companion Game Hook folder contains a linked file or folder.");
             if ((attributes & FileAttributes.Directory) != 0) RejectLinks(entry);
         }
     }

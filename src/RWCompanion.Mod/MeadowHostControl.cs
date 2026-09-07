@@ -125,7 +125,7 @@ internal sealed partial class MeadowHostControl : IDisposable
         var owner = MeadowPlayers.Owner(command.PlayerId);
         if (owner == null || GameAccess.Get(owner, "isMe") is not false || !IsParticipant(owner)
             || !_peers.TryGetValue(owner, out var peer) || Time.unscaledTime - peer.Seen >= 7 || peer.Hello.Grant.Length == 0)
-            throw new InvalidOperationException("This player needs an updated rwcompanion mod and Allow host control enabled.");
+            throw new InvalidOperationException("This player needs an updated Companion Game Hook and Allow host control enabled.");
         Send(owner, new() { Kind = "teleport", Id = command.Id, Grant = peer.Hello.Grant,
             PlayerId = command.PlayerId, RoomId = command.RoomId, Region = command.Region,
             ExpiresUtcTicks = DateTime.UtcNow.AddSeconds(10).Ticks });

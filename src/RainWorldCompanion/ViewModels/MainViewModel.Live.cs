@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
 using RainWorldCompanion.Core.CompanionMods;
 using RainWorldCompanion.Core.Live;
 using RainWorldCompanion.Core.Mods;
@@ -17,7 +18,14 @@ public sealed partial class MainViewModel
 {
     public LiveSessionViewModel Live { get; }
     private LiveConnectionServer? _liveServer;
-    private LiveSessionWindow? _liveWindow;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSavePageVisible))]
+    [NotifyPropertyChangedFor(nameof(IsCurrentPageReady))]
+    private bool isLivePageVisible;
+    public bool IsSavePageVisible => !IsLivePageVisible;
+    public bool IsCurrentPageReady => IsGameRunning == IsLivePageVisible;
+
+    partial void OnIsGameRunningChanged(bool value) => IsLivePageVisible = value;
     private DeveloperWindow? _developerWindow;
 
     public void OpenDeveloperWindow()
@@ -80,7 +88,6 @@ public sealed partial class MainViewModel
             _liveServer.Changed -= OnLiveConnectionChanged;
             _liveServer.Dispose();
         }
-        _liveWindow?.Close();
         _developerWindow?.Close();
         _modHttp.Dispose();
     }
@@ -101,15 +108,13 @@ public sealed partial class MainViewModel
     [RelayCommand]
     private void OpenLiveFeatures()
     {
-        if (_liveWindow is not null)
-        {
-            if (_liveWindow.WindowState == WindowState.Minimized) _liveWindow.WindowState = WindowState.Normal;
-            _liveWindow.Activate();
-            return;
-        }
-        _liveWindow = new LiveSessionWindow(Live) { Owner = OwnerWindow };
-        _liveWindow.Closed += (_, _) => _liveWindow = null;
-        _liveWindow.Show();
+        IsLivePageVisible = true;
+    }
+
+    [RelayCommand]
+    private void OpenSaves()
+    {
+        if (!IsGameRunning) IsLivePageVisible = false;
     }
 
     private async void OnLiveTimerTick(object? sender, EventArgs args) => await PollLiveFeaturesAsync();
@@ -124,7 +129,7 @@ public sealed partial class MainViewModel
             var savePath = _settings.GameSavePath;
             if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             {
-                Live.AdoptSetup(false, false, null, "Choose the Rain World installation in Settings to install rwcompanion.");
+                Live.AdoptSetup(false, false, null, "Choose the Rain World installation in Settings to install Companion Game Hook.");
                 AdoptLiveConnection();
                 return;
             }
@@ -144,7 +149,7 @@ public sealed partial class MainViewModel
                     _appVersion, ProtocolInfo.Version);
             }, _shutdown.Token);
             if (_shutdown.IsCancellationRequested || path != _settings.GameInstallPath) return;
-            Live.AdoptSetup(status.Installed, status.Ready, status.Version, status.Problem ?? "rwcompanion is installed and enabled.");
+            Live.AdoptSetup(status.Installed, status.Ready, status.Version, status.Problem ?? "Companion Game Hook is installed and enabled.");
             AdoptLiveConnection();
             if (IsBusy) return;
             if (_settings.CompanionModInstallRequestedPath == path && !IsGameRunning)
@@ -160,7 +165,7 @@ public sealed partial class MainViewModel
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException or JsonException or InvalidOperationException)
         {
-            Live.OperationText = "Companion mod check failed: " + error.Message;
+            Live.OperationText = "Companion Game Hook check failed: " + error.Message;
         }
         finally { _livePolling = false; }
     }
@@ -178,7 +183,7 @@ public sealed partial class MainViewModel
         var running = await Task.Run(() => _gameDetector.IsGameRunning(out _), _shutdown.Token);
         if (running)
         {
-            Live.OperationText = "Installation is queued. Close Rain World and Companion will install and enable rwcompanion.";
+            Live.OperationText = "Installation is queued. Close Rain World and Companion will install and enable Companion Game Hook.";
             return;
         }
         await ManageCompanionModAsync(new CompanionModManager(path, () => _gameDetector.IsGameRunning(out _)), null, true);
@@ -188,7 +193,7 @@ public sealed partial class MainViewModel
     {
         if (Live.IsWorking || IsBusy) return;
         Live.IsWorking = true;
-        BeginBusy("Companion mod", enable ? "Installing and enabling rwcompanion…" : "Checking for compatible mod updates…");
+        BeginBusy("Companion Game Hook", enable ? "Installing and enabling Companion Game Hook…" : "Checking for compatible mod updates…");
         var sync = _modSync;
         try
         {
@@ -210,12 +215,12 @@ public sealed partial class MainViewModel
             if (enable) PersistSetting(settings => settings.CompanionModInstallRequestedPath = null);
             if (result is null && !(enable && existing?.Compatible == true))
             {
-                Live.OperationText = enable ? "No compatible mod package is available in this build or update channel." : "rwcompanion is up to date.";
+                Live.OperationText = enable ? "No compatible mod package is available in this build or update channel." : "Companion Game Hook is up to date.";
                 return;
             }
             if (result?.Outcome == CompanionModInstallOutcome.Failed)
             {
-                Live.OperationText = result.Problem ?? "The companion mod could not be installed.";
+                Live.OperationText = result.Problem ?? "The Companion Game Hook could not be installed.";
                 return;
             }
             if (enable && sync is not null)
@@ -225,18 +230,18 @@ public sealed partial class MainViewModel
                     var plan = sync.BuildPlan(null);
                     var row = plan.Rows.Single(row => row.Id.Equals("rwcompanion", StringComparison.OrdinalIgnoreCase));
                     row.Wanted = true;
-                    return sync.Apply(plan, "Before enabling rwcompanion");
+                    return sync.Apply(plan, "Before enabling Companion Game Hook");
                 }, _shutdown.Token);
-                Live.OperationText = applied.Problem ?? $"rwcompanion {result?.Version ?? existing?.Version} is installed and enabled. Start Rain World to connect.";
+                Live.OperationText = applied.Problem ?? $"Companion Game Hook {result?.Version ?? existing?.Version} is installed and enabled. Start Rain World to connect.";
                 if (applied.Problem is not null && _gameDetector.IsGameRunning(out _))
                     PersistSetting(settings => settings.CompanionModInstallRequestedPath = sync.GameInstallPath);
             }
-            else Live.OperationText = $"rwcompanion updated to {result!.Version}.";
+            else Live.OperationText = $"Companion Game Hook updated to {result!.Version}.";
         }
         catch (OperationCanceledException) { }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException or JsonException or InvalidOperationException)
         {
-            Live.OperationText = "Companion mod installation failed: " + error.Message;
+            Live.OperationText = "Companion Game Hook installation failed: " + error.Message;
             if (enable) PersistSetting(settings => settings.CompanionModInstallRequestedPath = null);
         }
         finally
@@ -250,7 +255,7 @@ public sealed partial class MainViewModel
     {
         var folder = Path.Combine(AppContext.BaseDirectory, "CompanionMod");
         var release = JsonSerializer.Deserialize<CompanionModRelease>(File.ReadAllText(Path.Combine(folder, "release.json")), CompanionModManifest.JsonOptions)
-            ?? throw new InvalidDataException("The bundled companion mod metadata is missing.");
+            ?? throw new InvalidDataException("The bundled Companion Game Hook metadata is missing.");
         release = release with { PackageUrl = new Uri(Path.Combine(folder, "rwcompanion.zip")).AbsoluteUri, Channel = channel.ToStorageString() };
         var testSource = Environment.GetEnvironmentVariable("RWCOMPANION_MOD_UPDATE_MANIFEST");
 #if DEBUG

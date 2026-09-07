@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:RainWorldCompanion"
         xmlns:vm="clr-namespace:RainWorldCompanion.ViewModels"
+        xmlns:views="clr-namespace:RainWorldCompanion.Views"
         xmlns:behaviors="clr-namespace:RainWorldCompanion.Views.Behaviors"
         mc:Ignorable="d"
         Title="{x:Static local:AppInfo.DisplayName}"
@@ -1995,6 +1996,7 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
                             Margin="10,0,0,0">
 
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}">
                     <Button Content="New Backup" Style="{StaticResource Button.Accent}"
                             MinWidth="98" MinHeight="26" Padding="10,4" FontSize="12"
                             Command="{Binding NewBackupCommand}" />
@@ -2044,6 +2046,22 @@
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 
+                    </StackPanel>
+                    <Button Content="Live features" Style="{StaticResource Button.Small}"
+                            Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}"
+                            Margin="0,0,4,0" Command="{Binding OpenLiveFeaturesCommand}"
+                            ToolTip="Open the live map and Companion Game Hook setup." />
+                    <Button Content="Back to saves" Margin="0,0,4,0" Command="{Binding OpenSavesCommand}">
+                        <Button.Style><Style TargetType="Button" BasedOn="{StaticResource Button.Small}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <MultiDataTrigger><MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding IsLivePageVisible}" Value="True" />
+                                    <Condition Binding="{Binding IsGameRunning}" Value="False" />
+                                </MultiDataTrigger.Conditions><Setter Property="Visibility" Value="Visible" /></MultiDataTrigger>
+                            </Style.Triggers>
+                        </Style></Button.Style>
+                    </Button>
                     <Button Content="Updates" Style="{StaticResource Button.Small}"
                             Command="{Binding OpenUpdatesCommand}" />
                     <Button Style="{StaticResource Button.Icon}"
@@ -2072,10 +2090,7 @@
                                 <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
                                 <Setter Property="BorderThickness" Value="1" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Live.Installed}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                    <DataTrigger Binding="{Binding IsCurrentPageReady}" Value="False">
                                         <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
                                     </DataTrigger>
@@ -2088,7 +2103,7 @@
                                     <Style TargetType="Ellipse">
                                         <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                            <DataTrigger Binding="{Binding IsCurrentPageReady}" Value="False">
                                                 <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -2102,7 +2117,7 @@
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                         <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                            <DataTrigger Binding="{Binding IsCurrentPageReady}" Value="False">
                                                 <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -2114,27 +2129,8 @@
 
                     <Button Grid.Column="1" Content="Refresh" Margin="10,0,0,0"
                             Style="{StaticResource Button.Small}"
+                            Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}"
                             Command="{Binding RefreshCommand}" />
-                    <Button Grid.Column="0" Command="{Binding OpenLiveFeaturesCommand}"
-                            Style="{StaticResource Button.Small}"
-                            Visibility="{Binding Live.Installed, Converter={StaticResource BoolToVis}}"
-                            ToolTip="{Binding GameStatusText}">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Live features" FontWeight="SemiBold" Margin="0,0,10,0" />
-                            <TextBlock>
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
-                                        <Setter Property="Text" Value="Game closed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
-                                                <Setter Property="Text" Value="Game running" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Button>
                 </Grid>
             </DockPanel>
         </Border>
@@ -2143,7 +2139,7 @@
              and nothing below has to renumber. Both can be showing at once, and sometimes should:
              an update being available while the save folder is misconfigured is a real state, and
              hiding one behind the other helps nobody. -->
-        <StackPanel Grid.Row="1">
+        <StackPanel Grid.Row="1" Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}">
 
             <!-- Configuration problem banner -->
             <Border Style="{StaticResource Banner.Warn}"
@@ -2273,7 +2269,7 @@
 
         </StackPanel>
 
-        <Grid Grid.Row="2" Margin="16,12,16,14">
+        <Grid Grid.Row="2" Margin="16,12,16,14" Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="330" />
                 <ColumnDefinition Width="*" />
@@ -2756,10 +2752,17 @@
             </Border>
         </Grid>
 
-        <!-- Busy overlay -->
+        <ContentControl Grid.Row="1" Grid.RowSpan="2" Content="{Binding Live}"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                        Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}">
+            <ContentControl.ContentTemplate>
+                <DataTemplate><views:LiveSessionView /></DataTemplate>
+            </ContentControl.ContentTemplate>
+        </ContentControl>
+
         <Button Grid.Row="3" HorizontalAlignment="Left" Margin="16,6,16,8"
                 Command="{Binding OpenLiveFeaturesCommand}" Style="{StaticResource Button.Small}"
-                AutomationProperties.Name="Companion mod status" ToolTip="{Binding Live.SetupText}">
+                AutomationProperties.Name="Companion Game Hook status" ToolTip="{Binding Live.SetupText}">
             <StackPanel Orientation="Horizontal">
                 <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
                     <Ellipse.Style>

@@ -6,26 +6,36 @@ using RainWorldCompanion.ViewModels;
 
 namespace RainWorldCompanion.Views;
 
-public partial class LiveSessionWindow : Window
+public partial class LiveSessionView : UserControl
 {
-    private readonly LiveMapViewModel _map;
+    private LiveMapViewModel _map = new();
     private bool _updating;
     private bool _lastSpoilerMode = true;
     private string? _centeredRoom;
     private string? _centeredPlayer;
-    public LiveSessionWindow(LiveSessionViewModel view)
+    public LiveSessionView()
     {
         InitializeComponent();
-        DataContext = view;
-        _map = view.MapView;
-        _map.Updated += UpdateMap;
         WorldMap.PlayerSelected += id => _map.SelectedPlayer = _map.Players.FirstOrDefault(p => p.Id == id);
-        WorldMap.PlayerFollowed += _map.FollowPlayer;
+        WorldMap.PlayerFollowed += id => _map.FollowPlayer(id);
         WorldMap.RoomSelected += room => { _map.SelectedRoom = room; WorldMap.SelectedRoom = room; WorldMap.InvalidateVisual(); };
-        WorldMap.ManuallyPanned += _map.StopFollowing;
-        WorldMap.RoomContextRequested += room => OpenRoomMenu(view, room);
-        Loaded += (_, _) => UpdateMap();
-        Closed += (_, _) => _map.Updated -= UpdateMap;
+        WorldMap.ManuallyPanned += () => _map.StopFollowing();
+        WorldMap.RoomContextRequested += room => { if (DataContext is LiveSessionViewModel view) OpenRoomMenu(view, room); };
+        DataContextChanged += (_, _) =>
+        {
+            _map.Updated -= UpdateMap;
+            _map = (DataContext as LiveSessionViewModel)?.MapView ?? new();
+            if (IsLoaded) _map.Updated += UpdateMap;
+            _centeredRoom = null;
+            _centeredPlayer = null;
+            UpdateMap();
+        };
+        Loaded += (_, _) => { _map.Updated -= UpdateMap; _map.Updated += UpdateMap; UpdateMap(); };
+        Unloaded += (_, _) =>
+        {
+            _map.Updated -= UpdateMap;
+            if (WorldMap.ContextMenu is { } menu) menu.IsOpen = false;
+        };
     }
 
     private void OpenRoomMenu(LiveSessionViewModel view, MappedRoom room)

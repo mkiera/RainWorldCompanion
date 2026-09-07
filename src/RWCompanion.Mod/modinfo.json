@@ -1,1 +1,1 @@
-{"id":"rwcompanion","name":"RainWorld Companion","version":"1.0.6","authors":"mkiera","description":"Shares live player locations and accepts local map teleport commands from RainWorld Companion.","requirements":[],"requirements_names":[],"tags":["Tools"]}
+{"id":"rwcompanion","name":"Companion Game Hook","version":"1.0.7","authors":"mkiera","description":"Connects Rain World to RainWorld Companion for live maps and teleport controls.","requirements":[],"requirements_names":[],"tags":["Tools"]}

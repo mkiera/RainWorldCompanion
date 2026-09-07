@@ -37,8 +37,8 @@ internal sealed partial class MeadowHostControl
             string name = GameAccess.Text(GameAccess.Get(peer, "id"), "DisplayName");
             if (string.IsNullOrEmpty(name)) name = "Player " + GameAccess.Text(peer, "inLobbyId");
             if (!_peers.TryGetValue(peer, out var state) || Time.unscaledTime - state.Seen >= 7)
-                blockers.Add(name + ": no compatible rwcompanion mod detected");
-            else if (state.Hello.AllTeleportVersion != 1) blockers.Add(name + ": update rwcompanion to 1.0.5 or newer");
+                blockers.Add(name + ": no compatible Companion Game Hook detected");
+            else if (state.Hello.AllTeleportVersion != 1) blockers.Add(name + ": update Companion Game Hook to 1.0.5 or newer");
             else if (!state.Hello.AllowsHostControl) blockers.Add(name + ": Allow host control is off");
             else if (state.Hello.Grant.Length == 0) blockers.Add(name + ": not in gameplay");
         }

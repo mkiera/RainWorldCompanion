@@ -256,6 +256,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteSettingsCommand))]
+    [NotifyPropertyChangedFor(nameof(IsCurrentPageReady))]
     private bool isGameRunning;
 
     [ObservableProperty]

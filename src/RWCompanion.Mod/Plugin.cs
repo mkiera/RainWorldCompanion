@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace RWCompanion.Mod;
 
-[BepInPlugin("rwcompanion", "RainWorld Companion", ProtocolInfo.ModVersion)]
+[BepInPlugin("rwcompanion", "Companion Game Hook", ProtocolInfo.ModVersion)]
 public sealed class Plugin : BaseUnityPlugin
 {
     private readonly LiveTransport _transport = new();
