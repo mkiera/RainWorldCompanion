@@ -42,6 +42,14 @@ public class MapArtworkTests
                         Save(Render(canvas, map), Path.Combine(output, map.Id + "-all-visited.png"));
                         canvas.SetExploration(true, ["SU_B13"]);
                         Save(Render(canvas, map), Path.Combine(output, map.Id + "-gate-approach.png"));
+                        if (map.Id == "Downpour")
+                        {
+                            foreach (var approach in new[] { "UW_PREGATE", "SL_BRIDGEEND" })
+                            {
+                                canvas.SetExploration(true, [approach]);
+                                Save(Render(canvas, map), Path.Combine(output, map.Id + "-" + approach + ".png"));
+                            }
+                        }
                     }
                 }
             }
@@ -177,6 +185,30 @@ public class MapArtworkTests
             var mask = LiveMapCanvas.CreateRevealForMap("Saint", Visits(room));
             foreach (var rect in pipe.Rectangles) Assert.True(mask.FillContains(Pixel(rect)));
         }
+    }
+
+    [Theory]
+    [MemberData(nameof(Maps))]
+    public void Every_gate_reveals_from_each_approach_and_stays_hidden_without_visits(string mapId)
+    {
+        foreach (var gate in MapArtworkCatalog.ForMap(mapId).Where(feature => feature.Kind == "gate"))
+        {
+            Assert.False(gate.IsVisible(Visits(), Visits()));
+            foreach (var approach in gate.Rooms)
+            {
+                var mask = LiveMapCanvas.CreateRevealForMap(mapId, Visits(approach));
+                foreach (var rect in gate.Rectangles.Where((_, i) => i % 37 == 0))
+                    Assert.True(mask.FillContains(Pixel(rect)), $"{mapId} {gate.Text} from {approach}");
+            }
+        }
+    }
+
+    [Fact]
+    public void Precipice_label_does_not_interrupt_the_gate_line_from_the_exterior()
+    {
+        var mask = LiveMapCanvas.CreateRevealForMap("Downpour", Visits("UW_PREGATE"));
+        for (int x = 8176; x <= 8400; x++)
+            Assert.True(mask.FillContains(new Point(x + 0.5, 2794.5)));
     }
 
     private static HashSet<string> Visits(params string[] rooms) => new(rooms, StringComparer.OrdinalIgnoreCase);

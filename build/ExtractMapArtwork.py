@@ -476,7 +476,9 @@ def artwork_features(pixels, occupied, rooms, graph, regions, labels, routes, le
                 merged = value
             crop[(line != 0) & (previous == prior)] = merged
         gate_mask[top:bottom, left:right] |= line
-    selected = (gate_mask != 0) & (remaining != 0)
+    label_ids = np.array([False, *(entry["Kind"] == "label" for entry in features)])
+    neutral = (pixels.min(axis=2) > 65) & (pixels.max(axis=2).astype(int) - pixels.min(axis=2) < 35)
+    selected = (gate_mask != 0) & ((remaining != 0) | (label_ids[ids] & neutral))
     ids[selected] = gate_ids[selected]
     remaining[selected] = 0
     distance, nearest = cv2.distanceTransformWithLabels(1 - gate_mask, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)

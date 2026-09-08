@@ -8,6 +8,22 @@ from ExtractMapArtwork import artwork_features, tighten_heading
 
 
 class MapArtworkTests(unittest.TestCase):
+    def test_label_box_does_not_claim_a_gate_connection(self):
+        pixels = np.zeros((100, 100, 3), np.uint8)
+        occupied = np.zeros((100, 100), np.uint8)
+        cv2.line(pixels, (10, 50), (90, 50), (255, 255, 255))
+        pixels[55:60, 20:60] = (220, 180, 20)
+        rooms = [{"RoomId": "SU_A", "X": 15, "Y": 75,
+                  "Bounds": [{"X": 10, "Y": 70, "Width": 10, "Height": 10}]}]
+        route = {"Gate": "GATE_SU_HI", "Rooms": ["SU_A", "HI_B"], "Path": [(10, 50), (90, 50)], "LineWidth": 1}
+        label = {"Text": "THE PRECIPICE", "X": 10, "Y": 45, "Width": 60, "Height": 20,
+                 "Confidence": 99, "Lines": 1}
+        features, _, _ = artwork_features(pixels, occupied, rooms, defaultdict(set), [], [label], [route], [])
+        for x in range(10, 91):
+            entry = next(f for f in features if any(rx <= x < rx+w and ry <= 50 < ry+h for rx,ry,w,h in f["Rectangles"]))
+            self.assertEqual({"GATE_SU_HI", "SU_A", "HI_B"}, set(entry["Rooms"]))
+        self.assertTrue(any(f['Kind'] == 'label' and f['Text'] == 'THE PRECIPICE' for f in features))
+
     def test_crossing_routes_reveal_the_intersection_from_either_connection(self):
         pixels = np.zeros((100, 100, 3), np.uint8)
         occupied = np.zeros((100, 100), np.uint8)
