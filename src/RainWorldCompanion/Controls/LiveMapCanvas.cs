@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -14,6 +15,7 @@ public sealed class LiveMapCanvas : FrameworkElement
     private bool _spoilerMode = true;
     private HashSet<string> _visited = new(StringComparer.OrdinalIgnoreCase);
     private Geometry _revealed = Geometry.Empty;
+    private static readonly ConcurrentDictionary<string, IReadOnlyList<(MapArtworkFeature Feature, Geometry Geometry)>> Artwork = new();
     public static readonly DependencyProperty SpoilerDetailViewProperty = DependencyProperty.Register(
         nameof(SpoilerDetailView), typeof(bool), typeof(LiveMapCanvas),
         new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender, (owner, _) => ((LiveMapCanvas)owner).ToolTip = null));
@@ -39,7 +41,33 @@ public sealed class LiveMapCanvas : FrameworkElement
 
     private void RebuildReveal()
     {
-        _revealed = _map == null ? Geometry.Empty : CreateReveal(RoomMapCatalog.ForMap(_map.Id), _visited);
+        _revealed = _map == null ? Geometry.Empty : CreateRevealForMap(_map.Id, _visited);
+    }
+
+    public static Geometry CreateRevealForMap(string mapId, IReadOnlySet<string> visited)
+    {
+        var names = new HashSet<string>(visited, StringComparer.OrdinalIgnoreCase);
+        var regions = MapArtworkCatalog.VisitedRegions(names);
+        var visible = new GeometryGroup { FillRule = FillRule.Nonzero };
+        visible.Children.Add(CreateReveal(RoomMapCatalog.ForMap(mapId), names));
+        var artwork = Artwork.GetOrAdd(mapId, id => MapArtworkCatalog.ForMap(id).Select(feature =>
+        {
+            var geometry = new StreamGeometry { FillRule = FillRule.Nonzero };
+            using (var context = geometry.Open())
+                foreach (var rect in feature.Rectangles)
+                {
+                    context.BeginFigure(new Point(rect[0], rect[1]), true, true);
+                    context.LineTo(new Point(rect[0] + rect[2], rect[1]), true, false);
+                    context.LineTo(new Point(rect[0] + rect[2], rect[1] + rect[3]), true, false);
+                    context.LineTo(new Point(rect[0], rect[1] + rect[3]), true, false);
+                }
+            geometry.Freeze();
+            return (feature, (Geometry)geometry);
+        }).ToArray());
+        foreach (var (feature, geometry) in artwork)
+            if (feature.IsVisible(names, regions)) visible.Children.Add(geometry);
+        visible.Freeze();
+        return visible;
     }
 
     public static Geometry CreateReveal(IEnumerable<MappedRoom> rooms, IReadOnlySet<string> visited)
@@ -184,7 +212,11 @@ public sealed class LiveMapCanvas : FrameworkElement
                 DrawDiagnosticText(dc, room.RoomId, point + new Vector(5, 5), _visited.Contains(room.RoomId) ? Brushes.DeepSkyBlue : Brushes.LightCoral);
             }
         int visitedCount = rooms.Count(r => _visited.Contains(r.RoomId));
-        DrawDiagnosticText(dc, $"SPOILER DETAILS: {( _spoilerMode ? "mask active" : "spoiler mode off, mask preview" )}\nBlue: visited bounds. Green: revealed. Red: unvisited bounds.\n{visitedCount} visited / {rooms.Count - visitedCount} unvisited mapped rooms. Dim artwork is reference only.", new Point(12, 12), Brushes.White);
+        var regions = MapArtworkCatalog.VisitedRegions(_visited);
+        var features = MapArtworkCatalog.ForMap(_map.Id);
+        string details = string.Join(", ", features.GroupBy(feature => feature.Kind)
+            .Select(group => $"{group.Count(feature => feature.IsVisible(_visited, regions))}/{group.Count()} {group.Key}"));
+        DrawDiagnosticText(dc, $"SPOILER DETAILS: {( _spoilerMode ? "mask active" : "spoiler mode off, mask preview" )}\nBlue: visited bounds. Green: revealed. Red: unvisited bounds.\n{visitedCount} visited / {rooms.Count - visitedCount} unvisited mapped rooms. Dim artwork is reference only.\nArtwork revealed: {details}", new Point(12, 12), Brushes.White);
     }
 
     private void DrawDiagnosticText(DrawingContext dc, string value, Point point, Brush brush)
@@ -258,6 +290,11 @@ public sealed class LiveMapCanvas : FrameworkElement
             var imagePoint = Viewport.ToImage(point);
             var room = HitRoom(point, includeHidden: true);
             string details = room == null ? "Outside mapped room bounds" : $"{room.RoomId}: {(_visited.Contains(room.RoomId) ? "visited" : "unvisited")}\n{room.Bounds.Count} rectangles. Placement: {room.MatchKind}";
+            var feature = _map == null ? null : MapArtworkCatalog.ForMap(_map.Id).FirstOrDefault(feature =>
+                feature.Rectangles.Any(rect => imagePoint.X >= rect[0] && imagePoint.Y >= rect[1]
+                    && imagePoint.X < rect[0] + rect[2] && imagePoint.Y < rect[1] + rect[3]));
+            if (feature is not null)
+                details += $"\n{feature.Kind}: {feature.Text ?? string.Join(", ", feature.Rooms)}\nRevealed by: {feature.Region ?? string.Join(", ", feature.Rooms)}";
             ToolTip = $"{details}\nImage: {imagePoint.X:F1}, {imagePoint.Y:F1}\nSpoiler mask here: {(_revealed.FillContains(imagePoint) ? "revealed" : "hidden")}";
             return;
         }
