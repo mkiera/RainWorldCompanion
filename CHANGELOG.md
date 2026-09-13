@@ -24,7 +24,6 @@ worded as things ended up. The pre-release sections stay for their tags.
   permission. Teleport all supports travel between regions when every guest has
   a compatible Game Hook and allows host control. Recover me revives and moves
   your existing local player to an open position in their current region.
-- A developer dashboard shows connection activity, game data, and map diagnostics.
 - Campaign transfers now carry discovered passage destinations for the selected
   slugcat, preserving other progression in the destination slot. Store or update
   a campaign library entry with this version to include those destinations.
