@@ -105,14 +105,20 @@ public sealed class LiveConnectionServer : IDisposable
         _gameInstallPath = gameInstallPath;
     }
 
-    public void Start()
+    public void Start(LogBridgeEndpoint? logBridge = null)
     {
         if (_started) return;
         Directory.CreateDirectory(_directory);
         _listener.Start();
         try
         {
-            var discovery = new LiveDiscovery { Port = ((IPEndPoint)_listener.LocalEndpoint).Port, Token = _token };
+            var discovery = new LiveDiscovery
+            {
+                Port = ((IPEndPoint)_listener.LocalEndpoint).Port,
+                Token = _token,
+                LogPort = logBridge?.Port ?? 0,
+                LogToken = logBridge?.Token ?? ""
+            };
             string temporary = Path.Combine(_directory, "endpoint." + Guid.NewGuid().ToString("N") + ".tmp");
             File.WriteAllText(temporary, LiveJson.Serialize(discovery));
             File.Move(temporary, Path.Combine(_directory, "endpoint.json"), true);
@@ -171,7 +177,13 @@ public sealed class LiveConnectionServer : IDisposable
                     SetState(LiveConnectionStatus.Incompatible, null);
                     return;
                 }
-                if (string.IsNullOrWhiteSpace(incoming.SessionId) || incoming.Players is null || incoming.Players.Length > 256 || incoming.Players.Any(player => player is null || string.IsNullOrWhiteSpace(player.Id)) || incoming.EnabledExpansions is null) { RecordEvent("Snapshot fields rejected.", true); break; }
+                if (string.IsNullOrWhiteSpace(incoming.SessionId) || incoming.Players is null || incoming.Players.Length > 256
+                    || incoming.Players.Any(player => player is null || string.IsNullOrWhiteSpace(player.Id))
+                    || incoming.EnabledExpansions is null || !ValidActiveMods(incoming.ActiveMods))
+                {
+                    RecordEvent("Snapshot fields rejected.", true);
+                    break;
+                }
                 if (session is not null && session != incoming.SessionId) { RecordEvent("Session changed within a connection.", true); break; }
                 session = incoming.SessionId;
                 if (incoming.Sequence <= sequence)
@@ -227,6 +239,30 @@ public sealed class LiveConnectionServer : IDisposable
             result.Append(character[0]);
         }
         return null;
+    }
+
+    private static bool ValidActiveMods(LiveModInfo[]? mods)
+    {
+        if (mods is null || mods.Length > ProtocolInfo.MaximumActiveMods) return false;
+        foreach (var mod in mods)
+        {
+            if (mod is null || string.IsNullOrWhiteSpace(mod.Id) || mod.Id.Length > ProtocolInfo.MaximumModIdLength
+                || string.IsNullOrWhiteSpace(mod.DisplayName) || mod.DisplayName.Length > ProtocolInfo.MaximumModDisplayNameLength
+                || mod.Version is null || mod.Version.Length > ProtocolInfo.MaximumModVersionLength
+                || mod.CodeFingerprint is null || mod.FingerprintStatus is null)
+                return false;
+            bool hasFingerprint = mod.CodeFingerprint.Length == 64 && mod.CodeFingerprint.All(Uri.IsHexDigit);
+            if (mod.FingerprintStatus is "complete" or "partial")
+            {
+                if (!hasFingerprint) return false;
+            }
+            else if (mod.FingerprintStatus is "pending" or "unavailable" or "no-code")
+            {
+                if (mod.CodeFingerprint.Length != 0) return false;
+            }
+            else return false;
+        }
+        return true;
     }
 
     private void SetState(LiveConnectionStatus status, LiveSnapshot? snapshot)

@@ -1,4 +1,3 @@
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -18,7 +17,7 @@ public class ControlTemplateTests
     {
         // One thread for both palettes: an Application can be made once per process and belongs
         // to the thread that made it.
-        var failure = OnStaThread(() =>
+        var failure = WpfTestHost.Run(() =>
         {
             if (Application.Current is null)
             {
@@ -73,25 +72,4 @@ public class ControlTemplateTests
             UriKind.Absolute),
     };
 
-    /// <summary>WPF controls can only be built on an STA thread, and xunit's is not one.</summary>
-    private static Exception? OnStaThread(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-        return failure;
-    }
 }

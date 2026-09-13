@@ -274,6 +274,43 @@ public sealed class LiveConnectionTests
         await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
     }
 
+    [Fact]
+    public async Task Invalid_active_mod_inventory_is_rejected_and_listener_recovers()
+    {
+        using var fixture = new ServerFixture();
+        using (var invalid = await fixture.Connect())
+        {
+            await fixture.Send(invalid, new LiveSnapshot
+            {
+                SessionId = "invalid",
+                Sequence = 1,
+                ActiveMods = Enumerable.Range(0, ProtocolInfo.MaximumActiveMods + 1)
+                    .Select(index => new LiveModInfo { Id = "mod" + index, DisplayName = "Mod " + index })
+                    .ToArray()
+            });
+            await Task.Delay(100);
+            Assert.Null(fixture.Server.Snapshot);
+        }
+        using var valid = await fixture.Connect();
+        await fixture.Send(valid, new LiveSnapshot
+        {
+            SessionId = "valid",
+            Sequence = 1,
+            ActiveMods =
+            [
+                new()
+                {
+                    Id = "example.mod",
+                    DisplayName = "Example mod",
+                    CodeFingerprint = new string('a', 64),
+                    FingerprintStatus = "complete"
+                }
+            ]
+        });
+        await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
+        Assert.Equal("example.mod", fixture.Server.Snapshot!.ActiveMods.Single().Id);
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);

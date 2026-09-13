@@ -18,6 +18,9 @@ public sealed partial class MainViewModel
 {
     public LiveSessionViewModel Live { get; }
     private LiveConnectionServer? _liveServer;
+    private LogBridgeServer? _logBridgeServer;
+    private LogStreamingCoordinator? _logStreamingCoordinator;
+    private LogStreamingController? _logStreamingController;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSavePageVisible))]
     [NotifyPropertyChangedFor(nameof(IsCurrentPageReady))]
@@ -36,7 +39,10 @@ public sealed partial class MainViewModel
             _developerWindow.Activate();
             return;
         }
-        var view = new DeveloperViewModel(Live.MapView);
+        var logView = _logStreamingController is null
+            ? new LogStreamingViewModel()
+            : new LogStreamingViewModel(_logStreamingController);
+        var view = new DeveloperViewModel(Live.MapView, logView);
         _developerWindow = new DeveloperWindow(view, () => view.Refresh(_liveServer?.CaptureDiagnostics(), Live,
             new Dictionary<string, string>
             {
@@ -62,14 +68,48 @@ public sealed partial class MainViewModel
 
     private void StartLiveFeatures()
     {
+        LogBridgeEndpoint? logEndpoint = null;
+        try
+        {
+            _logStreamingCoordinator = new(new()
+            {
+                AppVersion = _appVersion,
+                GameInstallPath = () => _settings.GameInstallPath,
+                DestinationRoot = Path.Combine(
+                    RainWorldCompanion.Core.System.DownloadsFolder.GetPath(),
+                    "Rain World streamed logs")
+            });
+            _logStreamingController = new(_logStreamingCoordinator);
+            _logBridgeServer = new(_logStreamingCoordinator.Exchange, () => _settings.GameInstallPath);
+            logEndpoint = _logBridgeServer.Start();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Net.Sockets.SocketException or ArgumentException)
+        {
+            _logBridgeServer?.Dispose();
+            _logBridgeServer = null;
+            _logStreamingCoordinator = null;
+            _logStreamingController = null;
+            Live.OperationText = "Log streaming could not start: " + error.Message;
+        }
         try
         {
             _liveServer = new LiveConnectionServer(gameInstallPath: () => _settings.GameInstallPath);
             _liveServer.Changed += OnLiveConnectionChanged;
-            _liveServer.Start();
+            _liveServer.Start(logEndpoint);
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Net.Sockets.SocketException)
         {
+            if (_liveServer is not null)
+            {
+                _liveServer.Changed -= OnLiveConnectionChanged;
+                _liveServer.Dispose();
+                _liveServer = null;
+            }
+            _logStreamingCoordinator?.Shutdown();
+            _logBridgeServer?.Dispose();
+            _logBridgeServer = null;
+            _logStreamingCoordinator = null;
+            _logStreamingController = null;
             Live.OperationText = "The live connection could not start: " + error.Message;
         }
         _liveTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
@@ -91,6 +131,11 @@ public sealed partial class MainViewModel
             _liveServer.Changed -= OnLiveConnectionChanged;
             _liveServer.Dispose();
         }
+        _logStreamingCoordinator?.Shutdown();
+        _logBridgeServer?.Dispose();
+        _logBridgeServer = null;
+        _logStreamingCoordinator = null;
+        _logStreamingController = null;
         _developerWindow?.Close();
         _modHttp.Dispose();
     }
@@ -105,8 +150,107 @@ public sealed partial class MainViewModel
         });
     }
 
-    private void AdoptLiveConnection() => Live.AdoptConnection(
-        _liveServer?.Status ?? LiveConnectionStatus.Waiting, _liveServer?.Snapshot, IsGameRunning);
+    private void AdoptLiveConnection()
+    {
+        LiveConnectionStatus status = _liveServer?.Status ?? LiveConnectionStatus.Waiting;
+        LiveSnapshot? snapshot = _liveServer?.Snapshot;
+        TryRecordLiveDiagnostic(() => _logStreamingCoordinator?.ObserveLiveSnapshot(
+            status == LiveConnectionStatus.Connected ? snapshot : null));
+        Live.AdoptConnection(status, snapshot, IsGameRunning);
+        Live.AdoptLogStreaming(_logStreamingCoordinator?.Snapshot());
+    }
+
+    private Task<LiveCommandResult> TeleportLivePlayerAsync(
+        string gameplayId,
+        string playerId,
+        string roomId,
+        string region)
+    {
+        LivePlayer? player = _liveServer?.Snapshot?.Players.FirstOrDefault(candidate => candidate.Id == playerId);
+        string action = player?.IsLocal == true || player is null && playerId.StartsWith("local:", StringComparison.Ordinal)
+            ? "teleport-self"
+            : "teleport-player";
+        return RecordLiveActionAsync(
+            () => _liveServer?.TeleportAsync(gameplayId, playerId, roomId, region) ?? ClosedLiveConnection(),
+            RecordLiveAction,
+            action,
+            playerId,
+            roomId,
+            region);
+    }
+
+    private Task<LiveCommandResult> SetLiveHostControlAsync(bool enabled) => RecordLiveActionAsync(
+        () => _liveServer?.SetHostControlAsync(enabled) ?? ClosedLiveConnection(),
+        RecordLiveAction,
+        enabled ? "enable-host-control" : "disable-host-control",
+        null,
+        null,
+        null);
+
+    private Task<LiveCommandResult> TeleportAllLivePlayersAsync(string gameplayId, string roomId, string region) =>
+        RecordLiveActionAsync(
+            () => _liveServer?.TeleportAllAsync(gameplayId, roomId, region) ?? ClosedLiveConnection(),
+            RecordLiveAction,
+            "teleport-all",
+            null,
+            roomId,
+            region);
+
+    private Task<LiveCommandResult> RecoverLivePlayerAsync(string gameplayId, string playerId)
+    {
+        LivePlayer? player = _liveServer?.Snapshot?.Players.FirstOrDefault(candidate => candidate.Id == playerId);
+        return RecordLiveActionAsync(
+            () => _liveServer?.RecoverAsync(gameplayId, playerId) ?? ClosedLiveConnection(),
+            RecordLiveAction,
+            "recover",
+            playerId,
+            player?.RoomId,
+            player?.Region);
+    }
+
+    private void RecordLiveAction(
+        string phase,
+        string action,
+        string? playerId,
+        string? roomId,
+        string? region,
+        bool? success,
+        string? message) => TryRecordLiveDiagnostic(() => _logStreamingCoordinator?.RecordCompanionAction(
+            phase, action, playerId, roomId, region, success, message));
+
+    internal static async Task<LiveCommandResult> RecordLiveActionAsync(
+        Func<Task<LiveCommandResult>> operation,
+        Action<string, string, string?, string?, string?, bool?, string?> record,
+        string action,
+        string? playerId,
+        string? roomId,
+        string? region)
+    {
+        TryRecordLiveDiagnostic(() => record("requested", action, playerId, roomId, region, null, null));
+        try
+        {
+            LiveCommandResult result = await operation();
+            TryRecordLiveDiagnostic(() => record(result.Success ? "completed" : "failed", action,
+                playerId, roomId, region, result.Success, result.Message));
+            return result;
+        }
+        catch (Exception error)
+        {
+            TryRecordLiveDiagnostic(() => record("failed", action, playerId, roomId, region, false, error.Message));
+            throw;
+        }
+    }
+
+    private static Task<LiveCommandResult> ClosedLiveConnection() => Task.FromResult(new LiveCommandResult
+    {
+        Message = "The live connection is closed."
+    });
+
+    private static void TryRecordLiveDiagnostic(Action record)
+    {
+        try { record(); }
+        catch (Exception) { }
+    }
 
     private void OnLiveMapPreferenceChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {

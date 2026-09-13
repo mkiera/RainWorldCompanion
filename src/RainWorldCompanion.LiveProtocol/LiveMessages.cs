@@ -7,6 +7,14 @@ public static partial class ProtocolInfo
 {
     public const int Version = 1;
     public const int MaximumMessageLength = 262144;
+    public const int LogStreamingVersion = 1;
+    public const int MaximumLogBridgeMessageLength = 524288;
+    public const int MaximumLogPacketLength = 32768;
+    public const int MaximumLogPacketsPerBridgeExchange = 6;
+    public const int MaximumActiveMods = 256;
+    public const int MaximumModIdLength = 64;
+    public const int MaximumModDisplayNameLength = 96;
+    public const int MaximumModVersionLength = 32;
     public static string DiscoveryDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RainWorldCompanion", "live");
 }
 
@@ -15,6 +23,9 @@ public sealed class LiveDiscovery
     public int Port { get; set; }
     public string Token { get; set; } = "";
     public int ProtocolVersion { get; set; } = ProtocolInfo.Version;
+    public int LogPort { get; set; }
+    public string LogToken { get; set; } = "";
+    public int LogProtocolVersion { get; set; } = ProtocolInfo.LogStreamingVersion;
 }
 
 public sealed class LiveSnapshot
@@ -42,7 +53,19 @@ public sealed class LiveSnapshot
     public string Timeline { get; set; } = "";
     public string State { get; set; } = "menu";
     public string[] EnabledExpansions { get; set; } = Array.Empty<string>();
+    public LiveModInfo[] ActiveMods { get; set; } = Array.Empty<LiveModInfo>();
+    public bool ActiveModsTruncated { get; set; }
     public LivePlayer[] Players { get; set; } = Array.Empty<LivePlayer>();
+    public LiveTrace? Trace { get; set; }
+}
+
+public sealed class LiveModInfo
+{
+    public string Id { get; set; } = "";
+    public string DisplayName { get; set; } = "";
+    public string Version { get; set; } = "";
+    public string CodeFingerprint { get; set; } = "";
+    public string FingerprintStatus { get; set; } = "unavailable";
 }
 
 public sealed class LiveCommand
@@ -83,6 +106,49 @@ public sealed class LivePlayer
     public bool AllowsHostControl { get; set; }
     public string? CompanionVersion { get; set; }
     public bool IsHost { get; set; }
+    public LivePlayerTrace? Trace { get; set; }
+}
+
+public sealed class LiveTrace
+{
+    public string Process { get; set; } = "";
+    public int Frame { get; set; }
+    public float UnscaledDeltaSeconds { get; set; }
+    public float TimeScale { get; set; }
+    public long ManagedMemoryBytes { get; set; }
+    public int? Cycle { get; set; }
+    public int? Karma { get; set; }
+    public int? KarmaCap { get; set; }
+    public int? RainTimer { get; set; }
+    public int? RainCycleLength { get; set; }
+}
+
+public sealed class LivePlayerTrace
+{
+    public bool Realized { get; set; }
+    public bool SlatedForDeletion { get; set; }
+    public bool InShortcut { get; set; }
+    public float? PositionX { get; set; }
+    public float? PositionY { get; set; }
+    public float? VelocityX { get; set; }
+    public float? VelocityY { get; set; }
+    public int? AbstractX { get; set; }
+    public int? AbstractY { get; set; }
+    public int? AbstractNode { get; set; }
+    public int? Stun { get; set; }
+    public float? AirInLungs { get; set; }
+    public int? FoodInStomach { get; set; }
+    public LiveInputTrace? Input { get; set; }
+}
+
+public sealed class LiveInputTrace
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public bool Jump { get; set; }
+    public bool Throw { get; set; }
+    public bool Pickup { get; set; }
+    public bool Map { get; set; }
 }
 
 public static class LiveJson
