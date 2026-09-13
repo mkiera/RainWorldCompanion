@@ -27,7 +27,7 @@ public sealed class Plugin : BaseUnityPlugin
     public void OnEnable()
     {
         TeleportOperation.Log = message => Logger.LogInfo(message);
-        _allowHostControl = Config.Bind("Map", "AllowHostControl", false, "Allow the current Rain Meadow host to request actions on your local player.");
+        _allowHostControl = Config.Bind("Map", "AllowHostControl", true, "Allow the current Rain Meadow host to request actions on your local player.");
         _hostControl = new MeadowHostControl();
         _transport.Start();
     }

@@ -10,6 +10,42 @@ namespace RainWorldCompanion.Tests;
 
 public sealed class CompanionModTests
 {
+    [Theory]
+    [InlineData(true, false, false, false, CompanionModSetupAction.InstallOrRepair)]
+    [InlineData(true, true, true, false, CompanionModSetupAction.InstallOrRepair)]
+    [InlineData(true, true, false, true, CompanionModSetupAction.None)]
+    [InlineData(true, true, false, false, CompanionModSetupAction.None)]
+    [InlineData(false, true, false, true, CompanionModSetupAction.Remove)]
+    [InlineData(false, false, true, false, CompanionModSetupAction.Remove)]
+    [InlineData(false, false, false, false, CompanionModSetupAction.None)]
+    public void Automatic_setup_preserves_an_installed_mod_disabled_in_remix(bool automatic, bool installed,
+        bool enabled, bool compatible, CompanionModSetupAction expected)
+    {
+        var status = new CompanionModStatus(installed, enabled, compatible, installed ? "1.0.0" : null, null);
+
+        Assert.Equal(expected, CompanionModSetupPolicy.Decide(automatic, status));
+    }
+
+    [Fact]
+    public async Task Uninstall_removes_only_game_hook_and_defers_while_the_game_runs()
+    {
+        using var temp = new TempDirectory();
+        var running = false;
+        var manager = new CompanionModManager(temp.Path, () => running);
+        var zip = Package(temp, "1.0.0");
+        var unrelated = temp.WriteText("RainWorld_Data/StreamingAssets/mods/other/modinfo.json", "untouched");
+        await manager.InstallAsync(zip, CompanionModPackage.Hash(zip), "1.3.0", 1);
+
+        running = true;
+        Assert.Equal(CompanionModRemovalOutcome.Deferred, (await manager.UninstallAsync()).Outcome);
+        Assert.True(Directory.Exists(manager.InstallFolder));
+
+        running = false;
+        Assert.Equal(CompanionModRemovalOutcome.Removed, (await manager.UninstallAsync()).Outcome);
+        Assert.False(Directory.Exists(manager.InstallFolder));
+        Assert.Equal("untouched", File.ReadAllText(unrelated));
+    }
+
     [Fact]
     public async Task Packaged_upgrade_preserves_other_mods_and_reports_ready_without_connection()
     {

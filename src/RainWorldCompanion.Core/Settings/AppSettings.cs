@@ -24,6 +24,8 @@ public sealed class AppSettings
 
     public string? CompanionModInstallRequestedPath { get; set; }
 
+    public bool CompanionGameHookAutomaticSetup { get; set; } = true;
+
     public bool LiveMapSpoilerMode { get; set; } = true;
 
     /// <summary>
@@ -85,6 +87,7 @@ public sealed class AppSettings
         LibraryRootPath = LibraryRootPath,
         GameInstallPath = GameInstallPath,
         CompanionModInstallRequestedPath = CompanionModInstallRequestedPath,
+        CompanionGameHookAutomaticSetup = CompanionGameHookAutomaticSetup,
         LiveMapSpoilerMode = LiveMapSpoilerMode,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,

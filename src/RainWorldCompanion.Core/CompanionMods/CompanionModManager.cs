@@ -49,6 +49,35 @@ public sealed class CompanionModManager
         finally { _operation.Release(); }
     }
 
+    public async Task<CompanionModRemovalResult> UninstallAsync(CancellationToken cancellationToken = default)
+    {
+        await _operation.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() => Uninstall(cancellationToken), cancellationToken).ConfigureAwait(false);
+        }
+        finally { _operation.Release(); }
+    }
+
+    private CompanionModRemovalResult Uninstall(CancellationToken cancellationToken)
+    {
+        if (_isGameRunning())
+            return new(CompanionModRemovalOutcome.Deferred, "Close Rain World to remove Companion Game Hook.");
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RejectLinks(Path.GetDirectoryName(InstallFolder)!, false);
+            RemoveOwnedFolder(StageFolder);
+            RemoveOwnedFolder(PreviousFolder);
+            RemoveOwnedFolder(InstallFolder);
+            return new(CompanionModRemovalOutcome.Removed, null);
+        }
+        catch (Exception error) when (Expected(error))
+        {
+            return new(CompanionModRemovalOutcome.Failed, error.Message);
+        }
+    }
+
     private CompanionModInstallResult Install(string zipPath, string expectedHash, string appVersion, int protocol, CancellationToken cancellationToken)
     {
         if (_isGameRunning()) return new(CompanionModInstallOutcome.Deferred, null, "Close Rain World to install the Companion Game Hook.");
@@ -127,7 +156,8 @@ public sealed class CompanionModManager
 
     private void RemoveOwnedFolder(string path)
     {
-        if (path != StageFolder && path != PreviousFolder) throw new InvalidOperationException("Unexpected Companion Game Hook folder.");
+        if (path != InstallFolder && path != StageFolder && path != PreviousFolder)
+            throw new InvalidOperationException("Unexpected Companion Game Hook folder.");
         if (!Directory.Exists(path)) return;
         RejectLinks(path);
         Directory.Delete(path, true);

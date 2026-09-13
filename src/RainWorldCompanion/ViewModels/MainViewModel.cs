@@ -3268,6 +3268,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _settings = viewModel.Result;
         AdoptTheme();
         await ApplySettingsAsync();
+        await PollLiveFeaturesAsync();
         await ReloadAsync();
     }
 

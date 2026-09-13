@@ -29,6 +29,10 @@ public enum CompanionModInstallOutcome { Installed, Deferred, Failed }
 
 public sealed record CompanionModInstallResult(CompanionModInstallOutcome Outcome, string? Version, string? Problem);
 
+public enum CompanionModRemovalOutcome { Removed, Deferred, Failed }
+
+public sealed record CompanionModRemovalResult(CompanionModRemovalOutcome Outcome, string? Problem);
+
 public static class CompanionModPackage
 {
     public const string ManifestName = "companion-manifest.json";

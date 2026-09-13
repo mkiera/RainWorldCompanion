@@ -54,7 +54,9 @@ public sealed partial class MainViewModel
     private readonly HttpClient _modHttp = new() { Timeout = TimeSpan.FromSeconds(30) };
     private bool _livePolling;
     private DateTimeOffset _nextModUpdate;
+    private DateTimeOffset _nextModSetupAttempt;
     private bool _modUpdateDeferred;
+    private bool _modRemovalDeferred;
     private string? _observedModPath;
     private string? _observedModChannel;
 
@@ -145,7 +147,9 @@ public sealed partial class MainViewModel
                 _observedModPath = path;
                 _observedModChannel = _settings.UpdateChannel;
                 _nextModUpdate = DateTimeOffset.MinValue;
+                _nextModSetupAttempt = DateTimeOffset.MinValue;
                 _modUpdateDeferred = false;
+                _modRemovalDeferred = false;
             }
             var manager = new CompanionModManager(path, () => _gameDetector.IsGameRunning(out _));
             var status = await Task.Run(() =>
@@ -159,9 +163,28 @@ public sealed partial class MainViewModel
             Live.AdoptSetup(status.Installed, status.Ready, status.Version, status.Problem ?? "Companion Game Hook is installed and enabled.");
             AdoptLiveConnection();
             if (IsBusy) return;
-            if (_settings.CompanionModInstallRequestedPath == path && !IsGameRunning)
+            var setupAction = CompanionModSetupPolicy.Decide(_settings.CompanionGameHookAutomaticSetup, status);
+            if (setupAction == CompanionModSetupAction.Remove)
             {
-                await InstallCompanionModAsync();
+                if (!_modRemovalDeferred || !IsGameRunning)
+                    await RemoveCompanionModAsync(manager);
+            }
+            else if (!_settings.CompanionGameHookAutomaticSetup)
+            {
+                _modRemovalDeferred = false;
+                Live.AdoptSetup(false, false, null, "Companion Game Hook is disabled in Settings.");
+            }
+            else if (_settings.CompanionModInstallRequestedPath == path)
+            {
+                if (!IsGameRunning) await InstallCompanionModAsync();
+            }
+            else if (setupAction == CompanionModSetupAction.InstallOrRepair)
+            {
+                if (DateTimeOffset.UtcNow >= _nextModSetupAttempt)
+                {
+                    _nextModSetupAttempt = DateTimeOffset.UtcNow.AddHours(6);
+                    await InstallCompanionModAsync();
+                }
             }
             else if (status.Installed && (_modUpdateDeferred ? !IsGameRunning : DateTimeOffset.UtcNow >= _nextModUpdate))
             {
@@ -186,14 +209,76 @@ public sealed partial class MainViewModel
             Live.OperationText = "Choose the game installation, save folder, and backup folder in Settings first.";
             return;
         }
-        PersistSetting(settings => settings.CompanionModInstallRequestedPath = path);
+        _settings.CompanionGameHookAutomaticSetup = true;
+        _settings.CompanionModInstallRequestedPath = path;
         var running = await Task.Run(() => _gameDetector.IsGameRunning(out _), _shutdown.Token);
         if (running)
         {
+            PersistSetting(_ => { });
             Live.OperationText = "Installation is queued. Close Rain World and Companion will install and enable Companion Game Hook.";
             return;
         }
         await ManageCompanionModAsync(new CompanionModManager(path, () => _gameDetector.IsGameRunning(out _)), null, true);
+    }
+
+    private async Task RemoveCompanionModAsync(CompanionModManager manager)
+    {
+        if (Live.IsWorking || IsBusy) return;
+        if (IsGameRunning)
+        {
+            _modRemovalDeferred = true;
+            Live.OperationText = "Companion Game Hook will be disabled and removed after Rain World closes.";
+            return;
+        }
+        var sync = _modSync;
+        if (sync is null)
+        {
+            Live.OperationText = "Choose the game installation, save folder, and backup folder in Settings before removing Companion Game Hook.";
+            return;
+        }
+        _modRemovalDeferred = false;
+        Live.IsWorking = true;
+        BeginBusy("Companion Game Hook", "Disabling and removing Companion Game Hook…");
+        try
+        {
+            var disabled = await Task.Run(() =>
+            {
+                var plan = sync.BuildPlan(null);
+                var row = plan.Rows.FirstOrDefault(row => row.Id.Equals("rwcompanion", StringComparison.OrdinalIgnoreCase));
+                if (row is null || !row.IsOn) return null;
+                row.Wanted = false;
+                return sync.Apply(plan, "Before disabling Companion Game Hook");
+            }, _shutdown.Token);
+            if (disabled?.Problem is { } problem)
+            {
+                Live.OperationText = "Companion Game Hook could not be disabled: " + problem;
+                return;
+            }
+            var result = await manager.UninstallAsync(_shutdown.Token);
+            if (result.Outcome == CompanionModRemovalOutcome.Deferred)
+            {
+                _modRemovalDeferred = true;
+                Live.OperationText = result.Problem ?? "Companion Game Hook will be removed after Rain World closes.";
+                return;
+            }
+            if (result.Outcome == CompanionModRemovalOutcome.Failed)
+            {
+                Live.OperationText = "Companion Game Hook could not be removed: " + result.Problem;
+                return;
+            }
+            Live.AdoptSetup(false, false, null, "Companion Game Hook is disabled in Settings.");
+            Live.OperationText = "Companion Game Hook was disabled and removed.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            Live.OperationText = "Companion Game Hook could not be removed: " + error.Message;
+        }
+        finally
+        {
+            Live.IsWorking = false;
+            EndBusy();
+        }
     }
 
     private async Task ManageCompanionModAsync(CompanionModManager manager, string? installedVersion, bool enable)
@@ -215,6 +300,7 @@ public sealed partial class MainViewModel
             if (result?.Outcome == CompanionModInstallOutcome.Deferred)
             {
                 _modUpdateDeferred = true;
+                if (enable) PersistSetting(_ => { });
                 Live.OperationText = result.Problem ?? "The mod update will install when Rain World closes.";
                 return;
             }
