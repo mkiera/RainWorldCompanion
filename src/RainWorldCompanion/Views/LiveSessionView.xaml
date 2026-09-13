@@ -83,7 +83,7 @@
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
                                 </DockPanel>
                                 <TextBlock Text="{Binding RoomId}" TextWrapping="Wrap"/>
-                                <WrapPanel><TextBlock Text="{Binding Source}" Margin="0,0,8,0"/><TextBlock Text="{Binding State}"/></WrapPanel>
+                                <WrapPanel><TextBlock Text="{Binding Source}" Margin="0,0,8,0"/><TextBlock Text="{Binding State}" Visibility="{Binding ShowState, Converter={StaticResource BoolVisibility}}"/></WrapPanel>
                                 <TextBlock Text="{Binding MapStatus}" ToolTip="{Binding UnavailableReason}" Style="{StaticResource Text.Muted}" TextWrapping="Wrap"/>
                             </StackPanel>
                         </DataTemplate></ListBox.ItemTemplate>

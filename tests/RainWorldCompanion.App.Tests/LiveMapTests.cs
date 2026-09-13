@@ -9,6 +9,29 @@ namespace RainWorldCompanion.App.Tests;
 public class LiveMapTests
 {
     [Fact]
+    public void A_dead_player_without_a_room_is_shown_as_dead_and_stays_selected()
+    {
+        var view = new LiveSessionViewModel(recover: (_, _) => Task.FromResult(new LiveCommandResult { Success = true }));
+        var snapshot = new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1,
+            SupportsRecovery = true, Campaign = "White", Timeline = "White", State = "gameplay", EnabledExpansions = ["moreslugcats"],
+            Players = [new() { Id = "local", Name = "Player", IsLocal = true, Dead = false, RoomId = "SU_A43" }] };
+        view.AdoptConnection(Core.Live.LiveConnectionStatus.Connected, snapshot, true);
+        view.MapView.SelectedPlayer = view.MapView.Players.Single();
+        snapshot.Players[0].RoomId = null;
+        snapshot.Players[0].Dead = true;
+        view.AdoptConnection(Core.Live.LiveConnectionStatus.Connected, snapshot, true);
+        Assert.Equal("Dead", view.MapView.SelectedPlayer!.RoomId);
+        Assert.Empty(view.MapView.SelectedPlayer.MapStatus);
+        Assert.False(view.MapView.SelectedPlayer.ShowState);
+        Assert.Equal("Dead", view.Players.Single().Location);
+        Assert.True(view.CanRecover);
+        snapshot.Players[0].Dead = false;
+        snapshot.Players[0].RoomId = "SU_A43";
+        view.AdoptConnection(Core.Live.LiveConnectionStatus.Connected, snapshot, true);
+        Assert.Equal("Alive", view.MapView.SelectedPlayer.State);
+    }
+
+    [Fact]
     public void Live_player_in_an_omitted_room_gets_an_explanation()
     {
         var view = new LiveMapViewModel { SpoilerMode = false };

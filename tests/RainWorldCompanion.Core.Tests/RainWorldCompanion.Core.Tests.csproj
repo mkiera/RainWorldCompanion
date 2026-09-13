@@ -23,6 +23,7 @@
     <Compile Include="..\..\src\RWCompanion.Mod\HostControlPermission.cs" Link="HostControlPermission.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\RecoveryDestination.cs" Link="RecoveryDestination.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\RecoveryState.cs" Link="RecoveryState.cs" />
+    <Compile Include="..\..\src\RWCompanion.Mod\MeadowPlayers.cs" Link="MeadowPlayers.cs" />
   </ItemGroup>
 
   <ItemGroup>

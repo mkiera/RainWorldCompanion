@@ -11,6 +11,11 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## Unreleased
+
+- Recover me restores local Rain Meadow players after a void fall removes their
+  network registration. Players whose bodies are gone are shown as dead.
+
 ## 1.4.0-beta.1 - 2026-09-12
 
 - Campaign den fields have a map picker with maps for the supported timelines.

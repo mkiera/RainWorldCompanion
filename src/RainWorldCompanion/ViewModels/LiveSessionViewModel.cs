@@ -255,7 +255,7 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         GameState = current ? snapshot!.State : "Not connected";
         Expansions = current ? string.Join(", ", snapshot!.EnabledExpansions) : "Unknown";
         var rows = current ? snapshot!.Players.Select(p => new LivePlayerRow(p.Id, p.Name,
-            string.IsNullOrWhiteSpace(p.RoomId) ? "Location unavailable" : p.RoomId,
+            string.IsNullOrWhiteSpace(p.RoomId) ? p.Dead == true ? "Dead" : "Location unavailable" : p.RoomId,
             p.Region ?? "Unknown", p.Dead switch { true => "Dead", false => "Alive", null => "Unknown" }, p.IsLocal ? "Local" : "Online")).ToArray() : [];
         if (!Players.SequenceEqual(rows))
         {

@@ -286,6 +286,7 @@ internal sealed class TeleportOperation
 
     private void ReviveAndDetach()
     {
+        if (MeadowPlayers.IsOnline) MeadowPlayers.RestoreRecoveryRegistration(_command.PlayerId, _game);
         var state = GameAccess.Get(_creature, "state") ?? throw new InvalidOperationException("The player state is unavailable.");
         RecoveryState.Revive(state);
         SetIfPresent(state, "permaDead", false);

@@ -12,7 +12,8 @@ public sealed record LiveMapPlayer(string Id, string Name, string RoomId, string
     public string ControlStatus => string.IsNullOrEmpty(CompanionVersion) ? "No compatible Companion Game Hook detected"
         : $"Companion Game Hook {CompanionVersion}: host control {(AllowsHostControl ? "on" : "off")}";
     public string Source => IsLocal ? "Local" : "Online";
-    public string MapStatus => RoomId == "Location unavailable" ? RoomId
+    public bool ShowState => RoomId != State;
+    public string MapStatus => RoomId == "Dead" ? "" : RoomId == "Location unavailable" ? RoomId
         : Placement is null ? UnavailableReason is null ? "Not on this map" : "Unavailable on this map"
         : Placement.Bounds.Count == 0 ? "Den anchor only"
         : Placement.MatchKind.StartsWith("terrain-template", StringComparison.Ordinal) ? "Terrain matched"
@@ -73,7 +74,7 @@ public sealed partial class LiveMapViewModel : ObservableObject
         if (AutomaticMap)
             Map = DenMapCatalog.ForTimeline(ReportedTimeline, snapshot!.EnabledExpansions.Contains("moreslugcats", StringComparer.OrdinalIgnoreCase));
         var rows = snapshot?.Players.Select(p => new LiveMapPlayer(p.Id, p.Name,
-            string.IsNullOrWhiteSpace(p.RoomId) ? "Location unavailable" : !IsRoomVisible(p.RoomId) ? "Unexplored room" : p.RoomId,
+            string.IsNullOrWhiteSpace(p.RoomId) ? p.Dead == true ? "Dead" : "Location unavailable" : !IsRoomVisible(p.RoomId) ? "Unexplored room" : p.RoomId,
             !IsRoomVisible(p.RoomId) ? "Unknown" : p.Region ?? "Unknown", p.Dead switch { true => "Dead", false => "Alive", null => "Unknown" }, p.IsLocal,
             Map is null || string.IsNullOrWhiteSpace(p.RoomId) || !IsRoomVisible(p.RoomId) ? null : RoomMapCatalog.Find(Map.Id, p.RoomId),
             !IsRoomVisible(p.RoomId) ? "Hidden by spoiler mode" : Map is null ? null : RoomMapCatalog.UnavailableReason(Map.Id, p.RoomId),
