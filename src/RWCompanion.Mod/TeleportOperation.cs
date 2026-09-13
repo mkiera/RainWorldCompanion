@@ -302,7 +302,7 @@ internal sealed class TeleportOperation
             GameAccess.Call(abstractRoom, "RemoveEntityFromDen", _creature);
             GameAccess.Call(abstractRoom, "AddEntity", _creature);
         }
-        else if (abstractRoom != null && !Contains(GameAccess.Get(abstractRoom, "entities"), _creature))
+        else if (abstractRoom != null)
             GameAccess.Call(abstractRoom, "AddEntity", _creature);
         if (physical != null)
         {
