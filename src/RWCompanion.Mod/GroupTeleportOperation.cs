@@ -9,6 +9,12 @@ internal sealed class GroupTeleportOperation
     internal bool Ready => _operations.All(operation => operation.Ready);
     internal bool Committed { get; set; }
 
+    internal void Cancel()
+    {
+        foreach (var operation in _operations) operation.Cancel();
+        _operations.Clear();
+    }
+
     internal GroupTeleportOperation(string id, string room, string region, object game)
     {
         _id = id;

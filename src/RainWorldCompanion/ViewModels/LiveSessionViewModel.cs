@@ -16,17 +16,20 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     private readonly Func<bool, Task<LiveCommandResult>>? _setHostControl;
     private LiveSnapshot? _snapshot;
     private readonly Func<string, string, string, Task<LiveCommandResult>>? _teleportAll;
+    private readonly Func<string, string, Task<LiveCommandResult>>? _recover;
 
     public LiveSessionViewModel(Func<Task>? install = null,
         Func<string, string, string, string, Task<LiveCommandResult>>? teleport = null,
         Func<bool, Task<LiveCommandResult>>? setHostControl = null,
-        Func<string, string, string, Task<LiveCommandResult>>? teleportAll = null)
+        Func<string, string, string, Task<LiveCommandResult>>? teleportAll = null,
+        Func<string, string, Task<LiveCommandResult>>? recover = null)
     {
         _install = install ?? (() => Task.CompletedTask);
         _teleport = teleport;
         _setHostControl = setHostControl;
         _teleportAll = teleportAll;
-        MapView.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(MapView.SelectedRoom) or nameof(MapView.SpoilerMode)) RefreshGroupAction(); };
+        _recover = recover;
+        MapView.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(MapView.SelectedRoom) or nameof(MapView.SpoilerMode) or nameof(MapView.SelectedPlayer)) RefreshGroupAction(); };
     }
 
     [ObservableProperty] private bool isMapActionRunning;
@@ -49,7 +52,6 @@ public sealed partial class LiveSessionViewModel : ObservableObject
         if (IsMapActionRunning) return "Wait for the current map action to finish.";
         if (_snapshot is not { IsOnline: true, IsHost: true }) return "Only the Meadow host can teleport everyone.";
         if (_teleportAll == null || !_snapshot.SupportsTeleportAll) return "Update Companion Game Hook to 1.0.5 or newer.";
-        if (!_snapshot.AllowHostControl) return "You: Allow host control is off.";
         if (!string.IsNullOrEmpty(_snapshot.TeleportAllUnavailableReason)) return _snapshot.TeleportAllUnavailableReason;
         if (_snapshot.State is not ("gameplay" or "paused")) return "Enter campaign gameplay.";
         if (room == null) return "Select a destination room.";
@@ -60,6 +62,9 @@ public sealed partial class LiveSessionViewModel : ObservableObject
 
     private void RefreshGroupAction()
     {
+        OnPropertyChanged(nameof(CanRecover));
+        OnPropertyChanged(nameof(RecoveryReason));
+        RecoverCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(IsMeadow));
         OnPropertyChanged(nameof(IsMeadowHost));
         OnPropertyChanged(nameof(TeleportAllReason));
@@ -68,6 +73,26 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     }
 
     partial void OnIsMapActionRunningChanged(bool value) => RefreshGroupAction();
+
+    public string? RecoveryReason => IsMapActionRunning ? "Wait for the current map action to finish."
+        : _recover == null || _snapshot is not { SupportsRecovery: true, CommandVersion: 1 } ? "Connect Game Hook 1.0.8 or newer to recover."
+        : _snapshot.State is not ("gameplay" or "paused") ? "Enter campaign gameplay to recover."
+        : TeleportPlayer == null ? "Waiting for your local player."
+        : null;
+    public bool CanRecover => RecoveryReason == null;
+
+    [RelayCommand(CanExecute = nameof(CanRecover))]
+    private async Task Recover()
+    {
+        if (RecoveryReason is { } reason) { MapActionText = reason; return; }
+        string playerId = TeleportPlayer!.Id;
+        string gameplayId = _snapshot!.GameplayId;
+        IsMapActionRunning = true;
+        MapActionText = "Recovering your player in the current room...";
+        try { MapActionText = (await _recover!(gameplayId, playerId)).Message; }
+        catch (Exception error) { MapActionText = "Recovery failed: " + error.Message; }
+        finally { IsMapActionRunning = false; }
+    }
 
     [RelayCommand(CanExecute = nameof(CanTeleportAll))]
     private Task TeleportAll() => MapView.SelectedRoom is { } room ? TeleportAllHereAsync(room, CurrentGameplayId) : Task.CompletedTask;

@@ -60,7 +60,7 @@ public class ModConfigCompatibilityTests
 
         LibraryEntry entry = world.Library.StoreSlot(Slot1, "a save", null);
 
-        Assert.Equal(2, entry.Manifest!.SchemaVersion);
+        Assert.Equal(LibraryManifest.CurrentSchemaVersion, entry.Manifest!.SchemaVersion);
         Assert.NotNull(entry.Manifest.Configs);
     }
 
@@ -79,7 +79,7 @@ public class ModConfigCompatibilityTests
             BackupJson.Options);
 
         Assert.NotNull(old);
-        Assert.Equal(2, old!.SchemaVersion);
+        Assert.Equal(LibraryManifest.CurrentSchemaVersion, old!.SchemaVersion);
         Assert.Equal("a save", old.Name);
         Assert.Equal("a note", old.Note);
         Assert.Equal(LibraryEntryKind.WholeSlot, old.Kind);

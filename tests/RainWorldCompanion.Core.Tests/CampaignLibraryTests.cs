@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Library;
@@ -275,7 +276,12 @@ public class CampaignLibraryTests
     public void A_campaign_goes_out_as_a_campaign_file_and_comes_back_as_one()
     {
         using var world = new LibraryWorld();
-        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "Survivor run", "halfway");
+        CampaignSlice slice = CampaignFile.ReadFrom(world.Live.Resolve("sav2"), "White")! with
+        {
+            DiscoveredShelters = new[] { "SU_S01", "HI_S02" },
+        };
+        LibraryEntry entry = world.Library.StoreCampaignFrom(
+            slice, "sav2", SaveRealm.Local, 2, "Survivor run", "halfway");
 
         Assert.Equal(".rwcampaign", SaveLibrary.ExportExtensionFor(entry));
 
@@ -290,6 +296,7 @@ public class CampaignLibraryTests
         Assert.Equal("Survivor run", imported.Entry.Name);
         Assert.Equal("halfway", imported.Entry.Manifest!.Note);
         Assert.Equal("White", imported.Entry.Manifest.CampaignSlugcatId);
+        Assert.Equal(slice.DiscoveredShelters, imported.Entry.Manifest.CampaignDiscoveredShelters);
         Assert.Equal(entry.Manifest!.Sha256, imported.Entry.Manifest.Sha256);
     }
 
@@ -476,6 +483,56 @@ public class CampaignLibraryTests
     }
 
     [Fact]
+    public void A_campaign_library_entry_keeps_discovered_shelters_in_its_manifest()
+    {
+        using var world = new LibraryWorld();
+        CampaignSlice original = CampaignFile.ReadFrom(world.Live.Resolve("sav2"), "White")! with
+        {
+            DiscoveredShelters = new[] { "SU_S01", "HI_S02" },
+        };
+
+        LibraryEntry entry = world.Library.StoreCampaignFrom(
+            original, "sav2", SaveRealm.Local, 2, "with shelters", null);
+        CampaignSlice loaded = world.Library.ReadStoredCampaign(world.Reload(entry))!;
+
+        Assert.Equal(new[] { "SU_S01", "HI_S02" }, entry.Manifest!.CampaignDiscoveredShelters);
+        Assert.Equal(original.DiscoveredShelters, loaded.DiscoveredShelters);
+    }
+
+    [Fact]
+    public void A_version_two_campaign_without_shelter_data_still_loads()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "legacy", null);
+        entry.Manifest!.SchemaVersion = 2;
+        entry.Manifest.CampaignDiscoveredShelters = null;
+        File.WriteAllText(entry.ManifestPath, JsonSerializer.Serialize(entry.Manifest, BackupJson.Options));
+
+        LibraryEntry legacy = world.Reload(entry);
+        CampaignSlice loaded = world.Library.ReadStoredCampaign(legacy)!;
+
+        Assert.Equal(2, legacy.Manifest!.SchemaVersion);
+        Assert.Null(loaded.DiscoveredShelters);
+        Assert.True(world.Library.LoadCampaignOntoSlot(legacy, LocalThree).Success);
+    }
+
+    [Fact]
+    public void A_campaign_with_corrupt_shelter_data_is_refused_without_changing_the_slot()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "corrupt", null);
+        entry.Manifest!.CampaignDiscoveredShelters = new[] { "SU_S01<mpdA>OTHER<mpdB>changed" }.ToList();
+        File.WriteAllText(entry.ManifestPath, JsonSerializer.Serialize(entry.Manifest, BackupJson.Options));
+        byte[] before = world.Live.ReadBytes("sav3");
+
+        LibraryLoadResult result = world.Library.LoadCampaignOntoSlot(world.Reload(entry), LocalThree);
+
+        Assert.False(result.Success);
+        Assert.Contains(result.Errors, error => error.Contains("shelter", StringComparison.OrdinalIgnoreCase));
+        SnapshotLayout.AssertBytesEqual(before, world.Live.ReadBytes("sav3"), "sav3");
+    }
+
+    [Fact]
     public void One_campaign_is_pulled_out_of_a_whole_slot_kept_in_the_library()
     {
         using var world = new LibraryWorld();
@@ -552,6 +609,7 @@ public class CampaignLibraryTests
         string text = Encoding.UTF8.GetString(bytes);
         Assert.StartsWith(CampaignFile.Prefix, text, StringComparison.Ordinal);
         Assert.EndsWith(SavePayloadReader.RecordSeparator, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("CONDITIONALSHELTERDATA", text, StringComparison.Ordinal);
 
         CampaignSlice slice = CampaignFile.Read(bytes)!;
         Assert.Equal("White", slice.SlugcatId);

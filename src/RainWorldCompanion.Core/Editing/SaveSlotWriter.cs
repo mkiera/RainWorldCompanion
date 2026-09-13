@@ -377,6 +377,13 @@ public sealed class SaveSlotWriter
     {
         ArgumentNullException.ThrowIfNull(slice);
 
+        if (CampaignSplicer.ShelterDataProblem(slice) is { } problem)
+        {
+            SlotSide side = _backups.SlotCopies.ReadSide(target, includeCampaigns: false);
+            string name = side.FileName.Length == 0 ? "the target slot" : side.FileName;
+            return CampaignMovePlan.Refused(side.FullPath, target, name, problem);
+        }
+
         return Plan(target, session => session.PutCampaignIn(slice));
     }
 

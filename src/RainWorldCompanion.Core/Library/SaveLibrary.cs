@@ -665,6 +665,11 @@ public sealed class SaveLibrary
     {
         ArgumentNullException.ThrowIfNull(slice);
 
+        if (CampaignSplicer.ShelterDataProblem(slice) is { } shelterProblem)
+        {
+            throw new ArgumentException(shelterProblem, nameof(slice));
+        }
+
         var trimmedName = (name ?? "").Trim();
         if (trimmedName.Length == 0)
         {
@@ -682,6 +687,7 @@ public sealed class SaveLibrary
             SchemaVersion = LibraryManifest.CurrentSchemaVersion,
             Kind = LibraryEntryKind.Campaign,
             CampaignSlugcatId = slice.SlugcatId,
+            CampaignDiscoveredShelters = slice.DiscoveredShelters?.ToList(),
             Name = trimmedName,
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             CreatedUtc = DateTime.UtcNow,
@@ -940,7 +946,9 @@ public sealed class SaveLibrary
 
         try
         {
-            return CampaignFile.Read(File.ReadAllBytes(entry.CampaignPath));
+            return CampaignFile.Read(File.ReadAllBytes(entry.CampaignPath)) is { } slice
+                ? slice with { DiscoveredShelters = entry.Manifest?.CampaignDiscoveredShelters }
+                : null;
         }
         catch (Exception)
         {
@@ -1059,6 +1067,7 @@ public sealed class SaveLibrary
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
         manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
+        manifest.PreviousCampaignDiscoveredShelters = manifest.CampaignDiscoveredShelters;
         manifest.Mods = _backups.TryReadMods();
         manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
 
@@ -1068,6 +1077,7 @@ public sealed class SaveLibrary
             payload, LibraryEntry.CampaignFileName, source.Slot, source.Realm);
         manifest.MetadataVersion = SaveMetadataExtractor.Version;
         manifest.CampaignSlugcatId = slice.SlugcatId;
+        manifest.CampaignDiscoveredShelters = slice.DiscoveredShelters?.ToList();
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -1119,6 +1129,7 @@ public sealed class SaveLibrary
         manifest.MetadataVersion = 0;
 
         manifest.Mods = manifest.PreviousMods;
+        manifest.CampaignDiscoveredShelters = manifest.PreviousCampaignDiscoveredShelters;
 
         // A record that outlived the files it describes would be worse than none, so the settings
         // only go back in the manifest if they went back on disk.
@@ -1133,6 +1144,7 @@ public sealed class SaveLibrary
         manifest.PreviousMetadata = null;
         manifest.PreviousMods = null;
         manifest.PreviousConfigs = null;
+        manifest.PreviousCampaignDiscoveredShelters = null;
 
         manifest.UpdatedUtc = DateTime.UtcNow;
 

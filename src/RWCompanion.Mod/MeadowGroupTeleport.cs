@@ -29,7 +29,6 @@ internal sealed partial class MeadowHostControl
     {
         if (!MeadowPlayers.IsHost) return "Only the host can teleport everyone.";
         var blockers = new List<string>();
-        if (!_allowed) blockers.Add("You: Allow host control is off");
         if (_game == null || GameAccess.Get(_game, "IsStorySession") is not true) blockers.Add("You: enter campaign gameplay");
         foreach (var peer in GameAccess.Items(GameAccess.Get(_lobby, "participants")))
         {
@@ -38,7 +37,7 @@ internal sealed partial class MeadowHostControl
             if (string.IsNullOrEmpty(name)) name = "Player " + GameAccess.Text(peer, "inLobbyId");
             if (!_peers.TryGetValue(peer, out var state) || Time.unscaledTime - state.Seen >= 7)
                 blockers.Add(name + ": no compatible Companion Game Hook detected");
-            else if (state.Hello.AllTeleportVersion != 1) blockers.Add(name + ": update Companion Game Hook to 1.0.5 or newer");
+            else if (state.Hello.AllTeleportVersion != 2) blockers.Add(name + ": update Companion Game Hook to 1.0.8 or newer");
             else if (!state.Hello.AllowsHostControl) blockers.Add(name + ": Allow host control is off");
             else if (state.Hello.Grant.Length == 0) blockers.Add(name + ": not in gameplay");
         }
@@ -63,7 +62,7 @@ internal sealed partial class MeadowHostControl
         try
         {
             foreach (var peer in group.Peers)
-                Send(peer.Key, new() { Kind = "prepare-all", Id = group.Id, Grant = peer.Value,
+                Send(peer.Key, new() { Kind = "prepare-all", AllTeleportVersion = 2, Id = group.Id, Grant = peer.Value,
                     RoomId = command.RoomId, Region = command.Region, ExpiresUtcTicks = DateTime.UtcNow.AddSeconds(10).Ticks });
         }
         catch { EndGroup("Could not prepare every player. No group move was committed.", false); throw; }
@@ -75,7 +74,8 @@ internal sealed partial class MeadowHostControl
         if (message.Id is not { Length: > 0 and <= 64 }) return;
         if (message.Kind == "prepare-all")
         {
-            string? rejection = !_permission.Accepts(sender, message.Grant) ? "Allow host control is off or the host/gameplay changed."
+            string? rejection = message.AllTeleportVersion != 2 ? "The host needs Companion Game Hook 1.0.8 or newer."
+                : !_permission.Accepts(sender, message.Grant) ? "Allow host control is off or the host/gameplay changed."
                 : Busy || localBusy ? "A teleport is already in progress."
                 : _game == null ? "Not in gameplay."
                 : message.ExpiresUtcTicks < DateTime.UtcNow.Ticks || message.ExpiresUtcTicks > DateTime.UtcNow.AddSeconds(30).Ticks ? "Group request expired."
@@ -118,7 +118,8 @@ internal sealed partial class MeadowHostControl
         var group = _group;
         if (group == null) return;
         if (!ReferenceEquals(group.Lobby, _lobby) || group.Gameplay != _gameplay
-            || !_permission.Accepts(group.Host, group.Grant) || !IsParticipant(group.Host))
+            || (group.Coordinator ? !MeadowPlayers.IsHost || !ReferenceEquals(group.Host, GameAccess.Get(_lobby, "owner"))
+                : !_permission.Accepts(group.Host, group.Grant)) || !IsParticipant(group.Host))
         { EndGroup("Teleport all stopped because permission, host, or gameplay changed.", false); return; }
         if (Time.unscaledTime - group.Started > 50) { EndGroup("Teleport all timed out. Check everyone's location before retrying.", false); return; }
         if (group.Coordinator && !group.Committed)
@@ -169,6 +170,7 @@ internal sealed partial class MeadowHostControl
         _group = null;
         if (group == null) return;
         LastAction = message;
+        group.Operation.Cancel();
         if (group.Coordinator)
         {
             _result = new() { Id = group.Id, Success = success, Message = message };

@@ -26,11 +26,12 @@ public sealed class Plugin : BaseUnityPlugin
 
     public void OnEnable()
     {
+        TeleportOperation.Log = message => Logger.LogInfo(message);
         _allowHostControl = Config.Bind("Map", "AllowHostControl", false, "Allow the current Rain Meadow host to request actions on your local player.");
         _hostControl = new MeadowHostControl();
         _transport.Start();
     }
-    public void OnDisable() { _hostControl?.Dispose(); _transport.Stop(); }
+    public void OnDisable() { _teleport?.Cancel(); _teleport = null; _hostControl?.Dispose(); _transport.Stop(); TeleportOperation.Log = null; }
 
     public void Update()
     {
@@ -41,6 +42,7 @@ public sealed class Plugin : BaseUnityPlugin
             if (!_enabledMods.Contains("rwcompanion", StringComparer.OrdinalIgnoreCase))
             {
                 _hostControl?.Suspend();
+                _teleport?.Cancel();
                 _teleport = null;
                 _game = null;
                 _gameplayId = "";
@@ -57,10 +59,13 @@ public sealed class Plugin : BaseUnityPlugin
                 _game = game;
                 _gameplayId = game == null ? "" : Guid.NewGuid().ToString("N");
             }
+            TeleportOperation.Observe(game);
             if (_teleport?.Update(game) is { } result) { _commandResult = result; _teleport = null; }
             if (_transport.TakeCommand() is { } command && command.Id != _lastCommandId)
             {
                 _lastCommandId = command.Id;
+                Logger.LogInfo("Live command " + command.Id + " action=" + (command.Recover ? "recover" : command.TeleportAll ? "teleport-all" : command.AllowHostControl.HasValue ? "host-control" : "teleport")
+                    + " player=" + command.PlayerId + " destination=" + command.Region + "/" + command.RoomId);
                 try
                 {
                     if (command.SessionId != _session || command.ExpiresUtcTicks < DateTime.UtcNow.Ticks)
@@ -75,14 +80,20 @@ public sealed class Plugin : BaseUnityPlugin
                     {
                         if (_teleport != null || _hostControl?.Busy == true) throw new InvalidOperationException("A teleport is already in progress.");
                         if (game == null || command.GameplayId != _gameplayId) throw new InvalidOperationException("Gameplay changed before teleport started.");
-                        if (!ValidIdentifier(command.RoomId, 100) || !ValidIdentifier(command.Region, 20))
+                        if (!command.Recover && (!ValidIdentifier(command.RoomId, 100) || !ValidIdentifier(command.Region, 20)))
                             throw new InvalidOperationException("Invalid teleport destination.");
+                        if (command.Recover && (command.TeleportAll || MeadowPlayers.IsOnline && MeadowPlayers.FindLocal(command.PlayerId) == null))
+                            throw new InvalidOperationException("Recovery is available for your local player only.");
                         if (command.TeleportAll) _hostControl!.RequestAll(command);
                         else if (MeadowPlayers.IsOnline && MeadowPlayers.FindLocal(command.PlayerId) == null) _hostControl!.Request(command);
                         else _teleport = new TeleportOperation(command, game);
                     }
                 }
-                catch (Exception exception) { _commandResult = new() { Id = command.Id, Message = exception.GetBaseException().Message }; }
+                catch (Exception exception)
+                {
+                    _commandResult = new() { Id = command.Id, Message = exception.GetBaseException().Message };
+                    Logger.LogWarning("Live command " + command.Id + " rejected: " + _commandResult.Message);
+                }
             }
             if (_hostControl?.Update(game, _gameplayId, _allowHostControl?.Value == true, _teleport != null) is { } hostResult)
                 _commandResult = hostResult;
@@ -98,6 +109,7 @@ public sealed class Plugin : BaseUnityPlugin
                 IsOnline = MeadowPlayers.IsOnline,
                 IsHost = MeadowPlayers.IsHost,
                 SupportsTeleportAll = true,
+                SupportsRecovery = true,
                 TeleportAllUnavailableReason = _hostControl?.AllUnavailableReason() ?? "Host control is unavailable.",
                 HostActionText = _hostControl?.LastAction ?? "",
                 AllowHostControl = _allowHostControl?.Value == true,

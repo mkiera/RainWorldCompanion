@@ -113,6 +113,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             enabled => _liveServer?.SetHostControlAsync(enabled)
                 ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }),
             (gameplay, room, region) => _liveServer?.TeleportAllAsync(gameplay, room, region)
+                ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }),
+            (gameplay, player) => _liveServer?.RecoverAsync(gameplay, player)
                 ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }));
 
         // Empty on purpose. This runs on the dispatcher inside App.OnStartup, and every way of

@@ -13,6 +13,7 @@ public partial class LiveSessionView : UserControl
     private bool _lastSpoilerMode = true;
     private string? _centeredRoom;
     private string? _centeredPlayer;
+    private Action? _refreshRoomMenu;
     public LiveSessionView()
     {
         InitializeComponent();
@@ -40,6 +41,8 @@ public partial class LiveSessionView : UserControl
 
     private void OpenRoomMenu(LiveSessionViewModel view, MappedRoom room)
     {
+        if (WorldMap.ContextMenu is { } previous) previous.IsOpen = false;
+        var refreshers = new List<Action>();
         string? reason = view.TeleportUnavailableReason(room);
         var teleport = new MenuItem
         {
@@ -47,6 +50,7 @@ public partial class LiveSessionView : UserControl
             ToolTip = reason ?? $"Move {view.TeleportPlayer?.Name} to {room.RoomId}. Changing regions brings all local co-op players."
         };
         ToolTipService.SetShowOnDisabled(teleport, true);
+        refreshers.Add(() => { var why = view.TeleportUnavailableReason(room); teleport.IsEnabled = why == null; teleport.ToolTip = why ?? "Move your player here."; });
         string? gameplayId = view.CurrentGameplayId;
         teleport.Click += async (_, _) => await view.TeleportHereAsync(room, gameplayId);
         var menu = new ContextMenu { PlacementTarget = WorldMap, Style = (Style)FindResource("Map.RoomMenu") };
@@ -57,6 +61,7 @@ public partial class LiveSessionView : UserControl
             string? allReason = view.TeleportAllUnavailableReason(room);
             var all = new MenuItem { Header = "Teleport all here", IsEnabled = allReason == null, ToolTip = allReason ?? "Move everyone, including across regions." };
             ToolTipService.SetShowOnDisabled(all, true);
+            refreshers.Add(() => { var why = view.TeleportAllUnavailableReason(room); all.IsEnabled = why == null; all.ToolTip = why ?? "Move everyone here."; });
             all.Click += async (_, _) => await view.TeleportAllHereAsync(room, gameplayId);
             menu.Items.Add(all);
             foreach (var player in _map.Players.Where(p => !p.IsLocal))
@@ -65,23 +70,34 @@ public partial class LiveSessionView : UserControl
                 var action = new MenuItem { Header = "Teleport " + player.Name + " here", IsEnabled = unavailable == null,
                     ToolTip = unavailable ?? "Request a teleport from this player's mod." };
                 ToolTipService.SetShowOnDisabled(action, true);
+                refreshers.Add(() => { var why = view.HostTeleportUnavailableReason(room, player.Id); action.IsEnabled = why == null; action.ToolTip = why ?? "Request a teleport from this player's mod."; });
                 action.Click += async (_, _) => await view.TeleportPlayerHereAsync(room, player.Id, gameplayId);
                 menu.Items.Add(action);
             }
         }
         WorldMap.ContextMenu = menu;
-        menu.Closed += (_, _) => { if (ReferenceEquals(WorldMap.ContextMenu, menu)) WorldMap.ContextMenu = null; };
+        _refreshRoomMenu = () => { foreach (var refresh in refreshers) refresh(); };
+        System.ComponentModel.PropertyChangedEventHandler changed = (_, _) => _refreshRoomMenu?.Invoke();
+        view.PropertyChanged += changed;
+        menu.Closed += (_, _) =>
+        {
+            view.PropertyChanged -= changed;
+            if (ReferenceEquals(WorldMap.ContextMenu, menu)) { WorldMap.ContextMenu = null; _refreshRoomMenu = null; }
+        };
         menu.IsOpen = true;
     }
 
     private async void HostControlChanged(object sender, RoutedEventArgs e)
     {
         if (DataContext is LiveSessionViewModel view && sender is CheckBox toggle)
-        {
-            bool enabled = toggle.IsChecked == true;
-            toggle.IsChecked = view.AllowHostControl;
-            await view.SetHostControlAsync(enabled);
-        }
+            await ApplyHostControlClick(toggle, view);
+    }
+
+    internal static async Task ApplyHostControlClick(CheckBox toggle, LiveSessionViewModel view)
+    {
+        bool enabled = toggle.IsChecked == true;
+        await view.SetHostControlAsync(enabled);
+        toggle.SetCurrentValue(System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty, view.AllowHostControl);
     }
 
     private void UpdateMap()
@@ -109,6 +125,7 @@ public partial class LiveSessionView : UserControl
             }
             else { _centeredRoom = null; _centeredPlayer = null; }
             WorldMap.InvalidateVisual();
+            _refreshRoomMenu?.Invoke();
         }
         finally { _updating = false; }
     }

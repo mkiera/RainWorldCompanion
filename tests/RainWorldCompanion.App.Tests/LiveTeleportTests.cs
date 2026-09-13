@@ -7,6 +7,46 @@ namespace RainWorldCompanion.App.Tests;
 
 public class LiveTeleportTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Host_control_click_preserves_binding_and_displays_the_acknowledged_value(bool accepted)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                int requests = 0;
+                var viewModel = new LiveSessionViewModel(setHostControl: _ =>
+                {
+                    requests++;
+                    return Task.FromResult(new LiveCommandResult { Success = accepted });
+                });
+                viewModel.AdoptConnection(LiveConnectionStatus.Connected, Snapshot(), true);
+                var toggle = new System.Windows.Controls.CheckBox();
+                var property = System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty;
+                toggle.SetBinding(property, new System.Windows.Data.Binding(nameof(viewModel.AllowHostControl))
+                {
+                    Source = viewModel, Mode = System.Windows.Data.BindingMode.OneWay
+                });
+                toggle.Click += async (_, _) => await Views.LiveSessionView.ApplyHostControlClick(toggle, viewModel);
+                typeof(System.Windows.Controls.Primitives.ToggleButton)
+                    .GetMethod("OnClick", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                    .Invoke(toggle, null);
+                Assert.Equal(1, requests);
+                Assert.Equal(accepted, toggle.IsChecked);
+                Assert.Equal(accepted, viewModel.AllowHostControl);
+                Assert.True(System.Windows.Data.BindingOperations.IsDataBound(toggle, property));
+            }
+            catch (Exception error) { failure = error; }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        Assert.Null(failure);
+    }
+
     [Fact]
     public async Task Host_requests_require_peer_opt_in_and_target_that_peer()
     {
@@ -103,7 +143,8 @@ public class LiveTeleportTests
             return Task.FromResult(new LiveCommandResult { Success = true, Message = "Everyone arrived." });
         });
         var snapshot = Snapshot();
-        snapshot.IsOnline = snapshot.IsHost = snapshot.AllowHostControl = snapshot.SupportsTeleportAll = true;
+        snapshot.IsOnline = snapshot.IsHost = snapshot.SupportsTeleportAll = true;
+        snapshot.AllowHostControl = false;
         snapshot.TeleportAllUnavailableReason = "Guest: Allow host control is off";
         view.MapView.SpoilerMode = false;
         view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
@@ -146,6 +187,31 @@ public class LiveTeleportTests
     }
 
     private static MappedRoom Room() => RoomMapCatalog.Find("Downpour", "SU_A43")!;
+
+    [Fact]
+    public async Task Recovery_accepts_a_dead_local_player_without_a_selected_room_or_host_permission()
+    {
+        string? recovered = null;
+        var view = new LiveSessionViewModel(recover: (_, player) =>
+        {
+            recovered = player;
+            return Task.FromResult(new LiveCommandResult { Success = true, Message = "Recovered." });
+        });
+        var snapshot = Snapshot();
+        snapshot.SupportsRecovery = true;
+        snapshot.IsOnline = true;
+        snapshot.Players[0].Dead = true;
+        snapshot.Players[0].RoomId = null;
+        view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
+        view.MapView.SelectedPlayer = view.MapView.Players.Single(p => !p.IsLocal);
+        Assert.True(view.CanRecover);
+        await view.RecoverCommand.ExecuteAsync(null);
+        Assert.Equal("local:0", recovered);
+        Assert.Equal("Recovered.", view.MapActionText);
+        snapshot.SupportsRecovery = false;
+        view.AdoptConnection(LiveConnectionStatus.Connected, snapshot, true);
+        Assert.False(view.CanRecover);
+    }
     private static LiveSnapshot Snapshot() => new()
     {
         SessionId = "session", GameplayId = "game", CommandVersion = 1, Campaign = "White", Timeline = "White", State = "gameplay",

@@ -23,7 +23,7 @@ public sealed class LibraryManifest
 {
     /// <summary>A version one manifest carries no kind and reads back as a whole slot, which is what
     /// every one of them is.</summary>
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -31,6 +31,10 @@ public sealed class LibraryManifest
 
     /// <summary>Null for a whole slot.</summary>
     public string? CampaignSlugcatId { get; set; }
+
+    public List<string>? CampaignDiscoveredShelters { get; set; }
+
+    public List<string>? PreviousCampaignDiscoveredShelters { get; set; }
 
     public string Name { get; set; } = "";
 

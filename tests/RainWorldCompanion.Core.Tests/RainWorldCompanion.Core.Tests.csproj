@@ -21,6 +21,8 @@
     <Compile Include="..\..\src\RWCompanion.Mod\GameAccess.cs" Link="GameAccess.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\VisitedRooms.cs" Link="VisitedRooms.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\HostControlPermission.cs" Link="HostControlPermission.cs" />
+    <Compile Include="..\..\src\RWCompanion.Mod\RecoveryDestination.cs" Link="RecoveryDestination.cs" />
+    <Compile Include="..\..\src\RWCompanion.Mod\RecoveryState.cs" Link="RecoveryState.cs" />
   </ItemGroup>
 
   <ItemGroup>

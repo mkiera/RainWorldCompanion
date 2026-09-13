@@ -26,6 +26,7 @@ public sealed class LiveSnapshot
     public bool IsOnline { get; set; }
     public bool IsHost { get; set; }
     public bool SupportsTeleportAll { get; set; }
+    public bool SupportsRecovery { get; set; }
     public string TeleportAllUnavailableReason { get; set; } = "";
     public string HostActionText { get; set; } = "";
     public bool AllowHostControl { get; set; }
@@ -46,6 +47,7 @@ public sealed class LiveSnapshot
 
 public sealed class LiveCommand
 {
+    public bool Recover { get; set; }
     public bool TeleportAll { get; set; }
     public bool? AllowHostControl { get; set; }
     public string Id { get; set; } = "";

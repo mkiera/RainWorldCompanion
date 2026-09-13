@@ -43,7 +43,7 @@ public sealed class LiveConnectionTests
         using var client = await fixture.Connect();
         using var reader = new StreamReader(client.GetStream());
         var snapshot = new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1, State = "gameplay",
-            IsOnline = true, IsHost = true, AllowHostControl = true, SupportsTeleportAll = true,
+            IsOnline = true, IsHost = true, AllowHostControl = false, SupportsTeleportAll = true,
             TeleportAllUnavailableReason = "Guest: control off" };
         async Task<LiveCommandReply> Exchange()
         {
@@ -77,6 +77,37 @@ public sealed class LiveConnectionTests
             Players = [new() { Id = "local:0", IsLocal = true, Dead = false }, new() { Id = "remote", Dead = false }] });
         await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
         Assert.False((await fixture.Server.TeleportAsync(gameplay, player, "SU_A43", "SU")).Success);
+    }
+
+    [Fact]
+    public async Task Recovery_requires_capability_and_ownership_but_allows_death_without_destination()
+    {
+        using var fixture = new ServerFixture();
+        using var client = await fixture.Connect();
+        using var reader = new StreamReader(client.GetStream());
+        var snapshot = new LiveSnapshot { SessionId = "session", GameplayId = "game", CommandVersion = 1, State = "gameplay",
+            IsOnline = true, IsHost = true, Players = [new() { Id = "local:0", IsLocal = true, Dead = true },
+                new() { Id = "remote", Dead = true, AllowsHostControl = true, CompanionVersion = "1.0.8" }] };
+        async Task<LiveCommandReply> Exchange()
+        {
+            snapshot.Sequence++;
+            await fixture.Send(client, snapshot);
+            return LiveJson.Deserialize<LiveCommandReply>((await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(5)))!);
+        }
+        await Exchange();
+        Assert.False((await fixture.Server.RecoverAsync("game", "local:0")).Success);
+        snapshot.SupportsRecovery = true;
+        await Exchange();
+        Assert.False((await fixture.Server.RecoverAsync("game", "remote")).Success);
+        Assert.False((await fixture.Server.RecoverAsync("old-game", "local:0")).Success);
+        var pending = fixture.Server.RecoverAsync("game", "local:0");
+        var command = (await Exchange()).Command!;
+        Assert.True(command.Recover);
+        Assert.False(command.TeleportAll);
+        Assert.Equal("", command.RoomId);
+        snapshot.CommandResult = new() { Id = command.Id, Success = true };
+        await Exchange();
+        Assert.True((await pending.WaitAsync(TimeSpan.FromSeconds(5))).Success);
     }
 
     [Fact]

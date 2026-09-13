@@ -36,7 +36,10 @@ public sealed class LiveConnectionServer : IDisposable
 
     public Task<LiveCommandResult> SetHostControlAsync(bool enabled) => SendCommandAsync("", "", "", "", enabled);
 
-    private async Task<LiveCommandResult> SendCommandAsync(string gameplayId, string playerId, string roomId, string region, bool? allowHostControl, bool teleportAll = false)
+    public Task<LiveCommandResult> RecoverAsync(string gameplayId, string playerId)
+        => SendCommandAsync(gameplayId, playerId, "", "", null, recover: true);
+
+    private async Task<LiveCommandResult> SendCommandAsync(string gameplayId, string playerId, string roomId, string region, bool? allowHostControl, bool teleportAll = false, bool recover = false)
     {
         string action = allowHostControl.HasValue ? "Host control update" : "Teleport";
         TaskCompletionSource<LiveCommandResult> completion;
@@ -47,19 +50,21 @@ public sealed class LiveConnectionServer : IDisposable
             if (allowHostControl == null && (snapshot.State is not ("gameplay" or "paused")
                 || string.IsNullOrEmpty(gameplayId) || snapshot.GameplayId != gameplayId))
                 return new() { Message = "Connect an updated Companion Game Hook during gameplay first." };
-            if (teleportAll && (!snapshot.IsHost || !snapshot.AllowHostControl || !snapshot.SupportsTeleportAll || !string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason)))
+            if (recover && (!snapshot.SupportsRecovery || !snapshot.Players.Any(p => p.Id == playerId && p.IsLocal)))
+                return new() { Message = "Recovery requires an updated Game Hook and a local player." };
+            if (teleportAll && (!snapshot.IsHost || !snapshot.SupportsTeleportAll || !string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason)))
                 return new() { Message = string.IsNullOrEmpty(snapshot.TeleportAllUnavailableReason) ? "Teleport all requires an updated host mod and everyone's permission." : snapshot.TeleportAllUnavailableReason };
-            if (allowHostControl == null && !teleportAll && !snapshot.Players.Any(p => p.Id == playerId && p.Dead == false
+            if (allowHostControl == null && !teleportAll && !recover && !snapshot.Players.Any(p => p.Id == playerId && p.Dead == false
                 && (p.IsLocal || snapshot.IsHost && p.AllowsHostControl && !string.IsNullOrEmpty(p.CompanionVersion))))
                 return new() { Message = "Choose a living local player or an online player who allows host control." };
             if (_commandCompletion is not null) return new() { Message = "A live command is already in progress." };
-            if (allowHostControl == null && (string.IsNullOrWhiteSpace(roomId) || roomId.Length > 100 || string.IsNullOrWhiteSpace(region) || region.Length > 20))
+            if (allowHostControl == null && !recover && (string.IsNullOrWhiteSpace(roomId) || roomId.Length > 100 || string.IsNullOrWhiteSpace(region) || region.Length > 20))
                 return new() { Message = "Invalid destination." };
             _queuedCommand = new()
             {
                 Id = Guid.NewGuid().ToString("N"), SessionId = snapshot.SessionId, GameplayId = gameplayId,
                 PlayerId = playerId, RoomId = roomId, Region = region, ExpiresUtcTicks = DateTime.UtcNow.AddSeconds(5).Ticks,
-                AllowHostControl = allowHostControl, TeleportAll = teleportAll
+                AllowHostControl = allowHostControl, TeleportAll = teleportAll, Recover = recover
             };
             _commandId = _queuedCommand.Id;
             _commandCompletion = completion = new(TaskCreationOptions.RunContinuationsAsynchronously);

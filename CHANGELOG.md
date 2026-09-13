@@ -11,6 +11,26 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## 1.4.0-beta.1 - 2026-09-12
+
+- Campaign den fields have a map picker with maps for the supported timelines.
+  Shelter locations can be selected on the map or entered by room name.
+- Live features are part of the main window, with room tracking, player following,
+  and a spoiler mode that reveals explored rooms and their connections. Companion
+  installs, enables, and updates Companion Game Hook, which supplies live game data.
+  You can switch between saves and live features while the game is running.
+- The live map supports local teleports and Rain Meadow host requests. Guests opt
+  in to host control, and player indicators show who is host and who has granted
+  permission. Teleport all supports travel between regions when every guest has
+  a compatible Game Hook and allows host control. Recover me revives and moves
+  your existing local player to an open position in their current region.
+- A developer dashboard shows connection activity, game data, and map diagnostics.
+- Campaign transfers now carry discovered passage destinations for the selected
+  slugcat, preserving other progression in the destination slot. Store or update
+  a campaign library entry with this version to include those destinations.
+  Older entries and loose campaign files do not contain this extra data.
+- Completed update downloads stay at 100 percent while the installer is prepared.
+
 ## 1.3.0 - 2026-09-05
 
 - The app opens with the live save selected and the save library visible. The

@@ -81,7 +81,7 @@ internal sealed partial class MeadowHostControl : IDisposable
                 foreach (var peer in GameAccess.Items(GameAccess.Get(lobby, "participants")))
                     if (GameAccess.Get(peer, "isMe") is false && IsParticipant(peer))
                         Send(peer, new() { Kind = "hello", Grant = _permission.Grant, ModVersion = ProtocolInfo.ModVersion,
-                            AllTeleportVersion = 1, AllowsHostControl = allowed });
+                            AllTeleportVersion = 2, AllowsHostControl = allowed || MeadowPlayers.IsHost });
             }
             while (_inbox.TryDequeue(out var item))
             {
@@ -106,7 +106,7 @@ internal sealed partial class MeadowHostControl : IDisposable
             if (player.IsLocal)
             {
                 player.CompanionVersion = ProtocolInfo.ModVersion;
-                player.AllowsHostControl = _allowed;
+                player.AllowsHostControl = _allowed || MeadowPlayers.IsHost;
                 continue;
             }
             var owner = MeadowPlayers.Owner(player.Id);
@@ -181,6 +181,7 @@ internal sealed partial class MeadowHostControl : IDisposable
     {
         LastAction = "Host teleport: " + result.Message;
         object? requester = _requester;
+        if (!result.Success) _incoming?.Cancel();
         _incoming = null;
         _request = null;
         _requester = null;
@@ -188,10 +189,17 @@ internal sealed partial class MeadowHostControl : IDisposable
     }
 
     private static bool ValidId(string? text, int maximum) => text is { Length: > 0 } && text.Length <= maximum && text.All(c => char.IsLetterOrDigit(c) || c == '_');
-    private static void Send(object peer, MeadowControlMessage message) => MeadowRpc.Send(peer, LiveJson.Serialize(message));
+    private static void Send(object peer, MeadowControlMessage message)
+    {
+        if (message.Kind != "hello") TeleportOperation.Log?.Invoke("Meadow command " + message.Id + " phase=" + message.Kind
+            + " peer=" + GameAccess.Text(peer, "inLobbyId") + " destination=" + message.Region + "/" + message.RoomId);
+        MeadowRpc.Send(peer, LiveJson.Serialize(message));
+    }
     private static void Reply(object peer, LiveCommandResult result) => Send(peer, new() { Kind = "result", Id = result.Id, Success = result.Success, Message = result.Message });
     internal void Suspend()
     {
+        _group?.Operation.Cancel();
+        _incoming?.Cancel();
         _group = null;
         _permission.Update(null, null, "", false);
         _incoming = null;

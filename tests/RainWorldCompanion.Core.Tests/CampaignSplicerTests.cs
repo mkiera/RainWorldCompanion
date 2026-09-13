@@ -117,6 +117,93 @@ public class CampaignSplicerTests
         Assert.Equal("White", CampaignSplicer.Extract(result, "White")!.SlugcatId);
     }
 
+    [Fact]
+    public void A_campaign_carries_only_its_discovered_shelters()
+    {
+        string source = SyntheticSave.Progression(new[]
+        {
+            ("SAVE STATE", SyntheticSave.SaveStateBody("Yellow")),
+            ("MISCPROG", "OTHER<mpdB>untouched<mpdA>CONDITIONALSHELTERDATA<mpdB>"
+                + "UW_S01 : Yellow : White : <mpdC>CC_S01 : White : <mpdC>"
+                + "LF_S01 : Yellow : <mpdC><mpdA>"),
+        });
+
+        CampaignSlice slice = CampaignSplicer.Extract(source, "Yellow")!;
+
+        Assert.Equal(new[] { "UW_S01", "LF_S01" }, slice.DiscoveredShelters);
+    }
+
+    [Fact]
+    public void A_campaign_unions_its_shelters_into_the_target_misc_progression()
+    {
+        string target = SyntheticSave.Progression(new[]
+        {
+            ("MISCPROG", "OTHER<mpdB>untouched<mpdA>CONDITIONALSHELTERDATA<mpdB>"
+                + "UW_S01 : White : <mpdC>SU_S01 : Gourmand : <mpdC><mpdA>"),
+            ("SAVE STATE", SyntheticSave.SaveStateBody("White")),
+        });
+        var slice = new CampaignSlice(
+            "Yellow",
+            "SAVE STATE<progDivB>" + SyntheticSave.SaveStateBody("Yellow"),
+            Array.Empty<string>(),
+            new[] { "UW_S01", "LF_S01" });
+
+        string result = CampaignSplicer.InsertCampaign(target, slice, out _);
+        string misc = MiscProg(result);
+
+        Assert.Contains("OTHER<mpdB>untouched<mpdA>", misc, StringComparison.Ordinal);
+        Assert.Contains("UW_S01 : White : Yellow : <mpdC>", misc, StringComparison.Ordinal);
+        Assert.Contains("SU_S01 : Gourmand : <mpdC>", misc, StringComparison.Ordinal);
+        Assert.Contains("LF_S01 : Yellow : <mpdC>", misc, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_legacy_campaign_without_shelter_data_leaves_misc_progression_unchanged()
+    {
+        string target = SyntheticSave.Progression(new[]
+        {
+            ("MISCPROG", "CONDITIONALSHELTERDATA<mpdB>SU_S01 : White : <mpdC><mpdA>"),
+        });
+        CampaignSlice legacy = SliceFor("Yellow", "SU");
+
+        string result = CampaignSplicer.InsertCampaign(target, legacy, out _);
+
+        Assert.Equal(MiscProg(target), MiscProg(result));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("SU-S01")]
+    [InlineData("SU_S01<mpdA>OTHER<mpdB>changed")]
+    [InlineData("SU_S01 : White")]
+    public void An_invalid_discovered_shelter_is_refused_before_the_target_is_changed(string shelter)
+    {
+        string target = SyntheticSave.Progression(new[]
+        {
+            ("MISCPROG", "OTHER<mpdB>untouched<mpdA>"),
+        });
+        var slice = new CampaignSlice(
+            "Yellow",
+            "SAVE STATE<progDivB>" + SyntheticSave.SaveStateBody("Yellow"),
+            Array.Empty<string>(),
+            new[] { shelter });
+
+        Assert.Throws<ArgumentException>(() => CampaignSplicer.InsertCampaign(target, slice, out _));
+        Assert.Equal("OTHER<mpdB>untouched<mpdA>", MiscProg(target));
+    }
+
+    [Fact]
+    public void A_slugcat_id_that_can_break_a_shelter_entry_is_refused()
+    {
+        var slice = new CampaignSlice(
+            "Yellow : White",
+            "SAVE STATE<progDivB>SAV STATE NUMBER<svB>Yellow : White<svA>",
+            Array.Empty<string>(),
+            new[] { "SU_S01" });
+
+        Assert.NotNull(CampaignSplicer.ShelterDataProblem(slice));
+    }
+
     /// <summary>
     /// SaveToDisk writes a separator after every record it keeps, so a payload ends with one and a
     /// new campaign goes before the empty record that trailing separator leaves behind.

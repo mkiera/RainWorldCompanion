@@ -91,6 +91,9 @@
                     <StackPanel Grid.Row="4" Margin="0,8,0,0">
                         <CheckBox Content="Follow selected player" IsChecked="{Binding MapView.IsFollowing, Mode=OneWay}" Click="FollowSelected"/>
                         <TextBlock Text="{Binding MapView.FollowStatus}" TextWrapping="Wrap" Style="{StaticResource Text.Muted}" Margin="0,4,0,0"/>
+                        <Button Content="Recover me" Command="{Binding RecoverCommand}" Margin="0,12,0,0" Style="{StaticResource Button.Small}"
+                                ToolTip="Revive and return your selected local player to an open position in their current room."/>
+                        <TextBlock Text="{Binding RecoveryReason}" TextWrapping="Wrap" Margin="0,5,0,0" Style="{StaticResource Text.Muted}"/>
                         <CheckBox Content="Allow host control" IsChecked="{Binding AllowHostControl, Mode=OneWay}"
                                   Click="HostControlChanged" Margin="0,12,0,0"
                                   ToolTip="Off by default. Permit the current Rain Meadow host to teleport your local player, including cross-region Teleport all. Turn off to revoke permission and cancel pending host requests.">
