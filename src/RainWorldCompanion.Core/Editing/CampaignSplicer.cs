@@ -13,7 +13,8 @@ namespace RainWorldCompanion.Core.Editing;
 public sealed record CampaignSlice(
     string SlugcatId,
     string SaveStateRecord,
-    IReadOnlyList<string> MapRecords);
+    IReadOnlyList<string> MapRecords,
+    IReadOnlyList<string>? DiscoveredShelters = null);
 
 public enum CampaignSpliceOutcome
 {
@@ -77,6 +78,18 @@ public static class CampaignSplicer
 
     private const string OwnedMapUpdatePrefix = "MAPUPDATE_";
 
+    private const string MiscProgressHeader = "MISCPROG";
+
+    private const string MiscFieldSeparator = "<mpdA>";
+
+    private const string MiscValueSeparator = "<mpdB>";
+
+    private const string MiscListSeparator = "<mpdC>";
+
+    private const string ConditionalSheltersField = "CONDITIONALSHELTERDATA";
+
+    private const string ShelterPartSeparator = " : ";
+
     /// <summary>The slugcat of every campaign in a payload, in stored order, repeats included.</summary>
     public static IReadOnlyList<string> Campaigns(string? payload)
     {
@@ -107,6 +120,7 @@ public static class CampaignSplicer
 
         string? saveState = null;
         var maps = new List<string>();
+        var shelters = new List<string>();
 
         foreach (string record in Split(payload))
         {
@@ -124,9 +138,20 @@ public static class CampaignSplicer
             {
                 maps.Add(record);
             }
+
+            if (string.Equals(HeaderOf(record), MiscProgressHeader, StringComparison.Ordinal))
+            {
+                foreach (string shelter in DiscoveredSheltersOf(record, slugcatId))
+                {
+                    if (!shelters.Contains(shelter, StringComparer.Ordinal))
+                    {
+                        shelters.Add(shelter);
+                    }
+                }
+            }
         }
 
-        return saveState is null ? null : new CampaignSlice(slugcatId, saveState, maps);
+        return saveState is null ? null : new CampaignSlice(slugcatId, saveState, maps, shelters);
     }
 
     /// <summary>Map records are matched by slugcat and region, so one the target already has is
@@ -135,11 +160,18 @@ public static class CampaignSplicer
     {
         ArgumentNullException.ThrowIfNull(slice);
 
+        if (ShelterDataProblem(slice) is { } problem)
+        {
+            throw new ArgumentException(problem, nameof(slice));
+        }
+
         var log = new SpliceLog();
         WarnAboutWhatTheGameWillMakeOfIt(slice, log.Warnings);
 
         var slots = new List<string?>(Split(payload));
         var appended = new List<string>();
+
+        MergeDiscoveredShelters(slots, slice, appended, log);
 
         CampaignSpliceOutcome outcome = ReplaceTheCampaign(slots, slice, appended, log);
         (int replaced, int added, int removed) = ReplaceTheMaps(slots, slice, appended, log);
@@ -148,6 +180,195 @@ public static class CampaignSplicer
             outcome, replaced, added, removed, log.Warnings, log.Written, log.Removed);
 
         return Rebuild(slots, appended);
+    }
+
+    public static string? ShelterDataProblem(CampaignSlice slice)
+    {
+        ArgumentNullException.ThrowIfNull(slice);
+
+        if (slice.DiscoveredShelters is null)
+        {
+            return null;
+        }
+
+        if (!SafeSlugcatId(slice.SlugcatId))
+        {
+            return "The campaign slugcat id cannot be written into discovered shelter data.";
+        }
+
+        if (slice.DiscoveredShelters.Count > 4096)
+        {
+            return "The campaign carries more discovered shelters than a Rain World save can safely hold.";
+        }
+
+        foreach (string shelter in slice.DiscoveredShelters)
+        {
+            if (!SafeRoomId(shelter))
+            {
+                return "The campaign carries a discovered shelter whose room id is invalid.";
+            }
+        }
+
+        return null;
+    }
+
+    private static bool SafeSlugcatId(string? value)
+        => !string.IsNullOrWhiteSpace(value)
+        && value.Length <= 128
+        && !value.Contains('<', StringComparison.Ordinal)
+        && !value.Contains('>', StringComparison.Ordinal)
+        && !value.Contains(ShelterPartSeparator, StringComparison.Ordinal)
+        && value.All(character => !char.IsControl(character));
+
+    private static bool SafeRoomId(string? value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length > 64)
+        {
+            return false;
+        }
+
+        foreach (char character in value)
+        {
+            if (character != '_' && !char.IsAsciiLetterOrDigit(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static IReadOnlyList<string> DiscoveredSheltersOf(string record, string slugcatId)
+    {
+        string body = BodyOf(record);
+        var shelters = new List<string>();
+
+        foreach (string field in body.Split(MiscFieldSeparator, StringSplitOptions.None))
+        {
+            if (!field.StartsWith(ConditionalSheltersField + MiscValueSeparator, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string value = field[(ConditionalSheltersField.Length + MiscValueSeparator.Length)..];
+            foreach (string entry in value.Split(MiscListSeparator, StringSplitOptions.None))
+            {
+                string[] parts = entry.Split(ShelterPartSeparator, StringSplitOptions.None);
+                if (parts.Length > 1
+                    && parts[0].Length > 0
+                    && parts.Skip(1).Any(part => Same(part, slugcatId))
+                    && !shelters.Contains(parts[0], StringComparer.Ordinal))
+                {
+                    shelters.Add(parts[0]);
+                }
+            }
+        }
+
+        return shelters;
+    }
+
+    private static void MergeDiscoveredShelters(
+        List<string?> slots,
+        CampaignSlice slice,
+        List<string> appended,
+        SpliceLog log)
+    {
+        if (slice.DiscoveredShelters is not { Count: > 0 })
+        {
+            return;
+        }
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            if (string.Equals(HeaderOf(slots[i]), MiscProgressHeader, StringComparison.Ordinal))
+            {
+                string before = slots[i]!;
+                string after = MergeMiscProgress(before, slice.SlugcatId, slice.DiscoveredShelters);
+                if (!string.Equals(before, after, StringComparison.Ordinal))
+                {
+                    slots[i] = after;
+                    log.Removed.Add(before);
+                    log.Written.Add(after);
+                }
+                return;
+            }
+        }
+
+        string entries = string.Join(
+            MiscListSeparator,
+            slice.DiscoveredShelters.Select(shelter => ShelterEntry(shelter, slice.SlugcatId)))
+            + MiscListSeparator;
+        string added =
+            MiscProgressHeader + SavePayloadReader.HeaderSeparator
+            + ConditionalSheltersField + MiscValueSeparator + entries + MiscFieldSeparator;
+        appended.Add(added);
+        log.Written.Add(added);
+    }
+
+    private static string MergeMiscProgress(
+        string record,
+        string slugcatId,
+        IReadOnlyList<string> discoveredShelters)
+    {
+        string[] fields = BodyOf(record).Split(MiscFieldSeparator, StringSplitOptions.None);
+        int conditional = Array.FindIndex(fields, field =>
+            field.StartsWith(ConditionalSheltersField + MiscValueSeparator, StringComparison.Ordinal));
+
+        if (conditional < 0)
+        {
+            var added = ConditionalSheltersField + MiscValueSeparator
+                + string.Join(MiscListSeparator, discoveredShelters.Select(shelter => ShelterEntry(shelter, slugcatId)))
+                + MiscListSeparator;
+            var expanded = fields.ToList();
+            expanded.Insert(EndsInEmpty(expanded) ? expanded.Count - 1 : expanded.Count, added);
+            return MiscProgressHeader + SavePayloadReader.HeaderSeparator
+                + string.Join(MiscFieldSeparator, expanded);
+        }
+
+        string prefix = ConditionalSheltersField + MiscValueSeparator;
+        var entries = fields[conditional][prefix.Length..]
+            .Split(MiscListSeparator, StringSplitOptions.None)
+            .ToList();
+
+        foreach (string shelter in discoveredShelters)
+        {
+            int found = entries.FindIndex(entry => ShelterName(entry) == shelter);
+            if (found < 0)
+            {
+                entries.Insert(EndsInEmpty(entries) ? entries.Count - 1 : entries.Count, ShelterEntry(shelter, slugcatId));
+            }
+            else if (!ShelterMembers(entries[found]).Any(member => Same(member, slugcatId)))
+            {
+                entries[found] = AddShelterMember(entries[found], slugcatId);
+            }
+        }
+
+        fields[conditional] = prefix + string.Join(MiscListSeparator, entries);
+        return MiscProgressHeader + SavePayloadReader.HeaderSeparator
+            + string.Join(MiscFieldSeparator, fields);
+    }
+
+    private static string ShelterName(string entry)
+        => entry.Split(ShelterPartSeparator, StringSplitOptions.None).FirstOrDefault() ?? "";
+
+    private static IEnumerable<string> ShelterMembers(string entry)
+        => entry.Split(ShelterPartSeparator, StringSplitOptions.None).Skip(1).Where(part => part.Length > 0);
+
+    private static string ShelterEntry(string shelter, string slugcatId)
+        => shelter + ShelterPartSeparator + slugcatId + ShelterPartSeparator;
+
+    private static string AddShelterMember(string entry, string slugcatId)
+        => entry.EndsWith(ShelterPartSeparator, StringComparison.Ordinal)
+            ? entry[..^ShelterPartSeparator.Length] + ShelterPartSeparator + slugcatId + ShelterPartSeparator
+            : entry + ShelterPartSeparator + slugcatId + ShelterPartSeparator;
+
+    private static bool EndsInEmpty(IReadOnlyList<string> values)
+        => values.Count > 0 && values[^1].Length == 0;
+
+    private static string BodyOf(string record)
+    {
+        int header = record.IndexOf(SavePayloadReader.HeaderSeparator, StringComparison.Ordinal);
+        return header < 0 ? "" : record[(header + SavePayloadReader.HeaderSeparator.Length)..];
     }
 
     /// <param name="includeMaps">Whether the slugcat's map discovery goes with it. WipeSaveState

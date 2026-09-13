@@ -101,6 +101,12 @@
                    Text="{Binding InstallStatus}"
                    Visibility="{Binding HasInstallStatus, Converter={StaticResource BoolToVis}}" />
 
+        <TextBlock Text="LIVE FEATURES" Style="{StaticResource Text.SectionLabel}" Margin="0,18,0,6" />
+        <CheckBox Content="Keep Companion Game Hook installed"
+                  IsChecked="{Binding CompanionGameHookAutomaticSetup}" />
+        <TextBlock Style="{StaticResource Text.Muted}" Margin="0,5,0,0" TextWrapping="Wrap"
+                   Text="Companion installs and enables Game Hook automatically. Clear this to disable and remove it. If you turn it off in Remix, Companion leaves it off until you choose to enable it from Live Features." />
+
         <Button Content="Bundle logs to Downloads" Style="{StaticResource Button.Small}"
                 HorizontalAlignment="Left" Margin="0,9,0,0"
                 Command="{Binding BundleLogsCommand}" />

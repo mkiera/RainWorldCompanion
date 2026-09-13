@@ -107,6 +107,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _gameDetector = gameDetector;
         _icons = icons;
         _appVersion = appVersion;
+        Live = new LiveSessionViewModel(InstallCompanionModAsync,
+            (gameplay, player, room, region) => _liveServer?.TeleportAsync(gameplay, player, room, region)
+                ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }),
+            enabled => _liveServer?.SetHostControlAsync(enabled)
+                ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }),
+            (gameplay, room, region) => _liveServer?.TeleportAllAsync(gameplay, room, region)
+                ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }),
+            (gameplay, player) => _liveServer?.RecoverAsync(gameplay, player)
+                ?? Task.FromResult(new RainWorldCompanion.LiveProtocol.LiveCommandResult { Message = "The live connection is closed." }));
 
         // Empty on purpose. This runs on the dispatcher inside App.OnStartup, and every way of
         // guessing a path from here touches disk. InitializeAsync loads the real settings.
@@ -249,6 +258,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteSettingsCommand))]
+    [NotifyPropertyChangedFor(nameof(IsCurrentPageReady))]
     private bool isGameRunning;
 
     [ObservableProperty]
@@ -473,6 +483,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         AdoptTheme();
+        Live.MapView.SpoilerMode = _settings.LiveMapSpoilerMode;
+        Live.MapView.PropertyChanged += OnLiveMapPreferenceChanged;
 
         await FillInMissingPathsAsync();
         await ApplySettingsAsync();
@@ -491,6 +503,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         _gameTimer.Start();
         await PollGameAsync();
+        StartLiveFeatures();
 
         if (_backupService is null)
         {
@@ -523,6 +536,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     public void Shutdown()
     {
+        StopLiveFeatures();
         _gameTimer.Stop();
         _gameTimer.Tick -= OnGameTimerTick;
 
@@ -3336,6 +3350,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _settings = viewModel.Result;
         AdoptTheme();
         await ApplySettingsAsync();
+        await PollLiveFeaturesAsync();
         await ReloadAsync();
     }
 

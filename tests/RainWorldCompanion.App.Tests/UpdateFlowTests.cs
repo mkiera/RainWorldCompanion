@@ -12,6 +12,35 @@ namespace RainWorldCompanion.App.Tests;
 public class UpdateFlowTests
 {
     [Fact]
+    public async Task Completed_download_ignores_queued_progress()
+    {
+        var previous = SynchronizationContext.Current;
+        var context = new QueuedProgressContext();
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            var world = new UpdateWorld();
+            world.Source.Releases.Add(UpdateWorld.Release("v1.1.0"));
+            var updates = world.Build(runningVersion: "1.0.0");
+            await updates.CheckAsync(false, CancellationToken.None);
+            await updates.InstallAsync(updates.Offer, CancellationToken.None);
+            Assert.Equal(100, updates.DownloadPercent);
+            while (context.Pending.TryDequeue(out var callback))
+            {
+                callback();
+                Assert.Equal(100, updates.DownloadPercent);
+            }
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+    }
+
+    private sealed class QueuedProgressContext : SynchronizationContext
+    {
+        public Queue<Action> Pending { get; } = new();
+        public override void Post(SendOrPostCallback callback, object? state) => Pending.Enqueue(() => callback(state));
+    }
+
+    [Fact]
     public async Task A_newer_release_becomes_an_offer()
     {
         var world = new UpdateWorld();

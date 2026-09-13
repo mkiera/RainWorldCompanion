@@ -33,6 +33,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         backupRootPath = current.BackupRootPath ?? "";
         libraryRootPath = current.LibraryRootPath ?? "";
         gameInstallPath = current.GameInstallPath ?? "";
+        companionGameHookAutomaticSetup = current.CompanionGameHookAutomaticSetup;
         isDarkTheme = AppThemes.Parse(current.Theme) == AppTheme.Dark;
         introMessage = reason ?? "";
         Revalidate();
@@ -63,6 +64,9 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string gameInstallPath;
+
+    [ObservableProperty]
+    private bool companionGameHookAutomaticSetup;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasInstallStatus))]
@@ -248,7 +252,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             result = await Task.Run(() => RainWorldLogBundle.Create(
                 installPath,
-                DownloadsFolder.GetPath()));
+                DownloadsFolder.GetPath(),
+                steamName: SteamPersonaName.Find()));
         }
         catch (Exception ex)
         {
@@ -353,6 +358,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         settings.BackupRootPath = BackupRootPath.Trim();
         settings.LibraryRootPath = LibraryRootPath.Trim();
         settings.GameInstallPath = installPath.Length == 0 ? null : installPath;
+        settings.CompanionGameHookAutomaticSetup = CompanionGameHookAutomaticSetup;
+        if (!CompanionGameHookAutomaticSetup) settings.CompanionModInstallRequestedPath = null;
         settings.Theme = (IsDarkTheme ? AppTheme.Dark : AppTheme.Light).ToStorageString();
 
         IsBusy = true;

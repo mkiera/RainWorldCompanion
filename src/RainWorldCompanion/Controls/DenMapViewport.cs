@@ -80,11 +80,12 @@ public sealed class DenMapViewport
         .Select(hit => hit.Den)
         .FirstOrDefault();
 
-    private void Center(Point image)
+    public void Center(Point image, bool clamp = true)
     {
+        IsFitted = false;
         OffsetX = Size.Width / 2 - image.X * Scale;
         OffsetY = Size.Height / 2 - image.Y * Scale;
-        Clamp();
+        if (clamp) Clamp();
     }
 
     private void Clamp()
