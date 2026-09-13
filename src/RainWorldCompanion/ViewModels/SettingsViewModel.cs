@@ -252,7 +252,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             result = await Task.Run(() => RainWorldLogBundle.Create(
                 installPath,
-                DownloadsFolder.GetPath()));
+                DownloadsFolder.GetPath(),
+                steamName: SteamPersonaName.Find()));
         }
         catch (Exception ex)
         {

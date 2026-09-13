@@ -16,6 +16,7 @@ worded as things ended up. The pre-release sections stay for their tags.
 - Companion installs and enables Companion Game Hook automatically on startup. A
   setting can disable and remove it, while a hook disabled in Remix stays off.
   Rain Meadow host control is on by default for new Game Hook configurations.
+- Log bundle filenames include the signed-in Steam display name when available.
 
 ## 1.4.0-beta.2 - 2026-09-13
 

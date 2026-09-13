@@ -19,7 +19,8 @@ public static class RainWorldLogBundle
     public static RainWorldLogBundleResult Create(
         string installPath,
         string destinationDirectory,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        string? steamName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectory);
@@ -51,7 +52,8 @@ public static class RainWorldLogBundle
             var timestamp = (timeProvider ?? TimeProvider.System)
                 .GetLocalNow()
                 .ToString("yyyy-MM-dd HH-mm-ss", CultureInfo.InvariantCulture);
-            var stem = "Rain World logs " + timestamp;
+            var safeName = SafeFileNamePart(steamName);
+            var stem = "Rain World logs " + (safeName.Length == 0 ? "" : safeName + " ") + timestamp;
             var archivePath = MoveToAvailableName(temporaryPath, destinationRoot, stem);
 
             return new RainWorldLogBundleResult(
@@ -63,6 +65,14 @@ public static class RainWorldLogBundle
             TryDelete(temporaryPath);
             throw;
         }
+    }
+
+    private static string SafeFileNamePart(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        const string invalid = "<>:\"/\\|?*";
+        return new string(value.Trim().Select(character =>
+            char.IsControl(character) || invalid.Contains(character) ? '_' : character).ToArray()).TrimEnd(' ', '.');
     }
 
     private static void WriteArchive(
