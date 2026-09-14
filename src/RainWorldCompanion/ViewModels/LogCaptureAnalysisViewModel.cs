@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using RainWorldCompanion.Core.LogStreaming.Analysis;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves;
 
 namespace RainWorldCompanion.ViewModels;
@@ -132,6 +133,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     [ObservableProperty] private bool hasAnalysis;
     [ObservableProperty] private bool hasWarnings;
     [ObservableProperty] private IReadOnlyList<CaptureTimelineTrackViewModel> timelineTracks = [];
+    [ObservableProperty] private IReadOnlyList<CaptureIncidentViewModel> timelineIncidents = [];
     [ObservableProperty] private DateTimeOffset timelineStart;
     [ObservableProperty] private DateTimeOffset timelineEnd;
     [ObservableProperty] private DateTimeOffset visibleStart;
@@ -538,7 +540,15 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         if (capture.Length > 0) tracks.Insert(0,
             new("capture", "Capture", "SYSTEM", "Receiver events and markers", true, capture));
         TimelineTracks = tracks;
+        TimelineIncidents = Incidents.Where(IsVisible).ToArray();
         RefreshVisibleEventsAndGraphs();
+    }
+
+    private bool IsVisible(CaptureIncidentViewModel incident)
+    {
+        if (incident.Incident.Severity >= CaptureEventSeverity.Error) return ShowErrors;
+        if (incident.Incident.Severity == CaptureEventSeverity.Warning) return ShowWarnings;
+        return true;
     }
 
     private CaptureTimelineMoment[] TimelineMoments(IEnumerable<CaptureTimelineMoment> source)
@@ -727,6 +737,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         foreach (string modId in current.SelectMany(snapshot => snapshot.Mods).Select(mod => mod.Id)
                      .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
         {
+            bool compareFingerprint = !EnabledModsFile.BuiltIn.Contains(modId);
             var builds = new List<string>();
             var versions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var hashes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -753,10 +764,17 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
                 }
                 installed++;
                 if (mod.Version.Length > 0) versions.Add(mod.Version);
-                if (mod.CodeFingerprint.Length > 0) hashes.Add(mod.CodeFingerprint);
-                incompleteFingerprint |= !IsCompleteFingerprint(mod);
-                string hash = mod.CodeFingerprint.Length == 0 ? "hash unavailable" : mod.CodeFingerprint[..Math.Min(10, mod.CodeFingerprint.Length)];
-                builds.Add($"{names.GetValueOrDefault(sender, sender)}: {(mod.Version.Length == 0 ? "version unknown" : mod.Version)}, hash {hash}");
+                if (compareFingerprint)
+                {
+                    if (mod.CodeFingerprint.Length > 0) hashes.Add(mod.CodeFingerprint);
+                    incompleteFingerprint |= !IsCompleteFingerprint(mod);
+                    string hash = mod.CodeFingerprint.Length == 0
+                        ? "hash unavailable"
+                        : mod.CodeFingerprint[..Math.Min(10, mod.CodeFingerprint.Length)];
+                    builds.Add($"{names.GetValueOrDefault(sender, sender)}: {(mod.Version.Length == 0 ? "version unknown" : mod.Version)}, hash {hash}");
+                }
+                else builds.Add($"{names.GetValueOrDefault(sender, sender)}: "
+                    + (mod.Version.Length == 0 ? "bundled with Rain World" : mod.Version + " (bundled with Rain World)"));
             }
             CaptureModEntry representative = current.SelectMany(snapshot => snapshot.Mods)
                 .First(mod => mod.Id.Equals(modId, StringComparison.OrdinalIgnoreCase));
@@ -779,6 +797,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
                 : missingInventory ? "Mod inventory not recorded for every log-sharing player"
                 : !listedByEverySender && truncatedInventory ? "Mod may be omitted from a truncated inventory"
                 : incompleteFingerprint ? "Code fingerprint unavailable or incomplete"
+                : !compareFingerprint ? "Bundled with Rain World"
                 : "Matching version and code fingerprint";
             comparisons.Add(new(modId, representative.DisplayName, string.Join(Environment.NewLine, builds), mismatch,
                 verificationGap, status));

@@ -72,6 +72,50 @@ public sealed class LogStreamingCoordinatorTests
     }
 
     [Fact]
+    public void Sustained_raw_logs_do_not_make_structured_events_fall_behind()
+    {
+        using var senderFiles = new TempDirectory("rwc-log-source");
+        using var senderDownloads = new TempDirectory("rwc-log-sender");
+        using var receiverDownloads = new TempDirectory("rwc-log-receiver");
+        const int originalChunkBytes = 8 * 1024;
+        senderFiles.WriteText("consoleLog.txt", new string('s', originalChunkBytes - 1) + "\n");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var sender = Coordinator(senderFiles.Path, senderDownloads.Path, clock,
+            maximumIncomingBytesPerSecondPerPeer: 64 * 1024);
+        var receiver = Coordinator(senderFiles.Path, receiverDownloads.Path, clock,
+            maximumIncomingBytesPerSecondPerPeer: 64 * 1024);
+        var session = new Pair(sender, receiver, clock);
+
+        session.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        sender.PrepareSharing([Pair.ReceiverId]);
+        string capture = receiver.Snapshot().CaptureFolder;
+        sender.RecordCompanionAction("progress", "structured-baseline", null, null, null, true, null);
+        session.TickUntil(() => SenderFiles(capture, "events.jsonl", Pair.SenderId)
+                                .Any(path => File.ReadAllText(path).Contains(
+                                    "structured-baseline", StringComparison.Ordinal))
+                            && Outgoing(sender, Pair.ReceiverId) is
+                                { BacklogBytes: 0, AcknowledgementAge: null });
+        const int rawBatchBytes = 3 * 1024;
+        string rawBatch = new string('r', rawBatchBytes - 1) + "\n";
+
+        for (int index = 1; index <= 24; index++)
+        {
+            File.AppendAllText(senderFiles.Resolve("consoleLog.txt"), rawBatch);
+            sender.RecordCompanionAction("progress", $"structured-{index:D2}", null, null, null, true, null);
+            session.Tick();
+        }
+
+        string raw = Assert.Single(SenderFiles(capture, "consoleLog.txt", Pair.SenderId));
+        string events = string.Concat(SenderFiles(capture, "events.jsonl", Pair.SenderId)
+            .Select(File.ReadAllText));
+        Assert.Contains("structured-24", events, StringComparison.Ordinal);
+        Assert.Equal(originalChunkBytes + 24L * rawBatchBytes, new FileInfo(raw).Length);
+    }
+
+    [Fact]
     public void Deep_trace_can_toggle_after_one_approval_while_normal_logs_and_events_continue()
     {
         using var senderFiles = new TempDirectory("rwc-log-source");
@@ -970,6 +1014,38 @@ public sealed class LogStreamingCoordinatorTests
         session.SlowConnected = true;
         session.TickUntil(() => Outgoing(sender, ThreeParty.SlowId).AcknowledgedBytes == content.Length);
         Assert.Equal(content, ReadOnlyLog(slow.Snapshot().CaptureFolder, "consoleLog.txt"));
+    }
+
+    [Fact]
+    public void Full_bridge_batches_share_capacity_between_receivers()
+    {
+        using var source = new TempDirectory("rwc-log-source");
+        using var senderDownloads = new TempDirectory("rwc-log-sender");
+        using var firstDownloads = new TempDirectory("rwc-log-first");
+        using var secondDownloads = new TempDirectory("rwc-log-second");
+        source.WriteText("consoleLog.txt", new string('x', 12 * LogStreamSenderOptions.DefaultChunkSize));
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var sender = Coordinator(source.Path, senderDownloads.Path, clock,
+            maximumBytesPerSecond: 256 * 1024, maximumIncomingBytesPerSecondPerPeer: 256 * 1024);
+        var first = Coordinator(source.Path, firstDownloads.Path, clock,
+            maximumBytesPerSecond: 256 * 1024, maximumIncomingBytesPerSecondPerPeer: 256 * 1024);
+        var second = Coordinator(source.Path, secondDownloads.Path, clock,
+            maximumBytesPerSecond: 256 * 1024, maximumIncomingBytesPerSecondPerPeer: 256 * 1024);
+        var session = new ThreeParty(sender, first, second, clock);
+
+        session.Tick();
+        first.SetReceiverAvailability(true);
+        first.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        second.SetReceiverAvailability(true);
+        second.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        sender.PrepareSharing([ThreeParty.FastId, ThreeParty.SlowId]);
+        session.Tick(4);
+
+        Assert.True(first.Snapshot().Peers.Single(peer => peer.SteamId == ThreeParty.SenderId)
+            .Incoming.AcknowledgedBytes > 0);
+        Assert.True(second.Snapshot().Peers.Single(peer => peer.SteamId == ThreeParty.SenderId)
+            .Incoming.AcknowledgedBytes > 0);
     }
 
     [Fact]

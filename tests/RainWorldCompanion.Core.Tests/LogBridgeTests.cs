@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using RainWorldCompanion.Core.Live;
+using RainWorldCompanion.Core.LogStreaming;
 using RainWorldCompanion.LiveProtocol;
 
 namespace RainWorldCompanion.Tests;
@@ -61,8 +62,26 @@ public sealed class LogBridgeTests
     }
 
     [Fact]
-    public void Maximum_bridge_batch_fits_the_bounded_line_protocol()
+    public void Maximum_sender_batch_fits_the_bounded_line_protocol()
     {
+        byte[] senderPayload = Encoding.UTF8.GetBytes(LiveJson.Serialize(new LogStreamNetworkMessage
+        {
+            Kind = LogStreamKinds.Chunk,
+            LobbyId = new string('l', 64),
+            SenderSteamId = new string('1', 32),
+            ReceiverSteamId = new string('2', 32),
+            CaptureId = new string('c', 96),
+            CaptureToken = new string('c', 192),
+            TransferId = new string('t', 96),
+            ConsentToken = new string('t', 192),
+            LogSessionId = new string('s', 128),
+            FileId = "Companion/meadow-native-deep.jsonl",
+            Generation = int.MaxValue,
+            Offset = long.MaxValue,
+            Sequence = long.MaxValue,
+            Data = Enumerable.Repeat(byte.MaxValue, LogStreamSenderOptions.DefaultChunkSize).ToArray(),
+            Hash = new string('F', 64)
+        }));
         var upstream = new LogBridgeUpstream
         {
             Token = new string('\u4e00', 128),
@@ -94,7 +113,7 @@ public sealed class LogBridgeTests
                 .Select(_ => new LogRelayPacket
                 {
                     PeerSteamId = new string('2', 32),
-                    Payload = new byte[ProtocolInfo.MaximumLogPacketLength]
+                    Payload = senderPayload
                 }).ToArray()
         };
         var downstream = new LogBridgeDownstream
@@ -112,7 +131,7 @@ public sealed class LogBridgeTests
                 .Select(_ => new LogRelayPacket
                 {
                     PeerSteamId = new string('2', 32),
-                    Payload = new byte[ProtocolInfo.MaximumLogPacketLength]
+                    Payload = senderPayload
                 }).ToArray()
         };
 
@@ -121,6 +140,8 @@ public sealed class LogBridgeTests
 
         Assert.Equal(512 * 1024, ProtocolInfo.MaximumLogBridgeMessageLength);
         Assert.Equal(6, ProtocolInfo.MaximumLogPacketsPerBridgeExchange);
+        Assert.True(senderPayload.Length <= ProtocolInfo.MaximumLogPacketLength,
+            $"A maximum default chunk serialized to {senderPayload.Length:N0} bytes.");
         Assert.True(upstreamLength <= ProtocolInfo.MaximumLogBridgeMessageLength,
             $"A valid maximum upstream bridge batch serialized to {upstreamLength:N0} bytes.");
         Assert.True(downstreamLength <= ProtocolInfo.MaximumLogBridgeMessageLength,

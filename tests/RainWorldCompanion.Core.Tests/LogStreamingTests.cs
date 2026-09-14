@@ -34,8 +34,8 @@ public class LogStreamSenderTests
         var initialChunks = sender.GetPendingChunks("receiver-1", 8);
 
         Assert.Equal(9_000, initial.BytesAdded);
-        Assert.Equal([8_192, 808], initialChunks.Select(chunk => chunk.Length));
-        Assert.Equal([0L, 8_192L], initialChunks.Select(chunk => chunk.Offset));
+        Assert.Equal([5_120, 3_880], initialChunks.Select(chunk => chunk.Length));
+        Assert.Equal([0L, 5_120L], initialChunks.Select(chunk => chunk.Offset));
         Assert.Equal(first, initialChunks.SelectMany(chunk => chunk.CopyData()).ToArray());
 
         var tail = new byte[] { 0, 255, 13, 10, 0, 128 };
@@ -82,8 +82,8 @@ public class LogStreamSenderTests
         var snapshot = sender.GetSnapshot();
         var alice = Assert.Single(snapshot.Receivers, receiver => receiver.ReceiverId == "alice");
         var bob = Assert.Single(snapshot.Receivers, receiver => receiver.ReceiverId == "bob");
-        Assert.Equal(8_192, alice.BytesAcknowledged);
-        Assert.Equal(808, alice.BacklogBytes);
+        Assert.Equal(5_120, alice.BytesAcknowledged);
+        Assert.Equal(3_880, alice.BacklogBytes);
         Assert.Equal(0, bob.BytesAcknowledged);
         Assert.Equal(9_000, bob.BacklogBytes);
         Assert.Equal(2, sender.GetPendingChunks("bob").Count);

@@ -966,54 +966,61 @@ public sealed class LogStreamingCoordinator
         }
         if (_sender is null || result.Count >= MaximumPacketsPerExchange || _outgoing.Count == 0) return result.ToArray();
         var transfers = _outgoing.Values.OrderBy(transfer => transfer.SteamId, StringComparer.Ordinal).ToArray();
-        for (int index = 0; index < transfers.Length && result.Count < MaximumPacketsPerExchange; index++)
+        bool sentInRound;
+        do
         {
-            var transfer = transfers[(_roundRobin + index) % transfers.Length];
-            var peer = _lobby.Peers.FirstOrDefault(item => item.SteamId == transfer.SteamId);
-            if (peer is null || !Compatible(peer) || !HasFreshAdvertisement(peer)
-                || transfer.Invalidated || transfer.StorageLimited) continue;
-            if (now - transfer.LastOpenSent >= TransferHeartbeatInterval) QueueOpen(transfer, now);
-            if (!transfer.Accepted) continue;
-            if (!peer.CaptureActive || peer.CapturePaused) continue;
-            var senders = new List<LogStreamSenderSession>(2) { _sender };
-            if (IsDeepTraceActive(transfer.SteamId)
-                && _deepSenders.TryGetValue(transfer.SteamId, out var deepSender))
+            sentInRound = false;
+            for (int index = 0; index < transfers.Length && result.Count < MaximumPacketsPerExchange; index++)
             {
-                if (transfer.PreferDeepTrace) senders.Insert(0, deepSender);
-                else senders.Add(deepSender);
-            }
-            LogStreamChunk? chunk = null;
-            foreach (var candidate in senders)
-            {
-                var pending = candidate.GetPendingChunks(transfer.SteamId, 9);
-                var resend = pending.FirstOrDefault(item => transfer.InFlight.TryGetValue(
-                        new(item.SourceSessionId, item.Sequence), out var sent)
-                    && now - sent.LastSentAt >= TimeSpan.FromSeconds(2));
-                chunk = resend ?? pending.FirstOrDefault(item => !transfer.InFlight.ContainsKey(
-                    new(item.SourceSessionId, item.Sequence)));
-                if (chunk is not null) break;
-            }
-            transfer.PreferDeepTrace = !transfer.PreferDeepTrace;
-            if (chunk is null) continue;
-            var chunkKey = new ChunkKey(chunk.SourceSessionId, chunk.Sequence);
-            long inFlight = transfer.InFlight.Values.Sum(item => (long)item.Length);
-            if (!transfer.InFlight.ContainsKey(chunkKey) && inFlight + chunk.Length > MaximumUnacknowledgedBytes) continue;
-            var network = Message(LogStreamKinds.Chunk, transfer);
-            network.LogSessionId = chunk.SourceSessionId;
-            network.FileId = chunk.FileId;
-            network.Generation = chunk.Generation;
-            network.Offset = chunk.Offset;
-            network.Sequence = chunk.Sequence;
-            network.Data = chunk.CopyData();
-            network.Hash = chunk.Sha256;
-            if (TryPacket(transfer.SteamId, network, out var relay) && PacketCost(relay) <= _sendBudget)
-            {
-                result.Add(relay);
-                if (transfer.InFlight.TryGetValue(chunkKey, out var sent)) sent.LastSentAt = now;
-                else transfer.InFlight.Add(chunkKey, new(chunk.Length, now));
-                _sendBudget -= PacketCost(relay);
+                var transfer = transfers[(_roundRobin + index) % transfers.Length];
+                var peer = _lobby.Peers.FirstOrDefault(item => item.SteamId == transfer.SteamId);
+                if (peer is null || !Compatible(peer) || !HasFreshAdvertisement(peer)
+                    || transfer.Invalidated || transfer.StorageLimited) continue;
+                if (now - transfer.LastOpenSent >= TransferHeartbeatInterval) QueueOpen(transfer, now);
+                if (!transfer.Accepted) continue;
+                if (!peer.CaptureActive || peer.CapturePaused) continue;
+                var senders = new List<LogStreamSenderSession>(2) { _sender };
+                if (IsDeepTraceActive(transfer.SteamId)
+                    && _deepSenders.TryGetValue(transfer.SteamId, out var deepSender))
+                {
+                    if (transfer.PreferDeepTrace) senders.Insert(0, deepSender);
+                    else senders.Add(deepSender);
+                }
+                LogStreamChunk? chunk = null;
+                foreach (var candidate in senders)
+                {
+                    var pending = candidate.GetPendingChunks(transfer.SteamId, 9);
+                    var resend = pending.FirstOrDefault(item => transfer.InFlight.TryGetValue(
+                            new(item.SourceSessionId, item.Sequence), out var sent)
+                        && now - sent.LastSentAt >= TimeSpan.FromSeconds(2));
+                    chunk = resend ?? pending.FirstOrDefault(item => !transfer.InFlight.ContainsKey(
+                        new(item.SourceSessionId, item.Sequence)));
+                    if (chunk is not null) break;
+                }
+                transfer.PreferDeepTrace = !transfer.PreferDeepTrace;
+                if (chunk is null) continue;
+                var chunkKey = new ChunkKey(chunk.SourceSessionId, chunk.Sequence);
+                long inFlight = transfer.InFlight.Values.Sum(item => (long)item.Length);
+                if (!transfer.InFlight.ContainsKey(chunkKey) && inFlight + chunk.Length > MaximumUnacknowledgedBytes) continue;
+                var network = Message(LogStreamKinds.Chunk, transfer);
+                network.LogSessionId = chunk.SourceSessionId;
+                network.FileId = chunk.FileId;
+                network.Generation = chunk.Generation;
+                network.Offset = chunk.Offset;
+                network.Sequence = chunk.Sequence;
+                network.Data = chunk.CopyData();
+                network.Hash = chunk.Sha256;
+                if (TryPacket(transfer.SteamId, network, out var relay) && PacketCost(relay) <= _sendBudget)
+                {
+                    result.Add(relay);
+                    if (transfer.InFlight.TryGetValue(chunkKey, out var sent)) sent.LastSentAt = now;
+                    else transfer.InFlight.Add(chunkKey, new(chunk.Length, now));
+                    _sendBudget -= PacketCost(relay);
+                    sentInRound = true;
+                }
             }
         }
+        while (sentInRound && result.Count < MaximumPacketsPerExchange);
         _roundRobin = (_roundRobin + 1) % Math.Max(1, transfers.Length);
         return result.ToArray();
     }
@@ -1163,7 +1170,7 @@ public sealed class LogStreamingCoordinator
             || message.CaptureToken.Length > 192 || message.TransferId.Length > 96
             || message.ConsentToken.Length > 192 || message.LogSessionId.Length > 128
             || message.FileId.Length > 64 || message.Hash.Length > 128 || message.Message.Length > 512
-            || message.Data is null || message.Data.Length > LogStreamSenderOptions.DefaultChunkSize
+            || message.Data is null || message.Data.Length > LogStreamSenderOptions.MaximumChunkSize
             || message.Sequence < 0 || message.Generation < 0 || message.Offset < 0)
             return false;
         return TokenValid(message.CaptureId, 96) && TokenValid(message.CaptureToken, 192)

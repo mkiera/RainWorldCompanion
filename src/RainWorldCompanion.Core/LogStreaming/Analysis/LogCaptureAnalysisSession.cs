@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using RainWorldCompanion.Core.Mods;
 
 namespace RainWorldCompanion.Core.LogStreaming.Analysis;
 
@@ -186,7 +187,7 @@ public sealed partial class LogCaptureAnalysisSession
                     string senderId = Text(root, "senderSteamId") ?? "unknown:" + sessions.Count.ToString(CultureInfo.InvariantCulture);
                     string senderName = CleanName(Text(root, "senderSteamName"));
                     string sourceSession = Text(root, "sourceSessionId") ?? Path.GetFileName(sessionDirectory);
-                    string role = Text(root, "currentRole") ?? Text(root, "initialRole") ?? "Client";
+                    string role = Text(root, "initialRole") ?? Text(root, "currentRole") ?? "Client";
                     sessions.Add(new(
                         senderId,
                         senderName,
@@ -1277,7 +1278,9 @@ public sealed partial class LogCaptureAnalysisSession
             string[] completeFingerprints = reportedMods
                 .Where(IsCompleteFingerprint)
                 .Select(mod => mod.CodeFingerprint).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            if (reportedMods.Length > 0 && reportedMods.All(IsCompleteFingerprint) && completeFingerprints.Length > 1)
+            if (!EnabledModsFile.BuiltIn.Contains(representative.Id)
+                && reportedMods.Length > 0 && reportedMods.All(IsCompleteFingerprint)
+                && completeFingerprints.Length > 1)
             {
                 score += 0.15;
                 evidence.Add("Players reported different complete code fingerprints for this mod.");

@@ -5,7 +5,8 @@ namespace RainWorldCompanion.Core.LogStreaming;
 
 public sealed record LogStreamSenderOptions
 {
-    public const int DefaultChunkSize = 8 * 1024;
+    public const int DefaultChunkSize = 5 * 1024;
+    public const int MaximumChunkSize = 8 * 1024;
     public const long DefaultMaxSpoolBytes = 256L * 1024 * 1024;
 
     public int ChunkSize { get; init; } = DefaultChunkSize;
@@ -52,7 +53,7 @@ public sealed class LogStreamSenderSession
         _options = options ?? new LogStreamSenderOptions();
         if (_options.ChunkSize != LogStreamSenderOptions.DefaultChunkSize)
         {
-            throw new ArgumentOutOfRangeException(nameof(options), "Log stream chunks must be 8 KiB.");
+            throw new ArgumentOutOfRangeException(nameof(options), "Log stream chunks must use the default size.");
         }
         if (_options.MaxSpoolBytes <= 0)
         {

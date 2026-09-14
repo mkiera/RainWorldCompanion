@@ -158,6 +158,35 @@ public sealed class LogCaptureAnalysisTests
     }
 
     [Fact]
+    public async Task Participant_lane_keeps_the_role_from_the_start_of_the_capture()
+    {
+        using var files = new TempDirectory("capture-analysis-role-change");
+        var writer = new LogStreamCaptureWriter(
+            files.CreateSubdirectory("captures"),
+            "capture-role-change",
+            new LogStreamCaptureOptions
+            {
+                ReservedFreeSpaceBytes = 0,
+                AvailableFreeSpace = _ => long.MaxValue,
+                TimeProvider = new FixedClock(Start),
+            });
+        var originalHost = new LogStreamPeerIdentity(76561198000000001, "Alice", true);
+        var originalClient = new LogStreamPeerIdentity(76561198000000002, "Bob", false);
+        Assert.Equal(LogStreamWriteStatus.Written, writer.Write(originalHost, new(
+            "capture-role-change", "host-session", originalHost.SteamId, 1,
+            "consoleLog.txt", 1, 0, "host\n"u8)).Status);
+        Assert.Equal(LogStreamWriteStatus.Written, writer.Write(originalClient, new(
+            "capture-role-change", "client-session", originalClient.SteamId, 1,
+            "consoleLog.txt", 1, 0, "client\n"u8)).Status);
+        writer.ObservePeer(originalClient with { IsHost = true });
+
+        CaptureAnalysisSnapshot snapshot = await new LogCaptureAnalysisSession(writer.CaptureDirectory).RefreshAsync();
+
+        Assert.True(snapshot.Participants.Single(item => item.DisplayName == "Alice").IsHost);
+        Assert.False(snapshot.Participants.Single(item => item.DisplayName == "Bob").IsHost);
+    }
+
+    [Fact]
     public async Task Partial_fingerprint_differences_do_not_be_used_as_exact_cause_evidence()
     {
         using var files = new TempDirectory("capture-analysis-partial-fingerprints");
@@ -188,6 +217,53 @@ public sealed class LogCaptureAnalysisTests
         Assert.NotEmpty(snapshot.Incidents);
         Assert.All(snapshot.Incidents, incident =>
             Assert.DoesNotContain(incident.PossibleCauses, cause => cause.ModId == "henpemaz_rainmeadow"));
+    }
+
+    [Fact]
+    public async Task Bundled_package_fingerprints_are_not_used_as_possible_cause_evidence()
+    {
+        using var files = new TempDirectory("capture-analysis-bundled-fingerprints");
+        WriteCapture(files, incomplete: false);
+        string alice = WriteSession(files, "Alice", "1", true, "alice-session");
+        string bob = WriteSession(files, "Bob", "2", false, "bob-session");
+        string aliceEvent = Diagnostic("session-start", Start, new
+        {
+            activeMods = new[]
+            {
+                new { id = "rwremix", displayName = "Rain World Remix", version = "1.9", codeFingerprint = new string('a', 64), fingerprintStatus = "complete" },
+                new { id = "rainmeadow", displayName = "Rain Meadow", version = "0.4.2", codeFingerprint = new string('a', 64), fingerprintStatus = "complete" },
+            }
+        });
+        string bobEvent = Diagnostic("session-start", Start, new
+        {
+            activeMods = new[]
+            {
+                new { id = "rwremix", displayName = "Rain World Remix", version = "1.9", codeFingerprint = new string('b', 64), fingerprintStatus = "complete" },
+                new { id = "rainmeadow", displayName = "Rain Meadow", version = "0.4.2", codeFingerprint = new string('b', 64), fingerprintStatus = "complete" },
+            }
+        });
+        files.WriteText(Path.Combine(alice, "generation-001/Companion/events.jsonl"), aliceEvent + "\n");
+        files.WriteText(Path.Combine(bob, "generation-001/Companion/events.jsonl"), bobEvent + "\n");
+        const string error = "[Error : Unity Log] Generic lobby failure\n";
+        files.WriteText(Path.Combine(alice, "generation-001/BepInEx/LogOutput.log"), error);
+        files.WriteText(Path.Combine(bob, "generation-001/BepInEx/LogOutput.log"), error);
+        WriteJournal(files,
+            Chunk("1", "alice-session", "Companion/events.jsonl", 0, Encoding.UTF8.GetByteCount(aliceEvent + "\n"), Start),
+            Chunk("2", "bob-session", "Companion/events.jsonl", 0, Encoding.UTF8.GetByteCount(bobEvent + "\n"), Start),
+            Chunk("1", "alice-session", "BepInEx/LogOutput.log", 0, Encoding.UTF8.GetByteCount(error), Start.AddSeconds(10)),
+            Chunk("2", "bob-session", "BepInEx/LogOutput.log", 0, Encoding.UTF8.GetByteCount(error), Start.AddSeconds(10.2)));
+
+        CaptureAnalysisSnapshot snapshot = await new LogCaptureAnalysisSession(files.Path).RefreshAsync();
+
+        Assert.Equal(2, snapshot.Incidents.Count);
+        Assert.All(snapshot.Incidents, incident =>
+        {
+            Assert.DoesNotContain(incident.PossibleCauses, cause => cause.ModId == "rwremix");
+            CaptureCauseCandidate thirdParty = Assert.Single(incident.PossibleCauses,
+                cause => cause.ModId == "rainmeadow");
+            Assert.Contains(thirdParty.Evidence,
+                evidence => evidence.Contains("fingerprints", StringComparison.OrdinalIgnoreCase));
+        });
     }
 
     [Fact]

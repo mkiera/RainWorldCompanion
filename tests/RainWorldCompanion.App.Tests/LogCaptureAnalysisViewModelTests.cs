@@ -3,6 +3,7 @@ using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
 using RainWorldCompanion.Core.LogStreaming.Analysis;
+using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Controls;
 using RainWorldCompanion.ViewModels;
 using RainWorldCompanion.Views;
@@ -59,6 +60,41 @@ public sealed class LogCaptureAnalysisViewModelTests
     }
 
     [Fact]
+    public async Task Bundled_packages_do_not_create_fingerprint_warnings_or_mismatches()
+    {
+        CaptureModEntry[] aliceMods = EnabledModsFile.BuiltIn.Select(id =>
+            new CaptureModEntry(id, id, "1.0", new string('a', 64), "complete")).Append(
+            new("rainmeadow", "Rain Meadow", "0.4.2", new string('a', 64), "complete")).ToArray();
+        CaptureModEntry[] bobMods = EnabledModsFile.BuiltIn.Select(id =>
+            new CaptureModEntry(id, id, "1.0", "", "no-code")).Append(
+            new("rainmeadow", "Rain Meadow", "0.4.2", new string('b', 64), "complete")).ToArray();
+        CaptureAnalysisSnapshot snapshot = Snapshot() with
+        {
+            ModSnapshots =
+            [
+                new(Start, "alice", "Alice", "alice-session", "1.4.0-beta.3", "v1.11.8", "1.0.12", aliceMods, false),
+                new(Start, "bob", "Bob", "bob-session", "1.4.0-beta.3", "v1.11.8", "1.0.12", bobMods, false),
+            ],
+        };
+        var view = new LogCaptureAnalysisViewModel(new FakeCaptureController(snapshot),
+            _ => Task.FromResult<string?>(@"C:\capture"));
+
+        await view.LoadCaptureCommand.ExecuteAsync(null);
+
+        foreach (string id in EnabledModsFile.BuiltIn)
+        {
+            CaptureModComparisonViewModel package = Assert.Single(view.ModComparison, item => item.Id == id);
+            Assert.False(package.HasMismatch);
+            Assert.False(package.HasVerificationGap);
+            Assert.Equal("Bundled with Rain World", package.StatusText);
+            Assert.DoesNotContain("hash", package.Builds, StringComparison.OrdinalIgnoreCase);
+        }
+        CaptureModComparisonViewModel meadow = Assert.Single(view.ModComparison, item => item.Id == "rainmeadow");
+        Assert.True(meadow.HasMismatch);
+        Assert.False(view.HasModVerificationGaps);
+    }
+
+    [Fact]
     public async Task Truncated_inventory_does_not_claim_a_listed_mod_is_missing()
     {
         CaptureAnalysisSnapshot snapshot = Snapshot() with
@@ -95,11 +131,14 @@ public sealed class LogCaptureAnalysisViewModelTests
         Assert.Equal(2, view.TimelineTracks.Count);
         Assert.All(view.TimelineTracks, track => Assert.Contains(track.Moments,
             moment => moment.Severity >= CaptureEventSeverity.Error));
+        Assert.Single(view.TimelineIncidents);
         view.ShowErrors = false;
         Assert.All(view.TimelineTracks, track => Assert.DoesNotContain(track.Moments,
             moment => moment.Severity >= CaptureEventSeverity.Error));
+        Assert.Empty(view.TimelineIncidents);
 
         view.ShowErrors = true;
+        Assert.Single(view.TimelineIncidents);
         view.SelectedIncident = Assert.Single(view.Incidents);
         view.FocusSelectionCommand.Execute(null);
         Assert.True(view.HorizontalZoom > 1);
@@ -109,6 +148,30 @@ public sealed class LogCaptureAnalysisViewModelTests
         Assert.Equal(26, view.LaneHeight);
         view.LaneHeight = 200;
         Assert.Equal(90, view.LaneHeight);
+    }
+
+    [Fact]
+    public async Task Timeline_incident_overlays_follow_error_and_warning_filters()
+    {
+        CaptureAnalysisSnapshot original = Snapshot();
+        CaptureIncident warning = original.Incidents[0] with
+        {
+            Id = "incident-warning",
+            Severity = CaptureEventSeverity.Warning,
+        };
+        var view = new LogCaptureAnalysisViewModel(
+            new FakeCaptureController(original with { Incidents = [original.Incidents[0], warning] }),
+            _ => Task.FromResult<string?>(@"C:\capture"));
+        await view.LoadCaptureCommand.ExecuteAsync(null);
+
+        Assert.Equal(2, view.TimelineIncidents.Count);
+        view.ShowWarnings = false;
+        Assert.Single(view.TimelineIncidents);
+        Assert.All(view.TimelineIncidents,
+            incident => Assert.True(incident.Incident.Severity >= CaptureEventSeverity.Error));
+        view.ShowErrors = false;
+        Assert.Empty(view.TimelineIncidents);
+        Assert.Equal(2, view.Incidents.Count);
     }
 
     [Fact]
@@ -184,6 +247,10 @@ public sealed class LogCaptureAnalysisViewModelTests
                 window.UpdateLayout();
                 CaptureTimelineCanvas timeline = Assert.Single(Descendants<CaptureTimelineCanvas>(view));
                 Assert.InRange(timeline.ActualHeight, 300, 600);
+                Assert.Single(timeline.Incidents);
+                model.ShowErrors = false;
+                window.UpdateLayout();
+                Assert.Empty(timeline.Incidents);
                 Assert.Single(Descendants<CaptureReplayMapCanvas>(view));
                 Assert.Contains(Descendants<TextBlock>(view), item => item.Text == "Possible mod causes");
                 Assert.Contains(Descendants<TextBlock>(view), item => item.Text == "Mod build comparison");

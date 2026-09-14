@@ -188,7 +188,7 @@
                                       HorizontalScrollBarVisibility="Disabled" CanContentScroll="False">
                             <controls:CaptureTimelineCanvas x:Name="TimelineCanvas" MinHeight="350"
                                                             Tracks="{Binding TimelineTracks, Mode=OneWay}"
-                                                            Incidents="{Binding Incidents, Mode=OneWay}"
+                                                            Incidents="{Binding TimelineIncidents, Mode=OneWay}"
                                                             VisibleStart="{Binding VisibleStart, Mode=OneWay}"
                                                             VisibleEnd="{Binding VisibleEnd, Mode=OneWay}"
                                                             CursorTime="{Binding CursorTime, Mode=TwoWay}"
