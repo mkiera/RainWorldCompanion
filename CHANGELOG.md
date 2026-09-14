@@ -11,7 +11,7 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
-## Unreleased
+## 1.4.0-beta.3 - 2026-09-13
 
 - Files the app exports can be dropped onto the window to import them. A
   `.rwsave` or `.rwcampaign` file goes into the library, a `.rwconfigs` file
