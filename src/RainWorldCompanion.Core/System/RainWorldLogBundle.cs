@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Compression;
+using RainWorldCompanion.Core.LogStreaming;
 
 namespace RainWorldCompanion.Core.System;
 
@@ -9,13 +10,6 @@ public sealed record RainWorldLogBundleResult(
 
 public static class RainWorldLogBundle
 {
-    private static readonly (string ArchiveName, string RelativePath)[] LogFiles =
-    [
-        ("consoleLog.txt", "consoleLog.txt"),
-        ("exceptionLog.txt", "exceptionLog.txt"),
-        ("BepInEx/LogOutput.log", Path.Combine("BepInEx", "LogOutput.log")),
-    ];
-
     public static RainWorldLogBundleResult Create(
         string installPath,
         string destinationDirectory,
@@ -26,8 +20,8 @@ public static class RainWorldLogBundle
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectory);
 
         var installRoot = Path.GetFullPath(installPath.Trim());
-        var sources = LogFiles
-            .Select(log => new { Name = log.ArchiveName, Path = Path.Combine(installRoot, log.RelativePath) })
+        var sources = LogStreamFileCatalog.Files
+            .Select(log => new { Name = log.Id, Path = Path.Combine(installRoot, log.RelativePath) })
             .Where(source => File.Exists(source.Path))
             .ToList();
 

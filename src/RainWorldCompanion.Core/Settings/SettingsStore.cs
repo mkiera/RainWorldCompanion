@@ -193,6 +193,8 @@ public sealed class SettingsStore
         settings.CompanionModInstallRequestedPath = ReadStringOrNull(root, "companionModInstallRequestedPath");
         settings.CompanionGameHookAutomaticSetup = ReadBool(root, "companionGameHookAutomaticSetup", settings.CompanionGameHookAutomaticSetup);
         settings.LiveMapSpoilerMode = ReadBool(root, "liveMapSpoilerMode", settings.LiveMapSpoilerMode);
+        settings.LogStreamingDestinationPath = ReadString(
+            root, "logStreamingDestinationPath", settings.LogStreamingDestinationPath);
         settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
         settings.Theme = ReadString(root, "theme", "light");

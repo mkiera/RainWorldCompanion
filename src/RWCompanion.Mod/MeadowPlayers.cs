@@ -8,8 +8,8 @@ internal static class MeadowPlayers
 {
     private static readonly Dictionary<string, object> LocalCreatures = new();
     private static readonly Dictionary<string, object> Owners = new();
-    internal static object? Lobby => GameAccess.Get(GameAccess.FindType("RainMeadow.OnlineManager"), "lobby");
-    internal static bool IsHost => GameAccess.Get(GameAccess.Get(Lobby, "owner"), "isMe") is true;
+    internal static object? Lobby => ReadMember(GameAccess.FindType("RainMeadow.OnlineManager"), "lobby");
+    internal static bool IsHost => ReadMember(ReadMember(Lobby, "owner"), "isMe") is true;
     internal static object? Owner(string id) { Read(); return Owners.TryGetValue(id, out var owner) ? owner : null; }
     internal static bool IsOnline => ReadMember(GameAccess.FindType("RainMeadow.OnlineManager"), "lobby") != null;
     internal static object? FindLocal(string id)
@@ -45,10 +45,14 @@ internal static class MeadowPlayers
     private static object? ReadMember(object? target, string name)
     {
         if (target == null) return null;
-        var type = target as Type ?? target.GetType();
-        var instance = target is Type ? null : target;
-        const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
-        return type.GetField(name, flags)?.GetValue(instance) ?? type.GetProperty(name, flags)?.GetValue(instance, null);
+        try
+        {
+            var type = target as Type ?? target.GetType();
+            var instance = target is Type ? null : target;
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+            return type.GetField(name, flags)?.GetValue(instance) ?? type.GetProperty(name, flags)?.GetValue(instance, null);
+        }
+        catch (Exception) { return null; }
     }
 
     internal static LivePlayer[]? Read()
@@ -68,27 +72,36 @@ internal static class MeadowPlayers
             var identity = ReadMember(owner, "id");
             string name = Convert.ToString(ReadMember(identity, "DisplayName")) ?? "Player " + ownerId;
             bool local = ReadMember(owner, "isMe") is true;
+            string steamId = UniqueId(owner);
+            ushort? peerId = ReadMember(owner, "inLobbyId") is ushort value ? value : null;
             int index = 0;
             if (ReadMember(entry.Value, "avatars") is IEnumerable avatars)
             {
                 foreach (var avatarId in avatars)
                 {
-                    var entity = avatarId.GetType().GetMethod("FindEntity")?.Invoke(avatarId, new object[] { true });
+                    object? entity = null;
+                    try { entity = avatarId.GetType().GetMethod("FindEntity")?.Invoke(avatarId, new object[] { true }); }
+                    catch (Exception error) when (error is TargetInvocationException or ArgumentException
+                        or MissingMethodException or InvalidOperationException) { }
                     if (entity == null && local)
                     {
-                        entity = GameAccess.Items(GameAccess.Get(GameAccess.Get(lobby, "gameMode"), "avatars"))
-                            .FirstOrDefault(avatar => Equals(GameAccess.Get(avatar, "id"), avatarId)
-                                && ReferenceEquals(GameAccess.Get(avatar, "owner"), owner)
-                                && GameAccess.Get(avatar, "isMine") is true
-                                && GameAccess.Get(GameAccess.Get(GameAccess.Get(avatar, "apo"), "state"), "dead") is true);
+                        entity = GameAccess.Items(ReadMember(ReadMember(lobby, "gameMode"), "avatars"))
+                            .FirstOrDefault(avatar => Equals(ReadMember(avatar, "id"), avatarId)
+                                && ReferenceEquals(ReadMember(avatar, "owner"), owner)
+                                && ReadMember(avatar, "isMine") is true
+                                && ReadMember(ReadMember(ReadMember(avatar, "apo"), "state"), "dead") is true);
                     }
                     var creature = ReadMember(entity, "apo");
-                    string id = "meadow:" + ownerId + ":" + avatarId;
+                    string avatarText = Convert.ToString(avatarId) ?? "";
+                    string boundedAvatarText = BoundText(avatarText, ProtocolInfo.MaximumMeadowAvatarIdLength);
+                    string id = "meadow:" + ownerId + ":" + boundedAvatarText;
                     Owners[id] = owner!;
                     if (local && creature != null && ReadMember(entity, "isMine") is true && ReadMember(entity, "isPending") is false)
                         LocalCreatures[id] = creature;
                     var player = Plugin.FromCreature(creature, id, name + (index == 0 ? "" : " (" + (index + 1) + ")"), local);
-                    if (GameAccess.Get(creature, "slatedForDeletion") is true) player.RoomId = null;
+                    player.MeadowAvatarId = boundedAvatarText;
+                    if (ReadMember(creature, "slatedForDeletion") is true) player.RoomId = null;
+                    DescribeNative(player, steamId, peerId, entry.Value, entity, creature);
                     if (player.Dead == null && ClientIsDead(entry.Value)) player.Dead = true;
                     result.Add(player);
                     index++;
@@ -97,25 +110,69 @@ internal static class MeadowPlayers
             if (index == 0)
             {
                 Owners["meadow:" + ownerId] = owner!;
-                result.Add(Plugin.FromCreature(null, "meadow:" + ownerId, name, local));
+                var player = Plugin.FromCreature(null, "meadow:" + ownerId, name, local);
+                DescribeNative(player, steamId, peerId, entry.Value, null, null);
+                result.Add(player);
             }
         }
-        foreach (var owner in GameAccess.Items(GameAccess.Get(lobby, "participants")))
+        foreach (var owner in GameAccess.Items(ReadMember(lobby, "participants")))
         {
-            if (GameAccess.Get(owner, "hasLeft") is true || Owners.Values.Any(value => ReferenceEquals(value, owner))) continue;
-            string id = "meadow:" + GameAccess.Text(owner, "inLobbyId");
+            if (ReadMember(owner, "hasLeft") is true || Owners.Values.Any(value => ReferenceEquals(value, owner))) continue;
+            string id = "meadow:" + Convert.ToString(ReadMember(owner, "inLobbyId"));
             Owners[id] = owner;
-            string name = GameAccess.Text(GameAccess.Get(owner, "id"), "DisplayName");
-            result.Add(Plugin.FromCreature(null, id, string.IsNullOrEmpty(name) ? id : name, GameAccess.Get(owner, "isMe") is true));
+            string name = Convert.ToString(ReadMember(ReadMember(owner, "id"), "DisplayName")) ?? "";
+            var player = Plugin.FromCreature(null, id, string.IsNullOrEmpty(name) ? id : name, ReadMember(owner, "isMe") is true);
+            DescribeNative(player, UniqueId(owner), ReadMember(owner, "inLobbyId") is ushort value ? value : null,
+                null, null, null);
+            result.Add(player);
         }
-        foreach (var player in result) player.IsHost = ReferenceEquals(Owners[player.Id], GameAccess.Get(lobby, "owner"));
+        foreach (var player in result) player.IsHost = ReferenceEquals(Owners[player.Id], ReadMember(lobby, "owner"));
         return result.ToArray();
     }
 
     private static bool ClientIsDead(object? settings)
     {
-        if (GameAccess.Get(settings, "inGame") is not true || GameAccess.FindType("RainMeadow.StoryClientSettingsData") is not { } dataType) return false;
+        if (ReadMember(settings, "inGame") is not true || GameAccess.FindType("RainMeadow.StoryClientSettingsData") is not { } dataType) return false;
         object?[] arguments = { dataType, null };
-        return GameAccess.Call(settings!, "TryGetData", arguments) is true && GameAccess.Get(arguments[1], "isDead") is true;
+        try { return GameAccess.Call(settings!, "TryGetData", arguments) is true && ReadMember(arguments[1], "isDead") is true; }
+        catch (Exception) { return false; }
+    }
+
+    private static void DescribeNative(
+        LivePlayer player,
+        string steamId,
+        ushort? peerId,
+        object? settings,
+        object? entity,
+        object? creature)
+    {
+        player.MeadowSteamId = steamId;
+        player.MeadowPeerId = peerId;
+        player.NativeEntityAvailable = entity != null && creature != null;
+        player.NativeLocationAvailability = settings == null
+            ? "client-settings-unavailable"
+            : ReadMember(settings, "inGame") is not true
+                ? "not-in-game"
+                : creature == null
+                    ? player.MeadowAvatarId == null ? "avatar-not-declared" : "entity-unresolved"
+                    : string.IsNullOrWhiteSpace(player.RoomId)
+                        ? "room-unknown"
+                        : "available";
+        player.InDen = creature == null ? null : ReadMember(creature, "InDen") as bool?
+            ?? ReadMember(creature, "inDen") as bool?;
+    }
+
+    private static string UniqueId(object owner)
+    {
+        try { return Convert.ToString(GameAccess.Call(owner, "GetUniqueID")) ?? ""; }
+        catch (Exception) { return ""; }
+    }
+
+    private static string BoundText(string value, int maximum)
+    {
+        string bounded = new(value.Where(character => !char.IsControl(character)).Take(maximum).ToArray());
+        return bounded.Length > 0 && char.IsHighSurrogate(bounded[bounded.Length - 1])
+            ? bounded.Substring(0, bounded.Length - 1)
+            : bounded;
     }
 }

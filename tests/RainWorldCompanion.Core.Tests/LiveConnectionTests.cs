@@ -274,6 +274,93 @@ public sealed class LiveConnectionTests
         await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
     }
 
+    [Fact]
+    public async Task Invalid_active_mod_inventory_is_rejected_and_listener_recovers()
+    {
+        using var fixture = new ServerFixture();
+        using (var invalid = await fixture.Connect())
+        {
+            await fixture.Send(invalid, new LiveSnapshot
+            {
+                SessionId = "invalid",
+                Sequence = 1,
+                ActiveMods = Enumerable.Range(0, ProtocolInfo.MaximumActiveMods + 1)
+                    .Select(index => new LiveModInfo { Id = "mod" + index, DisplayName = "Mod " + index })
+                    .ToArray()
+            });
+            await Task.Delay(100);
+            Assert.Null(fixture.Server.Snapshot);
+        }
+        using var valid = await fixture.Connect();
+        await fixture.Send(valid, new LiveSnapshot
+        {
+            SessionId = "valid",
+            Sequence = 1,
+            ActiveMods =
+            [
+                new()
+                {
+                    Id = "example.mod",
+                    DisplayName = "Example mod",
+                    CodeFingerprint = new string('a', 64),
+                    FingerprintStatus = "complete"
+                }
+            ]
+        });
+        await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
+        Assert.Equal("example.mod", fixture.Server.Snapshot!.ActiveMods.Single().Id);
+    }
+
+    [Fact]
+    public async Task Invalid_native_meadow_roster_is_rejected_and_listener_recovers()
+    {
+        using var fixture = new ServerFixture();
+        using (var invalid = await fixture.Connect())
+        {
+            await fixture.Send(invalid, new LiveSnapshot
+            {
+                SessionId = "invalid",
+                Sequence = 1,
+                Meadow = new()
+                {
+                    LobbyId = "lobby",
+                    Peers = Enumerable.Range(0, ProtocolInfo.MaximumMeadowPeers + 1)
+                        .Select(index => new LiveMeadowPeer
+                        {
+                            SteamId = (76561198000000000L + index).ToString(),
+                            DisplayName = "Player " + index,
+                        }).ToArray()
+                }
+            });
+            await Task.Delay(100);
+            Assert.Null(fixture.Server.Snapshot);
+        }
+
+        using var valid = await fixture.Connect();
+        await fixture.Send(valid, new LiveSnapshot
+        {
+            SessionId = "valid",
+            Sequence = 1,
+            Meadow = new()
+            {
+                LobbyId = "lobby",
+                ObserverSteamId = "76561198000000001",
+                Peers =
+                [
+                    new()
+                    {
+                        SteamId = "76561198000000001",
+                        DisplayName = "Player",
+                        IsLocal = true,
+                        AvatarCount = 0,
+                    }
+                ]
+            }
+        });
+        await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Connected);
+        Assert.Equal("Player", fixture.Server.Snapshot!.Meadow!.Peers.Single().DisplayName);
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);

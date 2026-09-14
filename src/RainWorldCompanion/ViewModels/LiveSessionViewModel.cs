@@ -8,6 +8,7 @@ using RainWorldCompanion.Core.Saves;
 namespace RainWorldCompanion.ViewModels;
 
 public sealed record LivePlayerRow(string Id, string Name, string Location, string Region, string State, string Source);
+public enum LiveLogStreamingTone { Idle, Active, Paused, Problem }
 
 public sealed partial class LiveSessionViewModel : ObservableObject
 {
@@ -17,18 +18,21 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     private LiveSnapshot? _snapshot;
     private readonly Func<string, string, string, Task<LiveCommandResult>>? _teleportAll;
     private readonly Func<string, string, Task<LiveCommandResult>>? _recover;
+    private readonly Func<Task>? _stopLogStreaming;
 
     public LiveSessionViewModel(Func<Task>? install = null,
         Func<string, string, string, string, Task<LiveCommandResult>>? teleport = null,
         Func<bool, Task<LiveCommandResult>>? setHostControl = null,
         Func<string, string, string, Task<LiveCommandResult>>? teleportAll = null,
-        Func<string, string, Task<LiveCommandResult>>? recover = null)
+        Func<string, string, Task<LiveCommandResult>>? recover = null,
+        Func<Task>? stopLogStreaming = null)
     {
         _install = install ?? (() => Task.CompletedTask);
         _teleport = teleport;
         _setHostControl = setHostControl;
         _teleportAll = teleportAll;
         _recover = recover;
+        _stopLogStreaming = stopLogStreaming;
         MapView.PropertyChanged += (_, e) => { if (e.PropertyName is nameof(MapView.SelectedRoom) or nameof(MapView.SpoilerMode) or nameof(MapView.SelectedPlayer)) RefreshGroupAction(); };
     }
 
@@ -36,6 +40,61 @@ public sealed partial class LiveSessionViewModel : ObservableObject
     [ObservableProperty] private string mapActionText = "Right-click a room to teleport.";
     [ObservableProperty] private bool allowHostControl;
     [ObservableProperty] private bool canSetHostControl;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StopLogStreamingCommand))]
+    private bool isLogStreamingActive;
+    [ObservableProperty] private string logStreamingText = "Log streaming is idle.";
+    [ObservableProperty] private LiveLogStreamingTone logStreamingTone;
+
+    [RelayCommand(CanExecute = nameof(IsLogStreamingActive))]
+    private async Task StopLogStreaming()
+    {
+        if (_stopLogStreaming is null) return;
+        try
+        {
+            await _stopLogStreaming();
+            IsLogStreamingActive = false;
+            LogStreamingText = "Log streaming stopped.";
+            LogStreamingTone = LiveLogStreamingTone.Idle;
+        }
+        catch (Exception error)
+        {
+            LogStreamingText = "Log streaming could not stop: " + error.Message;
+            LogStreamingTone = LiveLogStreamingTone.Problem;
+        }
+    }
+
+    public void AdoptLogStreaming(LogStreamingCoordinatorSnapshot? snapshot)
+    {
+        bool incoming = snapshot?.Peers.Any(peer => peer.Incoming.State is LogStreamingPeerMode.Ready
+            or LogStreamingPeerMode.Streaming or LogStreamingPeerMode.Reconnecting
+            or LogStreamingPeerMode.ReceiverPaused or LogStreamingPeerMode.StorageLimited) == true;
+        bool outgoing = snapshot?.Peers.Any(peer => peer.IsReceiving) == true;
+        IsLogStreamingActive = snapshot?.ReceiverAdvertised == true || incoming || outgoing;
+        if (!IsLogStreamingActive)
+        {
+            LogStreamingText = "Log streaming is idle.";
+            LogStreamingTone = LiveLogStreamingTone.Idle;
+        }
+        else if (snapshot!.Peers.Any(peer => peer.Incoming.State == LogStreamingPeerMode.StorageLimited
+            || peer.Outgoing.State == LogStreamingPeerMode.StorageLimited))
+        {
+            LogStreamingText = "Log streaming needs attention. Open Developer data for details.";
+            LogStreamingTone = LiveLogStreamingTone.Problem;
+        }
+        else if (snapshot.CaptureMode == LogStreamingCaptureMode.Paused)
+        {
+            LogStreamingText = "Log capture is paused. Sharing approvals are preserved.";
+            LogStreamingTone = LiveLogStreamingTone.Paused;
+        }
+        else
+        {
+            int streams = snapshot.Peers.Count(peer => peer.Incoming.State == LogStreamingPeerMode.Streaming
+                || peer.Outgoing.State == LogStreamingPeerMode.Streaming);
+            LogStreamingText = streams > 0 ? $"Log streaming active ({streams})." : "Log streaming is ready.";
+            LogStreamingTone = LiveLogStreamingTone.Active;
+        }
+    }
 
     public LiveMapPlayer? TeleportPlayer => MapView.SelectedPlayer is { IsLocal: true } selected
         ? selected : MapView.Players.FirstOrDefault(p => p.IsLocal);

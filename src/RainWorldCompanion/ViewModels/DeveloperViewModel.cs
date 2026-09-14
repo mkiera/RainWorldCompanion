@@ -19,7 +19,12 @@ public sealed record DiagnosticCategory(string Name, ObservableCollection<Diagno
 public sealed partial class DeveloperViewModel : ObservableObject
 {
     public LiveMapViewModel MapView { get; }
-    public DeveloperViewModel(LiveMapViewModel? mapView = null) => MapView = mapView ?? new();
+    public LogStreamingViewModel LogStreaming { get; }
+    public DeveloperViewModel(LiveMapViewModel? mapView = null, LogStreamingViewModel? logStreaming = null)
+    {
+        MapView = mapView ?? new();
+        LogStreaming = logStreaming ?? new();
+    }
 
     private readonly Queue<(DateTimeOffset Time, double Rate, double Age)> _history = new();
     private DateTimeOffset? _previousTime;
@@ -41,6 +46,7 @@ public sealed partial class DeveloperViewModel : ObservableObject
     public void Refresh(LiveDiagnostics? diagnostics, LiveSessionViewModel live,
         IReadOnlyDictionary<string, string> application, DateTimeOffset now)
     {
+        LogStreaming.Refresh();
         UpdateCharts(diagnostics, now);
         SetCategory("Companion and mod setup", application.Concat(new Dictionary<string, string>
         {

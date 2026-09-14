@@ -28,6 +28,8 @@ public sealed class AppSettings
 
     public bool LiveMapSpoilerMode { get; set; } = true;
 
+    public string LogStreamingDestinationPath { get; set; } = "";
+
     /// <summary>
     /// "stable", "prerelease" or "alpha". Text rather than the enum, because System.Text.Json
     /// writes an enum as its ordinal and inserting a channel would change what old files mean.
@@ -89,6 +91,7 @@ public sealed class AppSettings
         CompanionModInstallRequestedPath = CompanionModInstallRequestedPath,
         CompanionGameHookAutomaticSetup = CompanionGameHookAutomaticSetup,
         LiveMapSpoilerMode = LiveMapSpoilerMode,
+        LogStreamingDestinationPath = LogStreamingDestinationPath,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
         Theme = Theme,

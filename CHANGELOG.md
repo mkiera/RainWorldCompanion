@@ -21,6 +21,14 @@ worded as things ended up. The pre-release sections stay for their tags.
   setting can disable and remove it, while a hook disabled in Remix stays off.
   Rain Meadow host control is on by default for new Game Hook configurations.
 - Log bundle filenames include the signed-in Steam display name when available.
+- Steam Rain Meadow lobbies can stream game logs from consenting players into one
+  capture, including the receiver's own logs, active mod versions and code
+  fingerprints, reconnection history, live connection charts, and event markers.
+- Deep trace can be switched during an approved stream. Captures keep exact local
+  player traces separate from receiver-observed Meadow roster, room, life state,
+  lobby configuration, and network data available for every visible player.
+- Streamed-log captures can be saved to a persistent folder chosen in the log
+  streaming panel. Downloads remains the default.
 
 ## 1.4.0-beta.2 - 2026-09-13
 

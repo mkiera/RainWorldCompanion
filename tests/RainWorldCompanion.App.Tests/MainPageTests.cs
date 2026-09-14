@@ -1,3 +1,4 @@
+using System.IO;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
 using RainWorldCompanion.Services;
@@ -7,6 +8,32 @@ namespace RainWorldCompanion.App.Tests;
 
 public class MainPageTests
 {
+    [Fact]
+    public void Live_footer_uses_the_shortcut_command_for_developer_menu_while_disconnected()
+    {
+        var view = new MainViewModel(new SettingsStore(), new GameProcessDetector(), new SlugcatIconProvider(), "1.4.0");
+        try
+        {
+            view.Live.AdoptSetup(false, false, null, "Companion Game Hook is not installed.");
+            view.OpenLiveFeaturesCommand.Execute(null);
+
+            Assert.False(view.IsGameRunning);
+            Assert.False(view.Live.SetupReady);
+            Assert.True(view.IsLivePageVisible);
+            Assert.True(view.OpenDeveloperWindowCommand.CanExecute(null));
+
+            string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+            Assert.Contains("x:Name=\"DeveloperMenuButton\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding OpenDeveloperWindowCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Visibility=\"{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}\"", markup, StringComparison.Ordinal);
+
+            string shortcutSource = File.ReadAllText(Path.Combine(
+                AppContext.BaseDirectory, "AppSource", "App.xaml.cs"));
+            Assert.Contains("viewModel.OpenDeveloperWindowCommand.Execute(null);", shortcutSource, StringComparison.Ordinal);
+        }
+        finally { view.Shutdown(); }
+    }
+
     [Fact]
     public void Game_start_and_exit_switch_pages_without_replacing_live_state()
     {

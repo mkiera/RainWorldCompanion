@@ -105,14 +105,20 @@ public sealed class LiveConnectionServer : IDisposable
         _gameInstallPath = gameInstallPath;
     }
 
-    public void Start()
+    public void Start(LogBridgeEndpoint? logBridge = null)
     {
         if (_started) return;
         Directory.CreateDirectory(_directory);
         _listener.Start();
         try
         {
-            var discovery = new LiveDiscovery { Port = ((IPEndPoint)_listener.LocalEndpoint).Port, Token = _token };
+            var discovery = new LiveDiscovery
+            {
+                Port = ((IPEndPoint)_listener.LocalEndpoint).Port,
+                Token = _token,
+                LogPort = logBridge?.Port ?? 0,
+                LogToken = logBridge?.Token ?? ""
+            };
             string temporary = Path.Combine(_directory, "endpoint." + Guid.NewGuid().ToString("N") + ".tmp");
             File.WriteAllText(temporary, LiveJson.Serialize(discovery));
             File.Move(temporary, Path.Combine(_directory, "endpoint.json"), true);
@@ -171,7 +177,13 @@ public sealed class LiveConnectionServer : IDisposable
                     SetState(LiveConnectionStatus.Incompatible, null);
                     return;
                 }
-                if (string.IsNullOrWhiteSpace(incoming.SessionId) || incoming.Players is null || incoming.Players.Length > 256 || incoming.Players.Any(player => player is null || string.IsNullOrWhiteSpace(player.Id)) || incoming.EnabledExpansions is null) { RecordEvent("Snapshot fields rejected.", true); break; }
+                if (string.IsNullOrWhiteSpace(incoming.SessionId) || !ValidPlayers(incoming.Players)
+                    || incoming.EnabledExpansions is null || !ValidActiveMods(incoming.ActiveMods)
+                    || !ValidMeadow(incoming.Meadow))
+                {
+                    RecordEvent("Snapshot fields rejected.", true);
+                    break;
+                }
                 if (session is not null && session != incoming.SessionId) { RecordEvent("Session changed within a connection.", true); break; }
                 session = incoming.SessionId;
                 if (incoming.Sequence <= sequence)
@@ -228,6 +240,101 @@ public sealed class LiveConnectionServer : IDisposable
         }
         return null;
     }
+
+    private static bool ValidActiveMods(LiveModInfo[]? mods)
+    {
+        if (mods is null || mods.Length > ProtocolInfo.MaximumActiveMods) return false;
+        foreach (var mod in mods)
+        {
+            if (mod is null || string.IsNullOrWhiteSpace(mod.Id) || mod.Id.Length > ProtocolInfo.MaximumModIdLength
+                || string.IsNullOrWhiteSpace(mod.DisplayName) || mod.DisplayName.Length > ProtocolInfo.MaximumModDisplayNameLength
+                || mod.Version is null || mod.Version.Length > ProtocolInfo.MaximumModVersionLength
+                || mod.CodeFingerprint is null || mod.FingerprintStatus is null)
+                return false;
+            bool hasFingerprint = mod.CodeFingerprint.Length == 64 && mod.CodeFingerprint.All(Uri.IsHexDigit);
+            if (mod.FingerprintStatus is "complete" or "partial")
+            {
+                if (!hasFingerprint) return false;
+            }
+            else if (mod.FingerprintStatus is "pending" or "unavailable" or "no-code")
+            {
+                if (mod.CodeFingerprint.Length != 0) return false;
+            }
+            else return false;
+        }
+        return true;
+    }
+
+    private static bool ValidPlayers(LivePlayer[]? players)
+    {
+        if (players is null || players.Length > 256) return false;
+        foreach (var player in players)
+        {
+            if (player is null || string.IsNullOrWhiteSpace(player.Id) || player.Id.Length > 160
+                || player.Name is null || player.Name.Length > 80
+                || player.MeadowSteamId is null || player.MeadowSteamId.Length > 32
+                || player.MeadowAvatarId?.Length > ProtocolInfo.MaximumMeadowAvatarIdLength
+                || player.NativeLocationAvailability is null || player.NativeLocationAvailability.Length > 48)
+                return false;
+        }
+        return true;
+    }
+
+    private static bool ValidMeadow(LiveMeadowSnapshot? meadow)
+    {
+        if (meadow is null) return true;
+        if (meadow.SchemaVersion != 1 || string.IsNullOrWhiteSpace(meadow.LobbyId)
+            || meadow.LobbyId.Length > ProtocolInfo.MaximumMeadowLabelLength
+            || meadow.ObserverSteamId is null || meadow.ObserverSteamId.Length > 32
+            || meadow.GameMode is null || meadow.GameMode.Length > ProtocolInfo.MaximumMeadowLabelLength
+            || meadow.Timeline is null || meadow.Timeline.Length > ProtocolInfo.MaximumMeadowLabelLength
+            || !ValidTexts(meadow.RequiredMods, ProtocolInfo.MaximumMeadowModIds, ProtocolInfo.MaximumMeadowModIdLength)
+            || !ValidTexts(meadow.BannedMods, ProtocolInfo.MaximumMeadowModIds, ProtocolInfo.MaximumMeadowModIdLength)
+            || meadow.LobbyOptions is null || meadow.LobbyOptions.Length > ProtocolInfo.MaximumMeadowLobbyOptions
+            || meadow.Peers is null || meadow.Peers.Length > ProtocolInfo.MaximumMeadowPeers)
+            return false;
+        if (meadow.LobbyOptions.Any(option => option is null || string.IsNullOrWhiteSpace(option.Name)
+            || option.Name.Length > ProtocolInfo.MaximumMeadowLobbyOptionNameLength || option.Value is null
+            || option.Value.Length > ProtocolInfo.MaximumMeadowLobbyOptionValueLength)) return false;
+
+        var peerIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var peer in meadow.Peers)
+        {
+            if (peer is null || string.IsNullOrWhiteSpace(peer.SteamId) || peer.SteamId.Length > 32
+                || !peerIds.Add(peer.SteamId) || peer.DisplayName is null
+                || peer.DisplayName.Length > ProtocolInfo.MaximumMeadowDisplayNameLength
+                || peer.AvatarIds is null
+                || !ValidTexts(peer.AvatarIds, ProtocolInfo.MaximumMeadowAvatarsPerPeer,
+                    ProtocolInfo.MaximumMeadowAvatarIdLength)
+                || peer.AvatarIds.Distinct(StringComparer.Ordinal).Count() != peer.AvatarIds.Length
+                || peer.AvatarCount is < 0 or > ProtocolInfo.MaximumMeadowAvatarsPerPeer
+                || peer.PingMilliseconds is < 0 || peer.IncomingBytesPerSecond is < 0
+                || peer.OutgoingBytesPerSecond is < 0 || peer.OutgoingEventCount is < 0
+                || peer.OutgoingStateCount is < 0 || !ValidConnection(peer.Connection))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool ValidConnection(LiveMeadowConnection? connection)
+    {
+        if (connection is null) return true;
+        return connection.State is not null && connection.State.Length <= ProtocolInfo.MaximumMeadowConnectionStateLength
+            && connection.PingMilliseconds is not < 0
+            && ValidQuality(connection.LocalDeliveryQuality) && ValidQuality(connection.RemoteDeliveryQuality)
+            && ValidRate(connection.IncomingPacketsPerSecond) && ValidRate(connection.OutgoingPacketsPerSecond)
+            && ValidRate(connection.IncomingBytesPerSecond) && ValidRate(connection.OutgoingBytesPerSecond)
+            && connection.EstimatedSendRateBytesPerSecond is not < 0
+            && connection.PendingUnreliableBytes is not < 0 && connection.PendingReliableBytes is not < 0
+            && connection.UnacknowledgedReliableBytes is not < 0 && connection.QueueTimeMicroseconds is not < 0;
+    }
+
+    private static bool ValidQuality(float? value) => value is null || value is >= 0 and <= 1 && float.IsFinite(value.Value);
+    private static bool ValidRate(float? value) => value is null || value >= 0 && float.IsFinite(value.Value);
+
+    private static bool ValidTexts(string[]? values, int maximumItems, int maximumLength)
+        => values is not null && values.Length <= maximumItems
+            && values.All(value => !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength);
 
     private void SetState(LiveConnectionStatus status, LiveSnapshot? snapshot)
     {
