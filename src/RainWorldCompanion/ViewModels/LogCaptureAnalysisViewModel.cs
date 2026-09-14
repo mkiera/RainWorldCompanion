@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -91,6 +90,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     private DateTimeOffset _nextLiveRefresh;
     private CancellationTokenSource? _loadCancellation;
     private bool _queuedRefresh;
+    private bool _suspendTimelineRebuild;
     private DispatcherTimer? _playbackTimer;
     private DateTimeOffset _lastPlaybackTick;
     private Dictionary<string, CapturePlayerObservation[]> _directPlayers = new(StringComparer.Ordinal);
@@ -108,12 +108,13 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         _pickCaptureFolder = pickCaptureFolder ?? PickCaptureFolderAsync;
     }
 
-    public ObservableCollection<CaptureIncidentViewModel> Incidents { get; } = [];
-    public ObservableCollection<CaptureEventRowViewModel> VisibleEvents { get; } = [];
-    public ObservableCollection<CaptureCauseViewModel> PossibleCauses { get; } = [];
-    public ObservableCollection<CaptureMapPlayerViewModel> PlayersAtCursor { get; } = [];
-    public ObservableCollection<CaptureModComparisonViewModel> ModComparison { get; } = [];
     public IReadOnlyList<double> PlaybackRates { get; } = [0.25, 0.5, 1, 2, 4];
+
+    [ObservableProperty] private IReadOnlyList<CaptureIncidentViewModel> incidents = [];
+    [ObservableProperty] private IReadOnlyList<CaptureEventRowViewModel> visibleEvents = [];
+    [ObservableProperty] private IReadOnlyList<CaptureCauseViewModel> possibleCauses = [];
+    [ObservableProperty] private IReadOnlyList<CaptureMapPlayerViewModel> playersAtCursor = [];
+    [ObservableProperty] private IReadOnlyList<CaptureModComparisonViewModel> modComparison = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCaptureCommand))]
@@ -269,14 +270,14 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(VisibleRangeText));
         OnPropertyChanged(nameof(TimelineStartText));
-        RebuildTracks();
+        if (!_suspendTimelineRebuild) RebuildTracks();
     }
 
     partial void OnVisibleEndChanged(DateTimeOffset value)
     {
         OnPropertyChanged(nameof(VisibleRangeText));
         OnPropertyChanged(nameof(TimelineEndText));
-        RebuildTracks();
+        if (!_suspendTimelineRebuild) RebuildTracks();
     }
 
     partial void OnSelectedMomentChanged(CaptureTimelineMoment? value)
@@ -292,11 +293,15 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
 
     partial void OnSelectedIncidentChanged(CaptureIncidentViewModel? value)
     {
-        PossibleCauses.Clear();
-        if (value is null) return;
+        PossibleCauses = value is null
+            ? []
+            : value.Incident.PossibleCauses.Select(cause => new CaptureCauseViewModel(cause)).ToArray();
+        if (value is null)
+        {
+            RefreshCollectionState();
+            return;
+        }
         FollowLiveEdge = false;
-        foreach (CaptureCauseCandidate cause in value.Incident.PossibleCauses)
-            PossibleCauses.Add(new(cause));
         CaptureTimelineMoment? selected = SelectedMoment is { } current
             && value.Incident.MomentSequences.Contains(current.Sequence) ? current : null;
         selected ??= _snapshot.Moments.FirstOrDefault(moment =>
@@ -372,9 +377,8 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     [RelayCommand]
     private void FitTimeline()
     {
-        HorizontalZoom = 1;
-        VisibleStart = TimelineStart;
-        VisibleEnd = TimelineEnd;
+        if (Math.Abs(HorizontalZoom - 1) > 0.001) HorizontalZoom = 1;
+        else SetVisibleRange(TimelineStart, TimelineEnd);
     }
 
     [RelayCommand]
@@ -463,7 +467,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             if (!token.IsCancellationRequested) Adopt(snapshot);
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException or ArgumentException)
+        catch (Exception error)
         {
             if (!token.IsCancellationRequested) StatusText = "The capture could not be loaded: " + error.Message;
         }
@@ -505,16 +509,14 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             ?? TimelineStart;
         if (TimelineEnd <= TimelineStart) TimelineEnd = TimelineStart.AddSeconds(1);
 
-        Incidents.Clear();
-        foreach (CaptureIncident incident in snapshot.Incidents.OrderBy(incident => incident.Started))
-            Incidents.Add(new(incident));
+        Incidents = snapshot.Incidents.OrderBy(incident => incident.Started)
+            .Select(incident => new CaptureIncidentViewModel(incident)).ToArray();
         SelectedIncident = selectedIncidentId is null ? null : Incidents.FirstOrDefault(item => item.Id == selectedIncidentId);
         SelectedMoment = selectedSequence is null ? null : snapshot.Moments.FirstOrDefault(item => item.Sequence == selectedSequence);
 
         if (previousCursor == default || FollowLiveEdge) CursorTime = TimelineEnd;
         else CursorTime = Clamp(previousCursor, TimelineStart, TimelineEnd);
         UpdateVisibleRange(CursorTime, FollowLiveEdge ? 1 : 0.5);
-        RebuildTracks();
         UpdateCursorState();
         RefreshSummaryState();
     }
@@ -590,8 +592,18 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         if (end > TimelineEnd) { end = TimelineEnd; start = end - width; }
         if (start < TimelineStart) start = TimelineStart;
         if (end <= start) end = start.AddTicks(1);
-        VisibleStart = start;
-        VisibleEnd = end;
+        bool wasSuspended = _suspendTimelineRebuild;
+        _suspendTimelineRebuild = true;
+        try
+        {
+            VisibleStart = start;
+            VisibleEnd = end;
+        }
+        finally
+        {
+            _suspendTimelineRebuild = wasSuspended;
+        }
+        if (!wasSuspended) RebuildTracks();
     }
 
     private void JumpAlert(bool previous)
@@ -611,7 +623,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     {
         if (!HasAnalysis || VisibleEnd <= VisibleStart)
         {
-            VisibleEvents.Clear();
+            VisibleEvents = [];
             ErrorActivityPoints = [];
             PingPoints = [];
             FrameTimePoints = [];
@@ -626,8 +638,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         CaptureTimelineMoment[] visible = _snapshot.Moments
             .Where(moment => moment.Timestamp >= VisibleStart && moment.Timestamp <= VisibleEnd && IsVisible(moment))
             .TakeLast(2_000).ToArray();
-        VisibleEvents.Clear();
-        foreach (CaptureTimelineMoment moment in visible) VisibleEvents.Add(new(moment));
+        VisibleEvents = visible.Select(moment => new CaptureEventRowViewModel(moment)).ToArray();
         RefreshGraphs();
         RefreshCollectionState();
     }
@@ -637,8 +648,8 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         if (!HasAnalysis || CursorTime == default)
         {
             CurrentMap = null;
-            PlayersAtCursor.Clear();
-            ModComparison.Clear();
+            PlayersAtCursor = [];
+            ModComparison = [];
             MapStatus = "No location data at the playhead.";
             RefreshCollectionState();
             return;
@@ -646,7 +657,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         CaptureMapContext? context = MapContextAtCursor();
         string timeline = context is null ? "" : DenWorldCatalog.EffectiveTimeline(context.Campaign, context.Timeline);
         CurrentMap = timeline.Length == 0 ? null : DenMapCatalog.ForTimeline(timeline, context!.DownpourEnabled);
-        PlayersAtCursor.Clear();
+        var players = new List<CaptureMapPlayerViewModel>();
         var representedNames = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
         foreach ((string playerKey, CapturePlayerObservation[] history) in _directPlayers)
         {
@@ -654,7 +665,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             if (observation is null || !observation.IsAvailable) continue;
             bool nearbyError = _errorsBySender.TryGetValue(observation.SenderId, out CaptureTimelineMoment[]? errors)
                 && HasMomentWithin(errors, CursorTime, TimeSpan.FromSeconds(2));
-            AddMapPlayer(playerKey, observation, hasLogs: true, nearbyError);
+            players.Add(MapPlayer(playerKey, observation, hasLogs: true, nearbyError));
             representedNames.Add(observation.PlayerName);
         }
         foreach ((string playerName, CapturePlayerObservation[] history) in _nativePlayersByName)
@@ -664,16 +675,17 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             if (observation is null || !observation.IsAvailable) continue;
             bool hasLogs = _snapshot.Participants.Any(participant => participant.HasSharedLogs
                 && participant.DisplayName.Equals(playerName, StringComparison.CurrentCultureIgnoreCase));
-            AddMapPlayer("native:" + observation.PlayerId, observation, hasLogs, nearbyError: false);
+            players.Add(MapPlayer("native:" + observation.PlayerId, observation, hasLogs, nearbyError: false));
         }
+        PlayersAtCursor = players;
         MapStatus = CurrentMap is null
             ? timeline.Length == 0 ? "No campaign timeline was recorded before the playhead." : $"No bundled map is available for {timeline}."
-            : $"{CurrentMap.Id} map. {PlayersAtCursor.Count(player => player.Placement is not null)}/{PlayersAtCursor.Count} visible players placed at {CursorTime.ToLocalTime():HH:mm:ss}.";
+            : $"{CurrentMap.Id} map. {players.Count(player => player.Placement is not null)}/{players.Count} visible players placed at {CursorTime.ToLocalTime():HH:mm:ss}.";
         RefreshModComparison();
         RefreshCollectionState();
     }
 
-    private void AddMapPlayer(
+    private CaptureMapPlayerViewModel MapPlayer(
         string id,
         CapturePlayerObservation observation,
         bool hasLogs,
@@ -684,9 +696,9 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         MappedRoom? placement = CurrentMap is null || room.Length == 0
             ? null
             : RoomMapCatalog.Find(CurrentMap.Id, room);
-        PlayersAtCursor.Add(new(id, observation.PlayerName, room, region,
+        return new(id, observation.PlayerName, room, region,
             observation.Dead switch { true => "Dead", false => "Alive", _ => "Unknown" },
-            observation.IsHost, hasLogs, nearbyError, placement, observation.ObserverName));
+            observation.IsHost, hasLogs, nearbyError, placement, observation.ObserverName);
     }
 
     private CaptureMapContext? MapContextAtCursor()
@@ -711,7 +723,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             .Where(snapshot => snapshot is not null).Cast<CaptureModSnapshot>().ToArray();
         var names = _snapshot.Participants.ToDictionary(item => item.Id, item => item.DisplayName, StringComparer.Ordinal);
         var currentBySender = current.ToDictionary(snapshot => snapshot.SenderId, StringComparer.Ordinal);
-        ModComparison.Clear();
+        var comparisons = new List<CaptureModComparisonViewModel>();
         foreach (string modId in current.SelectMany(snapshot => snapshot.Mods).Select(mod => mod.Id)
                      .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.OrdinalIgnoreCase))
         {
@@ -768,21 +780,22 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
                 : !listedByEverySender && truncatedInventory ? "Mod may be omitted from a truncated inventory"
                 : incompleteFingerprint ? "Code fingerprint unavailable or incomplete"
                 : "Matching version and code fingerprint";
-            ModComparison.Add(new(modId, representative.DisplayName, string.Join(Environment.NewLine, builds), mismatch,
+            comparisons.Add(new(modId, representative.DisplayName, string.Join(Environment.NewLine, builds), mismatch,
                 verificationGap, status));
         }
         foreach (string sender in senders.Where(sender => !currentBySender.ContainsKey(sender)))
         {
-            ModComparison.Add(new("inventory:" + sender, names.GetValueOrDefault(sender, sender),
+            comparisons.Add(new("inventory:" + sender, names.GetValueOrDefault(sender, sender),
                 names.GetValueOrDefault(sender, sender) + ": inventory not recorded", false, true,
                 "Mod inventory not recorded before the playhead"));
         }
         foreach (CaptureModSnapshot snapshot in current.Where(snapshot => snapshot.Truncated))
         {
             string name = names.GetValueOrDefault(snapshot.SenderId, snapshot.SenderName);
-            ModComparison.Add(new("inventory:" + snapshot.SenderId, name,
+            comparisons.Add(new("inventory:" + snapshot.SenderId, name,
                 name + ": inventory was truncated", false, true, "Mod inventory was truncated"));
         }
+        ModComparison = comparisons;
         OnPropertyChanged(nameof(HasModMismatches));
         OnPropertyChanged(nameof(HasModVerificationGaps));
         OnPropertyChanged(nameof(ModMismatchSummary));
