@@ -240,9 +240,9 @@
                                               Margin="0,0,0,8">
                                         <StackPanel>
                                             <TextBlock>
-                                                <Run Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                                                <Run Text="{Binding DisplayName, Mode=OneWay}" FontWeight="SemiBold" />
                                                 <Run Text="  " />
-                                                <Run Text="{Binding RoleText}" Foreground="{DynamicResource Brush.Meadow}" />
+                                                <Run Text="{Binding RoleText, Mode=OneWay}" Foreground="{DynamicResource Brush.Meadow}" />
                                             </TextBlock>
                                             <TextBlock Text="{Binding IdentityText}" Style="{StaticResource Text.Muted}" />
                                             <TextBlock Text="{Binding ReceiverChoiceText}" Style="{StaticResource Text.Muted}" />

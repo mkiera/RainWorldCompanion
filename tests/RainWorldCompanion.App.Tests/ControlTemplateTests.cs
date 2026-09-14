@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -12,6 +13,16 @@ namespace RainWorldCompanion.App.Tests;
 /// </summary>
 public class ControlTemplateTests
 {
+    [Fact]
+    public void Log_peer_run_bindings_do_not_write_to_read_only_view_model_properties()
+    {
+        string markup = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "Xaml", "Views", "LogStreamingView.xaml"));
+
+        Assert.Contains("{Binding DisplayName, Mode=OneWay}", markup, StringComparison.Ordinal);
+        Assert.Contains("{Binding RoleText, Mode=OneWay}", markup, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Every_retemplated_control_lays_out_under_both_palettes()
     {
