@@ -21,6 +21,19 @@ internal static class WpfTestHost
         }
     }
 
+    internal static async Task<Exception?> RunAsync(Func<Task> action)
+    {
+        try
+        {
+            await WorkerDispatcher.Value.InvokeAsync(action).Task.Unwrap();
+            return null;
+        }
+        catch (Exception error)
+        {
+            return error;
+        }
+    }
+
     private static Dispatcher CreateDispatcher()
     {
         Dispatcher? dispatcher = null;

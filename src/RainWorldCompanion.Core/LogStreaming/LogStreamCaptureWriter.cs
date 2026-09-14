@@ -21,7 +21,7 @@ public sealed record LogStreamCaptureOptions
 
 public sealed class LogStreamCaptureWriter
 {
-    private const int MaximumChunkBytes = LogStreamSenderOptions.DefaultChunkSize;
+    private const int MaximumChunkBytes = LogStreamSenderOptions.MaximumChunkSize;
     private const long MaximumChunkSequence = 4_000_000;
     private const int MaximumSenders = 64;
     private const int MaximumSessionsPerSender = 64;

@@ -1,4 +1,6 @@
+using System.Text;
 using RainWorldCompanion.Core.LogStreaming;
+using RainWorldCompanion.LiveProtocol;
 using RainWorldCompanion.Tests;
 
 namespace RainWorldCompanion.Core.Tests;
@@ -19,8 +21,8 @@ public class LogStreamGeneratedSenderTests
         Assert.True(sender.TryAppendGenerated("Companion/events.jsonl", record));
 
         var chunks = sender.GetPendingChunks("receiver");
-        Assert.Equal([8_192, 808], chunks.Select(chunk => chunk.Length));
-        Assert.Equal([0L, 8_192L], chunks.Select(chunk => chunk.Offset));
+        Assert.Equal([5_120, 3_880], chunks.Select(chunk => chunk.Length));
+        Assert.Equal([0L, 5_120L], chunks.Select(chunk => chunk.Offset));
         Assert.All(chunks, chunk =>
         {
             Assert.Equal("Companion/events.jsonl", chunk.FileId);
@@ -30,6 +32,40 @@ public class LogStreamGeneratedSenderTests
         Assert.Equal(record, chunks.SelectMany(chunk => chunk.CopyData()).ToArray());
         Assert.Throws<ArgumentException>(() => LogStreamFileCatalog.ResolveSourcePath(
             install, "Companion/events.jsonl"));
+    }
+
+    [Fact]
+    public void Default_chunks_fit_the_network_packet_envelope()
+    {
+        using var files = new TempDirectory("log-stream-generated");
+        string install = files.CreateSubdirectory("Rain World");
+        var sender = CreateSender(install);
+        sender.AddReceiver("receiver");
+        Assert.True(sender.TryAppendGenerated("Companion/events.jsonl",
+            Enumerable.Repeat(byte.MaxValue, LogStreamSenderOptions.DefaultChunkSize).ToArray()));
+        LogStreamChunk chunk = Assert.Single(sender.GetPendingChunks("receiver"));
+        var message = new LogStreamNetworkMessage
+        {
+            Kind = LogStreamKinds.Chunk,
+            LobbyId = new string('l', 64),
+            SenderSteamId = SenderId.ToString(),
+            ReceiverSteamId = new string('2', 32),
+            CaptureId = new string('c', 96),
+            CaptureToken = new string('c', 192),
+            TransferId = new string('t', 96),
+            ConsentToken = new string('t', 192),
+            LogSessionId = new string('s', 128),
+            FileId = chunk.FileId,
+            Generation = int.MaxValue,
+            Offset = long.MaxValue,
+            Sequence = long.MaxValue,
+            Data = chunk.CopyData(),
+            Hash = chunk.Sha256
+        };
+        byte[] payload = Encoding.UTF8.GetBytes(LiveJson.Serialize(message));
+
+        Assert.True(payload.Length <= ProtocolInfo.MaximumLogPacketLength,
+            $"A default chunk serialized to {payload.Length:N0} bytes.");
     }
 
     [Fact]
@@ -88,12 +124,12 @@ public class LogStreamGeneratedSenderTests
     {
         using var files = new TempDirectory("log-stream-generated");
         string install = files.CreateSubdirectory("Rain World");
-        var sender = CreateSender(install, maxSpoolBytes: 16_384, compactAcknowledgedChunks: true);
+        var sender = CreateSender(install, maxSpoolBytes: 10_240, compactAcknowledgedChunks: true);
         Assert.True(sender.AddReceiver("receiver"));
 
         for (int batch = 0; batch < 5; batch++)
         {
-            Assert.True(sender.TryAppendGenerated("Companion/deep-trace.jsonl", new byte[16_384]));
+            Assert.True(sender.TryAppendGenerated("Companion/deep-trace.jsonl", new byte[10_240]));
             LogStreamChunk[] chunks = sender.GetPendingChunks("receiver").ToArray();
             Assert.Equal([batch * 2L + 1, batch * 2L + 2], chunks.Select(chunk => chunk.Sequence));
 
@@ -108,7 +144,7 @@ public class LogStreamGeneratedSenderTests
             Assert.Equal(0, snapshot.SpoolBytes);
             Assert.Equal(0, snapshot.ChunkCount);
             Assert.False(snapshot.IsSpoolFull);
-            Assert.Equal((batch + 1) * 16_384L, Assert.Single(snapshot.Receivers).BytesAcknowledged);
+            Assert.Equal((batch + 1) * 10_240L, Assert.Single(snapshot.Receivers).BytesAcknowledged);
         }
     }
 
@@ -117,16 +153,16 @@ public class LogStreamGeneratedSenderTests
     {
         using var files = new TempDirectory("log-stream-generated");
         string install = files.CreateSubdirectory("Rain World");
-        var sender = CreateSender(install, maxSpoolBytes: 16_384);
+        var sender = CreateSender(install, maxSpoolBytes: 10_240);
         sender.AddReceiver("receiver");
-        Assert.True(sender.TryAppendGenerated("Companion/events.jsonl", new byte[8_192]));
+        Assert.True(sender.TryAppendGenerated("Companion/events.jsonl", new byte[5_120]));
         LogStreamChunk chunk = Assert.Single(sender.GetPendingChunks("receiver"));
 
         Assert.Equal(LogStreamAcknowledgeStatus.Accepted, sender.Acknowledge(
             "receiver",
             new(chunk.CaptureId, chunk.SourceSessionId, chunk.Sequence, chunk.Sha256)).Status);
 
-        Assert.Equal(8_192, sender.GetSnapshot().SpoolBytes);
+        Assert.Equal(5_120, sender.GetSnapshot().SpoolBytes);
         Assert.Equal(1, sender.GetSnapshot().ChunkCount);
         Assert.True(sender.AddReceiver("later"));
         Assert.Equal(chunk.Sequence, Assert.Single(sender.GetPendingChunks("later")).Sequence);

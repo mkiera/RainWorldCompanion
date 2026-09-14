@@ -56,4 +56,6 @@ public partial class LogStreamingView : UserControl
                 LiveLogList.ScrollIntoView(current.VisibleLogLines[^1]);
         });
     }
+
+    private void OpenCaptureTimeline_Click(object sender, RoutedEventArgs e) => LogStreamingTabs.SelectedIndex = 1;
 }
