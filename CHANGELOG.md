@@ -11,6 +11,17 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## Unreleased
+
+- Streamed-log captures can be loaded into a synchronized, multitrack timeline
+  with playback, event filters, shared alerts, player locations on the world
+  map, and graphs for errors, network latency, frame time, and memory. The view
+  can follow a capture live while it is still being recorded.
+- Capture analysis compares each player's reported mod versions and complete
+  code fingerprints, clearly flags different builds that report the same
+  version, marks incomplete comparisons, and ranks possible mod causes for an
+  incident with the evidence behind each likelihood.
+
 ## 1.4.0-beta.3 - 2026-09-13
 
 - Files the app exports can be dropped onto the window to import them. A

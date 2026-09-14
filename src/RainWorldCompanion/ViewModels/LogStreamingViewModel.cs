@@ -191,10 +191,12 @@ public sealed partial class LogStreamingViewModel : ObservableObject
 
     public LogStreamingViewModel(
         ILogStreamingController controller,
-        Func<string, Task<string?>>? pickCaptureDestination = null)
+        Func<string, Task<string?>>? pickCaptureDestination = null,
+        LogCaptureAnalysisViewModel? analysis = null)
     {
         _controller = controller;
         _pickCaptureDestination = pickCaptureDestination ?? PickCaptureDestinationAsync;
+        Analysis = analysis ?? new();
         FileFilters.Add(new("", "All streamed data"));
         foreach (string name in SharedLogNames) FileFilters.Add(new(name, name));
         foreach (var filter in DiagnosticStreamFilters) FileFilters.Add(filter);
@@ -206,6 +208,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
     public ObservableCollection<LogStreamingFilter> SenderFilters { get; } = [];
     public ObservableCollection<LogStreamingFilter> FileFilters { get; } = [];
     public ObservableCollection<LogStreamingLineViewModel> VisibleLogLines { get; } = [];
+    public LogCaptureAnalysisViewModel Analysis { get; }
 
     [ObservableProperty]
     private bool isSteamLobby;
@@ -375,6 +378,9 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         DeepTraceEnabled = snapshot.DeepTraceEnabled;
         CaptureState = snapshot.CaptureState;
         CaptureFolder = snapshot.CaptureFolder;
+        Analysis.ObserveCurrentCapture(
+            snapshot.CaptureFolder,
+            snapshot.CaptureState != LogStreamingCaptureState.Stopped);
         CaptureDestination = snapshot.CaptureDestination;
         StatusMessage = snapshot.Message.Length > 0 ? snapshot.Message : DefaultStatus(snapshot);
 

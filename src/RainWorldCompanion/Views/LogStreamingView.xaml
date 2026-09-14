@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:RainWorldCompanion.ViewModels"
+             xmlns:views="clr-namespace:RainWorldCompanion.Views"
              mc:Ignorable="d"
              d:DesignHeight="900" d:DesignWidth="960"
              KeyboardNavigation.TabNavigation="Continue">
@@ -133,8 +134,23 @@
         </DataTemplate>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Margin="12">
+    <TabControl x:Name="LogStreamingTabs" Background="{DynamicResource Brush.Window}" Foreground="{DynamicResource Brush.Text}"
+                BorderBrush="{DynamicResource Brush.Border}" SelectedIndex="0">
+        <TabItem Header="Live streaming">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="12">
+            <Border Style="{StaticResource Banner.Danger}" Margin="0,0,0,12"
+                    Visibility="{Binding Analysis.HasModMismatches, Converter={StaticResource BoolToVis}}">
+                <DockPanel LastChildFill="True">
+                    <Button DockPanel.Dock="Right" Content="Compare builds" Click="OpenCaptureTimeline_Click"
+                            Style="{StaticResource Button.Small}" Margin="10,0,0,0" />
+                    <StackPanel>
+                        <TextBlock Text="MOD BUILD MISMATCH DETECTED" Style="{StaticResource Text.SectionLabel}"
+                                   Foreground="{DynamicResource Brush.Danger}" />
+                        <TextBlock Text="{Binding Analysis.ModMismatchSummary, Mode=OneWay}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
             <Border Style="{StaticResource Banner.Warn}" Margin="0,0,0,12">
                 <StackPanel>
                     <TextBlock Text="WHAT SHARING INCLUDES" Style="{StaticResource Text.SectionLabel}"
@@ -485,6 +501,11 @@
                                Visibility="{Binding HasNoViewerLines, Converter={StaticResource BoolToVis}}" />
                 </Grid>
             </Border>
-        </StackPanel>
-    </ScrollViewer>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+        <TabItem Header="Capture timeline">
+            <views:LogCaptureAnalysisView DataContext="{Binding Analysis}" />
+        </TabItem>
+    </TabControl>
 </UserControl>
