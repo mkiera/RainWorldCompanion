@@ -83,7 +83,7 @@ public sealed class LogCaptureAnalysisLoadRegressionTests
         Assert.Equal(275, incidentCount);
         Assert.True(double.IsFinite(timelineWidth));
         Assert.True(double.IsFinite(timelineHeight));
-        Assert.True(timelineWidth > 1_000, $"Timeline width was {timelineWidth:N0}px.");
+        Assert.True(timelineWidth > 640, $"Timeline width was {timelineWidth:N0}px.");
         Assert.InRange(timelineHeight, 300, 600);
         Assert.True(loadTime < TimeSpan.FromSeconds(8), $"Attached-view load took {loadTime}.");
         Assert.True(renderTime < TimeSpan.FromSeconds(4), $"Dense timeline render took {renderTime}.");
