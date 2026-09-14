@@ -413,9 +413,41 @@ public sealed class LogStreamingCoordinatorTests
         using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
         Assert.True(metadata.RootElement.GetProperty("incomplete").GetBoolean());
         Assert.Equal(JsonValueKind.Null, metadata.RootElement.GetProperty("completedUtc").ValueKind);
+        Assert.Equal("receiverStopped", metadata.RootElement.GetProperty("terminationKind").GetString());
+        Assert.Equal("Capture stopped. Existing approvals were cleared.",
+            metadata.RootElement.GetProperty("terminationReason").GetString());
+        Assert.NotEqual(JsonValueKind.Null, metadata.RootElement.GetProperty("endedUtc").ValueKind);
         var capturedSession = metadata.RootElement.GetProperty("sessions")[0];
         Assert.True(capturedSession.GetProperty("isIncomplete").GetBoolean());
         Assert.Equal(JsonValueKind.Null, capturedSession.GetProperty("completedUtc").ValueKind);
+    }
+
+    [Fact]
+    public void Lobby_disconnect_classifies_an_active_capture_as_context_interrupted()
+    {
+        using var source = new TempDirectory("rwc-log-source");
+        using var downloads = new TempDirectory("rwc-log-receiver");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var receiver = Coordinator(source.Path, downloads.Path, clock);
+        receiver.Exchange(ReceiverUpstream(1));
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        string capture = receiver.Snapshot().CaptureFolder;
+
+        receiver.Exchange(new()
+        {
+            Sequence = 2,
+            GameSessionId = "receiver-game",
+            Lobby = new() { IsConnected = false },
+        });
+
+        using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
+        Assert.True(metadata.RootElement.GetProperty("incomplete").GetBoolean());
+        Assert.False(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
+        Assert.Equal("contextInterrupted", metadata.RootElement.GetProperty("terminationKind").GetString());
+        Assert.Equal("Join a Steam Rain Meadow lobby to stream logs.",
+            metadata.RootElement.GetProperty("terminationReason").GetString());
+        Assert.NotEqual(JsonValueKind.Null, metadata.RootElement.GetProperty("endedUtc").ValueKind);
     }
 
     [Fact]
@@ -889,9 +921,15 @@ public sealed class LogStreamingCoordinatorTests
         sender.PrepareSharing([Pair.ReceiverId]);
         session.Tick(2);
         session.ForwardReceiverPackets = false;
-        session.Tick(12);
+        session.Tick(4);
+        TimeSpan firstAge = Assert.IsType<TimeSpan>(
+            sender.Snapshot().Peers.Single().Outgoing.AcknowledgementAge);
+        session.Tick(8);
+        TimeSpan laterAge = Assert.IsType<TimeSpan>(
+            sender.Snapshot().Peers.Single().Outgoing.AcknowledgementAge);
 
-        Assert.True(sender.Snapshot().Peers.Single().Outgoing.AcknowledgementAge >= TimeSpan.FromSeconds(3));
+        Assert.True(laterAge > firstAge);
+        Assert.True(laterAge >= TimeSpan.FromSeconds(3));
         Assert.Null(receiver.Snapshot().Peers.Single().Incoming.AcknowledgementAge);
 
         session.ForwardReceiverPackets = true;

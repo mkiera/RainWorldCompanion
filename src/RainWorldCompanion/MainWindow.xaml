@@ -2752,25 +2752,36 @@
             </ContentControl.ContentTemplate>
         </ContentControl>
 
-        <Button Grid.Row="3" HorizontalAlignment="Left" Margin="16,6,16,8"
-                Command="{Binding OpenLiveFeaturesCommand}" Style="{StaticResource Button.Small}"
-                AutomationProperties.Name="Companion Game Hook status" ToolTip="{Binding Live.SetupText}">
-            <StackPanel Orientation="Horizontal">
-                <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
-                    <Ellipse.Style>
-                        <Style TargetType="Ellipse">
-                            <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding Live.SetupReady}" Value="True">
-                                    <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Ellipse.Style>
-                </Ellipse>
-                <TextBlock Text="{Binding Live.IndicatorText}" FontSize="11" />
-            </StackPanel>
-        </Button>
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Left"
+                    Margin="16,6,16,8">
+            <Button Command="{Binding OpenLiveFeaturesCommand}" Style="{StaticResource Button.Small}"
+                    AutomationProperties.Name="Companion Game Hook status" ToolTip="{Binding Live.SetupText}">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Live.SetupReady}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding Live.IndicatorText}" FontSize="11" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="DeveloperMenuButton" Content="Dev"
+                    Command="{Binding OpenDeveloperWindowCommand}"
+                    Style="{StaticResource Button.Tiny}" Margin="6,0,0,0"
+                    MinWidth="38" FontSize="11"
+                    Foreground="{DynamicResource Brush.TextMuted}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}"
+                    AutomationProperties.Name="Open developer menu"
+                    ToolTip="Open developer data and log streaming." />
+        </StackPanel>
 
         <Border Grid.Row="0" Grid.RowSpan="4"
                 Panel.ZIndex="10"

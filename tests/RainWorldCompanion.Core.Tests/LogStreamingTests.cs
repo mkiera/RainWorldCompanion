@@ -521,6 +521,10 @@ public class LogStreamCaptureWriterTests
         Assert.Equal(3, captureRoot.GetProperty("bytesWritten").GetInt64());
         Assert.True(captureRoot.GetProperty("incomplete").GetBoolean());
         Assert.False(captureRoot.GetProperty("hasGaps").GetBoolean());
+        Assert.Equal("contextInterrupted", captureRoot.GetProperty("terminationKind").GetString());
+        Assert.Equal("The capture stopped without final watermarks.",
+            captureRoot.GetProperty("terminationReason").GetString());
+        Assert.Equal(Clock.GetUtcNow(), captureRoot.GetProperty("endedUtc").GetDateTimeOffset());
         Assert.Equal(TimeSpan.Zero,
             captureRoot.GetProperty("createdUtc").GetDateTimeOffset().Offset);
         Assert.Equal(JsonValueKind.Null, captureRoot.GetProperty("completedUtc").ValueKind);
@@ -574,7 +578,9 @@ public class LogStreamCaptureWriterTests
         using var files = new TempDirectory("log-stream-writer");
         var writer = CreateWriter(files.CreateSubdirectory("captures"));
         writer.Write(Sender, Chunk(2, "consoleLog.txt", 1, 0, [1]));
-        writer.MarkInterrupted("The capture stopped without final watermarks.");
+        writer.MarkInterrupted(
+            "Capture stopped. Existing approvals were cleared.",
+            LogStreamCaptureTerminationKind.ReceiverStopped);
 
         var snapshot = writer.GetSnapshot();
         var session = Assert.Single(snapshot.Sessions);
@@ -585,6 +591,9 @@ public class LogStreamCaptureWriterTests
             Path.Combine(writer.CaptureDirectory, "capture.json")));
         Assert.True(metadata.RootElement.GetProperty("incomplete").GetBoolean());
         Assert.True(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
+        Assert.Equal("receiverStopped", metadata.RootElement.GetProperty("terminationKind").GetString());
+        Assert.Equal("Capture stopped. Existing approvals were cleared.",
+            metadata.RootElement.GetProperty("terminationReason").GetString());
     }
 
     [Fact]

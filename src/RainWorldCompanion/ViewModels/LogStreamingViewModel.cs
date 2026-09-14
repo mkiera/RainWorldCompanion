@@ -66,9 +66,9 @@ public sealed class LogStreamingDirectionViewModel
         ThroughputText = LogStreamingViewModel.FormatRate(ThroughputBytesPerSecond);
         AcknowledgedText = LogStreamingViewModel.FormatBytes(AcknowledgedBytes);
         BacklogText = incoming ? "Not reported" : LogStreamingViewModel.FormatBytes(BacklogBytes);
-        AcknowledgementAgeLabel = incoming ? "LAST FLUSH" : "ACK AGE";
+        AcknowledgementAgeLabel = incoming ? "LAST FLUSH" : "UNCONFIRMED AGE";
         AcknowledgementAgeText = direction.AcknowledgementAge is null
-            ? incoming ? "No flush" : "No acknowledgement"
+            ? incoming ? "No flush" : "Caught up"
             : LogStreamingViewModel.FormatAge(direction.AcknowledgementAge.Value);
         ReconnectCountText = direction.ReconnectCount.ToString("N0", CultureInfo.CurrentCulture);
         LogSessionText = direction.LogSession.Length == 0 ? "None" : direction.LogSession;
@@ -320,7 +320,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
     public string CurrentThroughputText => FormatRate(Peers.Sum(peer =>
         peer.Incoming.ThroughputBytesPerSecond + peer.Outgoing.ThroughputBytesPerSecond));
     public string CurrentBacklogText => FormatBytes(Peers.Sum(peer => peer.Outgoing.BacklogBytes));
-    public string LongestAcknowledgementAgeText
+    public string OldestUnconfirmedAgeText
     {
         get
         {
@@ -328,7 +328,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
                 .Where(age => age is not null)
                 .Select(age => age!.Value)
                 .ToArray();
-            return ages.Length == 0 ? "No acknowledgement" : FormatAge(ages.Max());
+            return ages.Length == 0 ? "Caught up" : FormatAge(ages.Max());
         }
     }
 
@@ -594,7 +594,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         OnPropertyChanged(nameof(ActiveStreamsText));
         OnPropertyChanged(nameof(CurrentThroughputText));
         OnPropertyChanged(nameof(CurrentBacklogText));
-        OnPropertyChanged(nameof(LongestAcknowledgementAgeText));
+        OnPropertyChanged(nameof(OldestUnconfirmedAgeText));
         RefreshCommands();
     }
 

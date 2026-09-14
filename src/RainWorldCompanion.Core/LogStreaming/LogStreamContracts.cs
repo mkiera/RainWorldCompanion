@@ -160,6 +160,12 @@ public enum LogStreamWriteStatus
     IoError,
 }
 
+public enum LogStreamCaptureTerminationKind
+{
+    ReceiverStopped,
+    ContextInterrupted,
+}
+
 public sealed record LogStreamWriteResult(
     LogStreamWriteStatus Status,
     string Message,

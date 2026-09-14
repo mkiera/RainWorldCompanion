@@ -165,8 +165,8 @@
                 </Border>
                 <Border Style="{StaticResource Card}" Margin="5,0,0,0" Padding="10">
                     <StackPanel>
-                        <TextBlock Text="OLDEST ACK" Style="{StaticResource Text.SectionLabel}" />
-                        <TextBlock Text="{Binding LongestAcknowledgementAgeText}" FontSize="20"
+                        <TextBlock Text="OLDEST UNCONFIRMED" Style="{StaticResource Text.SectionLabel}" />
+                        <TextBlock Text="{Binding OldestUnconfirmedAgeText}" FontSize="20"
                                    Margin="0,3,0,0" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
                 </Border>
@@ -341,7 +341,7 @@
                         <DockPanel>
                             <TextBlock Text="{Binding AcknowledgementAgeScaleText}" DockPanel.Dock="Right"
                                        Style="{StaticResource Text.Tiny}" />
-                            <TextBlock Text="ACK AGE" Style="{StaticResource Text.SectionLabel}" />
+                            <TextBlock Text="UNCONFIRMED AGE" Style="{StaticResource Text.SectionLabel}" />
                         </DockPanel>
                         <Border Height="105" BorderBrush="{DynamicResource Brush.Border}"
                                 BorderThickness="1" Margin="0,7,0,0">

@@ -284,8 +284,55 @@ public class LogStreamingViewModelTests
         Assert.Equal("25 B", row.Outgoing.BacklogText);
         Assert.Equal("25 B", view.CurrentBacklogText);
         Assert.Equal("LAST FLUSH", row.Incoming.AcknowledgementAgeLabel);
-        Assert.Equal("ACK AGE", row.Outgoing.AcknowledgementAgeLabel);
-        Assert.Equal("2.0 s", view.LongestAcknowledgementAgeText);
+        Assert.Equal("UNCONFIRMED AGE", row.Outgoing.AcknowledgementAgeLabel);
+        Assert.Equal("2.0 s", view.OldestUnconfirmedAgeText);
+    }
+
+    [Fact]
+    public void Oldest_unconfirmed_age_increases_until_confirmation_then_reports_caught_up()
+    {
+        var controller = new FakeLogStreamingController(Snapshot(peers:
+        [
+            Peer("one") with
+            {
+                Outgoing = Direction(LogStreamingPeerState.Streaming) with
+                {
+                    AcknowledgementAge = TimeSpan.FromSeconds(1)
+                }
+            }
+        ]));
+        var view = new LogStreamingViewModel(controller);
+
+        view.Refresh();
+        Assert.Equal("1.0 s", view.OldestUnconfirmedAgeText);
+
+        controller.SetSnapshot(Snapshot(peers:
+        [
+            Peer("one") with
+            {
+                Outgoing = Direction(LogStreamingPeerState.Streaming) with
+                {
+                    AcknowledgementAge = TimeSpan.FromSeconds(3)
+                }
+            }
+        ]));
+        view.Refresh();
+        Assert.Equal("3.0 s", view.OldestUnconfirmedAgeText);
+
+        controller.SetSnapshot(Snapshot(peers:
+        [
+            Peer("one") with
+            {
+                Outgoing = Direction(LogStreamingPeerState.Ready)
+            }
+        ]));
+        view.Refresh();
+
+        var outgoing = Assert.Single(view.Peers).Outgoing;
+        Assert.Equal("UNCONFIRMED AGE", outgoing.AcknowledgementAgeLabel);
+        Assert.Equal("Caught up", outgoing.AcknowledgementAgeText);
+        Assert.Equal("Caught up", view.OldestUnconfirmedAgeText);
+        Assert.DoesNotContain("No acknowledgement", outgoing.AcknowledgementAgeText);
     }
 
     [Fact]
@@ -328,7 +375,8 @@ public class LogStreamingViewModelTests
                 window.UpdateLayout();
                 string[] text = Descendants<TextBlock>(view).Select(item => item.Text).ToArray();
                 Assert.Contains("LAST FLUSH", text);
-                Assert.Contains("ACK AGE", text);
+                Assert.Contains("UNCONFIRMED AGE", text);
+                Assert.Contains("OLDEST UNCONFIRMED", text);
                 Assert.Contains("CONFIRMED LOG THROUGHPUT", text);
                 Assert.Contains("DEEP TRACE", text);
                 Assert.Contains("CAPTURE DESTINATION", text);

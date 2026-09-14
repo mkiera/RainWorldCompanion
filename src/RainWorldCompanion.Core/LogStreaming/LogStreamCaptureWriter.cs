@@ -69,6 +69,9 @@ public sealed class LogStreamCaptureWriter
     private bool _isClosed;
     private bool _isComplete;
     private DateTimeOffset? _completedUtc;
+    private DateTimeOffset? _endedUtc;
+    private LogStreamCaptureTerminationKind? _terminationKind;
+    private string? _terminationReason;
 
     public LogStreamCaptureWriter(
         string destinationRoot,
@@ -336,8 +339,15 @@ public sealed class LogStreamCaptureWriter
     }
 
     public void MarkInterrupted(string reason)
+        => MarkInterrupted(reason, LogStreamCaptureTerminationKind.ContextInterrupted);
+
+    public void MarkInterrupted(string reason, LogStreamCaptureTerminationKind terminationKind)
     {
         ValidateReason(reason);
+        if (!Enum.IsDefined(terminationKind))
+        {
+            throw new ArgumentOutOfRangeException(nameof(terminationKind));
+        }
 
         lock (_sync)
         {
@@ -349,6 +359,9 @@ public sealed class LogStreamCaptureWriter
             _isClosed = true;
             _isComplete = false;
             _completedUtc = null;
+            _endedUtc = Now;
+            _terminationKind = terminationKind;
+            _terminationReason = reason.Trim();
             foreach (var sender in _senders.Values)
             {
                 foreach (var session in sender.Sessions.Values)
@@ -362,7 +375,7 @@ public sealed class LogStreamCaptureWriter
                 Now,
                 LogStreamEventKind.CaptureInterrupted,
                 CaptureId,
-                reason.Trim()));
+                _terminationReason));
             TryFlushMetadata();
         }
     }
@@ -886,6 +899,9 @@ public sealed class LogStreamCaptureWriter
             lobbyId = _options.LobbyId,
             createdUtc = _createdUtc,
             completedUtc = complete ? _completedUtc : null,
+            endedUtc = _endedUtc,
+            terminationKind = _terminationKind,
+            terminationReason = _terminationReason,
             incomplete = !complete || sessions.Any(session => session.IsIncomplete),
             hasGaps = HasGaps,
             bytesWritten = _bytesWritten,

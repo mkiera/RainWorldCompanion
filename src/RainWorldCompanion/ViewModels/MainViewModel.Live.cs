@@ -31,6 +31,7 @@ public sealed partial class MainViewModel
     partial void OnIsGameRunningChanged(bool value) => IsLivePageVisible = value;
     private DeveloperWindow? _developerWindow;
 
+    [RelayCommand]
     public void OpenDeveloperWindow()
     {
         if (_developerWindow is not null)

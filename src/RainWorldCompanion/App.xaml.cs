@@ -106,7 +106,7 @@ public partial class App : Application
             && MainWindow?.DataContext is MainViewModel viewModel)
         {
             key.Handled = true;
-            viewModel.OpenDeveloperWindow();
+            viewModel.OpenDeveloperWindowCommand.Execute(null);
         }
     }
 

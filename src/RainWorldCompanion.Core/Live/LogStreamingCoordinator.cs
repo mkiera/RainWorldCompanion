@@ -469,7 +469,7 @@ public sealed class LogStreamingCoordinator
     private void ResetContext(string message)
     {
         foreach (var transfer in _incoming.Values) InterruptIncoming(transfer, message);
-        _capture?.MarkInterrupted(message);
+        _capture?.MarkInterrupted(message, LogStreamCaptureTerminationKind.ContextInterrupted);
         _outgoing.Clear();
         _incoming.Clear();
         _remembered.Clear();
@@ -506,7 +506,7 @@ public sealed class LogStreamingCoordinator
             QueueNetwork(transfer.SteamId, Message(LogStreamKinds.Close, transfer));
         }
         _incoming.Clear();
-        _capture?.MarkInterrupted(message);
+        _capture?.MarkInterrupted(message, LogStreamCaptureTerminationKind.ReceiverStopped);
         _capture = null;
         _sender?.RemoveReceiver(LocalCaptureReceiverId);
         _localViewers.Clear();
