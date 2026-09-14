@@ -26,7 +26,7 @@ public sealed record LogStreamingChartSample(
 
 public sealed record LogStreamingCoordinatorSnapshot(
     DateTimeOffset ObservedAt, bool IsSteamLobby, bool ReceiverAdvertised, bool DeepTraceEnabled,
-    LogStreamingCaptureMode CaptureMode, string CaptureFolder, string Message,
+    LogStreamingCaptureMode CaptureMode, string DestinationRoot, string CaptureFolder, string Message,
     IReadOnlyList<LogStreamingPeerSnapshot> Peers, IReadOnlyList<LogStreamingViewerLine> Lines,
     IReadOnlyList<LogStreamingChartSample> Samples);
 
@@ -69,13 +69,14 @@ public sealed class LogStreamingCoordinator
     private static readonly TimeSpan TransferHeartbeatStale = TimeSpan.FromSeconds(5);
     private readonly object _sync = new();
     private readonly LogStreamingCoordinatorOptions _options;
+    private string _destinationRoot;
     private readonly Dictionary<string, OutgoingTransfer> _outgoing = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IncomingTransfer> _incoming = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RememberedPeer> _remembered = new(StringComparer.Ordinal);
     private readonly Queue<LogRelayPacket> _controlPackets = new();
     private readonly Queue<LogStreamingViewerLine> _viewerLines = new();
     private readonly Queue<LogStreamingChartSample> _samples = new();
-    private readonly Queue<byte[]> _pendingTelemetry = new();
+    private readonly Queue<LogStreamTelemetryRecord> _pendingTelemetry = new();
     private readonly Dictionary<string, ViewerStream> _localViewers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IncomingBudget> _incomingBudgets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IncomingOpenRate> _incomingOpenRates = new(StringComparer.Ordinal);
@@ -117,6 +118,7 @@ public sealed class LogStreamingCoordinator
         if (options.MaximumIncomingBytesPerSecondPerPeer <= 0)
             throw new ArgumentOutOfRangeException(nameof(options.MaximumIncomingBytesPerSecondPerPeer));
         if (options.ReconnectGrace <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(options.ReconnectGrace));
+        _destinationRoot = Path.GetFullPath(options.DestinationRoot);
         _telemetry = new(options.AppVersion);
         _lastSample = _lastBudget = Now;
         _lastDeepTraceSample = DateTimeOffset.MinValue;
@@ -205,7 +207,7 @@ public sealed class LogStreamingCoordinator
         lock (_sync)
         {
             DateTimeOffset now = Now;
-            foreach (byte[] record in _telemetry.Observe(snapshot, now)) AppendTelemetry(record);
+            foreach (LogStreamTelemetryRecord record in _telemetry.Observe(snapshot, now)) AppendTelemetry(record);
             if (snapshot is null || (!_deepTraceEnabled && _deepSenders.Count == 0)
                 || now - _lastDeepTraceSample < DeepTraceInterval) return;
 
@@ -213,11 +215,11 @@ public sealed class LogStreamingCoordinator
             bool hasLocalTrace = _deepTraceEnabled && _captureMode == LogStreamingCaptureMode.Capturing
                 && _localDeepSender is not null;
             if (!hasRemoteTrace && !hasLocalTrace) return;
-            byte[] trace = _telemetry.DeepTrace(snapshot, now);
+            IReadOnlyList<LogStreamTelemetryRecord> traces = _telemetry.DeepTrace(snapshot, now);
             foreach (var item in _deepSenders.ToArray())
             {
                 if (!IsDeepTraceActive(item.Key)) continue;
-                if (item.Value.TryAppendGenerated(LogStreamTelemetryRecorder.DeepTraceFileId, trace)) continue;
+                if (traces.All(trace => item.Value.TryAppendGenerated(trace.FileId, trace.Data))) continue;
                 if (_outgoing.TryGetValue(item.Key, out var transfer))
                 {
                     transfer.DeepTraceRejected = true;
@@ -225,10 +227,11 @@ public sealed class LogStreamingCoordinator
                 }
                 RemoveDeepSender(item.Key);
             }
-            if (hasLocalTrace
-                && _localDeepSender!.TryAppendGenerated(LogStreamTelemetryRecorder.DeepTraceFileId, trace) == false)
+            LogStreamSenderSession? localDeepSender = _localDeepSender;
+            if (hasLocalTrace && localDeepSender is not null
+                && traces.Any(trace => !localDeepSender.TryAppendGenerated(trace.FileId, trace.Data)))
             {
-                _capture?.TryMarkSessionInterrupted(LocalIdentity(), _localDeepSender.SourceSessionId,
+                _capture?.TryMarkSessionInterrupted(LocalIdentity(), localDeepSender.SourceSessionId,
                     "Deep trace reached its bounded buffer.");
                 _localDeepSender = null;
                 _message = "Local Deep trace reached its bounded buffer. Raw logs and diagnostic events continue.";
@@ -267,7 +270,7 @@ public sealed class LogStreamingCoordinator
             if (_capture is null)
             {
                 var captureOptions = (_options.CaptureOptions ?? new LogStreamCaptureOptions()) with { LobbyId = _lobby.LobbyId };
-                _capture = new LogStreamCaptureWriter(_options.DestinationRoot, _captureId, captureOptions);
+                _capture = new LogStreamCaptureWriter(_destinationRoot, _captureId, captureOptions);
                 _lastCaptureFolder = _capture.CaptureDirectory;
             }
             _sender!.AddReceiver(LocalCaptureReceiverId);
@@ -333,6 +336,20 @@ public sealed class LogStreamingCoordinator
         }
     }
 
+    public void SetDestinationRoot(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        lock (_sync)
+        {
+            if (_captureMode != LogStreamingCaptureMode.Stopped || _capture is not null)
+                throw new InvalidOperationException("Stop the current capture before changing its folder.");
+            string fullPath = Path.GetFullPath(path.Trim());
+            Directory.CreateDirectory(fullPath);
+            _destinationRoot = fullPath;
+            _message = "New captures will be saved in " + fullPath + ".";
+        }
+    }
+
     public void RevokeSharing(IReadOnlyList<string> receiverSteamIds)
     {
         ArgumentNullException.ThrowIfNull(receiverSteamIds);
@@ -394,7 +411,7 @@ public sealed class LogStreamingCoordinator
                 .ThenBy(peer => peer.SteamId, StringComparer.Ordinal)
                 .ToArray();
             return new(now, _lobby.IsConnected && _lobby.IsSteam, _receiverAvailable, _deepTraceEnabled,
-                _captureMode, _lastCaptureFolder, _message, peers,
+                _captureMode, _destinationRoot, _lastCaptureFolder, _message, peers,
                 _viewerLines.ToArray(), _samples.ToArray());
         }
     }
@@ -519,10 +536,10 @@ public sealed class LogStreamingCoordinator
         _sender = new LogStreamSenderSession(install, Token("source"), _gameSessionId, steamId, _options.SenderOptions);
         while (_pendingTelemetry.Count > 0)
         {
-            byte[] record = _pendingTelemetry.Peek();
-            if (!_sender.TryAppendGenerated(LogStreamTelemetryRecorder.EventFileId, record)) break;
+            LogStreamTelemetryRecord record = _pendingTelemetry.Peek();
+            if (!_sender.TryAppendGenerated(record.FileId, record.Data)) break;
             _pendingTelemetry.Dequeue();
-            _pendingTelemetryBytes -= record.Length;
+            _pendingTelemetryBytes -= record.Data.Length;
         }
         _sender.Poll();
     }
@@ -623,20 +640,20 @@ public sealed class LogStreamingCoordinator
             _capture.MarkSessionInterrupted(LocalIdentity(), _localDeepSender.SourceSessionId, reason);
     }
 
-    private void AppendTelemetry(byte[] record)
+    private void AppendTelemetry(LogStreamTelemetryRecord record)
     {
         if (_sender is not null)
         {
-            _sender.TryAppendGenerated(LogStreamTelemetryRecorder.EventFileId, record);
+            _sender.TryAppendGenerated(record.FileId, record.Data);
             return;
         }
 
-        if (record.Length > MaximumPendingTelemetryBytes) return;
-        while (_pendingTelemetryBytes + record.Length > MaximumPendingTelemetryBytes
+        if (record.Data.Length > MaximumPendingTelemetryBytes) return;
+        while (_pendingTelemetryBytes + record.Data.Length > MaximumPendingTelemetryBytes
                && _pendingTelemetry.TryDequeue(out var dropped))
-            _pendingTelemetryBytes -= dropped.Length;
+            _pendingTelemetryBytes -= dropped.Data.Length;
         _pendingTelemetry.Enqueue(record);
-        _pendingTelemetryBytes += record.Length;
+        _pendingTelemetryBytes += record.Data.Length;
     }
 
     private void DrainLocalCapture(DateTimeOffset now)
@@ -844,7 +861,7 @@ public sealed class LogStreamingCoordinator
         bool deepSession = IsDeepSession(message.LogSessionId);
         if (deepSession)
         {
-            if (!_deepTraceEnabled || message.FileId != LogStreamTelemetryRecorder.DeepTraceFileId) return;
+            if (!_deepTraceEnabled || !IsDeepTraceFile(message.FileId)) return;
             if (!transfer.DeepSessions.Contains(message.LogSessionId)
                 && transfer.DeepSessions.Count >= MaximumDeepSessionsPerTransfer)
             {
@@ -855,7 +872,7 @@ public sealed class LogStreamingCoordinator
             transfer.DeepSessions.Add(message.LogSessionId);
             transfer.OpenDeepSessions.Add(message.LogSessionId);
         }
-        else if (message.FileId == LogStreamTelemetryRecorder.DeepTraceFileId) return;
+        else if (IsDeepTraceFile(message.FileId)) return;
         var result = _capture.Write(new(senderId, peer.DisplayName, peer.IsHost), chunk);
         if (result.ShouldAcknowledge)
         {
@@ -1432,6 +1449,8 @@ public sealed class LogStreamingCoordinator
     private static bool HasFreshAdvertisement(LogLobbyPeer peer) => peer.LastSeenUtcTicks > 0;
     private static bool IsDeepSession(string sourceSessionId)
         => sourceSessionId.StartsWith("deep-", StringComparison.Ordinal) && TokenValid(sourceSessionId, 128);
+    private static bool IsDeepTraceFile(string fileId)
+        => fileId is LogStreamTelemetryRecorder.DeepTraceFileId or LogStreamTelemetryRecorder.MeadowNativeDeepFileId;
     private static bool ValidNumericId(string? value) => value is { Length: > 0 and <= 32 } && value.All(char.IsDigit);
     private static bool TokenValid(string? value, int maximum) => value is { Length: > 0 } && value.Length <= maximum
         && value.All(character => char.IsAsciiLetterOrDigit(character) || character is '-' or '_' or '.' or ':');

@@ -13,7 +13,7 @@ public class LogStreamTelemetryRecorderTests
     public void First_snapshot_records_session_context_and_each_present_player()
     {
         var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
-        var records = recorder.Observe(Snapshot(), Now).Select(Parse).ToArray();
+        var records = Events(recorder.Observe(Snapshot(), Now));
 
         var session = Assert.Single(records, record => Kind(record) == "session-start");
         var details = session.RootElement.GetProperty("details");
@@ -64,7 +64,7 @@ public class LogStreamTelemetryRecorderTests
         changedPlayer.Trace = new() { Realized = true, InShortcut = true };
         changed.Players = [changedPlayer];
 
-        var kinds = recorder.Observe(changed, Now.AddSeconds(1)).Select(Parse).Select(Kind).ToHashSet();
+        var kinds = Events(recorder.Observe(changed, Now.AddSeconds(1))).Select(Kind).ToHashSet();
 
         Assert.Contains("room-changed", kinds);
         Assert.Contains("player-died", kinds);
@@ -85,9 +85,9 @@ public class LogStreamTelemetryRecorderTests
         var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
         recorder.Observe(Snapshot(), Now);
 
-        Assert.Equal("connection-lost", Kind(Assert.Single(recorder.Observe(null, Now.AddSeconds(1)).Select(Parse))));
+        Assert.Equal("connection-lost", Kind(Assert.Single(Events(recorder.Observe(null, Now.AddSeconds(1))))));
         Assert.Empty(recorder.Observe(null, Now.AddSeconds(2)));
-        Assert.Contains(recorder.Observe(Snapshot(), Now.AddSeconds(3)).Select(Parse),
+        Assert.Contains(Events(recorder.Observe(Snapshot(), Now.AddSeconds(3))),
             record => Kind(record) == "connection-restored");
     }
 
@@ -100,6 +100,7 @@ public class LogStreamTelemetryRecorderTests
             {
                 Id = "meadow:" + index,
                 Name = "Player " + index,
+                IsLocal = true,
                 RoomId = "SU_A01",
                 Region = "SU",
                 Dead = false,
@@ -114,7 +115,8 @@ public class LogStreamTelemetryRecorderTests
                 }
             }).ToArray();
 
-        using var record = Parse(recorder.DeepTrace(snapshot, Now));
+        using var record = Parse(Assert.Single(recorder.DeepTrace(snapshot, Now),
+            item => item.FileId == LogStreamTelemetryRecorder.DeepTraceFileId).Data);
         var root = record.RootElement;
 
         Assert.Equal("deep-trace", root.GetProperty("kind").GetString());
@@ -134,7 +136,7 @@ public class LogStreamTelemetryRecorderTests
         recorder.Observe(Snapshot(), Now);
 
         using var record = Parse(recorder.CompanionAction(
-            Now.AddSeconds(1), "completed", "teleport", "meadow:2", "SU_A03", "SU", true, "Done."));
+            Now.AddSeconds(1), "completed", "teleport", "meadow:2", "SU_A03", "SU", true, "Done.").Data);
         var root = record.RootElement;
         var details = root.GetProperty("details");
 
@@ -142,6 +144,121 @@ public class LogStreamTelemetryRecorderTests
         Assert.Equal("teleport", details.GetProperty("action").GetString());
         Assert.Equal("SU_A03", details.GetProperty("roomId").GetString());
         Assert.True(details.GetProperty("success").GetBoolean());
+    }
+
+    [Fact]
+    public void Native_meadow_observations_use_separate_files_and_redact_remote_trace_and_raw_ids()
+    {
+        var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
+        var snapshot = MeadowSnapshot();
+
+        var normal = recorder.Observe(snapshot, Now);
+        string events = Lines(normal, LogStreamTelemetryRecorder.EventFileId);
+        string native = Lines(normal, LogStreamTelemetryRecorder.MeadowNativeFileId);
+        var deep = recorder.DeepTrace(snapshot, Now.AddSeconds(1));
+        string localDeep = Lines(deep, LogStreamTelemetryRecorder.DeepTraceFileId);
+        string nativeDeep = Lines(deep, LogStreamTelemetryRecorder.MeadowNativeDeepFileId);
+
+        Assert.Contains("Local One", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("Remote Two", events, StringComparison.Ordinal);
+        Assert.Contains("Remote Two", native, StringComparison.Ordinal);
+        Assert.Contains("network-sample", native, StringComparison.Ordinal);
+        Assert.Contains("local-client-observed", native, StringComparison.Ordinal);
+        Assert.DoesNotContain("76561198000000001", native, StringComparison.Ordinal);
+        Assert.DoesNotContain("76561198000000002", native, StringComparison.Ordinal);
+        Assert.DoesNotContain("lobby-secret", native, StringComparison.Ordinal);
+        Assert.Contains("111.25", localDeep, StringComparison.Ordinal);
+        Assert.DoesNotContain("9876.5", localDeep, StringComparison.Ordinal);
+        Assert.DoesNotContain("9876.5", nativeDeep, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"jump\":true", nativeDeep, StringComparison.Ordinal);
+        Assert.Contains("remote-world", nativeDeep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Online_deep_trace_excludes_remote_players_when_native_sampling_is_temporarily_unavailable()
+    {
+        var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
+        var snapshot = MeadowSnapshot();
+        snapshot.Meadow = null;
+
+        string deep = Lines(recorder.DeepTrace(snapshot, Now), LogStreamTelemetryRecorder.DeepTraceFileId);
+
+        Assert.Contains("111.25", deep, StringComparison.Ordinal);
+        Assert.DoesNotContain("9876.5", deep, StringComparison.Ordinal);
+        Assert.DoesNotContain("Remote Two", deep, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Native_network_samples_are_throttled_and_preserve_unknown_values()
+    {
+        var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
+        var snapshot = MeadowSnapshot();
+        snapshot.Meadow!.Peers[1].PingMilliseconds = null;
+        snapshot.Meadow.Peers[1].IncomingBytesPerSecond = null;
+
+        var first = Native(recorder.Observe(snapshot, Now));
+        var early = Native(recorder.Observe(snapshot, Now.AddMilliseconds(200)));
+        var next = Native(recorder.Observe(snapshot, Now.AddSeconds(1)));
+
+        Assert.Single(first, record => Kind(record) == "network-sample");
+        Assert.DoesNotContain(early, record => Kind(record) == "network-sample");
+        using var sample = Assert.Single(next, record => Kind(record) == "network-sample");
+        var remote = sample.RootElement.GetProperty("details").GetProperty("peers")[1];
+        Assert.False(remote.TryGetProperty("pingMilliseconds", out _));
+        Assert.False(remote.TryGetProperty("incomingBytesPerSecond", out _));
+    }
+
+    [Fact]
+    public void Native_observations_record_remote_room_life_entity_and_story_transitions()
+    {
+        var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
+        recorder.Observe(MeadowSnapshot(), Now);
+        var changed = MeadowSnapshot();
+        changed.Players[1].RoomId = "SU_A07";
+        changed.Players[1].Dead = true;
+        changed.Players[1].NativeEntityAvailable = true;
+        changed.Players[1].NativeLocationAvailability = "available";
+        changed.Players[1].InDen = true;
+        changed.Players[1].Trace = new()
+        {
+            Realized = false,
+            PositionX = 8765.25f,
+            Input = new() { Jump = true }
+        };
+        changed.Meadow!.Peers[1].StoryReadyForWin = true;
+        changed.Meadow.Peers[1].StoryReadyForTransition = false;
+        changed.Meadow.Peers[1].StoryDead = true;
+        changed.Meadow.ConfigurationTruncated = true;
+        changed.Meadow.RosterTruncated = true;
+
+        var records = Native(recorder.Observe(changed, Now.AddSeconds(1)));
+        var kinds = records.Select(Kind).ToHashSet(StringComparer.Ordinal);
+        string raw = string.Concat(records.Select(record => record.RootElement.GetRawText()));
+
+        Assert.Contains("avatar-location-changed", kinds);
+        Assert.Contains("avatar-life-state-changed", kinds);
+        Assert.Contains("avatar-entity-state-changed", kinds);
+        Assert.Contains("avatar-den-state-changed", kinds);
+        Assert.Contains("peer-story-state-changed", kinds);
+        Assert.Contains("lobby-settings-changed", kinds);
+        Assert.Contains("roster-observation-limit-changed", kinds);
+        Assert.Contains("SU_A07", raw, StringComparison.Ordinal);
+        Assert.DoesNotContain("8765.25", raw, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"jump\":true", raw, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Missing_native_snapshot_does_not_report_every_peer_as_left()
+    {
+        var recorder = new LogStreamTelemetryRecorder("1.4.0-test");
+        recorder.Observe(MeadowSnapshot(), Now);
+        var missing = MeadowSnapshot();
+        missing.Meadow = null;
+
+        var records = Native(recorder.Observe(missing, Now.AddSeconds(1)));
+
+        Assert.Single(records, record => Kind(record) == "lobby-observation-ended");
+        Assert.DoesNotContain(records, record => Kind(record) == "peer-left");
     }
 
     private static LiveSnapshot Snapshot() => new()
@@ -195,8 +312,68 @@ public class LogStreamTelemetryRecorderTests
         Trace = new() { Realized = true }
     };
 
+    private static LiveSnapshot MeadowSnapshot()
+    {
+        var snapshot = Snapshot();
+        snapshot.Players =
+        [
+            new()
+            {
+                Id = "meadow:1:avatar-local", Name = "Local One", IsLocal = true, IsHost = true,
+                MeadowSteamId = "76561198000000001", MeadowPeerId = 1, MeadowAvatarId = "avatar-local",
+                RoomId = "SU_A01", Region = "SU", Dead = false, NativeEntityAvailable = true,
+                NativeLocationAvailability = "available",
+                Trace = new() { Realized = true, PositionX = 111.25f, Input = new() { Jump = true } }
+            },
+            new()
+            {
+                Id = "meadow:2:avatar-remote", Name = "Remote Two", IsLocal = false,
+                MeadowSteamId = "76561198000000002", MeadowPeerId = 2, MeadowAvatarId = "avatar-remote",
+                RoomId = "remote-world", Region = "SU", Dead = null, NativeEntityAvailable = false,
+                NativeLocationAvailability = "entity-unresolved",
+                Trace = new() { Realized = false, PositionX = 9876.5f, Input = new() { Jump = true } }
+            }
+        ];
+        snapshot.Meadow = new()
+        {
+            LobbyId = "lobby-secret",
+            ObserverSteamId = "76561198000000001",
+            GameMode = "Story",
+            Timeline = "Yellow",
+            RequiredMods = ["rainmeadow"],
+            Peers =
+            [
+                new()
+                {
+                    SteamId = "76561198000000001", LobbyPeerId = 1, DisplayName = "Local One",
+                    IsLocal = true, IsHost = true, InGame = true, AvatarCount = 1, AvatarIds = ["avatar-local"]
+                },
+                new()
+                {
+                    SteamId = "76561198000000002", LobbyPeerId = 2, DisplayName = "Remote Two",
+                    InGame = true, AvatarCount = 1, AvatarIds = ["avatar-remote"],
+                    PingMilliseconds = 52, IncomingBytesPerSecond = 1200, OutgoingBytesPerSecond = 800,
+                    Connection = new() { State = "Connected", LocalDeliveryQuality = 0.99f, PendingReliableBytes = 12 }
+                }
+            ]
+        };
+        return snapshot;
+    }
+
     private static JsonDocument Parse(byte[] line)
         => JsonDocument.Parse(Encoding.UTF8.GetString(line).TrimEnd());
+
+    private static JsonDocument[] Events(IEnumerable<LogStreamTelemetryRecord> records)
+        => records.Where(record => record.FileId == LogStreamTelemetryRecorder.EventFileId)
+            .Select(record => Parse(record.Data)).ToArray();
+
+    private static JsonDocument[] Native(IEnumerable<LogStreamTelemetryRecord> records)
+        => records.Where(record => record.FileId == LogStreamTelemetryRecorder.MeadowNativeFileId)
+            .Select(record => Parse(record.Data)).ToArray();
+
+    private static string Lines(IEnumerable<LogStreamTelemetryRecord> records, string fileId)
+        => string.Concat(records.Where(record => record.FileId == fileId)
+            .Select(record => Encoding.UTF8.GetString(record.Data)));
 
     private static string Kind(JsonDocument record)
         => record.RootElement.GetProperty("kind").GetString()!;

@@ -186,6 +186,24 @@
                                    Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,3,0,10" />
                         <TextBlock Text="{Binding ReceiverStatusText}" TextWrapping="Wrap" />
                         <TextBlock Text="{Binding CaptureStatusText}" FontWeight="SemiBold" Margin="0,3,0,0" />
+                        <TextBlock Text="CAPTURE DESTINATION" Style="{StaticResource Text.SectionLabel}"
+                                   Margin="0,10,0,3" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox Text="{Binding CaptureDestination, Mode=OneWay}"
+                                     IsReadOnly="True" Margin="0,0,6,0"
+                                     AutomationProperties.Name="Streamed log capture destination"
+                                     ToolTip="New streamed-log captures are created in this folder" />
+                            <Button Grid.Column="1" Content="Choose folder"
+                                    Command="{Binding ChooseCaptureDestinationCommand}"
+                                    Style="{StaticResource Button.Small}"
+                                    ToolTip="Stop the current capture before changing the destination" />
+                        </Grid>
+                        <TextBlock Text="Changes apply to the next capture. Stop an active or paused capture before choosing another folder."
+                                   Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,4,0,0" />
                         <WrapPanel Margin="0,10,0,0">
                             <Button Content="{Binding ReceiverAdvertisementActionText}"
                                     Command="{Binding ToggleReceiverAdvertisementCommand}"

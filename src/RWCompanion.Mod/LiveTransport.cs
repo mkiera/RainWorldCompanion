@@ -66,19 +66,16 @@ internal sealed class LiveTransport
                     if (snapshot != null && snapshot.Sequence != lastSequence)
                     {
                         snapshot.Token = discovery.Token;
-                        string json = LiveJson.Serialize(snapshot);
-                        if (json.Length <= ProtocolInfo.MaximumMessageLength)
-                        {
-                            var write = writer.WriteLineAsync(json);
-                            if (await Task.WhenAny(write, Task.Delay(2000, stop)) != write) break;
-                            await write;
-                            lastSequence = snapshot.Sequence;
-                            var read = ReadReply(reader);
-                            if (await Task.WhenAny(read, Task.Delay(3000, stop)) != read) break;
-                            var reply = LiveJson.Deserialize<LiveCommandReply>(await read);
-                            if (reply.Token != discovery.Token) break;
-                            lock (_sync) _command = reply.Command ?? _command;
-                        }
+                        string json = LiveJson.SerializeLiveSnapshot(snapshot);
+                        var write = writer.WriteLineAsync(json);
+                        if (await Task.WhenAny(write, Task.Delay(2000, stop)) != write) break;
+                        await write;
+                        lastSequence = snapshot.Sequence;
+                        var read = ReadReply(reader);
+                        if (await Task.WhenAny(read, Task.Delay(3000, stop)) != read) break;
+                        var reply = LiveJson.Deserialize<LiveCommandReply>(await read);
+                        if (reply.Token != discovery.Token) break;
+                        lock (_sync) _command = reply.Command ?? _command;
                     }
                     await Task.Delay(200, stop);
                 }

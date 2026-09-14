@@ -1,6 +1,6 @@
 param(
     [string]$Configuration = 'Release',
-    [string]$ModVersion = '1.0.11',
+    [string]$ModVersion = '1.0.12',
     [string]$Channel = 'stable',
     [string]$OutputDirectory,
     [switch]$SkipBuild

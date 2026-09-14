@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Win32;
 
 namespace RainWorldCompanion.ViewModels;
 
@@ -156,7 +158,9 @@ public sealed partial class LogStreamingViewModel : ObservableObject
     public static IReadOnlyList<LogStreamingFilter> DiagnosticStreamFilters { get; } =
     [
         new("Companion/events.jsonl", "Diagnostic events"),
-        new("Companion/deep-trace.jsonl", "Deep trace")
+        new("Companion/meadow-native.jsonl", "Meadow observations"),
+        new("Companion/deep-trace.jsonl", "Deep trace"),
+        new("Companion/meadow-native-deep.jsonl", "Detailed Meadow observations")
     ];
 
     public const string DisclosureText =
@@ -165,21 +169,32 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         "exceptionLog.txt, and BepInEx/LogOutput.log. It also sends Companion's structured diagnostic event timeline. " +
         "That timeline includes active mod IDs, names, stated versions, and SHA-256 fingerprints of mod DLLs. " +
         "A fingerprint can identify an exact or private mod build. Mod paths, configurations, and file contents are not sent. " +
+        "Each Companion writes a separate Meadow observation timeline. Approved senders stream their copy, and the receiver " +
+        "saves its own copy locally. Each copy can include every player visible to that observer, including people without Game " +
+        "Hook and people who do not share logs. It contains display names, host and client roles, coarse " +
+        "room and life state, lobby mod requirements, and connection statistics available to the receiver. Raw Steam account " +
+        "IDs and the Steam lobby ID are replaced with session-specific identifiers. Native Meadow data cannot supply another player's logs, mod versions, " +
+        "mod hashes, exact position, or input. " +
         "Approving a receiver lets that receiver switch Deep trace on or off later without another approval. " +
-        "While enabled, Deep trace samples player positions, inputs, and game performance. It does not include chat " +
+        "While enabled, Deep trace samples each sender's own local player positions, inputs, and game performance, plus more " +
+        "frequent coarse Meadow state and network samples visible to the receiver. It does not include chat " +
         "or arbitrary files. Switching Deep trace off leaves the three game logs and diagnostic events streaming. " +
         "The receiver's own logs and diagnostics are written locally into the same capture for comparison. " +
         "Other mods may write private information to the game log files. Only choose people you trust.";
 
     private readonly ILogStreamingController _controller;
+    private readonly Func<string, Task<string?>> _pickCaptureDestination;
     private readonly List<LogStreamingLineUiState> _lines = [];
     private readonly List<LogStreamingPeerUiState> _peerStates = [];
 
     public LogStreamingViewModel() : this(new EmptyLogStreamingController()) { }
 
-    public LogStreamingViewModel(ILogStreamingController controller)
+    public LogStreamingViewModel(
+        ILogStreamingController controller,
+        Func<string, Task<string?>>? pickCaptureDestination = null)
     {
         _controller = controller;
+        _pickCaptureDestination = pickCaptureDestination ?? PickCaptureDestinationAsync;
         FileFilters.Add(new("", "All streamed data"));
         foreach (string name in SharedLogNames) FileFilters.Add(new(name, name));
         foreach (var filter in DiagnosticStreamFilters) FileFilters.Add(filter);
@@ -208,6 +223,9 @@ public sealed partial class LogStreamingViewModel : ObservableObject
     private string captureFolder = "";
 
     [ObservableProperty]
+    private string captureDestination = "";
+
+    [ObservableProperty]
     private string statusMessage = "Join a Steam Rain Meadow lobby to stream logs.";
 
     [ObservableProperty]
@@ -220,6 +238,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(RevokeSelectedSharingCommand))]
     [NotifyCanExecuteChangedFor(nameof(RevokeAllSharingCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenCaptureFolderCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ChooseCaptureDestinationCommand))]
     [NotifyCanExecuteChangedFor(nameof(MarkEventCommand))]
     private bool isBusy;
 
@@ -285,7 +304,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         {
             if (!ReceiverAdvertised) return "Make yourself available as a receiver before enabling Deep trace.";
             return DeepTraceEnabled
-                ? "On. Approved senders include live position, input, and performance samples."
+                ? "On. Approved senders include exact position, input, and performance for their own local players. Each participating Companion samples its Meadow observations more often."
                 : "Off. Normal logs and diagnostic events continue streaming.";
         }
     }
@@ -325,6 +344,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         ReceiverChoices.Any(peer => peer.IsReceivingMyLogs && peer.IsSelectedReceiver);
     public bool CanRevokeAllSharing => !IsBusy && Peers.Any(peer => peer.IsReceivingMyLogs);
     public bool CanOpenCaptureFolder => HasCaptureFolder && !IsBusy;
+    public bool CanChooseCaptureDestination => CaptureState == LogStreamingCaptureState.Stopped && !IsBusy;
     public bool CanMarkEvent => HasCaptureFolder && CaptureState != LogStreamingCaptureState.Stopped && !IsBusy;
 
     partial void OnSelectedSenderIdChanged(string value) => RefreshViewer();
@@ -355,6 +375,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         DeepTraceEnabled = snapshot.DeepTraceEnabled;
         CaptureState = snapshot.CaptureState;
         CaptureFolder = snapshot.CaptureFolder;
+        CaptureDestination = snapshot.CaptureDestination;
         StatusMessage = snapshot.Message.Length > 0 ? snapshot.Message : DefaultStatus(snapshot);
 
         bool peersChanged = !_peerStates.SequenceEqual(snapshot.Peers);
@@ -432,6 +453,24 @@ public sealed partial class LogStreamingViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanOpenCaptureFolder))]
     private Task OpenCaptureFolderAsync() => ApplyAsync(_controller.OpenCaptureFolderAsync);
+
+    [RelayCommand(CanExecute = nameof(CanChooseCaptureDestination))]
+    private async Task ChooseCaptureDestinationAsync()
+    {
+        if (!CanChooseCaptureDestination) return;
+        string? path;
+        try
+        {
+            path = await _pickCaptureDestination(CaptureDestination);
+        }
+        catch (Exception error)
+        {
+            StatusMessage = "The capture folder could not be selected: " + error.Message;
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(path))
+            await ApplyAsync(() => _controller.SetCaptureDestinationAsync(path));
+    }
 
     [RelayCommand(CanExecute = nameof(CanMarkEvent))]
     private async Task MarkEventAsync()
@@ -570,7 +609,34 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         RevokeSelectedSharingCommand.NotifyCanExecuteChanged();
         RevokeAllSharingCommand.NotifyCanExecuteChanged();
         OpenCaptureFolderCommand.NotifyCanExecuteChanged();
+        ChooseCaptureDestinationCommand.NotifyCanExecuteChanged();
         MarkEventCommand.NotifyCanExecuteChanged();
+    }
+
+    private static async Task<string?> PickCaptureDestinationAsync(string startingPath)
+    {
+        string? initialDirectory = await Task.Run(() =>
+        {
+            try
+            {
+                if (Directory.Exists(startingPath)) return startingPath;
+                if (!string.IsNullOrWhiteSpace(startingPath)
+                    && Path.GetDirectoryName(startingPath) is { } parent
+                    && Directory.Exists(parent)) return parent;
+            }
+            catch (Exception) { }
+            return null;
+        });
+        var dialog = new OpenFolderDialog
+        {
+            Title = "Choose where streamed logs are saved",
+            Multiselect = false
+        };
+        if (initialDirectory is not null) dialog.InitialDirectory = initialDirectory;
+        Window? owner = Application.Current?.Windows.OfType<Window>().FirstOrDefault(window => window.IsActive)
+            ?? Application.Current?.MainWindow;
+        bool? accepted = owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
+        return accepted == true ? dialog.FolderName : null;
     }
 
     private static string DefaultStatus(LogStreamingUiState snapshot)
@@ -621,6 +687,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         public Task RevokeSharingAsync(IReadOnlyList<string> receiverIds) => Task.CompletedTask;
         public Task RevokeAllSharingAsync() => Task.CompletedTask;
         public Task OpenCaptureFolderAsync() => Task.CompletedTask;
+        public Task SetCaptureDestinationAsync(string path) => Task.CompletedTask;
         public Task MarkEventAsync(string note) => Task.CompletedTask;
     }
 }

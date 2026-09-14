@@ -177,9 +177,9 @@ public sealed class LiveConnectionServer : IDisposable
                     SetState(LiveConnectionStatus.Incompatible, null);
                     return;
                 }
-                if (string.IsNullOrWhiteSpace(incoming.SessionId) || incoming.Players is null || incoming.Players.Length > 256
-                    || incoming.Players.Any(player => player is null || string.IsNullOrWhiteSpace(player.Id))
-                    || incoming.EnabledExpansions is null || !ValidActiveMods(incoming.ActiveMods))
+                if (string.IsNullOrWhiteSpace(incoming.SessionId) || !ValidPlayers(incoming.Players)
+                    || incoming.EnabledExpansions is null || !ValidActiveMods(incoming.ActiveMods)
+                    || !ValidMeadow(incoming.Meadow))
                 {
                     RecordEvent("Snapshot fields rejected.", true);
                     break;
@@ -264,6 +264,77 @@ public sealed class LiveConnectionServer : IDisposable
         }
         return true;
     }
+
+    private static bool ValidPlayers(LivePlayer[]? players)
+    {
+        if (players is null || players.Length > 256) return false;
+        foreach (var player in players)
+        {
+            if (player is null || string.IsNullOrWhiteSpace(player.Id) || player.Id.Length > 160
+                || player.Name is null || player.Name.Length > 80
+                || player.MeadowSteamId is null || player.MeadowSteamId.Length > 32
+                || player.MeadowAvatarId?.Length > ProtocolInfo.MaximumMeadowAvatarIdLength
+                || player.NativeLocationAvailability is null || player.NativeLocationAvailability.Length > 48)
+                return false;
+        }
+        return true;
+    }
+
+    private static bool ValidMeadow(LiveMeadowSnapshot? meadow)
+    {
+        if (meadow is null) return true;
+        if (meadow.SchemaVersion != 1 || string.IsNullOrWhiteSpace(meadow.LobbyId)
+            || meadow.LobbyId.Length > ProtocolInfo.MaximumMeadowLabelLength
+            || meadow.ObserverSteamId is null || meadow.ObserverSteamId.Length > 32
+            || meadow.GameMode is null || meadow.GameMode.Length > ProtocolInfo.MaximumMeadowLabelLength
+            || meadow.Timeline is null || meadow.Timeline.Length > ProtocolInfo.MaximumMeadowLabelLength
+            || !ValidTexts(meadow.RequiredMods, ProtocolInfo.MaximumMeadowModIds, ProtocolInfo.MaximumMeadowModIdLength)
+            || !ValidTexts(meadow.BannedMods, ProtocolInfo.MaximumMeadowModIds, ProtocolInfo.MaximumMeadowModIdLength)
+            || meadow.LobbyOptions is null || meadow.LobbyOptions.Length > ProtocolInfo.MaximumMeadowLobbyOptions
+            || meadow.Peers is null || meadow.Peers.Length > ProtocolInfo.MaximumMeadowPeers)
+            return false;
+        if (meadow.LobbyOptions.Any(option => option is null || string.IsNullOrWhiteSpace(option.Name)
+            || option.Name.Length > ProtocolInfo.MaximumMeadowLobbyOptionNameLength || option.Value is null
+            || option.Value.Length > ProtocolInfo.MaximumMeadowLobbyOptionValueLength)) return false;
+
+        var peerIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var peer in meadow.Peers)
+        {
+            if (peer is null || string.IsNullOrWhiteSpace(peer.SteamId) || peer.SteamId.Length > 32
+                || !peerIds.Add(peer.SteamId) || peer.DisplayName is null
+                || peer.DisplayName.Length > ProtocolInfo.MaximumMeadowDisplayNameLength
+                || peer.AvatarIds is null
+                || !ValidTexts(peer.AvatarIds, ProtocolInfo.MaximumMeadowAvatarsPerPeer,
+                    ProtocolInfo.MaximumMeadowAvatarIdLength)
+                || peer.AvatarIds.Distinct(StringComparer.Ordinal).Count() != peer.AvatarIds.Length
+                || peer.AvatarCount is < 0 or > ProtocolInfo.MaximumMeadowAvatarsPerPeer
+                || peer.PingMilliseconds is < 0 || peer.IncomingBytesPerSecond is < 0
+                || peer.OutgoingBytesPerSecond is < 0 || peer.OutgoingEventCount is < 0
+                || peer.OutgoingStateCount is < 0 || !ValidConnection(peer.Connection))
+                return false;
+        }
+        return true;
+    }
+
+    private static bool ValidConnection(LiveMeadowConnection? connection)
+    {
+        if (connection is null) return true;
+        return connection.State is not null && connection.State.Length <= ProtocolInfo.MaximumMeadowConnectionStateLength
+            && connection.PingMilliseconds is not < 0
+            && ValidQuality(connection.LocalDeliveryQuality) && ValidQuality(connection.RemoteDeliveryQuality)
+            && ValidRate(connection.IncomingPacketsPerSecond) && ValidRate(connection.OutgoingPacketsPerSecond)
+            && ValidRate(connection.IncomingBytesPerSecond) && ValidRate(connection.OutgoingBytesPerSecond)
+            && connection.EstimatedSendRateBytesPerSecond is not < 0
+            && connection.PendingUnreliableBytes is not < 0 && connection.PendingReliableBytes is not < 0
+            && connection.UnacknowledgedReliableBytes is not < 0 && connection.QueueTimeMicroseconds is not < 0;
+    }
+
+    private static bool ValidQuality(float? value) => value is null || value is >= 0 and <= 1 && float.IsFinite(value.Value);
+    private static bool ValidRate(float? value) => value is null || value >= 0 && float.IsFinite(value.Value);
+
+    private static bool ValidTexts(string[]? values, int maximumItems, int maximumLength)
+        => values is not null && values.Length <= maximumItems
+            && values.All(value => !string.IsNullOrWhiteSpace(value) && value.Length <= maximumLength);
 
     private void SetState(LiveConnectionStatus status, LiveSnapshot? snapshot)
     {

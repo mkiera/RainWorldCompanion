@@ -18,6 +18,8 @@ public interface ILogStreamingController
 
     Task OpenCaptureFolderAsync();
 
+    Task SetCaptureDestinationAsync(string path);
+
     Task MarkEventAsync(string note);
 }
 
@@ -97,6 +99,7 @@ public sealed record LogStreamingUiState
     public bool DeepTraceEnabled { get; init; }
     public LogStreamingCaptureState CaptureState { get; init; }
     public string CaptureFolder { get; init; } = "";
+    public string CaptureDestination { get; init; } = "";
     public string Message { get; init; } = "";
     public IReadOnlyList<LogStreamingPeerUiState> Peers { get; init; } = [];
     public IReadOnlyList<LogStreamingLineUiState> Lines { get; init; } = [];

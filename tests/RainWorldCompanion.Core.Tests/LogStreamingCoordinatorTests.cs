@@ -10,6 +10,39 @@ namespace RainWorldCompanion.Tests;
 public sealed class LogStreamingCoordinatorTests
 {
     [Fact]
+    public void Capture_destination_changes_only_between_captures_and_the_next_capture_uses_it()
+    {
+        using var gameFiles = new TempDirectory("rwc-log-source");
+        using var initialDestination = new TempDirectory("rwc-log-initial");
+        using var selectedDestination = new TempDirectory("rwc-log-selected");
+        using var laterDestination = new TempDirectory("rwc-log-later");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var sender = Coordinator(gameFiles.Path, initialDestination.Path, clock);
+        var receiver = Coordinator(gameFiles.Path, initialDestination.Path, clock);
+        var session = new Pair(sender, receiver, clock);
+        session.Tick();
+
+        receiver.SetReceiverAvailability(true);
+        receiver.SetDestinationRoot(selectedDestination.Path);
+        Assert.Equal(Path.GetFullPath(selectedDestination.Path), receiver.Snapshot().DestinationRoot);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        string firstCapture = receiver.Snapshot().CaptureFolder;
+        Assert.StartsWith(Path.GetFullPath(selectedDestination.Path), firstCapture, StringComparison.OrdinalIgnoreCase);
+        Assert.Throws<InvalidOperationException>(() => receiver.SetDestinationRoot(laterDestination.Path));
+
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Paused);
+        Assert.Throws<InvalidOperationException>(() => receiver.SetDestinationRoot(laterDestination.Path));
+        Assert.Equal(firstCapture, receiver.Snapshot().CaptureFolder);
+
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Stopped);
+        receiver.SetDestinationRoot(laterDestination.Path);
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        Assert.StartsWith(Path.GetFullPath(laterDestination.Path), receiver.Snapshot().CaptureFolder,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Explicit_consent_streams_existing_and_appended_bytes_then_acknowledges_them()
     {
         using var senderFiles = new TempDirectory("rwc-log-source");
@@ -252,7 +285,7 @@ public sealed class LogStreamingCoordinatorTests
         receiver.SetReceiverAvailability(true);
         receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
         receiver.SetDeepTraceEnabled(true);
-        receiver.ObserveLiveSnapshot(GameSnapshot("receiver-live", "SU_A06", 6,
+        var receiverSnapshot = GameSnapshot("receiver-live", "SU_A06", 6,
         [
             new()
             {
@@ -262,22 +295,75 @@ public sealed class LogStreamingCoordinatorTests
                 CodeFingerprint = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 FingerprintStatus = "complete",
             }
-        ]));
+        ]);
+        receiverSnapshot.Players[0].MeadowSteamId = Pair.ReceiverId;
+        receiverSnapshot.Players[0].MeadowPeerId = 2;
+        receiverSnapshot.Players[0].MeadowAvatarId = "receiver-avatar";
+        receiverSnapshot.Players[0].NativeEntityAvailable = true;
+        receiverSnapshot.Players[0].NativeLocationAvailability = "available";
+        receiverSnapshot.Players =
+        [
+            receiverSnapshot.Players[0],
+            new()
+            {
+                Id = "meadow:1:remote-avatar",
+                Name = "Nonsharing Player",
+                MeadowSteamId = Pair.SenderId,
+                MeadowPeerId = 1,
+                MeadowAvatarId = "remote-avatar",
+                RoomId = "SU_A07",
+                Region = "SU",
+                IsLocal = false,
+                NativeEntityAvailable = true,
+                NativeLocationAvailability = "available",
+                Trace = new() { Realized = true, PositionX = 9876.5f, Input = new() { Jump = true } },
+            }
+        ];
+        receiverSnapshot.Meadow = new()
+        {
+            LobbyId = "123456789",
+            ObserverSteamId = Pair.ReceiverId,
+            GameMode = "Story",
+            Timeline = "White",
+            Peers =
+            [
+                new()
+                {
+                    SteamId = Pair.SenderId, LobbyPeerId = 1, DisplayName = "Nonsharing Player",
+                    InGame = true, AvatarCount = 1, AvatarIds = ["remote-avatar"], PingMilliseconds = 45,
+                },
+                new()
+                {
+                    SteamId = Pair.ReceiverId, LobbyPeerId = 2, DisplayName = "Local Tester",
+                    IsLocal = true, IsHost = true, SupportsGameHookPackets = true,
+                    InGame = true, AvatarCount = 1, AvatarIds = ["receiver-avatar"],
+                }
+            ]
+        };
+        receiver.ObserveLiveSnapshot(receiverSnapshot);
         string capture = receiver.Snapshot().CaptureFolder;
         session.TickUntil(() => SenderFiles(capture, "consoleLog.txt", Pair.ReceiverId).Length == 1
                                 && SenderFiles(capture, "events.jsonl", Pair.ReceiverId).Length == 1
-                                && SenderFiles(capture, "deep-trace.jsonl", Pair.ReceiverId).Length == 1);
+                                && SenderFiles(capture, "meadow-native.jsonl", Pair.ReceiverId).Length == 1
+                                && SenderFiles(capture, "deep-trace.jsonl", Pair.ReceiverId).Length == 1
+                                && SenderFiles(capture, "meadow-native-deep.jsonl", Pair.ReceiverId).Length == 1);
 
         string raw = Assert.Single(SenderFiles(capture, "consoleLog.txt", Pair.ReceiverId));
         string events = Assert.Single(SenderFiles(capture, "events.jsonl", Pair.ReceiverId));
+        string native = Assert.Single(SenderFiles(capture, "meadow-native.jsonl", Pair.ReceiverId));
         string trace = Assert.Single(SenderFiles(capture, "deep-trace.jsonl", Pair.ReceiverId));
+        string nativeDeep = Assert.Single(SenderFiles(capture, "meadow-native-deep.jsonl", Pair.ReceiverId));
         Assert.Equal("receiver local\n", File.ReadAllText(raw));
         Assert.Contains("devourment", File.ReadAllText(events), StringComparison.Ordinal);
         Assert.Contains("0.1.0", File.ReadAllText(events), StringComparison.Ordinal);
         Assert.Contains("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             File.ReadAllText(events), StringComparison.Ordinal);
         Assert.Contains("\"kind\":\"deep-trace\"", File.ReadAllText(trace), StringComparison.Ordinal);
-        Assert.All(new[] { raw, events, trace }, path =>
+        Assert.Contains("Nonsharing Player", File.ReadAllText(native), StringComparison.Ordinal);
+        Assert.DoesNotContain(Pair.SenderId, File.ReadAllText(native), StringComparison.Ordinal);
+        Assert.DoesNotContain("9876.5", File.ReadAllText(nativeDeep), StringComparison.Ordinal);
+        Assert.Empty(SenderFiles(capture, "consoleLog.txt", Pair.SenderId));
+        Assert.All(new[] { raw, events, native, trace, nativeDeep }, path =>
         {
             Assert.StartsWith(Path.GetFullPath(capture) + Path.DirectorySeparatorChar, Path.GetFullPath(path),
                 StringComparison.OrdinalIgnoreCase);

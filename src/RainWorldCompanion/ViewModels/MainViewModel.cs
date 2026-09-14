@@ -37,6 +37,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private readonly SlugcatIconProvider _icons;
     private readonly string _appVersion;
     private readonly DispatcherTimer _gameTimer;
+    private readonly object _settingsSaveQueue = new();
+    private Task _settingsSaveTail = Task.CompletedTask;
 
     /// <summary>
     /// Here rather than on UpdateViewModel, which owns no dispatcher so the tests can build one on
@@ -189,26 +191,39 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// half-applied change.
     /// </summary>
     private void PersistSetting(Action<AppSettings> change)
+        => _ = PersistSettingIgnoringErrorsAsync(change);
+
+    private async Task PersistSettingIgnoringErrorsAsync(Action<AppSettings> change)
+    {
+        try
+        {
+            await PersistSettingAsync(change);
+        }
+        catch (Exception) { }
+    }
+
+    private Task PersistSettingAsync(Action<AppSettings> change)
     {
         change(_settings);
-        var snapshot = _settings.Clone();
+        return QueueSettingsSave(_settings.Clone());
+    }
 
-        _ = Task.Run(() =>
+    private Task QueueSettingsSave(AppSettings snapshot)
+    {
+        lock (_settingsSaveQueue)
         {
-            try
-            {
-                _settingsStore.Save(snapshot);
-            }
-            catch (Exception)
-            {
-            }
-        });
+            _settingsSaveTail = _settingsSaveTail.ContinueWith(
+                _ => _settingsStore.Save(snapshot),
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+            return _settingsSaveTail;
+        }
     }
 
     /// <summary>
-    /// Written synchronously, unlike <see cref="PersistSetting"/>: this runs from the
-    /// window's Closed handler, moments before the process exits, so a background write could
-    /// lose the race and never land.
+    /// Written synchronously after queued setting writes finish because this runs from the
+    /// window's Closed handler, moments before the process exits.
     /// </summary>
     public void SaveWindowGeometry(double width, double height, double left, double top, bool maximized)
     {
@@ -220,7 +235,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         try
         {
-            _settingsStore.Save(_settings.Clone());
+            QueueSettingsSave(_settings.Clone()).GetAwaiter().GetResult();
         }
         catch (Exception)
         {

@@ -62,6 +62,17 @@ public class SettingsResilienceTests
         Assert.Equal(enabled, new SettingsStore(path).ReadForStartup()!.LiveMapSpoilerMode);
     }
 
+    [Fact]
+    public void Log_streaming_destination_survives_saving_a_settings_copy()
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "settings.json");
+        const string destination = @"D:\Rain World diagnostics";
+        new SettingsStore(path).Save(new AppSettings { LogStreamingDestinationPath = destination }.Clone());
+
+        Assert.Equal(destination, new SettingsStore(path).ReadForStartup()!.LogStreamingDestinationPath);
+    }
+
     private static SettingsStore StoreWith(TempDirectory dir, string json)
     {
         var path = Path.Combine(dir.Path, "settings.json");

@@ -43,6 +43,7 @@ internal sealed class MeadowLogTransport : IDisposable
     private const int MaximumCaptureTokenBytes = 192;
     private const int AdvertisementIntervalMilliseconds = 2000;
     private const int AdvertisementFreshMilliseconds = 7000;
+    private const int ConnectionSampleIntervalMilliseconds = 1000;
     private const int Magic = 0x314C4352;
     private const byte WireVersion = 1;
     private const byte AdvertisementKind = 1;
@@ -52,6 +53,7 @@ internal sealed class MeadowLogTransport : IDisposable
     private readonly ConcurrentQueue<CallbackPacket> _callbacks = new();
     private readonly Dictionary<string, RemoteAdvertisement> _advertisements = new(StringComparer.Ordinal);
     private readonly Dictionary<string, object> _participants = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LiveMeadowConnection?> _connectionSamples = new(StringComparer.Ordinal);
     private readonly object _inboxSync = new();
     private readonly object _callbackSync = new();
     private object? _subscriber;
@@ -63,6 +65,7 @@ internal sealed class MeadowLogTransport : IDisposable
     private int _queuedCallbacks;
     private int _droppedInboundPackets;
     private long _nextAdvertisementTicks;
+    private long _nextConnectionSampleTicks;
     private bool _registered;
     private bool _available;
     private bool _captureActive;
@@ -78,6 +81,97 @@ internal sealed class MeadowLogTransport : IDisposable
     internal IReadOnlyList<MeadowLogPeer> Peers => _peers;
     internal int DroppedInboundPackets => System.Threading.Volatile.Read(ref _droppedInboundPackets);
     internal string AvailabilityError { get; private set; } = "";
+
+    internal LiveMeadowSnapshot? CaptureTelemetry(IReadOnlyList<LivePlayer> players)
+    {
+        if (!IsSteamLobby || _lobby == null || CurrentLobbyId.Length == 0) return null;
+        RefreshConnectionSamples();
+        var settings = SafeGet(_lobby, "clientSettings") as IDictionary;
+        int framesPerSecond = PositiveInteger(SafeGet(SafeGet(
+            GameAccess.FindType("RainMeadow.OnlineManager"), "instance"), "framesPerSecond")) ?? 20;
+        bool rosterTruncated = _peers.Length > ProtocolInfo.MaximumMeadowPeers;
+        var peers = new List<LiveMeadowPeer>(Math.Min(_peers.Length, ProtocolInfo.MaximumMeadowPeers));
+        foreach (var peer in _peers.OrderBy(peer => peer.LobbyPeerId).Take(ProtocolInfo.MaximumMeadowPeers))
+        {
+            string[] avatarIds = TextArray(players
+                .Where(player => string.Equals(player.MeadowSteamId, peer.SteamId, StringComparison.Ordinal))
+                .Select(player => player.MeadowAvatarId), ProtocolInfo.MaximumMeadowAvatarsPerPeer,
+                ProtocolInfo.MaximumMeadowAvatarIdLength, out bool avatarsTruncated);
+            rosterTruncated |= avatarsTruncated;
+            var sample = new LiveMeadowPeer
+            {
+                SteamId = peer.SteamId,
+                LobbyPeerId = peer.LobbyPeerId,
+                DisplayName = peer.DisplayName,
+                IsLocal = peer.IsLocal,
+                IsHost = peer.IsHost,
+                SupportsGameHookPackets = peer.SupportsLogStreaming,
+                AvatarIds = avatarIds,
+                Connection = _connectionSamples.TryGetValue(peer.SteamId, out var connection) ? connection : null,
+            };
+            if (_participants.TryGetValue(peer.SteamId, out var participant))
+            {
+                try
+                {
+                    object? client = null;
+                    try { client = settings?.Contains(participant) == true ? settings[participant] : null; }
+                    catch (Exception) { }
+                    sample.InGame = Boolean(client, "inGame");
+                    sample.EnteringChat = Boolean(client, "isInteracting");
+                    int? avatarCount = client == null ? null : Count(SafeGet(client, "avatars"));
+                    if (avatarCount > ProtocolInfo.MaximumMeadowAvatarsPerPeer)
+                    {
+                        avatarCount = ProtocolInfo.MaximumMeadowAvatarsPerPeer;
+                        rosterTruncated = true;
+                    }
+                    sample.AvatarCount = avatarCount;
+                    object? story = sample.InGame == true && sample.AvatarCount is > 0
+                        ? ReadStoryClientData(client)
+                        : null;
+                    sample.StoryReadyForWin = Boolean(story, "readyForWin");
+                    sample.StoryReadyForTransition = Boolean(story, "readyForTransition");
+                    sample.StoryDead = Boolean(story, "isDead");
+                    sample.IsSpectating = Boolean(participant, "isActuallySpectating");
+                    sample.NeedsAcknowledgement = Boolean(participant, "needsAck");
+                    sample.PingMilliseconds = peer.IsLocal ? null : NonNegativeInteger(SafeGet(participant, "ping"));
+                    sample.IncomingBytesPerSecond = BytesPerSecond(SafeGet(participant, "bytesIn"), framesPerSecond);
+                    sample.OutgoingBytesPerSecond = BytesPerSecond(SafeGet(participant, "bytesOut"), framesPerSecond);
+                    sample.RemoteTick = UnsignedInteger(SafeGet(participant, "tick"));
+                    sample.LatestAcknowledgedTick = UnsignedInteger(SafeGet(participant, "latestTickAck"));
+                    sample.OutgoingEventCount = Count(SafeGet(participant, "OutgoingEvents"));
+                    sample.OutgoingStateCount = Count(SafeGet(participant, "OutgoingStates"));
+                    sample.EventsRead = Boolean(participant, "eventsRead");
+                    sample.StatesRead = Boolean(participant, "statesRead");
+                    sample.EventsWritten = Boolean(participant, "eventsWritten");
+                    sample.StatesWritten = Boolean(participant, "statesWritten");
+                }
+                catch (Exception) { }
+            }
+            peers.Add(sample);
+        }
+
+        var local = peers.FirstOrDefault(peer => peer.IsLocal);
+        string[] requiredMods = TextArray(SafeGet(_lobby, "requiredmods"), ProtocolInfo.MaximumMeadowModIds,
+            ProtocolInfo.MaximumMeadowModIdLength, out bool requiredModsTruncated);
+        string[] bannedMods = TextArray(SafeGet(_lobby, "bannedmods"), ProtocolInfo.MaximumMeadowModIds,
+            ProtocolInfo.MaximumMeadowModIdLength, out bool bannedModsTruncated);
+        LiveMeadowLobbyOption[] lobbyOptions = ReadLobbyOptions(_lobby, out bool optionsTruncated);
+        return new()
+        {
+            LobbyId = CurrentLobbyId,
+            ObserverSteamId = local?.SteamId ?? "",
+            GameMode = EnumText(SafeGet(_lobby, "gameModeType")),
+            Timeline = CleanText(Convert.ToString(SafeGet(_lobby, "ActiveTimeline")), ProtocolInfo.MaximumMeadowLabelLength),
+            RequiredMods = requiredMods,
+            BannedMods = bannedMods,
+            WhitelistMode = Boolean(_lobby, "whitelistmode"),
+            CheatsEnabled = Boolean(_lobby, "cheats"),
+            ConfigurationTruncated = requiredModsTruncated || bannedModsTruncated || optionsTruncated,
+            RosterTruncated = rosterTruncated,
+            LobbyOptions = lobbyOptions,
+            Peers = peers.ToArray()
+        };
+    }
 
     internal void Update()
     {
@@ -523,9 +617,7 @@ internal sealed class MeadowLogTransport : IDisposable
         object? id = GameAccess.Get(participant, "id");
         string name = Convert.ToString(GameAccess.Get(id, "DisplayName")) ?? "";
         if (string.IsNullOrWhiteSpace(name)) name = "Steam user " + GameAccess.Text(participant, "inLobbyId");
-        name = new string(name.Where(character => !char.IsControl(character)).Take(128).ToArray());
-        if (name.Length > 0 && char.IsHighSurrogate(name[name.Length - 1])) name = name.Substring(0, name.Length - 1);
-        return name;
+        return CleanText(name, ProtocolInfo.MaximumMeadowDisplayNameLength);
     }
 
     private static bool PeerSupportsPackets(object lobby, object participant)
@@ -545,6 +637,200 @@ internal sealed class MeadowLogTransport : IDisposable
             or ArgumentException or InvalidOperationException) { return false; }
     }
 
+    private void RefreshConnectionSamples()
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (now < _nextConnectionSampleTicks) return;
+        _nextConnectionSampleTicks = now + MillisecondsToTicks(ConnectionSampleIntervalMilliseconds);
+        foreach (string removed in _connectionSamples.Keys.Where(id => !_participants.ContainsKey(id)).ToArray())
+            _connectionSamples.Remove(removed);
+        foreach (var pair in _participants)
+            _connectionSamples[pair.Key] = SafeGet(pair.Value, "isMe") is true ? null : ReadSteamConnection(pair.Value);
+    }
+
+    private static LiveMeadowConnection? ReadSteamConnection(object participant)
+    {
+        try
+        {
+            Type? messages = GameAccess.FindType("Steamworks.SteamNetworkingMessages");
+            object? identity = SafeGet(SafeGet(participant, "id"), "oid");
+            MethodInfo? method = messages?.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .FirstOrDefault(candidate => candidate.Name == "GetSessionConnectionInfo"
+                    && candidate.GetParameters().Length == 3);
+            if (method == null || identity == null) return null;
+            ParameterInfo[] parameters = method.GetParameters();
+            Type? infoType = parameters[1].ParameterType.GetElementType();
+            Type? statusType = parameters[2].ParameterType.GetElementType();
+            if (infoType == null || statusType == null) return null;
+            object?[] arguments = { identity, Activator.CreateInstance(infoType), Activator.CreateInstance(statusType) };
+            object? state = method.Invoke(null, arguments);
+            object? status = arguments[2];
+            if (status == null) return null;
+            return new()
+            {
+                State = EnumText(state, ProtocolInfo.MaximumMeadowConnectionStateLength),
+                PingMilliseconds = NonNegativeInteger(SafeGet(status, "m_nPing")),
+                LocalDeliveryQuality = Quality(SafeGet(status, "m_flConnectionQualityLocal")),
+                RemoteDeliveryQuality = Quality(SafeGet(status, "m_flConnectionQualityRemote")),
+                IncomingPacketsPerSecond = Rate(SafeGet(status, "m_flInPacketsPerSec")),
+                OutgoingPacketsPerSecond = Rate(SafeGet(status, "m_flOutPacketsPerSec")),
+                IncomingBytesPerSecond = Rate(SafeGet(status, "m_flInBytesPerSec")),
+                OutgoingBytesPerSecond = Rate(SafeGet(status, "m_flOutBytesPerSec")),
+                EstimatedSendRateBytesPerSecond = NonNegativeInteger(SafeGet(status, "m_nSendRateBytesPerSecond")),
+                PendingUnreliableBytes = NonNegativeInteger(SafeGet(status, "m_cbPendingUnreliable")),
+                PendingReliableBytes = NonNegativeInteger(SafeGet(status, "m_cbPendingReliable")),
+                UnacknowledgedReliableBytes = NonNegativeInteger(SafeGet(status, "m_cbSentUnackedReliable")),
+                QueueTimeMicroseconds = NonNegativeInteger(SafeGet(status, "m_usecQueueTime"))
+            };
+        }
+        catch (Exception) { return null; }
+    }
+
+    private static object? ReadStoryClientData(object? client)
+    {
+        Type? type = GameAccess.FindType("RainMeadow.StoryClientSettingsData");
+        if (client == null || type == null) return null;
+        object?[] arguments = { type, null };
+        try { return GameAccess.Call(client, "TryGetData", arguments) is true ? arguments[1] : null; }
+        catch (Exception error) when (error is MissingMemberException or MissingMethodException or TargetInvocationException
+            or ArgumentException or InvalidOperationException) { return null; }
+    }
+
+    private static LiveMeadowLobbyOption[] ReadLobbyOptions(object lobby, out bool truncated)
+    {
+        var options = new List<LiveMeadowLobbyOption>();
+        truncated = false;
+        AddOptions(options, SafeGet(lobby, "configurableBools") as IDictionary, "bool", ref truncated);
+        AddOptions(options, SafeGet(lobby, "configurableFloats") as IDictionary, "float", ref truncated);
+        AddOptions(options, SafeGet(lobby, "configurableInts") as IDictionary, "int", ref truncated);
+        LiveMeadowLobbyOption[] sorted = options.OrderBy(option => option.Name, StringComparer.Ordinal).ToArray();
+        if (sorted.Length > ProtocolInfo.MaximumMeadowLobbyOptions) truncated = true;
+        return sorted.Take(ProtocolInfo.MaximumMeadowLobbyOptions).ToArray();
+    }
+
+    private static void AddOptions(ICollection<LiveMeadowLobbyOption> destination, IDictionary? values, string type,
+        ref bool truncated)
+    {
+        if (values == null) return;
+        try
+        {
+            foreach (DictionaryEntry item in values)
+            {
+                int keyLength = Math.Max(0, ProtocolInfo.MaximumMeadowLobbyOptionNameLength - type.Length - 1);
+                string name = CleanText(Convert.ToString(item.Key), keyLength, out bool nameTruncated);
+                string value = CleanText(Convert.ToString(item.Value, System.Globalization.CultureInfo.InvariantCulture),
+                    ProtocolInfo.MaximumMeadowLobbyOptionValueLength, out bool valueTruncated);
+                truncated |= nameTruncated || valueTruncated;
+                if (name.Length > 0) destination.Add(new() { Name = type + ":" + name, Value = value });
+            }
+        }
+        catch (Exception) { truncated = true; }
+    }
+
+    private static string[] TextArray(object? value, int maximumItems, int maximumLength, out bool truncated)
+    {
+        try { return TextArray(GameAccess.Items(value).Select(item => Convert.ToString(item)), maximumItems, maximumLength, out truncated); }
+        catch (Exception)
+        {
+            truncated = true;
+            return Array.Empty<string>();
+        }
+    }
+
+    private static string[] TextArray(IEnumerable<string?> values, int maximumItems, int maximumLength, out bool truncated)
+    {
+        truncated = false;
+        var cleaned = new List<string>();
+        foreach (string? value in values)
+        {
+            string item = CleanText(value, maximumLength, out bool itemTruncated);
+            truncated |= itemTruncated;
+            if (item.Length > 0) cleaned.Add(item);
+        }
+        string[] distinct = cleaned.Distinct(StringComparer.Ordinal).OrderBy(item => item, StringComparer.Ordinal).ToArray();
+        if (distinct.Length != cleaned.Count || distinct.Length > maximumItems) truncated = true;
+        return distinct.Take(maximumItems).ToArray();
+    }
+
+    private static string CleanText(string? value, int maximum) => CleanText(value, maximum, out _);
+
+    private static string CleanText(string? value, int maximum, out bool truncated)
+    {
+        truncated = false;
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        string source = value!.Trim();
+        string clean = new(source.Where(character => !char.IsControl(character)).Take(maximum).ToArray());
+        if (clean.Length > 0 && char.IsHighSurrogate(clean[clean.Length - 1])) clean = clean.Substring(0, clean.Length - 1);
+        truncated = !string.Equals(source, clean, StringComparison.Ordinal);
+        return clean;
+    }
+
+    private static int? Count(object? value)
+        => value is ICollection collection ? Math.Max(0, collection.Count) : NonNegativeInteger(SafeGet(value, "Count"));
+
+    private static int? BytesPerSecond(object? value, int framesPerSecond)
+    {
+        long total = 0;
+        int count = 0;
+        foreach (object item in GameAccess.Items(value))
+        {
+            total = Math.Min(int.MaxValue, total + (NonNegativeInteger(item) ?? 0));
+            count++;
+        }
+        return count == 0 ? null : (int)Math.Min(int.MaxValue, total * Math.Max(1, framesPerSecond) / count);
+    }
+
+    private static int? PositiveInteger(object? value)
+        => NonNegativeInteger(value) is > 0 and var number ? number : null;
+
+    private static int? NonNegativeInteger(object? value)
+    {
+        try
+        {
+            long number = Convert.ToInt64(value, System.Globalization.CultureInfo.InvariantCulture);
+            return number is >= 0 and <= int.MaxValue ? (int)number : null;
+        }
+        catch (Exception error) when (error is FormatException or InvalidCastException or OverflowException) { return null; }
+    }
+
+    private static uint? UnsignedInteger(object? value)
+    {
+        try { return Convert.ToUInt32(value, System.Globalization.CultureInfo.InvariantCulture); }
+        catch (Exception error) when (error is FormatException or InvalidCastException or OverflowException) { return null; }
+    }
+
+    private static bool? Boolean(object? target, string name)
+        => target == null ? null : SafeGet(target, name) as bool?;
+
+    private static object? SafeGet(object? target, string name)
+    {
+        if (target == null) return null;
+        try { return GameAccess.Get(target, name); }
+        catch (Exception) { return null; }
+    }
+
+    private static float? Quality(object? value)
+        => Number(value) is >= 0 and <= 1 and var number ? number : null;
+
+    private static float? Rate(object? value)
+        => Number(value) is >= 0 and var number ? number : null;
+
+    private static float? Number(object? value)
+    {
+        try
+        {
+            float number = Convert.ToSingle(value, System.Globalization.CultureInfo.InvariantCulture);
+            return !float.IsNaN(number) && !float.IsInfinity(number) ? number : null;
+        }
+        catch (Exception error) when (error is FormatException or InvalidCastException or OverflowException) { return null; }
+    }
+
+    private static string EnumText(object? value, int maximumLength = ProtocolInfo.MaximumMeadowLabelLength)
+    {
+        string text = Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        return CleanText(text, maximumLength);
+    }
+
     private void RemoveDepartedAdvertisements()
     {
         foreach (string steamId in _advertisements.Keys.Where(id => !_participants.ContainsKey(id)).ToArray())
@@ -558,8 +844,10 @@ internal sealed class MeadowLogTransport : IDisposable
         CurrentLobbyId = "";
         _peers = Array.Empty<MeadowLogPeer>();
         _participants.Clear();
+        _connectionSamples.Clear();
         _advertisements.Clear();
         _nextAdvertisementTicks = 0;
+        _nextConnectionSampleTicks = 0;
         ClearLocalAdvertisement();
         ClearInbox();
     }

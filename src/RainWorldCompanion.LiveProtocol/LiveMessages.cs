@@ -7,7 +7,7 @@ public static partial class ProtocolInfo
 {
     public const int Version = 1;
     public const int MaximumMessageLength = 262144;
-    public const int LogStreamingVersion = 1;
+    public const int LogStreamingVersion = 2;
     public const int MaximumLogBridgeMessageLength = 524288;
     public const int MaximumLogPacketLength = 32768;
     public const int MaximumLogPacketsPerBridgeExchange = 6;
@@ -15,6 +15,17 @@ public static partial class ProtocolInfo
     public const int MaximumModIdLength = 64;
     public const int MaximumModDisplayNameLength = 96;
     public const int MaximumModVersionLength = 32;
+    public const int MaximumMeadowPeers = 32;
+    public const int MaximumMeadowAvatarsPerPeer = 4;
+    public const int MaximumMeadowModIds = 64;
+    public const int MaximumMeadowModIdLength = 64;
+    public const int MaximumMeadowLobbyOptions = 32;
+    public const int MaximumMeadowLobbyOptionNameLength = 64;
+    public const int MaximumMeadowLobbyOptionValueLength = 32;
+    public const int MaximumMeadowDisplayNameLength = 128;
+    public const int MaximumMeadowAvatarIdLength = 64;
+    public const int MaximumMeadowLabelLength = 64;
+    public const int MaximumMeadowConnectionStateLength = 32;
     public static string DiscoveryDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RainWorldCompanion", "live");
 }
 
@@ -56,6 +67,7 @@ public sealed class LiveSnapshot
     public LiveModInfo[] ActiveMods { get; set; } = Array.Empty<LiveModInfo>();
     public bool ActiveModsTruncated { get; set; }
     public LivePlayer[] Players { get; set; } = Array.Empty<LivePlayer>();
+    public LiveMeadowSnapshot? Meadow { get; set; }
     public LiveTrace? Trace { get; set; }
 }
 
@@ -106,7 +118,84 @@ public sealed class LivePlayer
     public bool AllowsHostControl { get; set; }
     public string? CompanionVersion { get; set; }
     public bool IsHost { get; set; }
+    public string MeadowSteamId { get; set; } = "";
+    public ushort? MeadowPeerId { get; set; }
+    public string? MeadowAvatarId { get; set; }
+    public bool? NativeEntityAvailable { get; set; }
+    public string NativeLocationAvailability { get; set; } = "";
+    public bool? InDen { get; set; }
     public LivePlayerTrace? Trace { get; set; }
+}
+
+public sealed class LiveMeadowSnapshot
+{
+    public int SchemaVersion { get; set; } = 1;
+    public string LobbyId { get; set; } = "";
+    public string ObserverSteamId { get; set; } = "";
+    public string GameMode { get; set; } = "";
+    public string Timeline { get; set; } = "";
+    public string[] RequiredMods { get; set; } = Array.Empty<string>();
+    public string[] BannedMods { get; set; } = Array.Empty<string>();
+    public bool? WhitelistMode { get; set; }
+    public bool? CheatsEnabled { get; set; }
+    public bool ConfigurationTruncated { get; set; }
+    public bool RosterTruncated { get; set; }
+    public LiveMeadowLobbyOption[] LobbyOptions { get; set; } = Array.Empty<LiveMeadowLobbyOption>();
+    public LiveMeadowPeer[] Peers { get; set; } = Array.Empty<LiveMeadowPeer>();
+}
+
+public sealed class LiveMeadowLobbyOption
+{
+    public string Name { get; set; } = "";
+    public string Value { get; set; } = "";
+}
+
+public sealed class LiveMeadowPeer
+{
+    public string SteamId { get; set; } = "";
+    public ushort LobbyPeerId { get; set; }
+    public string DisplayName { get; set; } = "";
+    public bool IsLocal { get; set; }
+    public bool IsHost { get; set; }
+    public bool SupportsGameHookPackets { get; set; }
+    public bool? InGame { get; set; }
+    public bool? EnteringChat { get; set; }
+    public int? AvatarCount { get; set; }
+    public string[] AvatarIds { get; set; } = Array.Empty<string>();
+    public bool? StoryReadyForWin { get; set; }
+    public bool? StoryReadyForTransition { get; set; }
+    public bool? StoryDead { get; set; }
+    public bool? IsSpectating { get; set; }
+    public bool? NeedsAcknowledgement { get; set; }
+    public int? PingMilliseconds { get; set; }
+    public int? IncomingBytesPerSecond { get; set; }
+    public int? OutgoingBytesPerSecond { get; set; }
+    public uint? RemoteTick { get; set; }
+    public uint? LatestAcknowledgedTick { get; set; }
+    public int? OutgoingEventCount { get; set; }
+    public int? OutgoingStateCount { get; set; }
+    public bool? EventsRead { get; set; }
+    public bool? StatesRead { get; set; }
+    public bool? EventsWritten { get; set; }
+    public bool? StatesWritten { get; set; }
+    public LiveMeadowConnection? Connection { get; set; }
+}
+
+public sealed class LiveMeadowConnection
+{
+    public string State { get; set; } = "";
+    public int? PingMilliseconds { get; set; }
+    public float? LocalDeliveryQuality { get; set; }
+    public float? RemoteDeliveryQuality { get; set; }
+    public float? IncomingPacketsPerSecond { get; set; }
+    public float? OutgoingPacketsPerSecond { get; set; }
+    public float? IncomingBytesPerSecond { get; set; }
+    public float? OutgoingBytesPerSecond { get; set; }
+    public int? EstimatedSendRateBytesPerSecond { get; set; }
+    public int? PendingUnreliableBytes { get; set; }
+    public int? PendingReliableBytes { get; set; }
+    public int? UnacknowledgedReliableBytes { get; set; }
+    public int? QueueTimeMicroseconds { get; set; }
 }
 
 public sealed class LiveTrace
@@ -158,6 +247,40 @@ public static class LiveJson
         using var stream = new MemoryStream();
         new DataContractJsonSerializer(typeof(T)).WriteObject(stream, value);
         return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    public static string SerializeLiveSnapshot(LiveSnapshot snapshot)
+    {
+        if (snapshot == null) throw new ArgumentNullException(nameof(snapshot));
+        string json = Serialize(snapshot);
+        if (Encoding.UTF8.GetByteCount(json) <= ProtocolInfo.MaximumMessageLength) return json;
+
+        LiveModInfo[] activeMods = snapshot.ActiveMods ?? Array.Empty<LiveModInfo>();
+        bool wasTruncated = snapshot.ActiveModsTruncated;
+        int minimum = 0;
+        int maximum = activeMods.Length;
+        int accepted = -1;
+        string? acceptedJson = null;
+        while (minimum <= maximum)
+        {
+            int count = minimum + (maximum - minimum) / 2;
+            snapshot.ActiveMods = count == activeMods.Length ? activeMods : activeMods.Take(count).ToArray();
+            snapshot.ActiveModsTruncated = wasTruncated || count < activeMods.Length;
+            string candidate = Serialize(snapshot);
+            if (Encoding.UTF8.GetByteCount(candidate) <= ProtocolInfo.MaximumMessageLength)
+            {
+                accepted = count;
+                acceptedJson = candidate;
+                minimum = count + 1;
+            }
+            else maximum = count - 1;
+        }
+
+        if (acceptedJson == null)
+            throw new System.Runtime.Serialization.SerializationException("Live snapshot cannot fit within the message limit.");
+        snapshot.ActiveMods = accepted == activeMods.Length ? activeMods : activeMods.Take(accepted).ToArray();
+        snapshot.ActiveModsTruncated = wasTruncated || accepted < activeMods.Length;
+        return acceptedJson;
     }
 
     public static T Deserialize<T>(string json)

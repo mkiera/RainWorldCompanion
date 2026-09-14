@@ -4,7 +4,9 @@ using RainWorldCompanion.Core.Live;
 
 namespace RainWorldCompanion.ViewModels;
 
-internal sealed class LogStreamingController(LogStreamingCoordinator coordinator) : ILogStreamingController
+internal sealed class LogStreamingController(
+    LogStreamingCoordinator coordinator,
+    Func<string, Task>? persistDestination = null) : ILogStreamingController
 {
     public LogStreamingUiState Snapshot()
     {
@@ -22,6 +24,7 @@ internal sealed class LogStreamingController(LogStreamingCoordinator coordinator
                 _ => LogStreamingCaptureState.Stopped
             },
             CaptureFolder = snapshot.CaptureFolder,
+            CaptureDestination = snapshot.DestinationRoot,
             Message = snapshot.Message,
             Peers = snapshot.Peers.Select(peer => new LogStreamingPeerUiState
             {
@@ -79,6 +82,22 @@ internal sealed class LogStreamingController(LogStreamingCoordinator coordinator
             throw new DirectoryNotFoundException("No streamed-log capture folder is available yet.");
         Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
         return Task.CompletedTask;
+    }
+
+    public async Task SetCaptureDestinationAsync(string path)
+    {
+        string previous = coordinator.Snapshot().DestinationRoot;
+        await Task.Run(() => coordinator.SetDestinationRoot(path));
+        if (persistDestination is null) return;
+        try
+        {
+            await persistDestination(coordinator.Snapshot().DestinationRoot);
+        }
+        catch
+        {
+            await Task.Run(() => coordinator.SetDestinationRoot(previous));
+            throw;
+        }
     }
 
     public Task MarkEventAsync(string note)

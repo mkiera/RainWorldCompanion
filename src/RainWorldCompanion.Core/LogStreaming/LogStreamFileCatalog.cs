@@ -14,7 +14,9 @@ public static class LogStreamFileCatalog
     private static readonly LogStreamFile[] GeneratedFiles =
     [
         new("Companion/events.jsonl", Path.Combine("Companion", "events.jsonl"), true),
+        new("Companion/meadow-native.jsonl", Path.Combine("Companion", "meadow-native.jsonl"), true),
         new("Companion/deep-trace.jsonl", Path.Combine("Companion", "deep-trace.jsonl"), true),
+        new("Companion/meadow-native-deep.jsonl", Path.Combine("Companion", "meadow-native-deep.jsonl"), true),
     ];
 
     private static readonly LogStreamFile[] StreamFiles = [.. SourceFiles, .. GeneratedFiles];

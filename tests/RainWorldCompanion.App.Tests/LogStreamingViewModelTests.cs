@@ -1,6 +1,8 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using RainWorldCompanion.Core.Live;
 using RainWorldCompanion.ViewModels;
 using RainWorldCompanion.Views;
 
@@ -20,8 +22,16 @@ public class LogStreamingViewModelTests
         Assert.Contains("active mod IDs, names, stated versions, and SHA-256 fingerprints", LogStreamingViewModel.DisclosureText);
         Assert.Contains("identify an exact or private mod build", LogStreamingViewModel.DisclosureText);
         Assert.Contains("Mod paths, configurations, and file contents are not sent", LogStreamingViewModel.DisclosureText);
+        Assert.Contains("Approved senders stream their copy, and the receiver saves its own copy locally",
+            LogStreamingViewModel.DisclosureText);
+        Assert.Contains("every player visible to that observer", LogStreamingViewModel.DisclosureText);
+        Assert.Contains("people without Game Hook and people who do not share logs", LogStreamingViewModel.DisclosureText);
+        Assert.Contains("Raw Steam account IDs and the Steam lobby ID are replaced with session-specific identifiers",
+            LogStreamingViewModel.DisclosureText);
+        Assert.Contains("cannot supply another player's logs, mod versions, mod hashes, exact position, or input",
+            LogStreamingViewModel.DisclosureText);
         Assert.Contains("switch Deep trace on or off later without another approval", LogStreamingViewModel.DisclosureText);
-        Assert.Contains("player positions, inputs, and game performance", LogStreamingViewModel.DisclosureText);
+        Assert.Contains("each sender's own local player positions, inputs, and game performance", LogStreamingViewModel.DisclosureText);
         Assert.Contains("does not include chat or arbitrary files", LogStreamingViewModel.DisclosureText);
         Assert.Contains("Switching Deep trace off leaves the three game logs and diagnostic events streaming",
             LogStreamingViewModel.DisclosureText);
@@ -29,7 +39,8 @@ public class LogStreamingViewModelTests
         Assert.DoesNotContain("Companion/deep-trace.jsonl", LogStreamingViewModel.SharedLogNames);
         var view = new LogStreamingViewModel();
         Assert.Equal(
-            ["", "consoleLog.txt", "exceptionLog.txt", "BepInEx/LogOutput.log", "Companion/events.jsonl", "Companion/deep-trace.jsonl"],
+            ["", "consoleLog.txt", "exceptionLog.txt", "BepInEx/LogOutput.log", "Companion/events.jsonl",
+                "Companion/meadow-native.jsonl", "Companion/deep-trace.jsonl", "Companion/meadow-native-deep.jsonl"],
             view.FileFilters.Select(filter => filter.Id));
     }
 
@@ -288,7 +299,8 @@ public class LogStreamingViewModelTests
             resources.MergedDictionaries.Add(LoadResource("Theme.xaml"));
             Application.Current!.Resources = resources;
 
-            var controller = new FakeLogStreamingController(Snapshot(peers:
+            var controller = new FakeLogStreamingController(Snapshot(
+                captureDestination: @"C:\Users\Player\Downloads\Rain World streamed logs", peers:
             [
                 Peer("one") with
                 {
@@ -319,6 +331,8 @@ public class LogStreamingViewModelTests
                 Assert.Contains("ACK AGE", text);
                 Assert.Contains("CONFIRMED LOG THROUGHPUT", text);
                 Assert.Contains("DEEP TRACE", text);
+                Assert.Contains("CAPTURE DESTINATION", text);
+                Assert.Single(Descendants<Button>(view), item => Equals(item.Content, "Choose folder"));
                 Assert.Single(Descendants<CheckBox>(view), item => Equals(item.Content, "Deep trace"));
             }
             finally
@@ -433,10 +447,121 @@ public class LogStreamingViewModelTests
         Assert.Equal("", view.EventNote);
     }
 
+    [Fact]
+    public async Task Capture_destination_picker_starts_at_the_saved_folder_and_updates_future_captures()
+    {
+        const string current = @"C:\Users\Player\Downloads\Rain World streamed logs";
+        const string selected = @"D:\Rain World diagnostics";
+        string? startingPath = null;
+        var controller = new FakeLogStreamingController(Snapshot(captureDestination: current));
+        var view = new LogStreamingViewModel(controller, path =>
+        {
+            startingPath = path;
+            return Task.FromResult<string?>(selected);
+        });
+        view.Refresh();
+
+        Assert.Equal(current, view.CaptureDestination);
+        Assert.True(view.ChooseCaptureDestinationCommand.CanExecute(null));
+        await view.ChooseCaptureDestinationCommand.ExecuteAsync(null);
+
+        Assert.Equal(current, startingPath);
+        Assert.Equal([selected], controller.CaptureDestinations);
+        Assert.Equal(selected, view.CaptureDestination);
+    }
+
+    [Theory]
+    [InlineData(LogStreamingCaptureState.Capturing)]
+    [InlineData(LogStreamingCaptureState.Paused)]
+    public async Task Capture_destination_cannot_change_until_the_current_capture_is_stopped(
+        LogStreamingCaptureState state)
+    {
+        int pickerCalls = 0;
+        var controller = new FakeLogStreamingController(Snapshot(
+            captureState: state, captureDestination: @"C:\existing"));
+        var view = new LogStreamingViewModel(controller, _ =>
+        {
+            pickerCalls++;
+            return Task.FromResult<string?>(@"D:\new");
+        });
+        view.Refresh();
+
+        Assert.False(view.ChooseCaptureDestinationCommand.CanExecute(null));
+        await view.ChooseCaptureDestinationCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, pickerCalls);
+        Assert.Empty(controller.CaptureDestinations);
+        Assert.Equal(@"C:\existing", view.CaptureDestination);
+    }
+
+    [Fact]
+    public async Task Cancelling_the_capture_destination_picker_keeps_the_saved_folder()
+    {
+        var controller = new FakeLogStreamingController(Snapshot(captureDestination: @"C:\existing"));
+        var view = new LogStreamingViewModel(controller, _ => Task.FromResult<string?>(null));
+        view.Refresh();
+
+        await view.ChooseCaptureDestinationCommand.ExecuteAsync(null);
+
+        Assert.Empty(controller.CaptureDestinations);
+        Assert.Equal(@"C:\existing", view.CaptureDestination);
+    }
+
+    [Fact]
+    public async Task Controller_creates_and_persists_the_selected_capture_destination()
+    {
+        using var gameFiles = new TempDirectory("stream-destination-game");
+        using var initial = new TempDirectory("stream-destination-initial");
+        using var parent = new TempDirectory("stream-destination-parent");
+        string selected = Path.Combine(parent.Path, "chosen");
+        string? persisted = null;
+        var coordinator = new LogStreamingCoordinator(new()
+        {
+            GameInstallPath = () => gameFiles.Path,
+            DestinationRoot = initial.Path
+        });
+        var controller = new LogStreamingController(coordinator, path =>
+        {
+            persisted = path;
+            return Task.CompletedTask;
+        });
+
+        await controller.SetCaptureDestinationAsync(selected);
+
+        string expected = Path.GetFullPath(selected);
+        Assert.True(Directory.Exists(expected));
+        Assert.Equal(expected, persisted);
+        Assert.Equal(expected, controller.Snapshot().CaptureDestination);
+    }
+
+    [Fact]
+    public async Task Controller_waits_for_destination_persistence_and_rolls_back_a_failed_save()
+    {
+        using var gameFiles = new TempDirectory("stream-destination-game");
+        using var initial = new TempDirectory("stream-destination-initial");
+        using var selected = new TempDirectory("stream-destination-selected");
+        var persistence = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var coordinator = new LogStreamingCoordinator(new()
+        {
+            GameInstallPath = () => gameFiles.Path,
+            DestinationRoot = initial.Path
+        });
+        var controller = new LogStreamingController(coordinator, _ => persistence.Task);
+
+        Task update = controller.SetCaptureDestinationAsync(selected.Path);
+        await WaitUntil(() => controller.Snapshot().CaptureDestination == Path.GetFullPath(selected.Path));
+        Assert.False(update.IsCompleted);
+        persistence.SetException(new IOException("settings unavailable"));
+
+        await Assert.ThrowsAsync<IOException>(() => update);
+        Assert.Equal(Path.GetFullPath(initial.Path), controller.Snapshot().CaptureDestination);
+    }
+
     private static LogStreamingUiState Snapshot(
         bool advertised = true,
         LogStreamingCaptureState captureState = LogStreamingCaptureState.Stopped,
         string captureFolder = "",
+        string captureDestination = "",
         IReadOnlyList<LogStreamingPeerUiState>? peers = null,
         IReadOnlyList<LogStreamingLineUiState>? lines = null,
         IReadOnlyList<LogStreamingChartUiSample>? samples = null,
@@ -449,10 +574,21 @@ public class LogStreamingViewModelTests
         DeepTraceEnabled = deepTraceEnabled,
         CaptureState = captureState,
         CaptureFolder = captureFolder,
+        CaptureDestination = captureDestination,
         Peers = peers ?? [],
         Lines = lines ?? [],
         Samples = samples ?? []
     };
+
+    private static async Task WaitUntil(Func<bool> condition)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow >= deadline) Assert.Fail("The expected state was not reached.");
+            await Task.Delay(10);
+        }
+    }
 
     private static LogStreamingPeerUiState Peer(
         string id,
@@ -505,6 +641,7 @@ public class LogStreamingViewModelTests
         public List<IReadOnlyList<string>> Prepared { get; } = [];
         public List<IReadOnlyList<string>> Revoked { get; } = [];
         public List<string> EventNotes { get; } = [];
+        public List<string> CaptureDestinations { get; } = [];
         public bool RevokedAll { get; private set; }
         public bool OpenedFolder { get; private set; }
 
@@ -554,6 +691,13 @@ public class LogStreamingViewModelTests
         public Task OpenCaptureFolderAsync()
         {
             OpenedFolder = true;
+            return Task.CompletedTask;
+        }
+
+        public Task SetCaptureDestinationAsync(string path)
+        {
+            CaptureDestinations.Add(path);
+            _snapshot = _snapshot with { CaptureDestination = path };
             return Task.CompletedTask;
         }
 

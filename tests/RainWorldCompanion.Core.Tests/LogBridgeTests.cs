@@ -180,6 +180,61 @@ public sealed class LogBridgeTests
 
         Assert.Empty(snapshot.ActiveMods);
         Assert.False(snapshot.ActiveModsTruncated);
+        Assert.Null(snapshot.Meadow);
+    }
+
+    [Fact]
+    public void Live_snapshot_round_trips_native_meadow_state_and_nullable_values()
+    {
+        var snapshot = new LiveSnapshot
+        {
+            SessionId = "session",
+            Players =
+            [
+                new()
+                {
+                    Id = "meadow:2:avatar",
+                    Name = "Remote",
+                    MeadowSteamId = "76561198000000002",
+                    MeadowPeerId = 2,
+                    MeadowAvatarId = "avatar",
+                    NativeEntityAvailable = false,
+                    NativeLocationAvailability = "entity-unresolved",
+                    InDen = null,
+                }
+            ],
+            Meadow = new()
+            {
+                LobbyId = "lobby",
+                ObserverSteamId = "76561198000000001",
+                GameMode = "Story",
+                WhitelistMode = null,
+                Peers =
+                [
+                    new()
+                    {
+                        SteamId = "76561198000000002",
+                        LobbyPeerId = 2,
+                        DisplayName = "Remote",
+                        InGame = true,
+                        AvatarCount = 1,
+                        AvatarIds = ["avatar"],
+                        PingMilliseconds = null,
+                        Connection = new() { State = "Connected", LocalDeliveryQuality = 0.98f },
+                    }
+                ]
+            }
+        };
+
+        var restored = LiveJson.Deserialize<LiveSnapshot>(LiveJson.Serialize(snapshot));
+
+        Assert.Equal("avatar", Assert.Single(restored.Players).MeadowAvatarId);
+        var meadow = Assert.IsType<LiveMeadowSnapshot>(restored.Meadow);
+        Assert.Equal(1, meadow.SchemaVersion);
+        Assert.Null(meadow.WhitelistMode);
+        var peer = Assert.Single(meadow.Peers);
+        Assert.Null(peer.PingMilliseconds);
+        Assert.Equal(0.98f, Assert.IsType<LiveMeadowConnection>(peer.Connection).LocalDeliveryQuality);
     }
 
     [Fact]
@@ -203,6 +258,162 @@ public sealed class LogBridgeTests
 
         Assert.True(length <= ProtocolInfo.MaximumMessageLength * 3 / 4,
             $"A maximum active-mod inventory used {length:N0} of {ProtocolInfo.MaximumMessageLength:N0} bytes.");
+    }
+
+    [Fact]
+    public void Maximum_mod_inventory_and_full_native_meadow_roster_are_bounded_together()
+    {
+        LivePlayerTrace ExactTrace() => new()
+        {
+            Realized = true,
+            SlatedForDeletion = true,
+            InShortcut = true,
+            PositionX = float.MaxValue,
+            PositionY = float.MaxValue,
+            VelocityX = float.MaxValue,
+            VelocityY = float.MaxValue,
+            AbstractX = int.MaxValue,
+            AbstractY = int.MaxValue,
+            AbstractNode = int.MaxValue,
+            Stun = int.MaxValue,
+            AirInLungs = 1,
+            FoodInStomach = int.MaxValue,
+            Input = new() { X = 1, Y = 1, Jump = true, Throw = true, Pickup = true, Map = true }
+        };
+
+        var snapshot = new LiveSnapshot
+        {
+            SessionId = "session",
+            Sequence = long.MaxValue,
+            ActiveMods = Enumerable.Range(0, ProtocolInfo.MaximumActiveMods).Select(_ => new LiveModInfo
+            {
+                Id = new string('\u4e00', ProtocolInfo.MaximumModIdLength),
+                DisplayName = new string('\u4e00', ProtocolInfo.MaximumModDisplayNameLength),
+                Version = new string('\u4e00', ProtocolInfo.MaximumModVersionLength),
+                CodeFingerprint = new string('f', 64),
+                FingerprintStatus = "complete"
+            }).ToArray(),
+            Players = Enumerable.Range(0, ProtocolInfo.MaximumMeadowPeers)
+                .SelectMany(peer => Enumerable.Range(0, ProtocolInfo.MaximumMeadowAvatarsPerPeer)
+                    .Select(avatar => new LivePlayer
+                    {
+                        Id = $"meadow:{peer}:{avatar}",
+                        Name = new string('p', 80),
+                        RoomId = "SU_A63",
+                        Region = "SU",
+                        Dead = false,
+                        IsLocal = peer == 0,
+                        AllowsHostControl = true,
+                        CompanionVersion = "1.0.12",
+                        IsHost = peer == 0,
+                        MeadowSteamId = (76561198000000000L + peer).ToString(),
+                        MeadowPeerId = (ushort)peer,
+                        MeadowAvatarId = Padded($"avatar-{peer:D2}-{avatar:D2}-",
+                            ProtocolInfo.MaximumMeadowAvatarIdLength, 'a'),
+                        NativeEntityAvailable = true,
+                        NativeLocationAvailability = "available",
+                        InDen = false,
+                        Trace = peer == 0 ? ExactTrace() : new()
+                        {
+                            Realized = true,
+                            SlatedForDeletion = true,
+                            InShortcut = true,
+                            AbstractNode = int.MaxValue
+                        }
+                    })).ToArray(),
+            Meadow = new()
+            {
+                LobbyId = new string('l', ProtocolInfo.MaximumMeadowLabelLength),
+                ObserverSteamId = new string('1', 32),
+                GameMode = new string('g', ProtocolInfo.MaximumMeadowLabelLength),
+                Timeline = new string('t', ProtocolInfo.MaximumMeadowLabelLength),
+                RequiredMods = Enumerable.Range(0, ProtocolInfo.MaximumMeadowModIds)
+                    .Select(index => Padded($"required-{index:D2}-", ProtocolInfo.MaximumMeadowModIdLength, 'r')).ToArray(),
+                BannedMods = Enumerable.Range(0, ProtocolInfo.MaximumMeadowModIds)
+                    .Select(index => Padded($"banned-{index:D2}-", ProtocolInfo.MaximumMeadowModIdLength, 'b')).ToArray(),
+                WhitelistMode = true,
+                CheatsEnabled = true,
+                LobbyOptions = Enumerable.Range(0, ProtocolInfo.MaximumMeadowLobbyOptions).Select(index => new LiveMeadowLobbyOption
+                {
+                    Name = Padded($"option-{index:D2}-", ProtocolInfo.MaximumMeadowLobbyOptionNameLength, 'n'),
+                    Value = new string('v', ProtocolInfo.MaximumMeadowLobbyOptionValueLength),
+                }).ToArray(),
+                Peers = Enumerable.Range(0, ProtocolInfo.MaximumMeadowPeers).Select(peer => new LiveMeadowPeer
+                {
+                    SteamId = (76561198000000000L + peer).ToString(),
+                    LobbyPeerId = (ushort)peer,
+                    DisplayName = new string('d', ProtocolInfo.MaximumMeadowDisplayNameLength),
+                    IsLocal = peer == 0,
+                    IsHost = peer == 0,
+                    SupportsGameHookPackets = true,
+                    InGame = true,
+                    EnteringChat = true,
+                    AvatarCount = ProtocolInfo.MaximumMeadowAvatarsPerPeer,
+                    AvatarIds = Enumerable.Range(0, ProtocolInfo.MaximumMeadowAvatarsPerPeer)
+                        .Select(avatar => Padded($"avatar-{peer:D2}-{avatar:D2}-",
+                            ProtocolInfo.MaximumMeadowAvatarIdLength, 'a')).ToArray(),
+                    StoryReadyForWin = true,
+                    StoryReadyForTransition = true,
+                    StoryDead = true,
+                    IsSpectating = true,
+                    NeedsAcknowledgement = true,
+                    PingMilliseconds = int.MaxValue,
+                    IncomingBytesPerSecond = int.MaxValue,
+                    OutgoingBytesPerSecond = int.MaxValue,
+                    RemoteTick = uint.MaxValue,
+                    LatestAcknowledgedTick = uint.MaxValue,
+                    OutgoingEventCount = int.MaxValue,
+                    OutgoingStateCount = int.MaxValue,
+                    EventsRead = true,
+                    StatesRead = true,
+                    EventsWritten = true,
+                    StatesWritten = true,
+                    Connection = new()
+                    {
+                        State = new string('c', ProtocolInfo.MaximumMeadowConnectionStateLength),
+                        PingMilliseconds = int.MaxValue,
+                        LocalDeliveryQuality = 1,
+                        RemoteDeliveryQuality = 1,
+                        IncomingPacketsPerSecond = float.MaxValue,
+                        OutgoingPacketsPerSecond = float.MaxValue,
+                        IncomingBytesPerSecond = float.MaxValue,
+                        OutgoingBytesPerSecond = float.MaxValue,
+                        EstimatedSendRateBytesPerSecond = int.MaxValue,
+                        PendingUnreliableBytes = int.MaxValue,
+                        PendingReliableBytes = int.MaxValue,
+                        UnacknowledgedReliableBytes = int.MaxValue,
+                        QueueTimeMicroseconds = int.MaxValue,
+                    }
+                }).ToArray()
+            },
+            Trace = new()
+            {
+                Process = "RainWorldGame",
+                Frame = int.MaxValue,
+                UnscaledDeltaSeconds = float.MaxValue,
+                TimeScale = float.MaxValue,
+                ManagedMemoryBytes = long.MaxValue,
+                Cycle = int.MaxValue,
+                Karma = int.MaxValue,
+                KarmaCap = int.MaxValue,
+                RainTimer = int.MaxValue,
+                RainCycleLength = int.MaxValue,
+            },
+        };
+
+        int unboundedLength = Encoding.UTF8.GetByteCount(LiveJson.Serialize(snapshot));
+        string json = LiveJson.SerializeLiveSnapshot(snapshot);
+        int length = Encoding.UTF8.GetByteCount(json);
+        var restored = LiveJson.Deserialize<LiveSnapshot>(json);
+
+        Assert.True(unboundedLength > ProtocolInfo.MaximumMessageLength);
+        Assert.True(length <= ProtocolInfo.MaximumMessageLength,
+            $"A bounded live snapshot used {length:N0} of {ProtocolInfo.MaximumMessageLength:N0} bytes.");
+        Assert.True(restored.ActiveModsTruncated);
+        Assert.NotEmpty(restored.ActiveMods);
+        Assert.Equal(ProtocolInfo.MaximumMeadowPeers * ProtocolInfo.MaximumMeadowAvatarsPerPeer,
+            restored.Players.Length);
+        Assert.Equal(ProtocolInfo.MaximumMeadowPeers, Assert.IsType<LiveMeadowSnapshot>(restored.Meadow).Peers.Length);
     }
 
     [Fact]
@@ -337,4 +548,7 @@ public sealed class LogBridgeTests
             await Task.Delay(20);
         Assert.True(condition(), "The log bridge did not reach the expected state. Last event: " + diagnostic());
     }
+
+    private static string Padded(string prefix, int length, char padding)
+        => prefix + new string(padding, length - prefix.Length);
 }

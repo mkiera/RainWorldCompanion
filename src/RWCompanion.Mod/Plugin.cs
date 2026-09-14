@@ -135,6 +135,7 @@ public sealed class Plugin : BaseUnityPlugin
             _nextSample = Time.unscaledTime + 0.2f;
             var session = GameAccess.Get(game, "session");
             var modInventory = _activeModInventory?.Capture() ?? new(Array.Empty<LiveModInfo>(), false);
+            var players = MeadowPlayers.Read() ?? (game == null ? Array.Empty<LivePlayer>() : ReadPlayers(game));
             var snapshot = new LiveSnapshot
             {
                 SessionId = _session,
@@ -157,7 +158,8 @@ public sealed class Plugin : BaseUnityPlugin
                 EnabledExpansions = _enabledMods.Where(id => id is "moreslugcats" or "watcher").ToArray(),
                 ActiveMods = modInventory.Mods,
                 ActiveModsTruncated = modInventory.Truncated,
-                Players = MeadowPlayers.Read() ?? (game == null ? Array.Empty<LivePlayer>() : ReadPlayers(game)),
+                Players = players,
+                Meadow = _meadowLogs.CaptureTelemetry(players),
                 Trace = ReadTrace(loop, game, session)
             };
             VisitedRooms.Read(session, snapshot);
@@ -256,7 +258,7 @@ public sealed class Plugin : BaseUnityPlugin
             RoomId = room,
             Region = region ?? (room?.Contains("_") == true ? room.Substring(0, room.IndexOf('_')) : null),
             Dead = GameAccess.Get(GameAccess.Get(creature, "state"), "dead") as bool?,
-            Trace = ReadPlayerTrace(creature)
+            Trace = ReadPlayerTrace(creature, local)
         };
     }
 
@@ -280,43 +282,46 @@ public sealed class Plugin : BaseUnityPlugin
         };
     }
 
-    private static LivePlayerTrace ReadPlayerTrace(object? creature)
+    private static LivePlayerTrace ReadPlayerTrace(object? creature, bool includeExactState)
     {
         object? realized = GameAccess.Get(creature, "realizedCreature");
         if (realized is null && GameAccess.Get(creature, "firstChunk") is not null) realized = creature;
         object? abstractCreature = GameAccess.Get(realized, "abstractCreature") ?? creature;
         object? coordinate = GameAccess.Get(abstractCreature, "pos");
-        object? chunk = GameAccess.Get(realized, "firstChunk");
-        object? position = GameAccess.Get(chunk, "pos");
-        object? velocity = GameAccess.Get(chunk, "vel");
-        object? input = GameAccess.Items(GameAccess.Get(realized, "input")).FirstOrDefault();
-        return new()
+        var trace = new LivePlayerTrace
         {
             Realized = realized is not null,
             SlatedForDeletion = GameAccess.Get(creature, "slatedForDeletion") is true
                 || GameAccess.Get(realized, "slatedForDeletion") is true,
             InShortcut = GameAccess.Get(realized, "inShortcut") is true
                 || GameAccess.Get(realized, "enteringShortCut") is not null,
-            PositionX = Number(position, "x"),
-            PositionY = Number(position, "y"),
-            VelocityX = Number(velocity, "x"),
-            VelocityY = Number(velocity, "y"),
-            AbstractX = Integer(coordinate, "x"),
-            AbstractY = Integer(coordinate, "y"),
-            AbstractNode = Integer(coordinate, "abstractNode"),
-            Stun = Integer(realized, "stun"),
-            AirInLungs = Number(realized, "airInLungs"),
-            FoodInStomach = Integer(realized, "FoodInStomach"),
-            Input = input is null ? null : new()
-            {
-                X = Integer(input, "x") ?? 0,
-                Y = Integer(input, "y") ?? 0,
-                Jump = GameAccess.Get(input, "jmp") is true,
-                Throw = GameAccess.Get(input, "thrw") is true,
-                Pickup = GameAccess.Get(input, "pckp") is true,
-                Map = GameAccess.Get(input, "mp") is true
-            }
+            AbstractNode = Integer(coordinate, "abstractNode")
         };
+        if (!includeExactState) return trace;
+
+        object? chunk = GameAccess.Get(realized, "firstChunk");
+        object? position = GameAccess.Get(chunk, "pos");
+        object? velocity = GameAccess.Get(chunk, "vel");
+        object? input = GameAccess.Items(GameAccess.Get(realized, "input")).FirstOrDefault();
+        trace.PositionX = Number(position, "x");
+        trace.PositionY = Number(position, "y");
+        trace.VelocityX = Number(velocity, "x");
+        trace.VelocityY = Number(velocity, "y");
+        trace.AbstractX = Integer(coordinate, "x");
+        trace.AbstractY = Integer(coordinate, "y");
+        trace.Stun = Integer(realized, "stun");
+        trace.AirInLungs = Number(realized, "airInLungs");
+        trace.FoodInStomach = Integer(realized, "FoodInStomach");
+        trace.Input = input is null ? null : new()
+        {
+            X = Integer(input, "x") ?? 0,
+            Y = Integer(input, "y") ?? 0,
+            Jump = GameAccess.Get(input, "jmp") is true,
+            Throw = GameAccess.Get(input, "thrw") is true,
+            Pickup = GameAccess.Get(input, "pckp") is true,
+            Map = GameAccess.Get(input, "mp") is true
+        };
+        return trace;
     }
 
     private static int? Integer(object? target, string name) => GameAccess.Get(target, name) switch

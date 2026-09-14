@@ -75,11 +75,10 @@ public sealed partial class MainViewModel
             {
                 AppVersion = _appVersion,
                 GameInstallPath = () => _settings.GameInstallPath,
-                DestinationRoot = Path.Combine(
-                    RainWorldCompanion.Core.System.DownloadsFolder.GetPath(),
-                    "Rain World streamed logs")
+                DestinationRoot = LogStreamingDestinationRoot()
             });
-            _logStreamingController = new(_logStreamingCoordinator);
+            _logStreamingController = new(_logStreamingCoordinator,
+                path => PersistSettingAsync(settings => settings.LogStreamingDestinationPath = path));
             _logBridgeServer = new(_logStreamingCoordinator.Exchange, () => _settings.GameInstallPath);
             logEndpoint = _logBridgeServer.Start();
         }
@@ -159,6 +158,10 @@ public sealed partial class MainViewModel
         Live.AdoptConnection(status, snapshot, IsGameRunning);
         Live.AdoptLogStreaming(_logStreamingCoordinator?.Snapshot());
     }
+
+    private string LogStreamingDestinationRoot() => string.IsNullOrWhiteSpace(_settings.LogStreamingDestinationPath)
+        ? Path.Combine(RainWorldCompanion.Core.System.DownloadsFolder.GetPath(), "Rain World streamed logs")
+        : _settings.LogStreamingDestinationPath;
 
     private Task<LiveCommandResult> TeleportLivePlayerAsync(
         string gameplayId,
