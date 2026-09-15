@@ -174,6 +174,67 @@ public sealed class LogCaptureAnalysisViewModelTests
         Assert.Equal(2, view.Incidents.Count);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Growing_capture_does_not_move_a_paused_live_viewport(bool zoomed)
+    {
+        CaptureAnalysisSnapshot initial = Snapshot() with { IsComplete = false };
+        var controller = new FakeCaptureController(initial);
+        var view = new LogCaptureAnalysisViewModel(controller,
+            _ => Task.FromResult<string?>(@"C:\capture"));
+        await view.LoadCaptureCommand.ExecuteAsync(null);
+
+        if (zoomed)
+        {
+            view.SetPlayhead(Start.AddSeconds(30));
+            view.HorizontalZoom = 4;
+            view.PanTimeline(0.25);
+        }
+        else view.FollowLiveEdge = false;
+        Assert.False(view.IsPlaying);
+        DateTimeOffset start = view.VisibleStart;
+        DateTimeOffset end = view.VisibleEnd;
+        DateTimeOffset playhead = view.CursorTime;
+
+        controller.Update(initial with
+        {
+            EndedUtc = Start.AddMinutes(4),
+            Moments = initial.Moments
+                .Append(Moment(3, "alice", "Alice", Start.AddSeconds(35)))
+                .Append(Moment(4, "alice", "Alice", Start.AddMinutes(3))).ToArray(),
+        });
+        await view.RefreshCaptureCommand.ExecuteAsync(null);
+
+        Assert.False(view.FollowLiveEdge);
+        Assert.Equal(Start.AddMinutes(4), view.TimelineEnd);
+        Assert.Equal("4", view.ErrorCountText);
+        Assert.Equal(start, view.VisibleStart);
+        Assert.Equal(end, view.VisibleEnd);
+        Assert.Equal(playhead, view.CursorTime);
+        Assert.Contains(view.TimelineTracks.SelectMany(track => track.Moments), moment => moment.Sequence == 3);
+        Assert.DoesNotContain(view.TimelineTracks.SelectMany(track => track.Moments), moment => moment.Sequence == 4);
+    }
+
+    [Fact]
+    public async Task Growing_capture_advances_the_playhead_and_viewport_when_live_edge_is_followed()
+    {
+        CaptureAnalysisSnapshot initial = Snapshot() with { IsComplete = false };
+        var controller = new FakeCaptureController(initial);
+        var view = new LogCaptureAnalysisViewModel(controller,
+            _ => Task.FromResult<string?>(@"C:\capture"));
+        await view.LoadCaptureCommand.ExecuteAsync(null);
+        view.HorizontalZoom = 4;
+        view.FollowLiveEdge = true;
+
+        controller.Update(initial with { EndedUtc = Start.AddMinutes(4) });
+        await view.RefreshCaptureCommand.ExecuteAsync(null);
+
+        Assert.True(view.FollowLiveEdge);
+        Assert.Equal(Start.AddMinutes(4), view.CursorTime);
+        Assert.Equal(Start.AddMinutes(4), view.VisibleEnd);
+    }
+
     [Fact]
     public async Task Selecting_one_players_event_does_not_jump_to_the_first_event_in_its_incident()
     {
@@ -270,6 +331,69 @@ public sealed class LogCaptureAnalysisViewModelTests
         Assert.Null(failure);
     }
 
+    [Fact]
+    public async Task Live_refresh_keeps_the_visible_canvas_still_after_its_follow_checkbox_is_cleared()
+    {
+        Exception? failure = await WpfTestHost.RunAsync(async () =>
+        {
+            var resources = new ResourceDictionary();
+            resources.MergedDictionaries.Add(LoadResource("Themes/Palette.Dark.xaml"));
+            resources.MergedDictionaries.Add(LoadResource("Themes/Controls.xaml"));
+            resources.MergedDictionaries.Add(LoadResource("Theme.xaml"));
+            Application.Current!.Resources = resources;
+
+            CaptureAnalysisSnapshot initial = Snapshot() with { IsComplete = false };
+            var controller = new FakeCaptureController(initial);
+            var model = new LogCaptureAnalysisViewModel(controller,
+                _ => Task.FromResult<string?>(@"C:\capture"));
+            var view = new LogCaptureAnalysisView { DataContext = model };
+            var window = new Window
+            {
+                Content = view,
+                Width = 1200,
+                Height = 900,
+                Left = -10000,
+                Top = -10000,
+                ShowActivated = false,
+                ShowInTaskbar = false,
+                WindowStyle = WindowStyle.ToolWindow,
+            };
+            try
+            {
+                window.Show();
+                await model.LoadCaptureCommand.ExecuteAsync(null);
+                window.UpdateLayout();
+                CaptureTimelineCanvas timeline = Assert.Single(Descendants<CaptureTimelineCanvas>(view));
+                CheckBox follow = Assert.Single(Descendants<CheckBox>(view), item =>
+                    string.Equals(item.Content as string, "Follow live edge", StringComparison.Ordinal));
+                follow.IsChecked = false;
+                Assert.False(model.FollowLiveEdge);
+                DateTimeOffset start = timeline.VisibleStart;
+                DateTimeOffset end = timeline.VisibleEnd;
+                DateTimeOffset playhead = timeline.CursorTime;
+
+                controller.Update(initial with
+                {
+                    EndedUtc = Start.AddMinutes(4),
+                    Moments = initial.Moments.Append(Moment(3, "alice", "Alice", Start.AddSeconds(35))).ToArray(),
+                });
+                await model.RefreshCaptureCommand.ExecuteAsync(null);
+                window.UpdateLayout();
+
+                Assert.Equal(start, timeline.VisibleStart);
+                Assert.Equal(end, timeline.VisibleEnd);
+                Assert.Equal(playhead, timeline.CursorTime);
+                Assert.Contains(timeline.Tracks.SelectMany(track => track.Moments), moment => moment.Sequence == 3);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        Assert.Null(failure);
+    }
+
     private static CaptureAnalysisSnapshot Snapshot()
     {
         CaptureTimelineMoment aliceError = Moment(1, "alice", "Alice", Start.AddSeconds(20));
@@ -344,5 +468,7 @@ public sealed class LogCaptureAnalysisViewModelTests
 
         public Task<CaptureAnalysisSnapshot> RefreshAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Snapshot);
+
+        public void Update(CaptureAnalysisSnapshot snapshot) => Snapshot = snapshot;
     }
 }
