@@ -466,7 +466,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             CaptureAnalysisSnapshot snapshot = open
                 ? await _controller.OpenAsync(folder, token)
                 : await _controller.RefreshAsync(token);
-            if (!token.IsCancellationRequested) Adopt(snapshot);
+            if (!token.IsCancellationRequested) Adopt(snapshot, open);
         }
         catch (OperationCanceledException) { }
         catch (Exception error)
@@ -490,9 +490,12 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         }
     }
 
-    private void Adopt(CaptureAnalysisSnapshot snapshot)
+    private void Adopt(CaptureAnalysisSnapshot snapshot, bool open)
     {
         DateTimeOffset previousCursor = CursorTime;
+        bool preserveViewport = !open && !FollowLiveEdge && VisibleEnd > VisibleStart
+            && string.Equals(_snapshot.CaptureId, snapshot.CaptureId, StringComparison.Ordinal)
+            && string.Equals(_snapshot.CaptureFolder, snapshot.CaptureFolder, StringComparison.OrdinalIgnoreCase);
         string? selectedIncidentId = SelectedIncident?.Id;
         long? selectedSequence = SelectedMoment?.Sequence;
         _snapshot = snapshot;
@@ -518,7 +521,8 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
 
         if (previousCursor == default || FollowLiveEdge) CursorTime = TimelineEnd;
         else CursorTime = Clamp(previousCursor, TimelineStart, TimelineEnd);
-        UpdateVisibleRange(CursorTime, FollowLiveEdge ? 1 : 0.5);
+        if (preserveViewport) RebuildTracks();
+        else UpdateVisibleRange(CursorTime, FollowLiveEdge ? 1 : 0.5);
         UpdateCursorState();
         RefreshSummaryState();
     }

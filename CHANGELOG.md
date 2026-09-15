@@ -11,6 +11,11 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## 1.4.0-beta.5 - 2026-09-15
+
+- Live capture timelines keep their playhead and visible time range steady while
+  Follow live edge is off, as new logs arrive.
+
 ## 1.4.0-beta.4 - 2026-09-14
 
 - Streamed-log captures can be loaded into a synchronized, multitrack timeline
