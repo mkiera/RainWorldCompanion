@@ -301,6 +301,16 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         _ => "Capture is stopped"
     };
 
+    [ObservableProperty]
+    private bool automaticDeepTraceEnabled = true;
+
+    [ObservableProperty]
+    private string automaticDeepTraceStatus = "";
+
+    [RelayCommand]
+    private Task ToggleAutomaticDeepTraceAsync() => ApplyAsync(
+        () => _controller.SetAutomaticDeepTraceEnabledAsync(!AutomaticDeepTraceEnabled));
+
     public string DeepTraceStatusText
     {
         get
@@ -376,6 +386,8 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         IsSteamLobby = snapshot.IsSteamLobby;
         ReceiverAdvertised = snapshot.ReceiverAdvertised;
         DeepTraceEnabled = snapshot.DeepTraceEnabled;
+        AutomaticDeepTraceEnabled = snapshot.AutomaticDeepTraceEnabled;
+        AutomaticDeepTraceStatus = snapshot.AutomaticDeepTraceEnabled ? snapshot.AutomaticDeepTraceStatus : "Automatic deep trace is off.";
         CaptureState = snapshot.CaptureState;
         CaptureFolder = snapshot.CaptureFolder;
         Analysis.ObserveCurrentCapture(
@@ -689,6 +701,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         public Task SetReceiverAvailabilityAsync(bool available) => Task.CompletedTask;
         public Task SetCaptureStateAsync(LogStreamingCaptureState state) => Task.CompletedTask;
         public Task SetDeepTraceEnabledAsync(bool enabled) => Task.CompletedTask;
+        public Task SetAutomaticDeepTraceEnabledAsync(bool enabled) => Task.CompletedTask;
         public Task PrepareSharingAsync(IReadOnlyList<string> receiverIds) => Task.CompletedTask;
         public Task RevokeSharingAsync(IReadOnlyList<string> receiverIds) => Task.CompletedTask;
         public Task RevokeAllSharingAsync() => Task.CompletedTask;

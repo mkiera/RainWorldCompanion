@@ -78,8 +78,10 @@ public sealed partial class MainViewModel
                 GameInstallPath = () => _settings.GameInstallPath,
                 DestinationRoot = LogStreamingDestinationRoot()
             });
+            _logStreamingCoordinator.SetAutomaticDeepTraceEnabled(_settings.AutomaticDeepTraceEnabled);
             _logStreamingController = new(_logStreamingCoordinator,
-                path => PersistSettingAsync(settings => settings.LogStreamingDestinationPath = path));
+                path => PersistSettingAsync(settings => settings.LogStreamingDestinationPath = path),
+                enabled => PersistSettingAsync(settings => settings.AutomaticDeepTraceEnabled = enabled));
             _logBridgeServer = new(_logStreamingCoordinator.Exchange, () => _settings.GameInstallPath);
             logEndpoint = _logBridgeServer.Start();
         }

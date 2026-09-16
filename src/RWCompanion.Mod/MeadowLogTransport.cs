@@ -71,6 +71,7 @@ internal sealed class MeadowLogTransport : IDisposable
     private bool _captureActive;
     private bool _capturePaused;
     private bool _deepTraceEnabled;
+    private string[] _deepTracePeerIds = Array.Empty<string>();
     private int _protocolVersion = ProtocolInfo.LogStreamingVersion;
     private string _captureId = "";
     private string _captureToken = "";
@@ -220,20 +221,22 @@ internal sealed class MeadowLogTransport : IDisposable
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         if (now < _nextAdvertisementTicks) return;
         _nextAdvertisementTicks = now + MillisecondsToTicks(AdvertisementIntervalMilliseconds);
-        byte[] advertisement = EncodeAdvertisement();
         foreach (var peer in _peers)
         {
             if (peer.IsLocal || !peer.SupportsLogStreaming) continue;
-            if (_participants.TryGetValue(peer.SteamId, out var participant)) SendPacket(participant, advertisement);
+            if (_participants.TryGetValue(peer.SteamId, out var participant)) SendPacket(participant, EncodeAdvertisement(peer.SteamId));
         }
     }
 
     internal void SetLocalAdvertisement(bool available, bool captureActive, bool capturePaused, bool deepTraceEnabled,
-        string captureId, string captureToken, int protocolVersion)
+        string captureId, string captureToken, int protocolVersion, string[]? deepTracePeerIds = null)
     {
+        deepTracePeerIds ??= Array.Empty<string>();
+        if (!LogAdvertisement.ValidDeepTracePeerIds(deepTracePeerIds))
+            throw new ArgumentException("Deep trace targets must be at most 32 numeric Steam IDs.", nameof(deepTracePeerIds));
         if ((captureActive || capturePaused) && !available)
             throw new ArgumentException("An active or paused capture must also be available.", nameof(available));
-        if (deepTraceEnabled && !available)
+        if ((deepTraceEnabled || deepTracePeerIds.Length > 0) && !available)
             throw new ArgumentException("Deep trace requires an available receiver.", nameof(deepTraceEnabled));
         if (captureActive && capturePaused) throw new ArgumentException("A capture cannot be active and paused at the same time.");
         if (protocolVersion < 1 || protocolVersion > ushort.MaxValue) throw new ArgumentOutOfRangeException(nameof(protocolVersion));
@@ -244,6 +247,7 @@ internal sealed class MeadowLogTransport : IDisposable
 
         bool changed = _available != available || _captureActive != captureActive || _capturePaused != capturePaused
             || _deepTraceEnabled != deepTraceEnabled
+            || !_deepTracePeerIds.SequenceEqual(deepTracePeerIds, StringComparer.Ordinal)
             || _protocolVersion != protocolVersion
             || !string.Equals(_captureId, captureId, StringComparison.Ordinal)
             || !string.Equals(_captureToken, captureToken, StringComparison.Ordinal);
@@ -251,6 +255,7 @@ internal sealed class MeadowLogTransport : IDisposable
         _captureActive = captureActive;
         _capturePaused = capturePaused;
         _deepTraceEnabled = deepTraceEnabled;
+        if (changed) _deepTracePeerIds = deepTracePeerIds.ToArray();
         _captureId = captureId;
         _captureToken = captureToken;
         _protocolVersion = protocolVersion;
@@ -498,14 +503,14 @@ internal sealed class MeadowLogTransport : IDisposable
         }
     }
 
-    private byte[] EncodeAdvertisement()
+    private byte[] EncodeAdvertisement(string destinationSteamId)
     {
         using var stream = CreateEnvelope(AdvertisementKind);
         using (var writer = new BinaryWriter(stream, Encoding.UTF8, true))
         {
             writer.Write((ushort)_protocolVersion);
-            writer.Write((byte)((_available ? 1 : 0) | (_captureActive ? 2 : 0) | (_capturePaused ? 4 : 0)
-                | (_deepTraceEnabled ? 8 : 0)));
+            writer.Write(LogAdvertisement.Flags(_available, _captureActive, _capturePaused, _deepTraceEnabled,
+                _deepTracePeerIds, destinationSteamId));
             WriteText(writer, _captureId, MaximumCaptureIdBytes);
             WriteText(writer, _captureToken, MaximumCaptureTokenBytes);
         }
@@ -858,6 +863,7 @@ internal sealed class MeadowLogTransport : IDisposable
         _captureActive = false;
         _capturePaused = false;
         _deepTraceEnabled = false;
+        _deepTracePeerIds = Array.Empty<string>();
         _captureId = "";
         _captureToken = "";
     }

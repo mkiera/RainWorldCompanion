@@ -10,6 +10,21 @@ public class LogStreamTelemetryRecorderTests
     private static readonly DateTimeOffset Now = new(2026, 9, 13, 18, 30, 0, TimeSpan.Zero);
 
     [Fact]
+    public void Performance_samples_are_small_throttled_and_can_be_suppressed_when_not_capturing()
+    {
+        var recorder = new LogStreamTelemetryRecorder("test");
+        var snapshot = Snapshot();
+        snapshot.Trace!.Performance = new() { Ready = true, Sequence = 1, FrameCount = 60,
+            DurationSeconds = 1, MaximumFrameMilliseconds = 25, GarbageCollections = 3 };
+        Assert.DoesNotContain(Events(recorder.Observe(snapshot, Now, false)), item => Kind(item) == "performance-sample");
+        var sample = Assert.Single(Events(recorder.Observe(snapshot, Now.AddSeconds(1))), item => Kind(item) == "performance-sample");
+        Assert.True(Encoding.UTF8.GetByteCount(sample.RootElement.GetRawText()) < 2048);
+        Assert.Equal(3, sample.RootElement.GetProperty("details").GetProperty("trace").GetProperty("performance").GetProperty("garbageCollections").GetInt32());
+        Assert.DoesNotContain(Events(recorder.Observe(snapshot, Now.AddSeconds(1.2))), item => Kind(item) == "performance-sample");
+        Assert.Contains(Events(recorder.Observe(snapshot, Now.AddSeconds(2))), item => Kind(item) == "performance-sample");
+    }
+
+    [Fact]
     public void First_snapshot_records_session_context_and_each_present_player()
     {
         var recorder = new LogStreamTelemetryRecorder("1.4.0-test");

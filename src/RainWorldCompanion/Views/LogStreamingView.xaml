@@ -235,11 +235,18 @@
                                    TextWrapping="Wrap" Margin="0,4,0,0" />
                         <TextBlock Text="DEEP TRACE" Style="{StaticResource Text.SectionLabel}"
                                    Margin="0,12,0,3" />
-                        <CheckBox Content="Deep trace"
+                        <CheckBox Content="Manual deep trace (all approved senders)"
                                   IsChecked="{Binding DeepTraceEnabled, Mode=OneWay}"
                                   Command="{Binding ToggleDeepTraceCommand}"
                                   ToolTip="The receiver can switch Deep trace during an approved stream. It samples player positions, inputs, and performance. It does not include chat or arbitrary files." />
                         <TextBlock Text="{Binding DeepTraceStatusText}" Style="{StaticResource Text.Muted}"
+                                   TextWrapping="Wrap" Margin="0,4,0,0" />
+                        <CheckBox Content="Automatic deep trace for performance problems"
+                                  IsChecked="{Binding AutomaticDeepTraceEnabled, Mode=OneWay}"
+                                  Command="{Binding ToggleAutomaticDeepTraceCommand}"
+                                  Margin="0,8,0,0"
+                                  ToolTip="While receiving, request 60 seconds from the affected player and the host, if sharing. Requires sustained stalls during focused gameplay. Errors alone never trigger it. Five-minute cooldown per affected player. Requires updated Game Hook performance summaries." />
+                        <TextBlock Text="{Binding AutomaticDeepTraceStatus}" Style="{StaticResource Text.Muted}"
                                    TextWrapping="Wrap" Margin="0,4,0,0" />
                         <TextBlock Text="OPTIONAL EVENT NOTE" Style="{StaticResource Text.SectionLabel}"
                                    Margin="0,10,0,3" />

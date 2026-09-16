@@ -26,6 +26,7 @@ internal sealed class LogStreamTelemetryRecorder(string appVersion)
     private bool _connected;
     private DateTimeOffset _lastHitch;
     private DateTimeOffset _lastNativeNetworkSample;
+    private DateTimeOffset _lastPerformanceSample;
 
     public void Reset()
     {
@@ -33,9 +34,10 @@ internal sealed class LogStreamTelemetryRecorder(string appVersion)
         _connected = false;
         _lastHitch = default;
         _lastNativeNetworkSample = default;
+        _lastPerformanceSample = default;
     }
 
-    public IReadOnlyList<LogStreamTelemetryRecord> Observe(LiveSnapshot? snapshot, DateTimeOffset now)
+    public IReadOnlyList<LogStreamTelemetryRecord> Observe(LiveSnapshot? snapshot, DateTimeOffset now, bool recordPerformance = true)
     {
         var records = new List<LogStreamTelemetryRecord>();
         if (snapshot is null)
@@ -140,6 +142,17 @@ internal sealed class LogStreamTelemetryRecorder(string appVersion)
             ComparePlayers(previous, current, now, records);
         }
 
+        if (recordPerformance && snapshot.Trace is not null && (newSession || now - _lastPerformanceSample >= TimeSpan.FromSeconds(1)))
+        {
+            records.Add(Event(Record(now, "performance-sample", current, new
+            {
+                snapshot.State,
+                snapshot.GameplayId,
+                trace = snapshot.Trace,
+                roomId = snapshot.Players.FirstOrDefault(player => player.IsLocal)?.RoomId
+            })));
+            _lastPerformanceSample = now;
+        }
         ObserveMeadow(_previous?.Meadow, current, now, newSession, records);
         _previous = current;
         _connected = true;

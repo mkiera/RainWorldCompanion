@@ -204,12 +204,27 @@ public sealed class LiveTrace
     public int Frame { get; set; }
     public float UnscaledDeltaSeconds { get; set; }
     public float TimeScale { get; set; }
+    public bool? IsFocused { get; set; }
     public long ManagedMemoryBytes { get; set; }
+    public LiveFramePerformance? Performance { get; set; }
     public int? Cycle { get; set; }
     public int? Karma { get; set; }
     public int? KarmaCap { get; set; }
     public int? RainTimer { get; set; }
     public int? RainCycleLength { get; set; }
+}
+
+public sealed class LiveFramePerformance
+{
+    public long Sequence { get; set; }
+    public string GameplayId { get; set; } = "";
+    public bool Ready { get; set; }
+    public double DurationSeconds { get; set; }
+    public int FrameCount { get; set; }
+    public double MaximumFrameMilliseconds { get; set; }
+    public int FramesOver250Milliseconds { get; set; }
+    public int FramesOver500Milliseconds { get; set; }
+    public int? GarbageCollections { get; set; }
 }
 
 public sealed class LivePlayerTrace

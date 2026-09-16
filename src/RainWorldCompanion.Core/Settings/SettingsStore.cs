@@ -195,6 +195,7 @@ public sealed class SettingsStore
         settings.LiveMapSpoilerMode = ReadBool(root, "liveMapSpoilerMode", settings.LiveMapSpoilerMode);
         settings.LogStreamingDestinationPath = ReadString(
             root, "logStreamingDestinationPath", settings.LogStreamingDestinationPath);
+        settings.AutomaticDeepTraceEnabled = ReadBool(root, "automaticDeepTraceEnabled", settings.AutomaticDeepTraceEnabled);
         settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
         settings.Theme = ReadString(root, "theme", "light");

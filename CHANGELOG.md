@@ -11,6 +11,19 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## 1.4.0-beta.7 - 2026-09-16
+
+- Captures now record lightweight frame and memory summaries even with deep
+  trace off. Automatic deep trace records up to 60 seconds from an affected
+  player and the host after sustained gameplay stalls, with a cooldown and
+  visible start and stop events. Manual deep trace still covers all approved
+  senders. Automatic recording can be disabled in the log streaming menu.
+- Log streaming compresses chunks between updated apps and gives the receiver
+  more capacity for simultaneous senders. Game Hook drains busy relay queues
+  more frequently so room events and other logs can keep up in larger lobbies.
+  Remote deep trace samples use available bandwidth after normal logs, with an
+  event marking when sampling is paced. The receiver's local sampling is unchanged.
+
 ## 1.4.0-beta.6 - 2026-09-16
 
 - Fixed remote room changes and gameplay events falling far behind during log

@@ -10,6 +10,8 @@ public interface ILogStreamingController
 
     Task SetDeepTraceEnabledAsync(bool enabled);
 
+    Task SetAutomaticDeepTraceEnabledAsync(bool enabled);
+
     Task PrepareSharingAsync(IReadOnlyList<string> receiverIds);
 
     Task RevokeSharingAsync(IReadOnlyList<string> receiverIds);
@@ -97,6 +99,8 @@ public sealed record LogStreamingUiState
     public bool IsSteamLobby { get; init; }
     public bool ReceiverAdvertised { get; init; }
     public bool DeepTraceEnabled { get; init; }
+    public bool AutomaticDeepTraceEnabled { get; init; } = true;
+    public string AutomaticDeepTraceStatus { get; init; } = "";
     public LogStreamingCaptureState CaptureState { get; init; }
     public string CaptureFolder { get; init; } = "";
     public string CaptureDestination { get; init; } = "";

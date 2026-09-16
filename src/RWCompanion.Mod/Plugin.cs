@@ -27,6 +27,8 @@ public sealed class Plugin : BaseUnityPlugin
     private string[] _enabledMods = Array.Empty<string>();
     private MeadowHostControl? _hostControl;
     private ActiveModInventory? _activeModInventory;
+    private readonly FramePerformanceSampler _performance = new();
+    private Func<bool>? _readGamePaused;
 
     public void OnEnable()
     {
@@ -40,6 +42,7 @@ public sealed class Plugin : BaseUnityPlugin
     }
     public void OnDisable()
     {
+        _performance.Reset();
         _teleport?.Cancel();
         _teleport = null;
         _hostControl?.Dispose();
@@ -67,7 +70,9 @@ public sealed class Plugin : BaseUnityPlugin
                 _teleport?.Cancel();
                 _teleport = null;
                 _game = null;
+                _readGamePaused = null;
                 _gameplayId = "";
+                _performance.Reset();
                 _logBridge.PublishLobby(new());
                 return;
             }
@@ -92,7 +97,10 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 _game = game;
                 _gameplayId = game == null ? "" : Guid.NewGuid().ToString("N");
+                _readGamePaused = CreatePauseReader(game);
             }
+            bool paused = _readGamePaused?.Invoke() ?? GameAccess.Get(game, "GamePaused") is true;
+            _performance.Observe(_gameplayId, game != null && !paused && Time.timeScale > 0, Time.unscaledDeltaTime);
             TeleportOperation.Observe(game);
             if (_teleport?.Update(game) is { } result) { _commandResult = result; _teleport = null; }
             if (_transport.TakeCommand() is { } command && command.Id != _lastCommandId)
@@ -152,7 +160,7 @@ public sealed class Plugin : BaseUnityPlugin
                 Sequence = ++_sequence,
                 GameVersion = GameAccess.Text(_rainWorldType, "GAME_VERSION_STRING"),
                 GameInstallPath = Path.GetDirectoryName(Application.dataPath) ?? "",
-                State = game == null ? "menu" : GameAccess.Get(game, "GamePaused") is true ? "paused" : "gameplay",
+                State = game == null ? "menu" : paused ? "paused" : "gameplay",
                 Campaign = GameAccess.EnumValue(GameAccess.Get(session, "saveStateNumber")),
                 Timeline = GameAccess.EnumValue(GameAccess.Get(game, "TimelinePoint")),
                 EnabledExpansions = _enabledMods.Where(id => id is "moreslugcats" or "watcher").ToArray(),
@@ -169,6 +177,7 @@ public sealed class Plugin : BaseUnityPlugin
         }
         catch (Exception exception)
         {
+            _performance.Reset();
             if (!_reportedFailure) Logger.LogWarning("Live data sampling failed: " + exception.Message);
             _reportedFailure = true;
             var modInventory = _activeModInventory?.Capture() ?? new(Array.Empty<LiveModInfo>(), false);
@@ -191,7 +200,7 @@ public sealed class Plugin : BaseUnityPlugin
         var advertisement = _logBridge.Advertisement;
         _meadowLogs.SetLocalAdvertisement(advertisement.Available, advertisement.CaptureActive,
             advertisement.CapturePaused, advertisement.DeepTraceEnabled, advertisement.CaptureId, advertisement.CaptureToken,
-            ProtocolInfo.LogStreamingVersion);
+            ProtocolInfo.LogStreamingVersion, advertisement.DeepTracePeerIds);
         _meadowLogs.Update();
         while (_meadowLogs.TryReceive(out var packet) && packet != null)
             _logBridge.PublishReceived(new() { PeerSteamId = packet.SenderSteamId, Payload = packet.Payload });
@@ -232,6 +241,13 @@ public sealed class Plugin : BaseUnityPlugin
     private static bool ValidIdentifier(string? value, int maximum) => !string.IsNullOrWhiteSpace(value)
         && value!.Length <= maximum && value.All(c => char.IsLetterOrDigit(c) || c == '_');
 
+    private static Func<bool>? CreatePauseReader(object? game)
+    {
+        var getter = game?.GetType().GetProperty("GamePaused", System.Reflection.BindingFlags.Instance
+            | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)?.GetGetMethod(true);
+        return getter is null ? null : Delegate.CreateDelegate(typeof(Func<bool>), game, getter, false) as Func<bool>;
+    }
+
     private static LivePlayer[] ReadPlayers(object game)
     {
         var meadow = MeadowPlayers.Read();
@@ -262,7 +278,7 @@ public sealed class Plugin : BaseUnityPlugin
         };
     }
 
-    private static LiveTrace ReadTrace(object? loop, object? game, object? session)
+    private LiveTrace ReadTrace(object? loop, object? game, object? session)
     {
         object? saveState = GameAccess.Get(session, "saveState");
         object? persistent = GameAccess.Get(saveState, "deathPersistentSaveData");
@@ -273,7 +289,9 @@ public sealed class Plugin : BaseUnityPlugin
             Frame = Time.frameCount,
             UnscaledDeltaSeconds = Time.unscaledDeltaTime,
             TimeScale = Time.timeScale,
+            IsFocused = Application.isFocused,
             ManagedMemoryBytes = GC.GetTotalMemory(false),
+            Performance = _performance.Latest,
             Cycle = Integer(saveState, "cycleNumber"),
             Karma = Integer(persistent, "karma"),
             KarmaCap = Integer(persistent, "karmaCap"),

@@ -448,13 +448,13 @@ public sealed partial class LogCaptureAnalysisSession
         "captureStarted" or "sourceRejected" or "spoolFull" or "receiverAdded" or "receiverRemoved"
         or "peerRoleChanged" or "sessionStarted" or "sessionInterrupted" or "duplicateReceived"
         or "chunkRejected" or "captureLimitReached" or "insufficientDiskSpace" or "captureInterrupted"
-        or "captureCompleted" or "marker";
+        or "captureCompleted" or "marker" or "deepTraceStarted" or "deepTraceStopped";
 
     private static CaptureEventSeverity JournalSeverity(string kind) => kind switch
     {
         "sourceRejected" or "chunkRejected" or "captureLimitReached" or "insufficientDiskSpace"
             or "captureInterrupted" => CaptureEventSeverity.Error,
-        "spoolFull" or "sessionInterrupted" or "duplicateReceived" => CaptureEventSeverity.Warning,
+        "spoolFull" or "sessionInterrupted" or "duplicateReceived" or "deepTraceStarted" or "deepTraceStopped" => CaptureEventSeverity.Warning,
         "marker" => CaptureEventSeverity.Notice,
         _ => CaptureEventSeverity.Info,
     };
@@ -550,6 +550,16 @@ public sealed partial class LogCaptureAnalysisSession
     {
         string kind = Text(root, "kind") ?? "diagnostic-event";
         JsonElement details = Property(root, "details");
+        if (kind == "performance-sample")
+        {
+            JsonElement trace = Property(details, "trace");
+            JsonElement performance = Property(trace, "performance");
+            parsed.PerformanceSamples.Add(new(time, session.SenderId, session.SenderName, session.SourceSessionId,
+                Double(performance, "maximumFrameMilliseconds") ?? SecondsToMilliseconds(Double(trace, "unscaledDeltaSeconds")),
+                Long(trace, "managedMemoryBytes"), Integer(trace, "rainTimer"), Integer(trace, "rainCycleLength"),
+                Integer(trace, "cycle"), Integer(trace, "karma"), Integer(trace, "karmaCap")));
+            return;
+        }
         CaptureEventSeverity severity = StructuredSeverity(kind);
         if (kind == "companion-action-result" && Boolean(details, "success") == false)
             severity = CaptureEventSeverity.Error;

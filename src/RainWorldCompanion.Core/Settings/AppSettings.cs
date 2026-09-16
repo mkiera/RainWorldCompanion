@@ -29,6 +29,7 @@ public sealed class AppSettings
     public bool LiveMapSpoilerMode { get; set; } = true;
 
     public string LogStreamingDestinationPath { get; set; } = "";
+    public bool AutomaticDeepTraceEnabled { get; set; } = true;
 
     /// <summary>
     /// "stable", "prerelease" or "alpha". Text rather than the enum, because System.Text.Json
@@ -92,6 +93,7 @@ public sealed class AppSettings
         CompanionGameHookAutomaticSetup = CompanionGameHookAutomaticSetup,
         LiveMapSpoilerMode = LiveMapSpoilerMode,
         LogStreamingDestinationPath = LogStreamingDestinationPath,
+        AutomaticDeepTraceEnabled = AutomaticDeepTraceEnabled,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
         Theme = Theme,

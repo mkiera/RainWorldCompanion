@@ -25,6 +25,8 @@ public enum LogStreamEventKind
     CaptureInterrupted,
     CaptureCompleted,
     Marker,
+    DeepTraceStarted,
+    DeepTraceStopped,
 }
 
 public sealed record LogStreamEvent(
