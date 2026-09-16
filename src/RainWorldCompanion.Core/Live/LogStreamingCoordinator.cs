@@ -54,12 +54,12 @@ public sealed class LogStreamingCoordinator
     private const int MaximumViewerCharacters = 256 * 1024;
     private const int MaximumViewerLineCharacters = 4 * 1024;
     private const int MaximumViewerStreamsPerTransfer = 16;
-    private const int MaximumPendingTelemetryBytes = 8 * 1024 * 1024;
+    private const int MaximumEventSpoolBytes = 8 * 1024 * 1024;
     private const int MaximumDeepSessionsPerTransfer = 63;
     private const int MaximumConcurrentDeepTraceReceivers = 8;
     private const long MaximumDeepTraceSpoolBytes = 8L * 1024 * 1024;
     private static readonly TimeSpan DeepTraceInterval = TimeSpan.FromMilliseconds(500);
-    private static readonly TimeSpan SourcePollInterval = TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan SourcePollInterval = TimeSpan.FromMilliseconds(500);
     private const int MaximumControlPackets = 256;
     private const int MaximumRevokedIncomingAuthorizations = 1024;
     private const int MaximumIncomingOpensPerMinute = 8;
@@ -81,12 +81,15 @@ public sealed class LogStreamingCoordinator
     private readonly Queue<LogRelayPacket> _controlPackets = new();
     private readonly Queue<LogStreamingViewerLine> _viewerLines = new();
     private readonly Queue<LogStreamingChartSample> _samples = new();
-    private readonly Queue<LogStreamTelemetryRecord> _pendingTelemetry = new();
     private readonly Dictionary<string, ViewerStream> _localViewers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PacketBudget> _incomingBudgets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PacketBudget> _outgoingBudgets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IncomingOpenRate> _incomingOpenRates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, LogStreamSenderSession> _deepSenders = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, LogStreamSenderSession> _eventSenders = new(StringComparer.Ordinal);
+    private bool _localEventGap;
+    private LogStreamSenderSession? _localEventSender;
+    private LiveSnapshot? _latestSnapshot;
     private readonly HashSet<IncomingAuthorization> _revokedIncoming = [];
     private readonly Queue<IncomingAuthorization> _revokedIncomingOrder = new();
     private LogLobbySnapshot _lobby = new();
@@ -112,7 +115,6 @@ public sealed class LogStreamingCoordinator
     private long _viewerStreamSequence;
     private int _viewerCharacters;
     private int _roundRobin;
-    private int _pendingTelemetryBytes;
     private DateTimeOffset _lastDeepTraceSample;
     private DateTimeOffset _nextSourcePoll;
     private bool _automaticDeepTraceEnabled = true;
@@ -308,6 +310,7 @@ public sealed class LogStreamingCoordinator
     {
         lock (_sync)
         {
+            _latestSnapshot = snapshot;
             DateTimeOffset now = Now;
             bool recordPerformance = _captureMode == LogStreamingCaptureMode.Capturing
                 || _outgoing.Values.Any(transfer => transfer.Accepted && !transfer.Invalidated
@@ -401,6 +404,7 @@ public sealed class LogStreamingCoordinator
                 _lastCaptureFolder = _capture.CaptureDirectory;
             }
             _sender!.AddReceiver(LocalCaptureReceiverId);
+            _localEventSender ??= CreateEventSender(LocalCaptureReceiverId);
             if (mode == LogStreamingCaptureMode.Paused) ClearAutomaticTrace("Capture paused.");
             _captureMode = mode;
             if (mode == LogStreamingCaptureMode.Capturing)
@@ -453,9 +457,11 @@ public sealed class LogStreamingCoordinator
                 {
                     RemoveQueuedPackets(existing);
                     _sender!.RemoveReceiver(id);
+                    _eventSenders.Remove(id);
                     RemoveDeepSender(id);
                 }
                 _sender!.AddReceiver(id);
+                _eventSenders[id] = CreateEventSender(id);
                 var transfer = new OutgoingTransfer(peer, Token("transfer"), Secret(), Now);
                 _outgoing[id] = transfer;
                 QueueOpen(transfer, Now);
@@ -494,6 +500,7 @@ public sealed class LogStreamingCoordinator
                 RemoveQueuedPackets(transfer);
                 QueueNetwork(id, Message(LogStreamKinds.Close, transfer));
                 _sender?.RemoveReceiver(id);
+                _eventSenders.Remove(id);
                 RemoveDeepSender(id);
                 revoked++;
             }
@@ -609,6 +616,10 @@ public sealed class LogStreamingCoordinator
         _incoming.Clear();
         _remembered.Clear();
         _sender = null;
+        _eventSenders.Clear();
+        _localEventSender = null;
+        _localEventGap = false;
+        _latestSnapshot = null;
         _deepSenders.Clear();
         _localDeepSender = null;
         _capture = null;
@@ -622,8 +633,6 @@ public sealed class LogStreamingCoordinator
         _incomingOpenRates.Clear();
         _revokedIncoming.Clear();
         _revokedIncomingOrder.Clear();
-        _pendingTelemetry.Clear();
-        _pendingTelemetryBytes = 0;
         _localViewers.Clear();
         _lastDeepTraceSample = DateTimeOffset.MinValue;
         _telemetry.Reset();
@@ -648,6 +657,8 @@ public sealed class LogStreamingCoordinator
         _capture?.MarkInterrupted(message, LogStreamCaptureTerminationKind.ReceiverStopped);
         _capture = null;
         _sender?.RemoveReceiver(LocalCaptureReceiverId);
+        _localEventSender = null;
+        _localEventGap = false;
         _localViewers.Clear();
         InterruptDeepTraceSessions(message);
         _localDeepSender = null;
@@ -672,15 +683,27 @@ public sealed class LogStreamingCoordinator
         if (!TokenValid(_gameSessionId, 128))
             throw new InvalidOperationException("The authenticated game session is unavailable.");
         if (_sender is not null) return;
-        _sender = new LogStreamSenderSession(install, Token("source"), _gameSessionId, steamId, _options.SenderOptions);
-        while (_pendingTelemetry.Count > 0)
-        {
-            LogStreamTelemetryRecord record = _pendingTelemetry.Peek();
-            if (!_sender.TryAppendGenerated(record.FileId, record.Data)) break;
-            _pendingTelemetry.Dequeue();
-            _pendingTelemetryBytes -= record.Data.Length;
-        }
+        var sourceOptions = _options.SenderOptions ?? new LogStreamSenderOptions();
+        _sender = new LogStreamSenderSession(install, Token("source"), _gameSessionId, steamId,
+            sourceOptions with { MaximumBytesPerPoll = Math.Min(sourceOptions.MaximumBytesPerPoll, 256 * 1024) });
         _sender.Poll();
+    }
+
+    private LogStreamSenderSession CreateEventSender(string receiverId)
+    {
+        var options = (_options.SenderOptions ?? new LogStreamSenderOptions()) with
+        {
+            PollSourceLogs = false,
+            CompactAcknowledgedChunks = true,
+            MaxSpoolBytes = Math.Min((_options.SenderOptions ?? new()).MaxSpoolBytes, MaximumEventSpoolBytes)
+        };
+        var sender = new LogStreamSenderSession(_options.GameInstallPath()!, Token("events-source"),
+            Token("events"), ulong.Parse(_lobby.LocalSteamId, CultureInfo.InvariantCulture), options);
+        sender.AddReceiver(receiverId);
+        if (_latestSnapshot is not null)
+            foreach (var record in new LogStreamTelemetryRecorder(_options.AppVersion).Observe(_latestSnapshot, Now))
+                sender.TryAppendGenerated(record.FileId, record.Data);
+        return sender;
     }
 
     private LogStreamSenderSession CreateDeepSender()
@@ -782,24 +805,32 @@ public sealed class LogStreamingCoordinator
 
     private void AppendTelemetry(LogStreamTelemetryRecord record)
     {
-        if (_sender is not null)
-        {
-            _sender.TryAppendGenerated(record.FileId, record.Data);
-            return;
-        }
+        if (_captureMode == LogStreamingCaptureMode.Capturing && _localEventSender is not null)
+            _localEventGap = AppendEventRecord(_localEventSender, record, _localEventGap);
+        foreach (var item in _eventSenders)
+            if (_outgoing.TryGetValue(item.Key, out var transfer) && !transfer.Invalidated
+                && _lobby.Peers.Any(peer => peer.SteamId == item.Key && peer.CaptureActive && !peer.CapturePaused))
+                transfer.EventGap = AppendEventRecord(item.Value, record, transfer.EventGap);
+    }
 
-        if (record.Data.Length > MaximumPendingTelemetryBytes) return;
-        while (_pendingTelemetryBytes + record.Data.Length > MaximumPendingTelemetryBytes
-               && _pendingTelemetry.TryDequeue(out var dropped))
-            _pendingTelemetryBytes -= dropped.Data.Length;
-        _pendingTelemetry.Enqueue(record);
-        _pendingTelemetryBytes += record.Data.Length;
+    private bool AppendEventRecord(LogStreamSenderSession sender, LogStreamTelemetryRecord record, bool gap)
+    {
+        if (gap)
+        {
+            var notice = _telemetry.CompanionAction(Now, "failed", "gameplay-event-gap",
+                null, null, null, false, "Gameplay events were lost while the bounded diagnostic buffer was full.");
+            if (!sender.TryAppendGenerated(notice.FileId, notice.Data)) return true;
+        }
+        if (sender.TryAppendGenerated(record.FileId, record.Data)) return false;
+        _message = "A gameplay event buffer is full. Some diagnostic events could not be recorded.";
+        return true;
     }
 
     private void DrainLocalCapture(DateTimeOffset now)
     {
         if (_captureMode != LogStreamingCaptureMode.Capturing || _capture is null || _sender is null) return;
         _capture.ObservePeer(LocalIdentity());
+        if (_localEventSender is not null) DrainLocalSender(_localEventSender, now, 6);
         DrainLocalSender(_sender, now, 5);
         if (LocalDeepTraceRequested && _localDeepSender is not null) DrainLocalSender(_localDeepSender, now, 1);
     }
@@ -851,6 +882,7 @@ public sealed class LogStreamingCoordinator
             QueueNetwork(transfer.SteamId, Message(LogStreamKinds.Close, transfer));
             _outgoing.Remove(transfer.SteamId);
             _sender?.RemoveReceiver(transfer.SteamId);
+            _eventSenders.Remove(transfer.SteamId);
             RemoveDeepSender(transfer.SteamId);
         }
         if (expiredIncoming.Length > 0 || expiredOutgoing.Length > 0)
@@ -930,10 +962,10 @@ public sealed class LogStreamingCoordinator
 
     private void ReceiveOpen(LogLobbyPeer peer, LogStreamNetworkMessage message, DateTimeOffset now)
     {
-        if (IsDeepSession(message.LogSessionId))
+        if (IsDeepSession(message.LogSessionId) || IsEventSession(message.LogSessionId))
         {
             QueueNetwork(peer.SteamId, Reply(LogStreamKinds.Error, message,
-                "Deep trace uses the existing approved stream."));
+                "Diagnostic streams use the existing sharing approval."));
             return;
         }
         if (!_receiverAvailable || message.CaptureId != _captureId || message.CaptureToken != _captureToken)
@@ -1003,6 +1035,12 @@ public sealed class LogStreamingCoordinator
         }
         catch (Exception error) when (error is ArgumentException or OverflowException) { return; }
         bool deepSession = IsDeepSession(message.LogSessionId);
+        if (IsEventSession(message.LogSessionId))
+        {
+            if (message.FileId is not (LogStreamTelemetryRecorder.EventFileId or LogStreamTelemetryRecorder.MeadowNativeFileId)) return;
+            if (transfer.EventSessionId.Length > 0 && transfer.EventSessionId != message.LogSessionId) return;
+            transfer.EventSessionId = message.LogSessionId;
+        }
         if (deepSession)
         {
             if ((!_deepTraceEnabled && !_automaticTargets.ContainsKey(peer.SteamId)) || !IsDeepTraceFile(message.FileId)) return;
@@ -1049,7 +1087,24 @@ public sealed class LogStreamingCoordinator
             return;
         var result = sender.Acknowledge(transfer.SteamId,
             new(sender.CaptureId, sender.SourceSessionId, message.Sequence, message.Hash));
+        if (result.Status == LogStreamAcknowledgeStatus.OutOfOrder)
+        {
+            if (transfer.InFlight.TryGetValue(new(message.LogSessionId, message.Sequence), out var pending))
+                pending.AcknowledgementHash = message.Hash;
+            return;
+        }
         if (result.Status is not (LogStreamAcknowledgeStatus.Accepted or LogStreamAcknowledgeStatus.Duplicate)) return;
+        long acknowledgedSequence = message.Sequence;
+        foreach (var entry in transfer.InFlight.Where(entry => entry.Key.SessionId == message.LogSessionId
+                     && entry.Key.Sequence > acknowledgedSequence).OrderBy(entry => entry.Key.Sequence))
+        {
+            if (entry.Value.AcknowledgementHash is not { } hash) break;
+            var next = sender.Acknowledge(transfer.SteamId,
+                new(sender.CaptureId, sender.SourceSessionId, entry.Key.Sequence, hash));
+            if (next.Status != LogStreamAcknowledgeStatus.Accepted) break;
+            result = next;
+            acknowledgedSequence = entry.Key.Sequence;
+        }
         long before = transfer.AcknowledgedBySession.GetValueOrDefault(sender.SourceSessionId);
         transfer.AcknowledgedBySession[sender.SourceSessionId] = result.BytesAcknowledged;
         long added = Math.Max(0, result.BytesAcknowledged - before);
@@ -1058,7 +1113,7 @@ public sealed class LogStreamingCoordinator
         _sampleBytes += added;
         transfer.LastSeen = now;
         foreach (var key in transfer.InFlight.Keys
-                     .Where(key => key.SessionId == message.LogSessionId && key.Sequence <= message.Sequence).ToArray())
+                     .Where(key => key.SessionId == message.LogSessionId && key.Sequence <= acknowledgedSequence).ToArray())
             transfer.InFlight.Remove(key);
     }
 
@@ -1105,7 +1160,10 @@ public sealed class LogStreamingCoordinator
             {
                 result.Add(packet);
             }
-            else _controlPackets.Enqueue(packet);
+            else
+            {
+                _controlPackets.Enqueue(packet);
+            }
         }
         if (_sender is null || result.Count >= MaximumPacketsPerExchange || _outgoing.Count == 0) return result.ToArray();
         var transfers = _outgoing.Values.OrderBy(transfer => transfer.SteamId, StringComparer.Ordinal).ToArray();
@@ -1122,19 +1180,20 @@ public sealed class LogStreamingCoordinator
                 if (now - transfer.LastOpenSent >= TransferHeartbeatInterval) QueueOpen(transfer, now);
                 if (!transfer.Accepted) continue;
                 if (!peer.CaptureActive || peer.CapturePaused) continue;
-                var senders = new List<LogStreamSenderSession>(2) { _sender };
-                if (IsDeepTraceActive(transfer.SteamId)
-                    && _deepSenders.TryGetValue(transfer.SteamId, out var deepSender))
-                {
-                    senders.Add(deepSender);
-                }
+                var senders = new List<LogStreamSenderSession>(3);
+                if (_eventSenders.TryGetValue(transfer.SteamId, out var events)) senders.Add(events);
+                var deepSender = IsDeepTraceActive(transfer.SteamId)
+                    ? _deepSenders.GetValueOrDefault(transfer.SteamId) : null;
+                if (transfer.PreferDeepTrace && deepSender is not null) senders.Add(deepSender);
+                senders.Add(_sender);
+                if (!transfer.PreferDeepTrace && deepSender is not null) senders.Add(deepSender);
                 LogStreamChunk? chunk = null;
                 foreach (var candidate in senders)
                 {
                     var pending = candidate.GetPendingChunks(transfer.SteamId, 9);
                     var resend = pending.FirstOrDefault(item => transfer.InFlight.TryGetValue(
                             new(item.SourceSessionId, item.Sequence), out var sent)
-                        && now - sent.LastSentAt >= TimeSpan.FromSeconds(2));
+                        && sent.AcknowledgementHash is null && now - sent.LastSentAt >= TimeSpan.FromSeconds(2));
                     chunk = resend ?? pending.FirstOrDefault(item => !transfer.InFlight.ContainsKey(
                         new(item.SourceSessionId, item.Sequence)));
                     if (chunk is not null) break;
@@ -1154,6 +1213,8 @@ public sealed class LogStreamingCoordinator
                 if (TryPacket(transfer.SteamId, network, out var relay) && TryConsumeOutgoing(relay))
                 {
                     result.Add(relay);
+                    if (!IsEventSession(chunk.SourceSessionId))
+                        transfer.PreferDeepTrace = !IsDeepSession(chunk.SourceSessionId);
                     if (transfer.InFlight.TryGetValue(chunkKey, out var sent)) sent.LastSentAt = now;
                     else transfer.InFlight.Add(chunkKey, new(chunk.Length, now));
                     sentInRound = true;
@@ -1208,6 +1269,8 @@ public sealed class LogStreamingCoordinator
     private void InterruptIncoming(IncomingTransfer transfer, string reason)
     {
         _capture?.TryMarkSessionInterrupted(transfer.Identity, transfer.LogSessionId, reason);
+        if (transfer.EventSessionId.Length > 0)
+            _capture?.TryMarkSessionInterrupted(transfer.Identity, transfer.EventSessionId, reason);
         foreach (string sessionId in transfer.OpenDeepSessions)
             _capture?.TryMarkSessionInterrupted(transfer.Identity, sessionId, reason);
     }
@@ -1361,11 +1424,13 @@ public sealed class LogStreamingCoordinator
         => message.TransferId == transfer.TransferId && message.ConsentToken == transfer.ConsentToken
             && message.CaptureId == _captureId && message.CaptureToken == _captureToken
             && (message.LogSessionId == transfer.LogSessionId
+                || (IsEventSession(message.LogSessionId) && (transfer.EventSessionId.Length == 0 || transfer.EventSessionId == message.LogSessionId))
                 || ((_deepTraceEnabled || _automaticTargets.ContainsKey(transfer.SteamId)) && IsDeepSession(message.LogSessionId)));
 
     private LogStreamSenderSession? SenderFor(string peerId, string sourceSessionId)
     {
         if (_sender?.SourceSessionId == sourceSessionId) return _sender;
+        if (_eventSenders.TryGetValue(peerId, out var events) && events.SourceSessionId == sourceSessionId) return events;
         return _deepSenders.TryGetValue(peerId, out var deep) && deep.SourceSessionId == sourceSessionId
             ? deep
             : null;
@@ -1400,7 +1465,7 @@ public sealed class LogStreamingCoordinator
         if (!_incoming.TryGetValue(id, out var transfer))
         {
             if (peer is not null && !compatible) return Direction(LogStreamingPeerMode.Unsupported,
-                "This player needs a compatible Companion Game Hook.");
+                "Update Companion and Game Hook on both players to use log streaming.");
             return Direction(LogStreamingPeerMode.NotSharing,
             "This player has not approved sharing logs with you.");
         }
@@ -1417,7 +1482,7 @@ public sealed class LogStreamingCoordinator
             return Direction(state, heartbeatDetail, transfer);
         }
         if (!compatible) return Direction(LogStreamingPeerMode.Unsupported,
-            "This player needs a compatible Companion Game Hook.", transfer);
+            "Update Companion and Game Hook on both players to use log streaming.", transfer);
         var capture = _capture?.GetSnapshot();
         if (transfer.StorageProblem.Length > 0 || capture?.IsBlocked == true || capture?.MetadataHealthy == false)
             return Direction(LogStreamingPeerMode.StorageLimited, transfer.StorageProblem.Length > 0
@@ -1436,7 +1501,7 @@ public sealed class LogStreamingCoordinator
         if (!_outgoing.TryGetValue(id, out var transfer))
         {
             if (peer is not null && !compatible) return Direction(LogStreamingPeerMode.Unsupported,
-                "This player needs a compatible Companion Game Hook.");
+                "Update Companion and Game Hook on both players to use log streaming.");
             return Direction(LogStreamingPeerMode.NotSharing,
             peer?.ReceiverAvailable == true ? "Available to receive your logs." : "This player is not accepting logs.");
         }
@@ -1453,7 +1518,7 @@ public sealed class LogStreamingCoordinator
             return Direction(state, heartbeatDetail, transfer);
         }
         if (!compatible) return Direction(LogStreamingPeerMode.Unsupported,
-            "This player needs a compatible Companion Game Hook.", transfer);
+            "Update Companion and Game Hook on both players to use log streaming.", transfer);
         if (transfer.Invalidated) return Direction(LogStreamingPeerMode.NotSharing,
             "The receiver started a different capture. Select them again to approve it.", transfer);
         if (_sender?.GetSnapshot().IsSpoolFull == true)
@@ -1468,6 +1533,7 @@ public sealed class LogStreamingCoordinator
         long backlog = SenderBacklog(id);
         string detail = transfer.DeepTraceRejected
             ? "Normal logs continue. Select this receiver again to restart Deep trace."
+            : backlog > MaximumUnacknowledgedBytes ? "Raw logs are catching up. Gameplay events stream separately."
             : backlog > 0 ? "Sending the complete current logs and new entries." : "Caught up. New log entries will stream live.";
         return Direction(transfer.InFlight.Count > 0 || backlog > 0 ? LogStreamingPeerMode.Streaming : LogStreamingPeerMode.Ready,
             detail, transfer);
@@ -1489,6 +1555,8 @@ public sealed class LogStreamingCoordinator
     {
         long backlog = _sender?.GetSnapshot().Receivers
             .FirstOrDefault(receiver => receiver.ReceiverId == receiverId)?.BacklogBytes ?? 0;
+        if (_eventSenders.TryGetValue(receiverId, out var events))
+            backlog += events.GetSnapshot().Receivers.FirstOrDefault()?.BacklogBytes ?? 0;
         if (IsDeepTraceActive(receiverId) && _deepSenders.TryGetValue(receiverId, out var deep))
             backlog += deep.GetSnapshot().Receivers
                 .FirstOrDefault(receiver => receiver.ReceiverId == receiverId)?.BacklogBytes ?? 0;
@@ -1623,6 +1691,8 @@ public sealed class LogStreamingCoordinator
     private static bool HasFreshAdvertisement(LogLobbyPeer peer) => peer.LastSeenUtcTicks > 0;
     private static bool IsDeepSession(string sourceSessionId)
         => sourceSessionId.StartsWith("deep-", StringComparison.Ordinal) && TokenValid(sourceSessionId, 128);
+    private static bool IsEventSession(string sourceSessionId)
+        => sourceSessionId.StartsWith("events-", StringComparison.Ordinal) && TokenValid(sourceSessionId, 128);
     private static bool IsDeepTraceFile(string fileId)
         => fileId is LogStreamTelemetryRecorder.DeepTraceFileId or LogStreamTelemetryRecorder.MeadowNativeDeepFileId;
     private static bool ValidNumericId(string? value) => value is { Length: > 0 and <= 32 } && value.All(char.IsDigit);
@@ -1641,6 +1711,7 @@ public sealed class LogStreamingCoordinator
         public int Length { get; } = length;
         public DateTimeOffset FirstSentAt { get; } = sentAt;
         public DateTimeOffset LastSentAt { get; set; } = sentAt;
+        public string? AcknowledgementHash { get; set; }
     }
     private sealed record IncomingAuthorization(string SteamId, string TransferId, string ConsentToken)
     {
@@ -1697,6 +1768,8 @@ public sealed class LogStreamingCoordinator
         public long BytesSinceSample { get; set; }
         public double LastRate { get; set; }
         public bool DeepTracePacingReported { get; set; }
+        public bool EventGap { get; set; }
+        public bool PreferDeepTrace { get; set; }
         public Dictionary<string, long> AcknowledgedBySession { get; } = new(StringComparer.Ordinal);
         public Dictionary<ChunkKey, InFlight> InFlight { get; } = [];
     }
@@ -1725,6 +1798,7 @@ public sealed class LogStreamingCoordinator
         public long BytesSinceSample { get; set; }
         public double LastRate { get; set; }
         public string StorageProblem { get; set; } = "";
+        public string EventSessionId { get; set; } = "";
         public HashSet<string> DeepSessions { get; } = new(StringComparer.Ordinal);
         public HashSet<string> OpenDeepSessions { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, long> LastAcknowledgedSequences { get; } = new(StringComparer.Ordinal);

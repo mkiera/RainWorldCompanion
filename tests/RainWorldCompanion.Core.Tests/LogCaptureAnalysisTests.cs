@@ -11,6 +11,56 @@ public sealed class LogCaptureAnalysisTests
     private static readonly DateTimeOffset Start = new(2026, 9, 14, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task Raw_chunks_ending_mid_line_reparse_only_the_tail_and_preserve_complete_errors()
+    {
+        using var files = new TempDirectory("capture-partial-raw-tail");
+        WriteCapture(files, incomplete: true);
+        string alice = WriteSession(files, "Alice", "1", true, "alice-session");
+        string relative = Path.Combine(alice, "generation-001/BepInEx/LogOutput.log");
+        string prefix = string.Concat(Enumerable.Range(0, 20000)
+            .Select(index => $"[Info : Rain Meadow] Entity {index} moved normally.\n"));
+        files.WriteText(relative, "[Error : Rain Meadow] Earlier distinct failure\n" + prefix
+            + "[Error : Rain Meadow] Missing entity with");
+        var session = new LogCaptureAnalysisSession(files.Path);
+        await session.RefreshAsync();
+
+        File.AppendAllText(files.Resolve(relative), "out state\n[Warning : Rain Meadow] Separate warning\n");
+        var snapshot = await session.RefreshAsync();
+
+        Assert.InRange(session.LastRefreshParsedBytes, 1, 70 * 1024);
+        Assert.Contains(snapshot.Moments, moment => moment.Details.Contains("Earlier distinct failure", StringComparison.Ordinal));
+        Assert.Single(snapshot.Moments, moment => moment.Details.Contains("Missing entity without state", StringComparison.Ordinal));
+        Assert.DoesNotContain(snapshot.Moments, moment => moment.Details.EndsWith("Missing entity with", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Moments, moment => moment.Details.Contains("Separate warning", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Partial_structured_record_resumes_without_reparsing_prior_records_or_duplicating_events()
+    {
+        using var files = new TempDirectory("capture-partial-structured-tail");
+        WriteCapture(files, incomplete: true);
+        string alice = WriteSession(files, "Alice", "1", true, "alice-session");
+        string relative = Path.Combine(alice, "generation-001/Companion/events.jsonl");
+        string earlier = string.Concat(Enumerable.Range(0, 1000).Select(index =>
+            Diagnostic("marker", Start.AddSeconds(index), new { label = "Previous " + index }) + "\n"));
+        string next = Diagnostic("marker", Start.AddSeconds(1001), new { label = "Final marker" });
+        int split = next.Length / 2;
+        files.WriteText(relative, earlier + next[..split]);
+        var session = new LogCaptureAnalysisSession(files.Path);
+        var initial = await session.RefreshAsync();
+
+        File.AppendAllText(files.Resolve(relative), next[split..] + "\n");
+        var completed = await session.RefreshAsync();
+
+        Assert.InRange(session.LastRefreshParsedBytes, 1, 2048);
+        Assert.Equal(initial.Moments.Count + 1, completed.Moments.Count);
+        Assert.Single(completed.Moments, moment => moment.Timestamp == Start.AddSeconds(1001));
+        File.AppendAllText(files.Resolve(relative), Diagnostic("marker", Start.AddSeconds(1002), new { label = "Following marker" }) + "\n");
+        var following = await session.RefreshAsync();
+        Assert.Equal(initial.Moments.Count + 2, following.Moments.Count);
+    }
+
+    [Fact]
     public async Task Capture_writer_output_loads_without_schema_translation()
     {
         using var files = new TempDirectory("capture-analysis-writer");

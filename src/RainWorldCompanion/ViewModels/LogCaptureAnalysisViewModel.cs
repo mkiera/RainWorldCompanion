@@ -285,7 +285,6 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     partial void OnSelectedMomentChanged(CaptureTimelineMoment? value)
     {
         if (value is null) return;
-        FollowLiveEdge = false;
         CursorTime = value.Timestamp;
         SelectedDetails = value.Details.Length == 0 ? value.Summary : value.Details;
         SelectedTimingText = TimingText(value);
@@ -303,7 +302,6 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             RefreshCollectionState();
             return;
         }
-        FollowLiveEdge = false;
         CaptureTimelineMoment? selected = SelectedMoment is { } current
             && value.Incident.MomentSequences.Contains(current.Sequence) ? current : null;
         selected ??= _snapshot.Moments.FirstOrDefault(moment =>
@@ -411,14 +409,12 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     {
         if (!HasAnalysis) return;
         if (!IsPlaying && CursorTime >= TimelineEnd) CursorTime = TimelineStart;
-        FollowLiveEdge = false;
         IsPlaying = !IsPlaying;
     }
 
     public void SetPlayhead(DateTimeOffset time)
     {
         if (!HasAnalysis) return;
-        FollowLiveEdge = false;
         CursorTime = Clamp(time, TimelineStart, TimelineEnd);
         SelectedMoment = _snapshot.Moments
             .Where(moment => IsVisible(moment))
@@ -438,6 +434,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
     {
         if (!HasAnalysis || VisibleEnd <= VisibleStart) return;
         TimeSpan shift = TimeSpan.FromTicks((long)((VisibleEnd - VisibleStart).Ticks * fraction));
+        if (shift == TimeSpan.Zero) return;
         SetVisibleRange(VisibleStart + shift, VisibleEnd + shift);
         FollowLiveEdge = false;
     }
@@ -543,7 +540,12 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             .Where(moment => moment.SenderId.Length == 0));
         if (capture.Length > 0) tracks.Insert(0,
             new("capture", "Capture", "SYSTEM", "Receiver events and markers", true, capture));
-        TimelineTracks = tracks;
+        if (TimelineTracks.Count != tracks.Count || TimelineTracks.Zip(tracks).Any(pair =>
+                pair.First.Id != pair.Second.Id || pair.First.Name != pair.Second.Name
+                || pair.First.Role != pair.Second.Role || pair.First.Coverage != pair.Second.Coverage
+                || pair.First.HasLogs != pair.Second.HasLogs
+                || !pair.First.Moments.SequenceEqual(pair.Second.Moments)))
+            TimelineTracks = tracks;
         TimelineIncidents = Incidents.Where(IsVisible).ToArray();
         RefreshVisibleEventsAndGraphs();
     }
@@ -652,7 +654,8 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
         CaptureTimelineMoment[] visible = _snapshot.Moments
             .Where(moment => moment.Timestamp >= VisibleStart && moment.Timestamp <= VisibleEnd && IsVisible(moment))
             .TakeLast(2_000).ToArray();
-        VisibleEvents = visible.Select(moment => new CaptureEventRowViewModel(moment)).ToArray();
+        if (!VisibleEvents.Select(row => row.Moment).SequenceEqual(visible))
+            VisibleEvents = visible.Select(moment => new CaptureEventRowViewModel(moment)).ToArray();
         RefreshGraphs();
         RefreshCollectionState();
     }
@@ -691,7 +694,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
                 && participant.DisplayName.Equals(playerName, StringComparison.CurrentCultureIgnoreCase));
             players.Add(MapPlayer("native:" + observation.PlayerId, observation, hasLogs, nearbyError: false));
         }
-        PlayersAtCursor = players;
+        if (!PlayersAtCursor.SequenceEqual(players)) PlayersAtCursor = players;
         MapStatus = CurrentMap is null
             ? timeline.Length == 0 ? "No campaign timeline was recorded before the playhead." : $"No bundled map is available for {timeline}."
             : $"{CurrentMap.Id} map. {players.Count(player => player.Placement is not null)}/{players.Count} visible players placed at {CursorTime.ToLocalTime():HH:mm:ss}.";
@@ -818,7 +821,7 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             comparisons.Add(new("inventory:" + snapshot.SenderId, name,
                 name + ": inventory was truncated", false, true, "Mod inventory was truncated"));
         }
-        ModComparison = comparisons;
+        if (!ModComparison.SequenceEqual(comparisons)) ModComparison = comparisons;
         OnPropertyChanged(nameof(HasModMismatches));
         OnPropertyChanged(nameof(HasModVerificationGaps));
         OnPropertyChanged(nameof(ModMismatchSummary));
@@ -1027,7 +1030,11 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
 
     partial void OnFollowLiveEdgeChanged(bool value)
     {
-        if (value && HasAnalysis) CursorTime = TimelineEnd;
+        if (value && HasAnalysis)
+        {
+            CursorTime = TimelineEnd;
+            UpdateVisibleRange(TimelineEnd, 1);
+        }
     }
 
     private TimeSpan? Duration() => TimelineStart == default || TimelineEnd <= TimelineStart

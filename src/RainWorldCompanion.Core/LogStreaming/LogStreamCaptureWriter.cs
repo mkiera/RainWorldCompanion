@@ -669,7 +669,8 @@ public sealed class LogStreamCaptureWriter
             Now,
             LogStreamEventKind.SessionStarted,
             CaptureId,
-            "A new game log session started.",
+            sourceSessionId.StartsWith("events-", StringComparison.Ordinal)
+                ? "A gameplay event stream started." : "A new game log session started.",
             sender.SteamId.ToString(CultureInfo.InvariantCulture),
             SourceSessionId: sourceSessionId));
         MarkMetadataDirty(created);

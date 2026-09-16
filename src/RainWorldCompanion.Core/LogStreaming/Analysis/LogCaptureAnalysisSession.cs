@@ -37,6 +37,7 @@ public sealed partial class LogCaptureAnalysisSession
     }
 
     public string CaptureFolder { get; }
+    internal long LastRefreshParsedBytes { get; private set; }
 
     public async Task<CaptureAnalysisSnapshot> RefreshAsync(CancellationToken cancellationToken = default)
     {
@@ -55,6 +56,7 @@ public sealed partial class LogCaptureAnalysisSession
     private CaptureAnalysisSnapshot Read(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        LastRefreshParsedBytes = 0;
         ValidateRoot();
         var warnings = new WarningCollector();
         CaptureMetadata metadata = ReadCaptureMetadata(warnings);
@@ -97,11 +99,13 @@ public sealed partial class LogCaptureAnalysisSession
                     try
                     {
                         if (cached is not null && signature.Length > cached.Signature.Length
-                            && EndsWithNewline(fullPath, cached.Signature.Length))
+                            && (!file.IsGenerated || cached.Parsed.IncompleteTailOffset is not null
+                                || EndsWithNewline(fullPath, cached.Signature.Length)))
                         {
                             long start = file.IsGenerated
-                                ? cached.Signature.Length
+                                ? cached.Parsed.IncompleteTailOffset ?? cached.Signature.Length
                                 : FindNextLineStart(fullPath, Math.Max(0, cached.Signature.Length - 64 * 1024));
+                            LastRefreshParsedBytes += signature.Length - start;
                             ParsedFile delta = file.IsGenerated
                                 ? ParseStructuredFile(fullPath, file.Id, generation.Number, session, journal, warnings,
                                     cancellationToken, start)
@@ -111,6 +115,7 @@ public sealed partial class LogCaptureAnalysisSession
                         }
                         else
                         {
+                            LastRefreshParsedBytes += signature.Length;
                             result = file.IsGenerated
                                 ? ParseStructuredFile(fullPath, file.Id, generation.Number, session, journal, warnings, cancellationToken)
                                 : ParseRawLog(fullPath, file.Id, generation.Number, session, journal, warnings, cancellationToken);
@@ -326,7 +331,7 @@ public sealed partial class LogCaptureAnalysisSession
 
     private static ParsedFile MergeParsed(ParsedFile previous, ParsedFile delta, long? rawCutoff)
     {
-        var result = new ParsedFile(previous.IsStructured);
+        var result = new ParsedFile(previous.IsStructured) { IncompleteTailOffset = delta.IncompleteTailOffset };
         result.Moments.AddRange(rawCutoff is { } cutoff
             ? previous.Moments.Where(moment => moment.ByteOffset < cutoff)
             : previous.Moments);
@@ -531,6 +536,7 @@ public sealed partial class LogCaptureAnalysisSession
             }
             catch (JsonException)
             {
+                if (line.IsFinalPartial) parsed.IncompleteTailOffset = line.Offset;
                 if (!line.IsFinalPartial) warnings.Add($"Skipped malformed JSON in {RelativeSource(path)} at byte {line.Offset:N0}.");
             }
         }
@@ -1494,6 +1500,7 @@ public sealed partial class LogCaptureAnalysisSession
     private sealed class ParsedFile(bool isStructured)
     {
         public bool IsStructured { get; } = isStructured;
+        public long? IncompleteTailOffset { get; set; }
         public List<CaptureTimelineMoment> Moments { get; } = [];
         public List<CapturePlayerObservation> PlayerObservations { get; } = [];
         public List<CaptureNetworkSample> NetworkSamples { get; } = [];

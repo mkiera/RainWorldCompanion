@@ -11,6 +11,7 @@ public sealed record LogStreamSenderOptions
 
     public int ChunkSize { get; init; } = DefaultChunkSize;
     public long MaxSpoolBytes { get; init; } = DefaultMaxSpoolBytes;
+    public long MaximumBytesPerPoll { get; init; } = long.MaxValue;
     public bool PollSourceLogs { get; init; } = true;
     public bool CompactAcknowledgedChunks { get; init; }
     public TimeProvider TimeProvider { get; init; } = TimeProvider.System;
@@ -34,6 +35,7 @@ public sealed class LogStreamSenderSession
     private bool _spoolBlocked;
     private bool _spoolFullReported;
     private bool _compactReceiverAdded;
+    private int _pollCursor;
 
     public LogStreamSenderSession(
         string installRoot,
@@ -60,6 +62,7 @@ public sealed class LogStreamSenderSession
             throw new ArgumentOutOfRangeException(nameof(options), "The spool limit must be positive.");
         }
         ArgumentNullException.ThrowIfNull(_options.TimeProvider);
+        if (_options.MaximumBytesPerPoll <= 0) throw new ArgumentOutOfRangeException(nameof(options));
 
         _files = (_options.PollSourceLogs ? LogStreamFileCatalog.Files : []).ToDictionary(
             file => file.Id,
@@ -90,10 +93,12 @@ public sealed class LogStreamSenderSession
                 return new LogStreamSenderPollResult(0, 0, true, events);
             }
 
-            foreach (var state in _files.Values)
+            var files = _files.Values.ToArray();
+            for (int index = 0; index < files.Length; index++)
             {
-                Poll(state, events, ref addedBytes, ref addedChunks);
+                Poll(files[(_pollCursor + index) % files.Length], events, ref addedBytes, ref addedChunks);
             }
+            _pollCursor = (_pollCursor + 1) % Math.Max(1, files.Length);
 
             var isFull = _spoolBytes >= _options.MaxSpoolBytes;
             if (isFull && !_spoolFullReported)
@@ -426,7 +431,7 @@ public sealed class LogStreamSenderSession
             stream.Position = state.Offset;
             while (state.Offset < observedLength)
             {
-                var capacity = _options.MaxSpoolBytes - _spoolBytes;
+                var capacity = Math.Min(_options.MaxSpoolBytes - _spoolBytes, _options.MaximumBytesPerPoll - addedBytes);
                 if (capacity <= 0)
                 {
                     return;

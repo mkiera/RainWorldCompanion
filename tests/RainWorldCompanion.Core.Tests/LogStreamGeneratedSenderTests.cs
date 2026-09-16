@@ -10,6 +10,23 @@ public class LogStreamGeneratedSenderTests
     private const ulong SenderId = 76561198000000001;
 
     [Fact]
+    public void Bounded_source_polling_rotates_files_and_preserves_their_bytes()
+    {
+        using var files = new TempDirectory("log-stream-poll-budget");
+        files.WriteText("consoleLog.txt", new string('a', 20_000));
+        files.WriteText("exceptionLog.txt", new string('b', 20_000));
+        var sender = new LogStreamSenderSession(files.Path, "capture", "game", SenderId,
+            new() { MaximumBytesPerPoll = 5_120 });
+        sender.AddReceiver("receiver");
+        for (int index = 0; index < 12; index++) Assert.InRange(sender.Poll().BytesAdded, 0, 5_120);
+        var chunks = sender.GetPendingChunks("receiver", 100);
+        Assert.Equal(new string('a', 20_000), Encoding.UTF8.GetString(chunks.Where(chunk => chunk.FileId == "consoleLog.txt").SelectMany(chunk => chunk.CopyData()).ToArray()));
+        Assert.Equal(new string('b', 20_000), Encoding.UTF8.GetString(chunks.Where(chunk => chunk.FileId == "exceptionLog.txt").SelectMany(chunk => chunk.CopyData()).ToArray()));
+        Assert.Contains(chunks.Take(3), chunk => chunk.FileId == "exceptionLog.txt");
+        Assert.All(chunks, chunk => Assert.InRange(chunk.Length, 1, 5_120));
+    }
+
+    [Fact]
     public void Generated_diagnostics_are_chunked_without_becoming_source_files()
     {
         using var files = new TempDirectory("log-stream-generated");

@@ -11,6 +11,147 @@ namespace RainWorldCompanion.Tests;
 public sealed class LogStreamingCoordinatorTests
 {
     [Fact]
+    public void Previous_log_protocol_requires_an_update_before_sharing()
+    {
+        using var source = new TempDirectory("rwc-old-log-protocol");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-16T18:00:00Z"));
+        var receiver = Coordinator(source.Path, source.Path, clock);
+        var upstream = ReceiverUpstream(1);
+        var peer = Assert.Single(upstream.Lobby.Peers);
+        peer.ProtocolVersion = 2;
+        peer.ReceiverAvailable = true;
+        peer.CaptureId = "old-capture";
+        peer.CaptureToken = "old-token";
+        receiver.Exchange(upstream);
+        receiver.PrepareSharing([peer.SteamId]);
+        var state = Assert.Single(receiver.Snapshot().Peers);
+        Assert.False(state.CanReceive);
+        Assert.Equal(LogStreamingPeerMode.Unsupported, state.Outgoing.State);
+        Assert.Contains("Update Companion and Game Hook", state.Outgoing.Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Full_event_buffer_reports_a_gap_and_recovers_after_delivery()
+    {
+        using var source = new TempDirectory("rwc-event-buffer-source");
+        using var destination = new TempDirectory("rwc-event-buffer-capture");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-16T18:00:00Z"));
+        var sender = new LogStreamingCoordinator(new()
+        {
+            GameInstallPath = () => source.Path,
+            DestinationRoot = source.Path,
+            TimeProvider = clock,
+            SenderOptions = new() { TimeProvider = clock, MaxSpoolBytes = 4096 }
+        });
+        var receiver = Coordinator(destination.Path, destination.Path, clock);
+        var pair = new Pair(sender, receiver, clock);
+        pair.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        pair.Tick(3);
+        sender.PrepareSharing([Pair.ReceiverId]);
+        for (int index = 0; index < 40; index++)
+            sender.RecordCompanionAction("progress", "buffered-event", null, null, null, true, new string('x', 512));
+        Assert.Contains("buffer is full", sender.Snapshot().Message, StringComparison.Ordinal);
+        pair.Tick(40);
+        sender.RecordCompanionAction("completed", "after-buffer-recovery", null, null, null, true, null);
+        pair.Tick(20);
+        string events = string.Concat(SenderFiles(receiver.Snapshot().CaptureFolder, "events.jsonl", Pair.SenderId)
+            .Select(File.ReadAllText));
+        Assert.Contains("gameplay-event-gap", events, StringComparison.Ordinal);
+        Assert.Contains("after-buffer-recovery", events, StringComparison.Ordinal);
+        Assert.Equal(1, events.Split("gameplay-event-gap").Length - 1);
+    }
+
+    [Fact]
+    public void Priority_events_require_approval_and_allow_only_one_diagnostic_session()
+    {
+        using var source = new TempDirectory("rwc-event-auth-source");
+        using var destination = new TempDirectory("rwc-event-auth-capture");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-16T18:00:00Z"));
+        var receiver = Coordinator(source.Path, destination.Path, clock);
+        long sequence = 0;
+        receiver.Exchange(ReceiverUpstream(++sequence));
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        var advertisement = receiver.Exchange(ReceiverUpstream(++sequence)).Advertisement;
+        byte[] data = Encoding.UTF8.GetBytes("{\"kind\":\"room-changed\"}\n");
+        var packet = NetworkMessage(LogStreamKinds.Chunk, advertisement, "transfer", "consent", "events-first",
+            data: data, hash: Convert.ToHexString(SHA256.HashData(data)), packetSequence: 1);
+        packet.FileId = LogStreamTelemetryRecorder.EventFileId;
+        receiver.Exchange(ReceiverUpstream(++sequence, packet));
+        string capture = receiver.Snapshot().CaptureFolder;
+        Assert.Empty(SenderFiles(capture, "events.jsonl", Pair.SenderId));
+        receiver.Exchange(ReceiverUpstream(++sequence,
+            NetworkMessage(LogStreamKinds.Open, advertisement, "transfer", "consent", "sender-game")));
+        var accepted = receiver.Exchange(ReceiverUpstream(++sequence, packet));
+        Assert.Single(accepted.OutgoingPackets, item => Decode(item).Kind == LogStreamKinds.Acknowledgement);
+        packet.LogSessionId = "events-second";
+        Assert.Empty(receiver.Exchange(ReceiverUpstream(++sequence, packet)).OutgoingPackets);
+        packet.LogSessionId = "events-first";
+        packet.Sequence = 2;
+        packet.FileId = "consoleLog.txt";
+        Assert.Empty(receiver.Exchange(ReceiverUpstream(++sequence, packet)).OutgoingPackets);
+        Assert.Single(SenderFiles(capture, "events.jsonl", Pair.SenderId));
+        Assert.Empty(SenderFiles(capture, "consoleLog.txt", Pair.SenderId));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Gameplay_events_stay_current_during_error_flood_and_after_capture_restart(bool deepTrace)
+    {
+        using var source = new TempDirectory("rwc-flood-source");
+        using var destination = new TempDirectory("rwc-flood-capture");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-16T18:00:00Z"));
+        string flood = string.Concat(Enumerable.Range(0, 100).Select(index =>
+            $"[Error :RainMeadow] OnlineEntity.EntityId.FindEntity: Entity not found: #{index}:apo:0002\n"));
+        source.WriteText("consoleLog.txt", string.Concat(Enumerable.Repeat(flood, 30)));
+        var sender = Coordinator(source.Path, source.Path, clock);
+        var receiver = Coordinator(destination.Path, destination.Path, clock);
+        var pair = new Pair(sender, receiver, clock) { ExchangeInterval = TimeSpan.FromMilliseconds(100) };
+        pair.Tick();
+        for (int captureIndex = 0; captureIndex < 2; captureIndex++)
+        {
+            receiver.SetReceiverAvailability(true);
+            receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+            receiver.SetDeepTraceEnabled(deepTrace);
+            pair.Tick(3);
+            sender.PrepareSharing([Pair.ReceiverId]);
+            string capture = receiver.Snapshot().CaptureFolder;
+            for (int tick = 0; tick < 60; tick++)
+            {
+                File.AppendAllText(source.Resolve("consoleLog.txt"), flood);
+                sender.ObserveLiveSnapshot(GameSnapshot("flood-game", $"SU_A{captureIndex}{tick / 10}", tick));
+                if (tick % 10 == 0)
+                    sender.RecordCompanionAction("progress", $"capture-{captureIndex}-second-{tick / 10}", null, null, null, true, null);
+                pair.Tick();
+                if (tick == 59)
+                {
+                    string events = string.Concat(SenderFiles(capture, "events.jsonl", Pair.SenderId).Select(File.ReadAllText));
+                    Assert.Contains($"capture-{captureIndex}-second-3", events, StringComparison.Ordinal);
+                    Assert.Contains($"SU_A{captureIndex}3", events, StringComparison.Ordinal);
+                    if (deepTrace)
+                    {
+                        string traces = string.Concat(SenderFiles(capture, "deep-trace.jsonl", Pair.SenderId).Select(File.ReadAllText));
+                        using var latest = JsonDocument.Parse(traces.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1]);
+                        Assert.InRange((clock.GetUtcNow() - latest.RootElement.GetProperty("timestampUtc").GetDateTimeOffset())
+                            .TotalSeconds, 0, 3);
+                    }
+                }
+            }
+            if (captureIndex == 1)
+            {
+                pair.Tick(600);
+                Assert.Equal(File.ReadAllText(source.Resolve("consoleLog.txt")),
+                    File.ReadAllText(Assert.Single(SenderFiles(capture, "consoleLog.txt", Pair.SenderId))));
+            }
+            receiver.SetCaptureMode(LogStreamingCaptureMode.Stopped);
+            pair.Tick(3);
+        }
+    }
+
+    [Fact]
     public void Capture_destination_changes_only_between_captures_and_the_next_capture_uses_it()
     {
         using var gameFiles = new TempDirectory("rwc-log-source");
@@ -41,6 +182,38 @@ public sealed class LogStreamingCoordinatorTests
         receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
         Assert.StartsWith(Path.GetFullPath(laterDestination.Path), receiver.Snapshot().CaptureFolder,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Reordered_acknowledgements_complete_without_waiting_for_retransmission()
+    {
+        using var source = new TempDirectory("rwc-log-source");
+        using var senderDownloads = new TempDirectory("rwc-log-sender");
+        using var receiverDownloads = new TempDirectory("rwc-log-receiver");
+        string content = new('r', 16000);
+        source.WriteText("consoleLog.txt", content);
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var sender = Coordinator(source.Path, senderDownloads.Path, clock);
+        var receiver = Coordinator(source.Path, receiverDownloads.Path, clock);
+        int reordered = 0;
+        var session = new Pair(sender, receiver, clock)
+        {
+            TransformReceiverPackets = packets =>
+            {
+                if (packets.Count(packet => Decode(packet).Kind == LogStreamKinds.Acknowledgement) > 1)
+                    reordered++;
+                return Enumerable.Reverse(packets).ToArray();
+            }
+        };
+        session.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        sender.PrepareSharing([Pair.ReceiverId]);
+        session.Tick(7);
+        Assert.True(reordered > 0);
+        Assert.Equal(content.Length, sender.Snapshot().Peers.Single().Outgoing.AcknowledgedBytes);
+        Assert.Equal(content, ReadOnlyLog(receiver.Snapshot().CaptureFolder, "consoleLog.txt"));
     }
 
     [Fact]
@@ -640,7 +813,8 @@ public sealed class LogStreamingCoordinatorTests
         using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
         JsonElement[] localSessions = metadata.RootElement.GetProperty("sessions").EnumerateArray()
             .Where(item => item.GetProperty("senderSteamId").GetString() == Pair.ReceiverId).ToArray();
-        Assert.Equal(2, localSessions.Length);
+        Assert.Equal(3, localSessions.Length);
+        Assert.Single(localSessions, item => item.GetProperty("sourceSessionId").GetString()!.StartsWith("events-", StringComparison.Ordinal));
         Assert.All(localSessions, item =>
         {
             Assert.Equal("Local Tester", item.GetProperty("senderSteamName").GetString());
@@ -1573,6 +1747,7 @@ public sealed class LogStreamingCoordinatorTests
         internal bool ReceiverAdvertisementFresh { get; set; } = true;
         internal bool SenderAdvertisementFresh { get; set; } = true;
         internal bool ForwardReceiverPackets { get; set; } = true;
+        internal Func<LogRelayPacket[], LogRelayPacket[]>? TransformReceiverPackets { get; init; }
         internal string SenderGameSession { get; set; } = "sender-game";
         internal string SenderDisplayName { get; set; } = "Sender";
         internal string ReceiverDisplayName { get; set; } = "Receiver";
@@ -1601,7 +1776,7 @@ public sealed class LogStreamingCoordinatorTests
                     SenderId, SenderDisplayName, SenderIsHost,
                     _senderAdvertisement, _toReceiver, ++_receiverSequence, "receiver-game", SenderAdvertisementFresh));
                 _receiverAdvertisement = receiverReply.Advertisement;
-                _toSender = receiverReply.OutgoingPackets;
+                _toSender = TransformReceiverPackets?.Invoke(receiverReply.OutgoingPackets) ?? receiverReply.OutgoingPackets;
                 _clock.Advance(ExchangeInterval);
             }
         }
@@ -1762,7 +1937,6 @@ public sealed class LogStreamingCoordinatorTests
         private int _frame;
         internal int DroppedPackets { get; private set; }
         internal TimeSpan MaximumQueueLatency { get; private set; }
-
         internal ManyToOne(LogStreamingCoordinator[] senders, LogStreamingCoordinator receiver, TestClock clock)
         {
             _senders = senders.Select((sender, index) =>

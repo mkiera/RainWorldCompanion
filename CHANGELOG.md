@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 What changed in each release, newest first. Headings are the version on its own,
 without a leading `v`, and match the tag the release was built from. Work that
@@ -11,7 +11,23 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
-## Unreleased
+## 1.4.0-beta.8 - 2026-09-16
+
+- Room changes and gameplay events stream separately from raw logs, so a flood
+  of repeated errors does not leave the live timeline waiting for old log data.
+  Starting another capture begins with current gameplay metadata. Delayed or
+  reordered acknowledgements no longer cause repeated chunk retransmissions.
+- Live capture analysis handles partially received log lines without repeatedly
+  reading the entire file. Timeline refreshes reuse unchanged controls, and the
+  live log viewer batches large updates to reduce UI stalls.
+- Following raw logs scrolls only the log panel. Timeline follow stays enabled
+  through new events, zooming, event selection, and playhead movement. Horizontal
+  panning turns it off, and enabling it returns the view to the present.
+- Includes Companion Game Hook 1.0.14. Both sender and receiver must update
+  Companion and Game Hook to use the revised log streaming protocol. Existing
+  captures remain readable.
+
+## 1.4.0-beta.7 - 2026-09-16
 
 - Captures now record lightweight frame and memory summaries even with deep
   trace off. Automatic deep trace records up to 60 seconds from an affected
@@ -24,14 +40,28 @@ worded as things ended up. The pre-release sections stay for their tags.
   Remote deep trace samples use available bandwidth after normal logs, with an
   event marking when sampling is paced. The receiver's local sampling is unchanged.
 
+## 1.4.0-beta.6 - 2026-09-16
+
+- Fixed remote room changes and gameplay events falling far behind during log
+  streaming. Transfers now pace traffic per recipient and batch small raw-log writes.
+
+## 1.4.0-beta.5 - 2026-09-15
+
+- Live capture timelines keep their playhead and visible time range steady while
+  Follow live edge is off, as new logs arrive.
+
+## 1.4.0-beta.4 - 2026-09-14
+
 - Streamed-log captures can be loaded into a synchronized, multitrack timeline
   with playback, event filters, shared alerts, player locations on the world
   map, and graphs for errors, network latency, frame time, and memory. The view
   can follow a capture live while it is still being recorded.
-- Capture analysis compares each player's reported mod versions and complete
+- Capture analysis compares each player's reported mod versions and third-party
   code fingerprints, clearly flags different builds that report the same
   version, marks incomplete comparisons, and ranks possible mod causes for an
   incident with the evidence behind each likelihood.
+- Remote log sharing keeps room changes and other structured events moving
+  during heavy raw-log activity.
 
 ## 1.4.0-beta.3 - 2026-09-13
 
