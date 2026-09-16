@@ -292,6 +292,16 @@ public sealed class LogStreamCaptureWriter
         }
     }
 
+    internal void MarkDeepTrace(bool enabled, string message, string? peerId = null)
+    {
+        lock (_sync)
+        {
+            Record(new(Now, enabled ? LogStreamEventKind.DeepTraceStarted : LogStreamEventKind.DeepTraceStopped,
+                CaptureId, message.Length > 512 ? message[..512] : message, peerId));
+            TryFlushMetadata();
+        }
+    }
+
     public void ObservePeer(LogStreamPeerIdentity sender)
     {
         ArgumentNullException.ThrowIfNull(sender);

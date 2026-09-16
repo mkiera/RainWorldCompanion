@@ -62,6 +62,7 @@ public sealed class LogReceiverAdvertisement
     public bool CaptureActive { get; set; }
     public bool CapturePaused { get; set; }
     public bool DeepTraceEnabled { get; set; }
+    public string[] DeepTracePeerIds { get; set; } = Array.Empty<string>();
     public string CaptureId { get; set; } = "";
     public string CaptureToken { get; set; } = "";
 }
@@ -89,6 +90,8 @@ public sealed class LogStreamNetworkMessage
     public long Offset { get; set; }
     public long Sequence { get; set; }
     public byte[] Data { get; set; } = Array.Empty<byte>();
+    public bool AcceptsCompressedChunks { get; set; }
+    public string DataEncoding { get; set; } = "";
     public string Hash { get; set; } = "";
     public string Message { get; set; } = "";
 }

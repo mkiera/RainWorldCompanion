@@ -1,3 +1,4 @@
+using RainWorldCompanion.Core.Tests;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -174,6 +175,165 @@ public sealed class LogStreamingCoordinatorTests
             new FileInfo(Assert.Single(SenderFiles(capture, "consoleLog.txt", Pair.SenderId))).Length);
         using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
         Assert.False(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData(6, false)]
+    [InlineData(10, false)]
+    [InlineData(10, true)]
+    public void Receiver_keeps_every_sender_current_in_large_busy_lobbies(int senderCount, bool deepTrace)
+    {
+        using var receiverFiles = new TempDirectory("rwc-many-receiver-source");
+        using var receiverDownloads = new TempDirectory("rwc-many-receiver");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-16T18:00:00Z"));
+        var receiver = Coordinator(receiverFiles.Path, receiverDownloads.Path, clock);
+        var senderFiles = Enumerable.Range(0, senderCount)
+            .Select(index => new TempDirectory("rwc-many-source-" + index)).ToArray();
+        try
+        {
+            const int originalBytes = 8 * 1024;
+            const int batchBytes = 750;
+            var expectedRaw = Enumerable.Range(0, senderCount).Select(index =>
+                new StringBuilder(new string((char)('a' + index), originalBytes))).ToArray();
+            for (int index = 0; index < senderCount; index++)
+                senderFiles[index].WriteText("consoleLog.txt", new string((char)('a' + index), originalBytes));
+            var senders = senderFiles.Select(files => Coordinator(files.Path, files.Path, clock)).ToArray();
+            var session = new ManyToOne(senders, receiver, clock);
+            session.Tick();
+            receiver.SetReceiverAvailability(true);
+            receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+            receiver.SetDeepTraceEnabled(deepTrace);
+            session.Tick(2);
+            foreach (var sender in senders) sender.PrepareSharing([ManyToOne.ReceiverId]);
+            session.Tick(40);
+            string capture = receiver.Snapshot().CaptureFolder;
+
+            for (int exchange = 0; exchange < 120; exchange++)
+            {
+                for (int sender = 0; sender < senderCount; sender++)
+                {
+                    var random = new Random(sender * 1000 + exchange);
+                    var lines = new StringBuilder();
+                    while (lines.Length < batchBytes)
+                        lines.Append($"[Info : Rain Meadow] 18:00:{exchange / 4:D2}.{exchange % 4 * 250:D3} "
+                            + $"Player {sender} entered SU_A{exchange / 4:D2}, entity={random.Next():X8}, "
+                            + $"state={random.Next():X8}, tick={exchange}, pending={random.Next(5)}\n");
+                    string batch = lines.ToString(0, batchBytes);
+                    expectedRaw[sender].Append(batch);
+                    File.AppendAllText(senderFiles[sender].Resolve("consoleLog.txt"), batch);
+                }
+                if (exchange % 4 == 0)
+                {
+                    for (int sender = 0; sender < senderCount; sender++)
+                        senders[sender].RecordCompanionAction("progress", $"sender-{sender:D2}-room-{exchange / 4:D2}",
+                            null, null, null, true, null);
+                }
+                session.Tick();
+                if (exchange >= 20 && exchange % 20 == 0)
+                {
+                    for (int sender = 0; sender < senderCount; sender++)
+                    {
+                        string observed = string.Concat(SenderFiles(capture, "events.jsonl", ManyToOne.SenderId(sender))
+                            .Select(File.ReadAllText));
+                        Assert.True(observed.Contains($"sender-{sender:D2}-room-{exchange / 4 - 3:D2}", StringComparison.Ordinal),
+                            $"Sender {sender}, second {exchange / 4}, deep {deepTrace}: "
+                            + $"{Outgoing(senders[sender], ManyToOne.ReceiverId)}, dropped {session.DroppedPackets}, "
+                            + $"queue latency {session.MaximumQueueLatency}. Latest events: {observed[^Math.Min(observed.Length, 500)..]}");
+                    }
+                }
+            }
+            session.Tick(24);
+
+            for (int sender = 0; sender < senderCount; sender++)
+            {
+                string steamId = ManyToOne.SenderId(sender);
+                string events = string.Concat(SenderFiles(capture, "events.jsonl", steamId).Select(File.ReadAllText));
+                Assert.True(events.Contains($"sender-{sender:D2}-room-29", StringComparison.Ordinal),
+                    $"Sender {sender}, count {senderCount}: {Outgoing(senders[sender], ManyToOne.ReceiverId)}. Latest events: {events[^Math.Min(events.Length, 500)..]}");
+                for (int action = 0; action < 30; action++)
+                    Assert.Contains($"sender-{sender:D2}-room-{action:D2}", events, StringComparison.Ordinal);
+                string raw = Assert.Single(SenderFiles(capture, "consoleLog.txt", steamId));
+                Assert.Equal(originalBytes + 120L * batchBytes, new FileInfo(raw).Length);
+                Assert.Equal(expectedRaw[sender].ToString(), File.ReadAllText(raw));
+                if (deepTrace)
+                {
+                    string trace = string.Concat(SenderFiles(capture, "deep-trace.jsonl", steamId).Select(File.ReadAllText));
+                    using var latest = JsonDocument.Parse(trace.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1]);
+                    Assert.InRange((clock.GetUtcNow() - latest.RootElement.GetProperty("timestampUtc").GetDateTimeOffset())
+                        .TotalSeconds, 0, 10);
+                    Assert.Contains("deep-trace-paced", events, StringComparison.Ordinal);
+                }
+            }
+            Assert.Equal(0, session.DroppedPackets);
+            Assert.InRange(session.MaximumQueueLatency.TotalMilliseconds, 0, 1000);
+            using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
+            Assert.False(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
+        }
+        finally
+        {
+            foreach (var files in senderFiles) files.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    public async Task Automatic_trace_targets_affected_sender_and_host_then_expires_without_changing_manual_mode(
+        bool receiverAffected, bool hostSharing)
+    {
+        using var source = new TempDirectory("auto-trace-source");
+        using var first = new TempDirectory("auto-trace-first");
+        using var second = new TempDirectory("auto-trace-second");
+        using var third = new TempDirectory("auto-trace-third");
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-16T12:00:00Z"));
+        var affected = Coordinator(source.Path, first.Path, clock);
+        var receiver = Coordinator(source.Path, second.Path, clock);
+        var host = Coordinator(source.Path, third.Path, clock);
+        var session = new ThreeParty(affected, receiver, host, clock);
+        session.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        affected.PrepareSharing([ThreeParty.FastId]);
+        if (hostSharing) host.PrepareSharing([ThreeParty.FastId]);
+        session.Tick(8);
+        for (int secondIndex = 0; secondIndex < 32; secondIndex++)
+        {
+            var snapshot = AutomaticTraceDetectorTests.Sample(secondIndex, secondIndex >= 20);
+            affected.ObserveLiveSnapshot(receiverAffected ? AutomaticTraceDetectorTests.Sample(secondIndex) : snapshot);
+            host.ObserveLiveSnapshot(AutomaticTraceDetectorTests.Sample(secondIndex));
+            receiver.ObserveLiveSnapshot(receiverAffected ? snapshot : AutomaticTraceDetectorTests.Sample(secondIndex));
+            session.Tick(4);
+        }
+        string capture = receiver.Snapshot().CaptureFolder;
+        Assert.False(receiver.Snapshot().DeepTraceEnabled);
+        Assert.Contains(receiverAffected ? "Fast" : "Sender", receiver.Snapshot().AutomaticDeepTraceStatus);
+        if (hostSharing)
+        {
+            Assert.Contains("Slow", receiver.Snapshot().AutomaticDeepTraceStatus);
+            Assert.NotEmpty(SenderFiles(capture, "deep-trace.jsonl", ThreeParty.SlowId));
+        }
+        else Assert.Empty(SenderFiles(capture, "deep-trace.jsonl", ThreeParty.SlowId));
+        Assert.NotEmpty(SenderFiles(capture, "deep-trace.jsonl", receiverAffected ? ThreeParty.FastId : ThreeParty.SenderId));
+        Assert.Empty(SenderFiles(capture, "deep-trace.jsonl", receiverAffected ? ThreeParty.SenderId : ThreeParty.FastId));
+        session.Tick(260);
+        Assert.DoesNotContain("active:", receiver.Snapshot().AutomaticDeepTraceStatus);
+        string journal = File.ReadAllText(Path.Combine(capture, "events.jsonl"));
+        Assert.Contains("deepTraceStarted", journal);
+        Assert.Contains("deepTraceStopped", journal);
+        Assert.Contains("60-second limit", journal);
+        var analysis = new RainWorldCompanion.Core.LogStreaming.Analysis.LogCaptureAnalysisSession(capture);
+        var loaded = await analysis.RefreshAsync();
+        Assert.Contains(loaded.Moments, moment => moment.Kind == "deepTraceStarted"
+            && moment.Severity == RainWorldCompanion.Core.LogStreaming.Analysis.CaptureEventSeverity.Warning);
+        Assert.NotEmpty(loaded.PerformanceSamples);
+        Assert.DoesNotContain(loaded.Moments, moment => moment.Kind == "performance-sample");
+        receiver.SetDeepTraceEnabled(true);
+        session.Tick(4);
+        Assert.True(receiver.Snapshot().DeepTraceEnabled);
+        receiver.SetAutomaticDeepTraceEnabled(false);
+        Assert.True(receiver.Snapshot().DeepTraceEnabled);
     }
 
     [Fact]
@@ -946,7 +1106,7 @@ public sealed class LogStreamingCoordinatorTests
         using var downloads = new TempDirectory("rwc-log-receiver");
         var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
         var receiver = Coordinator(source.Path, downloads.Path, clock,
-            maximumBytesPerSecond: 28 * 1024, maximumIncomingBytesPerSecondPerPeer: 28 * 1024);
+            maximumIncomingBytesPerSecond: 28 * 1024, maximumIncomingBytesPerSecondPerPeer: 28 * 1024);
         long sequence = 0;
         receiver.Exchange(ReceiverUpstream(++sequence));
         receiver.SetReceiverAvailability(true);
@@ -1241,14 +1401,15 @@ public sealed class LogStreamingCoordinatorTests
 
     private static LogStreamingCoordinator Coordinator(string install, string downloads, TimeProvider clock,
         TimeSpan? reconnectGrace = null, Func<string, long>? availableFreeSpace = null,
-        long maximumBytesPerSecond = 64 * 1024, long maximumIncomingBytesPerSecondPerPeer = 32 * 1024,
-        long maximumOutgoingBytesPerSecondPerPeer = 24 * 1024)
+        long maximumBytesPerSecond = 128 * 1024, long maximumIncomingBytesPerSecondPerPeer = 32 * 1024,
+        long maximumOutgoingBytesPerSecondPerPeer = 24 * 1024, long maximumIncomingBytesPerSecond = 256 * 1024)
         => new(new()
         {
             GameInstallPath = () => install,
             DestinationRoot = downloads,
             TimeProvider = clock,
             MaximumBytesPerSecond = maximumBytesPerSecond,
+            MaximumIncomingBytesPerSecond = maximumIncomingBytesPerSecond,
             MaximumOutgoingBytesPerSecondPerPeer = maximumOutgoingBytesPerSecondPerPeer,
             MaximumIncomingBytesPerSecondPerPeer = maximumIncomingBytesPerSecondPerPeer,
             ReconnectGrace = reconnectGrace ?? TimeSpan.FromMinutes(2),
@@ -1477,7 +1638,7 @@ public sealed class LogStreamingCoordinatorTests
                         ReceiverAvailable = peerAdvertisement.Available,
                         CaptureActive = peerAdvertisement.CaptureActive,
                         CapturePaused = peerAdvertisement.CapturePaused,
-                        DeepTraceEnabled = peerAdvertisement.DeepTraceEnabled,
+                        DeepTraceEnabled = peerAdvertisement.DeepTraceEnabled || peerAdvertisement.DeepTracePeerIds.Contains(localId),
                         CaptureId = peerAdvertisement.CaptureId,
                         CaptureToken = peerAdvertisement.CaptureToken,
                         LastSeenUtcTicks = advertisementFresh ? 1 : 0
@@ -1535,7 +1696,7 @@ public sealed class LogStreamingCoordinatorTests
                         ReceiverAvailable = peer.Advertisement.Available,
                         CaptureActive = peer.Advertisement.CaptureActive,
                         CapturePaused = peer.Advertisement.CapturePaused,
-                        DeepTraceEnabled = peer.Advertisement.DeepTraceEnabled,
+                        DeepTraceEnabled = peer.Advertisement.DeepTraceEnabled || peer.Advertisement.DeepTracePeerIds.Contains(node.Id),
                         CaptureId = peer.Advertisement.CaptureId,
                         CaptureToken = peer.Advertisement.CaptureToken,
                         LastSeenUtcTicks = 1
@@ -1588,6 +1749,174 @@ public sealed class LogStreamingCoordinatorTests
             internal long Sequence { get; set; }
             internal LogReceiverAdvertisement Advertisement { get; set; } = new();
             internal List<LogRelayPacket> Inbox { get; } = [];
+        }
+    }
+
+    private sealed class ManyToOne
+    {
+        internal const string ReceiverId = "76561198000999999";
+        private readonly Node[] _senders;
+        private readonly Node _receiver;
+        private readonly TestClock _clock;
+        private DateTimeOffset _nextSnapshot;
+        private int _frame;
+        internal int DroppedPackets { get; private set; }
+        internal TimeSpan MaximumQueueLatency { get; private set; }
+
+        internal ManyToOne(LogStreamingCoordinator[] senders, LogStreamingCoordinator receiver, TestClock clock)
+        {
+            _senders = senders.Select((sender, index) =>
+                new Node(SenderId(index), "Sender " + index, sender, index == 0, "sender-" + index)).ToArray();
+            _receiver = new(ReceiverId, "Receiver", receiver, false, "receiver");
+            _clock = clock;
+        }
+
+        internal static string SenderId(int index) => (76561198000100000UL + (ulong)index).ToString();
+
+        internal void Tick(int count = 1)
+        {
+            DateTimeOffset end = _clock.GetUtcNow() + TimeSpan.FromMilliseconds(count * 250);
+            while (_clock.GetUtcNow() < end)
+            {
+                DateTimeOffset now = _clock.GetUtcNow();
+                Node[] nodes = [.. _senders, _receiver];
+                if (now >= _nextSnapshot)
+                {
+                    _frame += 20;
+                    foreach (var node in nodes) node.Coordinator.ObserveLiveSnapshot(Snapshot(node, nodes, _frame));
+                    _nextSnapshot = now + TimeSpan.FromMilliseconds(500);
+                }
+                foreach (var node in nodes)
+                {
+                    if (now < node.NextExchange) continue;
+                    var packets = new List<LogRelayPacket>();
+                    while (packets.Count < ProtocolInfo.MaximumLogPacketsPerBridgeExchange
+                        && node.Inbox.TryDequeue(out var incoming))
+                    {
+                        TimeSpan latency = now - incoming.Arrived;
+                        if (latency > MaximumQueueLatency) MaximumQueueLatency = latency;
+                        packets.Add(incoming.Packet);
+                    }
+                    var reply = node.Coordinator.Exchange(Upstream(node, nodes.Where(peer => peer != node), packets));
+                    node.Advertisement = reply.Advertisement;
+                    foreach (var packet in reply.OutgoingPackets)
+                    {
+                        Node recipient = nodes.Single(peer => peer.Id == packet.PeerSteamId);
+                        if (recipient.Inbox.Count >= 128) DroppedPackets++;
+                        else recipient.Inbox.Enqueue((new() { PeerSteamId = node.Id, Payload = packet.Payload }, now));
+                    }
+                    node.NextExchange = now + TimeSpan.FromMilliseconds(10
+                        + LogBridgePacing.GetDelayMilliseconds(packets.Count, reply.OutgoingPackets.Length, node.Inbox.Count));
+                }
+                _clock.Advance(TimeSpan.FromMilliseconds(5));
+            }
+        }
+
+        private static LiveSnapshot Snapshot(Node local, Node[] nodes, int frame)
+        {
+            var snapshot = GameSnapshot(local.GameSession, $"SU_A{frame / 200:D2}", frame);
+            snapshot.IsHost = local.IsHost;
+            snapshot.Players = nodes.Select((node, index) => new LivePlayer
+            {
+                Id = "player-" + index,
+                Name = node.Name,
+                IsLocal = node == local,
+                IsHost = node.IsHost,
+                MeadowSteamId = node.Id,
+                MeadowPeerId = (ushort)index,
+                MeadowAvatarId = "avatar-" + index,
+                NativeEntityAvailable = true,
+                NativeLocationAvailability = "available",
+                RoomId = $"SU_A{frame / 200:D2}",
+                Region = "SU",
+                Dead = false,
+                Trace = new() { Realized = true, PositionX = 100 + frame + index, PositionY = 50, AirInLungs = 1 }
+            }).ToArray();
+            snapshot.Meadow = new()
+            {
+                LobbyId = "many-player-lobby",
+                ObserverSteamId = local.Id,
+                GameMode = "Story",
+                Timeline = "White",
+                Peers = nodes.Select((node, index) => new LiveMeadowPeer
+                {
+                    SteamId = node.Id,
+                    LobbyPeerId = (ushort)index,
+                    DisplayName = node.Name,
+                    IsLocal = node == local,
+                    IsHost = node.IsHost,
+                    SupportsGameHookPackets = true,
+                    InGame = true,
+                    AvatarCount = 1,
+                    AvatarIds = ["avatar-" + index],
+                    PingMilliseconds = 60 + index,
+                    IncomingBytesPerSecond = 20000 + frame,
+                    OutgoingBytesPerSecond = 21000 + frame,
+                    RemoteTick = (uint)frame,
+                    LatestAcknowledgedTick = (uint)Math.Max(0, frame - 2),
+                    OutgoingEventCount = 0,
+                    OutgoingStateCount = 0,
+                    NeedsAcknowledgement = true,
+                    Connection = new()
+                    {
+                        State = "Connected", PingMilliseconds = 60 + index,
+                        LocalDeliveryQuality = 1, RemoteDeliveryQuality = 1,
+                        IncomingPacketsPerSecond = 80, OutgoingPacketsPerSecond = 80,
+                        IncomingBytesPerSecond = 20000 + frame, OutgoingBytesPerSecond = 21000 + frame,
+                        EstimatedSendRateBytesPerSecond = 262144,
+                        PendingUnreliableBytes = 0, PendingReliableBytes = 0, UnacknowledgedReliableBytes = 0,
+                        QueueTimeMicroseconds = 0
+                    }
+                }).ToArray()
+            };
+            return snapshot;
+        }
+
+        private static LogBridgeUpstream Upstream(Node local, IEnumerable<Node> peers,
+            IEnumerable<LogRelayPacket> packets) => new()
+        {
+            Sequence = ++local.Sequence,
+            GameSessionId = local.GameSession,
+            Lobby = new()
+            {
+                IsConnected = true,
+                IsSteam = true,
+                LobbyId = "many-player-lobby",
+                LocalSteamId = local.Id,
+                LocalDisplayName = local.Name,
+                LocalIsHost = local.IsHost,
+                Peers = peers.Select(peer => new LogLobbyPeer
+                {
+                    SteamId = peer.Id,
+                    DisplayName = peer.Name,
+                    IsHost = peer.IsHost,
+                    SupportsLogStreaming = true,
+                    ProtocolVersion = ProtocolInfo.LogStreamingVersion,
+                    ReceiverAvailable = peer.Advertisement.Available,
+                    CaptureActive = peer.Advertisement.CaptureActive,
+                    CapturePaused = peer.Advertisement.CapturePaused,
+                    DeepTraceEnabled = peer.Advertisement.DeepTraceEnabled
+                        || peer.Advertisement.DeepTracePeerIds.Contains(local.Id),
+                    CaptureId = peer.Advertisement.CaptureId,
+                    CaptureToken = peer.Advertisement.CaptureToken,
+                    LastSeenUtcTicks = 1
+                }).ToArray()
+            },
+            ReceivedPackets = packets.ToArray()
+        };
+
+        private sealed class Node(string id, string name, LogStreamingCoordinator coordinator,
+            bool isHost, string gameSession)
+        {
+            internal string Id { get; } = id;
+            internal string Name { get; } = name;
+            internal LogStreamingCoordinator Coordinator { get; } = coordinator;
+            internal bool IsHost { get; } = isHost;
+            internal string GameSession { get; } = gameSession;
+            internal long Sequence { get; set; }
+            internal LogReceiverAdvertisement Advertisement { get; set; } = new();
+            internal Queue<(LogRelayPacket Packet, DateTimeOffset Arrived)> Inbox { get; } = new();
+            internal DateTimeOffset NextExchange { get; set; }
         }
     }
 

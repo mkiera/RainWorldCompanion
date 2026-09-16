@@ -35,15 +35,7 @@ internal sealed class LogBridgeTransport
             lock (_sync)
             {
                 ExpireBridgeState();
-                return new()
-                {
-                    Available = _advertisement.Available,
-                    CaptureActive = _advertisement.CaptureActive,
-                    CapturePaused = _advertisement.CapturePaused,
-                    DeepTraceEnabled = _advertisement.DeepTraceEnabled,
-                    CaptureId = _advertisement.CaptureId ?? "",
-                    CaptureToken = _advertisement.CaptureToken ?? ""
-                };
+                return LogAdvertisement.Clone(_advertisement);
             }
         }
     }
@@ -199,21 +191,13 @@ internal sealed class LogBridgeTransport
                     var reply = LiveJson.Deserialize<LogBridgeDownstream>(await read);
                     if (reply == null) throw new IOException("Log bridge reply is empty.");
                     if (reply.Token != discovery.LogToken || reply.ProtocolVersion != ProtocolInfo.LogStreamingVersion
-                        || reply.Advertisement is null || reply.OutgoingPackets is null
+                        || !LogAdvertisement.IsValid(reply.Advertisement) || reply.OutgoingPackets is null
                         || reply.OutgoingPackets.Length > ProtocolInfo.MaximumLogPacketsPerBridgeExchange
-                        || reply.Advertisement.CaptureId is null or { Length: > 64 }
-                        || reply.Advertisement.CaptureToken is null or { Length: > 128 }
-                        || reply.Advertisement.CaptureActive && reply.Advertisement.CapturePaused
-                        || reply.Advertisement.DeepTraceEnabled && !reply.Advertisement.Available
-                        || (reply.Advertisement.Available
-                            && (reply.Advertisement.CaptureId.Length == 0 || reply.Advertisement.CaptureToken.Length == 0))
-                        || (!reply.Advertisement.Available
-                            && (reply.Advertisement.CaptureActive || reply.Advertisement.CapturePaused
-                                || reply.Advertisement.CaptureId.Length > 0 || reply.Advertisement.CaptureToken.Length > 0))
                         || reply.OutgoingPackets.Any(packet => packet is null || packet.Payload is null
                             || packet.Payload.Length > ProtocolInfo.MaximumLogPacketLength
                             || !ValidSteamId(packet.PeerSteamId)))
                         throw new IOException("Log bridge reply is invalid.");
+                    int delayMilliseconds;
                     lock (_sync)
                     {
                         if (lobbyEpoch != _lobbyEpoch) continue;
@@ -221,8 +205,10 @@ internal sealed class LogBridgeTransport
                         _advertisement = reply.Advertisement;
                         _lastSuccessfulExchangeTicks = System.Diagnostics.Stopwatch.GetTimestamp();
                         foreach (var packet in reply.OutgoingPackets) EnqueueOutgoing(packet);
+                        delayMilliseconds = LogBridgePacing.GetDelayMilliseconds(queued,
+                            reply.OutgoingPackets.Length, _received.Count);
                     }
-                    await Task.Delay(100, stop);
+                    await Task.Delay(delayMilliseconds, stop);
                 }
             }
             catch (Exception error) when (error is IOException or SocketException or UnauthorizedAccessException

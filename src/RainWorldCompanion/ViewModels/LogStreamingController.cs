@@ -6,7 +6,8 @@ namespace RainWorldCompanion.ViewModels;
 
 internal sealed class LogStreamingController(
     LogStreamingCoordinator coordinator,
-    Func<string, Task>? persistDestination = null) : ILogStreamingController
+    Func<string, Task>? persistDestination = null,
+    Func<bool, Task>? persistAutomaticTrace = null) : ILogStreamingController
 {
     public LogStreamingUiState Snapshot()
     {
@@ -17,6 +18,8 @@ internal sealed class LogStreamingController(
             IsSteamLobby = snapshot.IsSteamLobby,
             ReceiverAdvertised = snapshot.ReceiverAdvertised,
             DeepTraceEnabled = snapshot.DeepTraceEnabled,
+            AutomaticDeepTraceEnabled = snapshot.AutomaticDeepTraceEnabled,
+            AutomaticDeepTraceStatus = snapshot.AutomaticDeepTraceStatus,
             CaptureState = snapshot.CaptureMode switch
             {
                 LogStreamingCaptureMode.Capturing => LogStreamingCaptureState.Capturing,
@@ -65,6 +68,12 @@ internal sealed class LogStreamingController(
 
     public Task SetDeepTraceEnabledAsync(bool enabled)
         => Task.Run(() => coordinator.SetDeepTraceEnabled(enabled));
+
+    public async Task SetAutomaticDeepTraceEnabledAsync(bool enabled)
+    {
+        if (persistAutomaticTrace is not null) await persistAutomaticTrace(enabled);
+        coordinator.SetAutomaticDeepTraceEnabled(enabled);
+    }
 
     public Task PrepareSharingAsync(IReadOnlyList<string> receiverIds)
         => Task.Run(() => coordinator.PrepareSharing(receiverIds));

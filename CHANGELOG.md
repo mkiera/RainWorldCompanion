@@ -13,6 +13,17 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- Captures now record lightweight frame and memory summaries even with deep
+  trace off. Automatic deep trace records up to 60 seconds from an affected
+  player and the host after sustained gameplay stalls, with a cooldown and
+  visible start and stop events. Manual deep trace still covers all approved
+  senders. Automatic recording can be disabled in the log streaming menu.
+- Log streaming compresses chunks between updated apps and gives the receiver
+  more capacity for simultaneous senders. Game Hook drains busy relay queues
+  more frequently so room events and other logs can keep up in larger lobbies.
+  Remote deep trace samples use available bandwidth after normal logs, with an
+  event marking when sampling is paced. The receiver's local sampling is unchanged.
+
 - Streamed-log captures can be loaded into a synchronized, multitrack timeline
   with playback, event filters, shared alerts, player locations on the world
   map, and graphs for errors, network latency, frame time, and memory. The view

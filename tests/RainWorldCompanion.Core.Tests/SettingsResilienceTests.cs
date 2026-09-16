@@ -13,6 +13,16 @@ namespace RainWorldCompanion.Tests;
 public class SettingsResilienceTests
 {
     [Fact]
+    public void Automatic_trace_preference_survives_save_clone_and_startup_load()
+    {
+        using var files = new TempDirectory();
+        string path = Path.Combine(files.Path, "settings.json");
+        Assert.True(new AppSettings().AutomaticDeepTraceEnabled);
+        new SettingsStore(path).Save(new AppSettings { AutomaticDeepTraceEnabled = false }.Clone());
+        Assert.False(new SettingsStore(path).ReadForStartup()!.AutomaticDeepTraceEnabled);
+    }
+
+    [Fact]
     public void A_file_from_before_automatic_game_hook_setup_enables_it_by_default()
     {
         using var dir = new TempDirectory();

@@ -11,6 +11,21 @@ namespace RainWorldCompanion.App.Tests;
 public class LogStreamingViewModelTests
 {
     [Fact]
+    public async Task Automatic_trace_toggle_preserves_manual_trace_and_sharing()
+    {
+        var controller = new FakeLogStreamingController(Snapshot(advertised: true, deepTraceEnabled: true));
+        var view = new LogStreamingViewModel(controller);
+        view.Refresh();
+        Assert.True(view.AutomaticDeepTraceEnabled);
+        await view.ToggleAutomaticDeepTraceCommand.ExecuteAsync(null);
+        Assert.False(view.AutomaticDeepTraceEnabled);
+        Assert.True(view.DeepTraceEnabled);
+        Assert.Contains("off", view.AutomaticDeepTraceStatus);
+        Assert.Empty(controller.Revoked);
+        Assert.Empty(controller.Prepared);
+    }
+
+    [Fact]
     public void Disclosure_distinguishes_the_three_game_logs_from_diagnostics_and_explains_deep_trace_consent()
     {
         Assert.Equal(
@@ -381,7 +396,9 @@ public class LogStreamingViewModelTests
                 Assert.Contains("DEEP TRACE", text);
                 Assert.Contains("CAPTURE DESTINATION", text);
                 Assert.Single(Descendants<Button>(view), item => Equals(item.Content, "Choose folder"));
-                Assert.Single(Descendants<CheckBox>(view), item => Equals(item.Content, "Deep trace"));
+                Assert.Single(Descendants<CheckBox>(view), item => Equals(item.Content, "Manual deep trace (all approved senders)"));
+                var automatic = Assert.Single(Descendants<CheckBox>(view), item => Equals(item.Content, "Automatic deep trace for performance problems"));
+                Assert.True(automatic.IsChecked);
             }
             finally
             {
@@ -708,6 +725,12 @@ public class LogStreamingViewModelTests
         {
             CaptureStates.Add(state);
             _snapshot = _snapshot with { CaptureState = state };
+            return Task.CompletedTask;
+        }
+
+        public Task SetAutomaticDeepTraceEnabledAsync(bool enabled)
+        {
+            _snapshot = _snapshot with { AutomaticDeepTraceEnabled = enabled };
             return Task.CompletedTask;
         }
 
