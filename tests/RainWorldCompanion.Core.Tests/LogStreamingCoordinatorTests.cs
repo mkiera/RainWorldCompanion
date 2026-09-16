@@ -81,6 +81,7 @@ public sealed class LogStreamingCoordinatorTests
         senderFiles.WriteText("consoleLog.txt", new string('s', originalChunkBytes - 1) + "\n");
         var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
         var sender = Coordinator(senderFiles.Path, senderDownloads.Path, clock,
+            maximumOutgoingBytesPerSecondPerPeer: 64 * 1024,
             maximumIncomingBytesPerSecondPerPeer: 64 * 1024);
         var receiver = Coordinator(senderFiles.Path, receiverDownloads.Path, clock,
             maximumIncomingBytesPerSecondPerPeer: 64 * 1024);
@@ -113,6 +114,66 @@ public sealed class LogStreamingCoordinatorTests
             .Select(File.ReadAllText));
         Assert.Contains("structured-24", events, StringComparison.Ordinal);
         Assert.Equal(originalChunkBytes + 24L * rawBatchBytes, new FileInfo(raw).Length);
+    }
+
+    [Theory]
+    [InlineData(32 * 1024, 250)]
+    [InlineData(64 * 1024, 250)]
+    [InlineData(32 * 1024, 100)]
+    public void Receiver_limits_keep_room_events_current_during_raw_log_streaming(
+        long incomingBytesPerSecond, int exchangeMilliseconds)
+    {
+        using var senderFiles = new TempDirectory("rwc-log-source");
+        using var senderDownloads = new TempDirectory("rwc-log-sender");
+        using var receiverDownloads = new TempDirectory("rwc-log-receiver");
+        senderFiles.WriteText("consoleLog.txt", new string('s', 16 * 1024));
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-15T16:15:00Z"));
+        var sender = Coordinator(senderFiles.Path, senderDownloads.Path, clock);
+        var receiver = Coordinator(senderFiles.Path, receiverDownloads.Path, clock,
+            maximumIncomingBytesPerSecondPerPeer: incomingBytesPerSecond);
+        var session = new Pair(sender, receiver, clock) { ExchangeInterval = TimeSpan.FromMilliseconds(exchangeMilliseconds) };
+        session.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        sender.PrepareSharing([Pair.ReceiverId]);
+        string capture = receiver.Snapshot().CaptureFolder;
+
+        int exchanges = 60_000 / exchangeMilliseconds;
+        int exchangesPerSecond = 1_000 / exchangeMilliseconds;
+        int rawBatchBytes = 3 * exchangeMilliseconds;
+        for (int index = 0; index < exchanges; index++)
+        {
+            File.AppendAllText(senderFiles.Resolve("consoleLog.txt"), new string('r', rawBatchBytes));
+            if (index % exchangesPerSecond == 0)
+            {
+                var snapshot = GameSnapshot("sender-live", $"SU_A{index / exchangesPerSecond:D2}", index);
+                snapshot.Meadow = new()
+                {
+                    LobbyId = "123456789",
+                    ObserverSteamId = Pair.SenderId,
+                    Peers =
+                    [
+                        new() { SteamId = Pair.SenderId, DisplayName = "Sender", IsLocal = true, IsHost = true },
+                        new()
+                        {
+                            SteamId = Pair.ReceiverId, DisplayName = "Receiver", PingMilliseconds = 100,
+                            IncomingBytesPerSecond = 10000, OutgoingBytesPerSecond = 10000,
+                        },
+                    ],
+                };
+                sender.ObserveLiveSnapshot(snapshot);
+            }
+            session.Tick();
+        }
+        session.Tick(3 * exchangesPerSecond);
+
+        string events = string.Concat(SenderFiles(capture, "events.jsonl", Pair.SenderId).Select(File.ReadAllText));
+        Assert.Contains("SU_A59", events, StringComparison.Ordinal);
+        Assert.Equal(16 * 1024 + (long)exchanges * rawBatchBytes,
+            new FileInfo(Assert.Single(SenderFiles(capture, "consoleLog.txt", Pair.SenderId))).Length);
+        using var metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
+        Assert.False(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
     }
 
     [Fact]
@@ -1180,13 +1241,15 @@ public sealed class LogStreamingCoordinatorTests
 
     private static LogStreamingCoordinator Coordinator(string install, string downloads, TimeProvider clock,
         TimeSpan? reconnectGrace = null, Func<string, long>? availableFreeSpace = null,
-        long maximumBytesPerSecond = 64 * 1024, long maximumIncomingBytesPerSecondPerPeer = 32 * 1024)
+        long maximumBytesPerSecond = 64 * 1024, long maximumIncomingBytesPerSecondPerPeer = 32 * 1024,
+        long maximumOutgoingBytesPerSecondPerPeer = 24 * 1024)
         => new(new()
         {
             GameInstallPath = () => install,
             DestinationRoot = downloads,
             TimeProvider = clock,
             MaximumBytesPerSecond = maximumBytesPerSecond,
+            MaximumOutgoingBytesPerSecondPerPeer = maximumOutgoingBytesPerSecondPerPeer,
             MaximumIncomingBytesPerSecondPerPeer = maximumIncomingBytesPerSecondPerPeer,
             ReconnectGrace = reconnectGrace ?? TimeSpan.FromMinutes(2),
             SenderOptions = new() { TimeProvider = clock },
@@ -1354,6 +1417,7 @@ public sealed class LogStreamingCoordinatorTests
         internal string ReceiverDisplayName { get; set; } = "Receiver";
         internal bool SenderIsHost { get; set; } = true;
         internal bool ReceiverIsHost { get; set; }
+        internal TimeSpan ExchangeInterval { get; set; } = TimeSpan.FromMilliseconds(250);
 
         internal Pair(LogStreamingCoordinator sender, LogStreamingCoordinator receiver, TestClock clock)
         {
@@ -1377,7 +1441,7 @@ public sealed class LogStreamingCoordinatorTests
                     _senderAdvertisement, _toReceiver, ++_receiverSequence, "receiver-game", SenderAdvertisementFresh));
                 _receiverAdvertisement = receiverReply.Advertisement;
                 _toSender = receiverReply.OutgoingPackets;
-                _clock.Advance(TimeSpan.FromMilliseconds(250));
+                _clock.Advance(ExchangeInterval);
             }
         }
 
