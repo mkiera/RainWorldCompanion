@@ -15,6 +15,66 @@ public sealed class LogCaptureAnalysisViewModelTests
     private static readonly DateTimeOffset Start = new(2026, 9, 14, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    public async Task Refreshing_a_selected_incident_keeps_live_follow_enabled_and_at_the_present()
+    {
+        var snapshot = Snapshot();
+        var controller = new FakeCaptureController(snapshot);
+        var view = new LogCaptureAnalysisViewModel(controller, _ => Task.FromResult<string?>(@"C:\capture"));
+        await view.LoadCaptureCommand.ExecuteAsync(null);
+        view.SelectedIncident = view.Incidents[0];
+        view.HorizontalZoom = 4;
+        view.FollowLiveEdge = true;
+        var newEnd = view.TimelineEnd.AddMinutes(1);
+        controller.Update(snapshot with { EndedUtc = newEnd,
+            Incidents = snapshot.Incidents.Select(incident => incident with { Ended = incident.Ended.AddSeconds(1) }).ToArray() });
+        await view.RefreshCaptureCommand.ExecuteAsync(null);
+        Assert.True(view.FollowLiveEdge);
+        Assert.Equal(newEnd, view.CursorTime);
+        Assert.Equal(newEnd, view.VisibleEnd);
+        view.LaneHeight = 60;
+        Assert.True(view.FollowLiveEdge);
+        view.ZoomTimeline(1.25, 0.3);
+        Assert.True(view.FollowLiveEdge);
+        view.SetPlayhead(view.TimelineStart);
+        Assert.True(view.FollowLiveEdge);
+        view.SelectedMoment = snapshot.Moments[0];
+        Assert.True(view.FollowLiveEdge);
+        view.PanTimeline(-0.5);
+        Assert.False(view.FollowLiveEdge);
+        view.FollowLiveEdge = true;
+        Assert.Equal(newEnd, view.VisibleEnd);
+    }
+
+    [Fact]
+    public async Task Frozen_timeline_keeps_unchanged_rows_and_mod_cards_when_later_events_arrive()
+    {
+        var snapshot = Snapshot();
+        var controller = new FakeCaptureController(snapshot);
+        var view = new LogCaptureAnalysisViewModel(controller, _ => Task.FromResult<string?>(@"C:\capture"));
+        await view.LoadCaptureCommand.ExecuteAsync(null);
+        view.FollowLiveEdge = false;
+        var rows = view.VisibleEvents;
+        var tracks = view.TimelineTracks;
+        var mods = view.ModComparison;
+        var end = view.VisibleEnd;
+        controller.Update(snapshot with
+        {
+            EndedUtc = end.AddMinutes(1),
+            Moments = [.. snapshot.Moments, snapshot.Moments[^1] with
+            {
+                Sequence = 9999, Timestamp = end.AddMinutes(1), Summary = "Later independent failure"
+            }]
+        });
+
+        await view.RefreshCaptureCommand.ExecuteAsync(null);
+
+        Assert.Same(rows, view.VisibleEvents);
+        Assert.Same(tracks, view.TimelineTracks);
+        Assert.Same(mods, view.ModComparison);
+        Assert.Equal(end, view.VisibleEnd);
+    }
+
+    [Fact]
     public async Task Same_version_with_different_fingerprints_is_a_visible_mismatch()
     {
         CaptureAnalysisSnapshot snapshot = Snapshot();

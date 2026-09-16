@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Threading;
 using RainWorldCompanion.ViewModels;
 
@@ -53,8 +54,19 @@ public partial class LogStreamingView : UserControl
             _scrollPending = false;
             if (DataContext is LogStreamingViewModel current &&
                 current.AutoScroll && current.VisibleLogLines.Count > 0)
-                LiveLogList.ScrollIntoView(current.VisibleLogLines[^1]);
+                FindScrollViewer(LiveLogList)?.ScrollToEnd();
         });
+    }
+
+    private static ScrollViewer? FindScrollViewer(DependencyObject parent)
+    {
+        for (int index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            DependencyObject child = VisualTreeHelper.GetChild(parent, index);
+            if (child is ScrollViewer scroll) return scroll;
+            if (FindScrollViewer(child) is { } nested) return nested;
+        }
+        return null;
     }
 
     private void OpenCaptureTimeline_Click(object sender, RoutedEventArgs e) => LogStreamingTabs.SelectedIndex = 1;

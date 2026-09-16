@@ -7,7 +7,7 @@ public static partial class ProtocolInfo
 {
     public const int Version = 1;
     public const int MaximumMessageLength = 262144;
-    public const int LogStreamingVersion = 2;
+    public const int LogStreamingVersion = 3;
     public const int MaximumLogBridgeMessageLength = 524288;
     public const int MaximumLogPacketLength = 32768;
     public const int MaximumLogPacketsPerBridgeExchange = 6;

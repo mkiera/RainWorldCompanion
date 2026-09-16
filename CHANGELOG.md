@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 What changed in each release, newest first. Headings are the version on its own,
 without a leading `v`, and match the tag the release was built from. Work that
@@ -10,6 +10,22 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
+
+## 1.4.0-beta.8 - 2026-09-16
+
+- Room changes and gameplay events stream separately from raw logs, so a flood
+  of repeated errors does not leave the live timeline waiting for old log data.
+  Starting another capture begins with current gameplay metadata. Delayed or
+  reordered acknowledgements no longer cause repeated chunk retransmissions.
+- Live capture analysis handles partially received log lines without repeatedly
+  reading the entire file. Timeline refreshes reuse unchanged controls, and the
+  live log viewer batches large updates to reduce UI stalls.
+- Following raw logs scrolls only the log panel. Timeline follow stays enabled
+  through new events, zooming, event selection, and playhead movement. Horizontal
+  panning turns it off, and enabling it returns the view to the present.
+- Includes Companion Game Hook 1.0.14. Both sender and receiver must update
+  Companion and Game Hook to use the revised log streaming protocol. Existing
+  captures remain readable.
 
 ## 1.4.0-beta.7 - 2026-09-16
 

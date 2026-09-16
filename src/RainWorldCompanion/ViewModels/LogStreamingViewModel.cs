@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -207,7 +209,8 @@ public sealed partial class LogStreamingViewModel : ObservableObject
     public ObservableCollection<LogStreamingPeerViewModel> ReceiverChoices { get; } = [];
     public ObservableCollection<LogStreamingFilter> SenderFilters { get; } = [];
     public ObservableCollection<LogStreamingFilter> FileFilters { get; } = [];
-    public ObservableCollection<LogStreamingLineViewModel> VisibleLogLines { get; } = [];
+    private readonly ViewerLineCollection _visibleLogLines = new();
+    public ObservableCollection<LogStreamingLineViewModel> VisibleLogLines => _visibleLogLines;
     public LogCaptureAnalysisViewModel Analysis { get; }
 
     [ObservableProperty]
@@ -528,6 +531,7 @@ public sealed partial class LogStreamingViewModel : ObservableObject
             .Select(group => group.First())
             .OrderBy(filter => filter.Name, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
+        if (SenderFilters.Skip(1).SequenceEqual(names)) return;
         SenderFilters.Clear();
         SenderFilters.Add(new("", "All players"));
         foreach (var filter in names) SenderFilters.Add(filter);
@@ -555,15 +559,44 @@ public sealed partial class LogStreamingViewModel : ObservableObject
         if (SearchText.Length > 0)
             query = query.Where(line => line.Text.Contains(SearchText, StringComparison.CurrentCultureIgnoreCase));
 
-        var rows = query.TakeLast(MaximumViewerRows)
-            .Select(line => new LogStreamingLineViewModel(
-                line.Sequence, line.Timestamp, line.SenderId, line.SenderName, line.FileName, line.Text))
-            .ToArray();
-        VisibleLogLines.Clear();
-        foreach (var row in rows) VisibleLogLines.Add(row);
+        var retained = VisibleLogLines.GroupBy(row => row.Sequence).ToDictionary(group => group.Key, group => group.First());
+        var rows = query.TakeLast(MaximumViewerRows).Select(line =>
+        {
+            if (retained.TryGetValue(line.Sequence, out var row)
+                && row.Timestamp == line.Timestamp && row.SenderId == line.SenderId
+                && row.SenderName == line.SenderName && row.FileName == line.FileName && row.Text == line.Text)
+                return row;
+            return new LogStreamingLineViewModel(
+                line.Sequence, line.Timestamp, line.SenderId, line.SenderName, line.FileName, line.Text);
+        }).ToArray();
+        _visibleLogLines.Replace(rows);
         OnPropertyChanged(nameof(HasViewerLines));
         OnPropertyChanged(nameof(HasNoViewerLines));
         OnPropertyChanged(nameof(ViewerCountText));
+    }
+
+    private sealed class ViewerLineCollection : ObservableCollection<LogStreamingLineViewModel>
+    {
+        internal void Replace(LogStreamingLineViewModel[] rows)
+        {
+            if (this.SequenceEqual(rows)) return;
+            int removed = rows.Length == 0 ? Count : IndexOf(rows[0]);
+            int retained = removed < 0 ? 0 : Math.Min(Count - removed, rows.Length);
+            if (removed >= 0 && Count + rows.Length - 2 * retained <= 32
+                && this.Skip(removed).Take(retained).SequenceEqual(rows.Take(retained)))
+            {
+                for (int index = 0; index < removed; index++) RemoveAt(0);
+                while (Count > retained) RemoveAt(Count - 1);
+                foreach (var row in rows.Skip(retained)) Add(row);
+                return;
+            }
+            CheckReentrancy();
+            Items.Clear();
+            foreach (var row in rows) Items.Add(row);
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
+            OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
+            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+        }
     }
 
     private void UpdateCharts(IReadOnlyList<LogStreamingChartUiSample> samples, DateTimeOffset now)

@@ -89,6 +89,68 @@ public sealed class LogCaptureAnalysisLoadRegressionTests
         Assert.True(renderTime < TimeSpan.FromSeconds(4), $"Dense timeline render took {renderTime}.");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Growing_error_timeline_refresh_preserves_the_viewport_and_renders_with_bounded_latency(bool follow)
+    {
+        var snapshot = DenseSnapshot();
+        TimeSpan worstRefresh = default;
+        Exception? failure = await WpfTestHost.RunAsync(async () =>
+        {
+            Application.Current!.Resources = LoadThemeResources();
+            var controller = new YieldingCaptureController(snapshot);
+            var model = new LogCaptureAnalysisViewModel(controller, _ => Task.FromResult<string?>(snapshot.CaptureFolder));
+            var view = new LogCaptureAnalysisView { DataContext = model };
+            var window = new Window
+            {
+                Content = view, Width = 1920, Height = 1000, Left = -10000, Top = -10000,
+                ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.ToolWindow
+            };
+            try
+            {
+                window.Show();
+                await model.LoadCaptureCommand.ExecuteAsync(null);
+                model.FollowLiveEdge = follow;
+                model.HorizontalZoom = 2;
+                DateTimeOffset visibleStart = model.VisibleStart;
+                DateTimeOffset visibleEnd = model.VisibleEnd;
+                window.UpdateLayout();
+                for (int index = 1; index <= 10; index++)
+                {
+                    var last = snapshot.Moments[^1] with
+                    {
+                        Sequence = snapshot.Moments.Count + index,
+                        Timestamp = snapshot.EndedUtc!.Value.AddSeconds(index),
+                        Summary = "A distinct appended error " + index,
+                        Severity = CaptureEventSeverity.Error
+                    };
+                    controller.Snapshot = snapshot with
+                    {
+                        EndedUtc = last.Timestamp,
+                        Moments = [.. controller.Snapshot.Moments, last]
+                    };
+                    var timer = Stopwatch.StartNew();
+                    await model.RefreshCaptureCommand.ExecuteAsync(null);
+                    window.UpdateLayout();
+                    var bitmap = new RenderTargetBitmap(1920, 1000, 96, 96, PixelFormats.Pbgra32);
+                    bitmap.Render(window);
+                    if (timer.Elapsed > worstRefresh) worstRefresh = timer.Elapsed;
+                    if (!follow)
+                    {
+                        Assert.Equal(visibleStart, model.VisibleStart);
+                        Assert.Equal(visibleEnd, model.VisibleEnd);
+                    }
+                    else Assert.Equal(last.Timestamp, model.CursorTime);
+                }
+            }
+            finally { window.Close(); }
+        });
+        Assert.Null(failure);
+        Console.WriteLine($"Worst attached capture timeline refresh/render (follow={follow}): {worstRefresh.TotalMilliseconds:F1} ms.");
+        Assert.True(worstRefresh < TimeSpan.FromSeconds(1), $"Capture timeline refresh blocked for {worstRefresh}.");
+    }
+
     [Fact]
     public async Task Unexpected_controller_failure_is_reported_instead_of_escaping_the_load_command()
     {
@@ -219,7 +281,7 @@ public sealed class LogCaptureAnalysisLoadRegressionTests
     private sealed class YieldingCaptureController(CaptureAnalysisSnapshot snapshot) : ILogCaptureAnalysisController
     {
         public string CaptureFolder { get; private set; } = snapshot.CaptureFolder;
-        public CaptureAnalysisSnapshot Snapshot { get; private set; } = snapshot;
+        public CaptureAnalysisSnapshot Snapshot { get; set; } = snapshot;
 
         public async Task<CaptureAnalysisSnapshot> OpenAsync(
             string folder,

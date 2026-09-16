@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -10,6 +11,50 @@ namespace RainWorldCompanion.App.Tests;
 
 public class LogStreamingViewModelTests
 {
+    [Fact]
+    public async Task Following_raw_logs_scrolls_only_the_log_list()
+    {
+        var failure = await WpfTestHost.RunAsync(async () =>
+        {
+            var resources = new ResourceDictionary();
+            resources.MergedDictionaries.Add(LoadResource("Themes/Palette.Light.xaml"));
+            resources.MergedDictionaries.Add(LoadResource("Themes/Controls.xaml"));
+            resources.MergedDictionaries.Add(LoadResource("Theme.xaml"));
+            Application.Current!.Resources = resources;
+            var lines = Enumerable.Range(0, 101).Select(index => new LogStreamingLineUiState
+            {
+                Sequence = index, Timestamp = DateTimeOffset.UnixEpoch.AddSeconds(index),
+                SenderId = "host", SenderName = "Host", FileName = "consoleLog.txt", Text = "Line " + index
+            }).ToArray();
+            var model = new LogStreamingViewModel(new FakeLogStreamingController(Snapshot(lines: lines[..100])));
+            model.Refresh();
+            model.AutoScroll = true;
+            var view = new LogStreamingView { DataContext = model };
+            var window = new Window { Content = view, Width = 960, Height = 700, Left = -10000, Top = -10000,
+                ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.ToolWindow };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                var list = Assert.IsType<ListBox>(view.FindName("LiveLogList"));
+                var inner = Descendants<ScrollViewer>(list).First();
+                var outer = Descendants<ScrollViewer>(view).First();
+                Assert.NotSame(inner, outer);
+                outer.ScrollToTop();
+                window.UpdateLayout();
+                model.Adopt(Snapshot(lines: lines));
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                window.UpdateLayout();
+                Assert.Equal(0, outer.VerticalOffset);
+                Assert.True(inner.VerticalOffset > 0);
+                Assert.InRange(inner.ScrollableHeight - inner.VerticalOffset, 0, 1);
+            }
+            finally { window.Close(); }
+        });
+        Assert.Null(failure);
+    }
+
     [Fact]
     public async Task Automatic_trace_toggle_preserves_manual_trace_and_sharing()
     {
@@ -462,6 +507,100 @@ public class LogStreamingViewModelTests
             }
         });
 
+        Assert.Null(failure);
+    }
+
+    [Fact]
+    public void Appended_log_lines_preserve_existing_rows_and_bound_collection_notifications()
+    {
+        var lines = Enumerable.Range(0, LogStreamingViewModel.MaximumViewerRows)
+            .Select(index => new LogStreamingLineUiState
+            {
+                Sequence = index, Timestamp = DateTimeOffset.UnixEpoch.AddSeconds(index),
+                SenderId = "host", SenderName = "Host", FileName = "BepInEx/LogOutput.log",
+                Text = $"[Error : Rain Meadow] Missing entity {index} in SU_A07"
+            }).ToArray();
+        var view = new LogStreamingViewModel(new FakeLogStreamingController(Snapshot(lines: lines)));
+        view.Refresh();
+        var retained = view.VisibleLogLines[1];
+        int notifications = 0;
+        view.VisibleLogLines.CollectionChanged += (_, _) => notifications++;
+
+        view.Adopt(Snapshot(lines: [.. lines, lines[^1] with { Sequence = 2000, Text = "A distinct new failure" }]));
+
+        Assert.Same(retained, view.VisibleLogLines[0]);
+        Assert.Equal("A distinct new failure", view.VisibleLogLines[^1].Text);
+        Assert.InRange(notifications, 1, 2);
+    }
+
+    [Fact]
+    public void Log_storm_refresh_uses_one_collection_reset_and_preserves_every_visible_line()
+    {
+        var lines = Enumerable.Range(0, 2100).Select(index => new LogStreamingLineUiState
+        {
+            Sequence = index, Timestamp = DateTimeOffset.UnixEpoch.AddMilliseconds(index),
+            SenderId = "host", SenderName = "Host", FileName = "BepInEx/LogOutput.log",
+            Text = $"[Error : Rain Meadow] Entity {index} has no prior state"
+        }).ToArray();
+        var view = new LogStreamingViewModel(new FakeLogStreamingController(Snapshot(lines: lines[..2000])));
+        view.Refresh();
+        var retained = view.VisibleLogLines[100];
+        int notifications = 0;
+        view.VisibleLogLines.CollectionChanged += (_, _) => notifications++;
+
+        view.Adopt(Snapshot(lines: lines));
+
+        Assert.Equal(1, notifications);
+        Assert.Same(retained, view.VisibleLogLines[0]);
+        Assert.Equal(lines[100..].Select(line => line.Text), view.VisibleLogLines.Select(line => line.Text));
+        view.SearchText = "Entity 2099 ";
+        Assert.Equal(lines[^1].Text, Assert.Single(view.VisibleLogLines).Text);
+        Assert.Equal(2, notifications);
+    }
+
+    [Fact]
+    public void Attached_log_viewer_handles_repeated_error_bursts_without_per_row_refresh_notifications()
+    {
+        var failure = WpfTestHost.Run(() =>
+        {
+            var resources = new ResourceDictionary();
+            resources.MergedDictionaries.Add(LoadResource("Themes/Palette.Light.xaml"));
+            resources.MergedDictionaries.Add(LoadResource("Themes/Controls.xaml"));
+            resources.MergedDictionaries.Add(LoadResource("Theme.xaml"));
+            Application.Current!.Resources = resources;
+            var lines = Enumerable.Range(0, 4000).Select(index => new LogStreamingLineUiState
+            {
+                Sequence = index, Timestamp = DateTimeOffset.UnixEpoch.AddMilliseconds(index),
+                SenderId = "host", SenderName = "Host", FileName = "BepInEx/LogOutput.log",
+                Text = $"[Error : Rain Meadow] Entity {index} has no prior state, tick {index * 40}"
+            }).ToArray();
+            var model = new LogStreamingViewModel(new FakeLogStreamingController(Snapshot(lines: lines[..2000])));
+            model.Refresh();
+            var view = new LogStreamingView { DataContext = model };
+            var window = new Window
+            {
+                Content = view, Width = 960, Height = 900, Left = -10000, Top = -10000,
+                ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.ToolWindow
+            };
+            try
+            {
+                window.Show();
+                window.UpdateLayout();
+                int notifications = 0;
+                model.VisibleLogLines.CollectionChanged += (_, _) => notifications++;
+                var timer = Stopwatch.StartNew();
+                for (int burst = 1; burst <= 20; burst++)
+                {
+                    model.Adopt(Snapshot(lines: lines[..(2000 + burst * 100)]));
+                    window.UpdateLayout();
+                }
+                Assert.Equal(20, notifications);
+                Assert.Equal(lines[2000..].Select(line => line.Text), model.VisibleLogLines.Select(line => line.Text));
+                Assert.True(timer.Elapsed < TimeSpan.FromSeconds(5), $"Twenty attached log updates took {timer.Elapsed}.");
+                Console.WriteLine($"Twenty attached log updates: {timer.Elapsed.TotalMilliseconds:F1} ms, {notifications} notifications.");
+            }
+            finally { window.Close(); }
+        });
         Assert.Null(failure);
     }
 
