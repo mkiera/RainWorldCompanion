@@ -39,6 +39,7 @@ public sealed record LogStreamingCoordinatorOptions
     public LogStreamSenderOptions? SenderOptions { get; init; }
     public LogStreamCaptureOptions? CaptureOptions { get; init; }
     public long MaximumBytesPerSecond { get; init; } = 64 * 1024;
+    public long MaximumOutgoingBytesPerSecondPerPeer { get; init; } = 24 * 1024;
     public long MaximumIncomingBytesPerSecondPerPeer { get; init; } = 32 * 1024;
     public TimeSpan ReconnectGrace { get; init; } = TimeSpan.FromMinutes(2);
 }
@@ -55,12 +56,14 @@ public sealed class LogStreamingCoordinator
     private const int MaximumConcurrentDeepTraceReceivers = 8;
     private const long MaximumDeepTraceSpoolBytes = 8L * 1024 * 1024;
     private static readonly TimeSpan DeepTraceInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan SourcePollInterval = TimeSpan.FromMilliseconds(250);
     private const int MaximumControlPackets = 256;
     private const int MaximumRevokedIncomingAuthorizations = 1024;
     private const int MaximumIncomingOpensPerMinute = 8;
-    private const int MinimumIncomingPacketCost = 512;
+    private const int MinimumPacketCost = 512;
     private const double MaximumIncomingPacketsPerSecond = 32;
     private const double MaximumIncomingPacketsPerSecondPerPeer = 12;
+    private const double MaximumOutgoingPacketsPerSecondPerPeer = 10;
     private const int MaximumPacketsPerExchange = ProtocolInfo.MaximumLogPacketsPerBridgeExchange;
     private const long MaximumUnacknowledgedBytes = 64 * 1024;
     private static readonly TimeSpan IncomingOpenWindow = TimeSpan.FromMinutes(1);
@@ -78,7 +81,8 @@ public sealed class LogStreamingCoordinator
     private readonly Queue<LogStreamingChartSample> _samples = new();
     private readonly Queue<LogStreamTelemetryRecord> _pendingTelemetry = new();
     private readonly Dictionary<string, ViewerStream> _localViewers = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, IncomingBudget> _incomingBudgets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PacketBudget> _incomingBudgets = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, PacketBudget> _outgoingBudgets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, IncomingOpenRate> _incomingOpenRates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, LogStreamSenderSession> _deepSenders = new(StringComparer.Ordinal);
     private readonly HashSet<IncomingAuthorization> _revokedIncoming = [];
@@ -108,6 +112,7 @@ public sealed class LogStreamingCoordinator
     private int _roundRobin;
     private int _pendingTelemetryBytes;
     private DateTimeOffset _lastDeepTraceSample;
+    private DateTimeOffset _nextSourcePoll;
 
     public LogStreamingCoordinator(LogStreamingCoordinatorOptions options)
     {
@@ -117,6 +122,8 @@ public sealed class LogStreamingCoordinator
         if (options.MaximumBytesPerSecond <= 0) throw new ArgumentOutOfRangeException(nameof(options.MaximumBytesPerSecond));
         if (options.MaximumIncomingBytesPerSecondPerPeer <= 0)
             throw new ArgumentOutOfRangeException(nameof(options.MaximumIncomingBytesPerSecondPerPeer));
+        if (options.MaximumOutgoingBytesPerSecondPerPeer <= 0)
+            throw new ArgumentOutOfRangeException(nameof(options.MaximumOutgoingBytesPerSecondPerPeer));
         if (options.ReconnectGrace <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(options.ReconnectGrace));
         _destinationRoot = Path.GetFullPath(options.DestinationRoot);
         _telemetry = new(options.AppVersion);
@@ -483,6 +490,7 @@ public sealed class LogStreamingCoordinator
         _captureId = "";
         _captureToken = "";
         _incomingBudgets.Clear();
+        _outgoingBudgets.Clear();
         _incomingOpenRates.Clear();
         _revokedIncoming.Clear();
         _revokedIncomingOrder.Clear();
@@ -494,6 +502,7 @@ public sealed class LogStreamingCoordinator
         _sendBudget = _incomingBudget = _options.MaximumBytesPerSecond;
         _incomingPacketBudget = MaximumIncomingPacketsPerSecond;
         _lastBudget = Now;
+        _nextSourcePoll = DateTimeOffset.MinValue;
         while (_controlPackets.Count > 0) _controlPackets.Dequeue();
         _message = message;
     }
@@ -725,14 +734,16 @@ public sealed class LogStreamingCoordinator
         {
             _remembered.Remove(peerId);
             _incomingBudgets.Remove(peerId);
+            _outgoingBudgets.Remove(peerId);
             _incomingOpenRates.Remove(peerId);
         }
     }
 
     private void PollSender()
     {
-        if (_sender is null || (_outgoing.Count == 0 && _capture is null)) return;
+        if (_sender is null || (_outgoing.Count == 0 && _capture is null) || Now < _nextSourcePoll) return;
         _sender.Poll();
+        _nextSourcePoll = Now + SourcePollInterval;
     }
 
     private void RememberPeers(DateTimeOffset now)
@@ -767,7 +778,7 @@ public sealed class LogStreamingCoordinator
         {
             if (!current.TryGetValue(packet.PeerSteamId, out var peer) || !Compatible(peer)) continue;
             if (packet.Payload is null || packet.Payload.Length > ProtocolInfo.MaximumLogPacketLength
-                || !TryConsumeIncoming(peer.SteamId, Math.Max(MinimumIncomingPacketCost, PacketCost(packet))))
+                || !TryConsumeIncoming(peer.SteamId, Math.Max(MinimumPacketCost, PacketCost(packet))))
                 continue;
             LogStreamNetworkMessage message;
             try { message = LiveJson.Deserialize<LogStreamNetworkMessage>(Encoding.UTF8.GetString(packet.Payload)); }
@@ -957,10 +968,9 @@ public sealed class LogStreamingCoordinator
         int controls = _controlPackets.Count;
         while (controls-- > 0 && result.Count < MaximumPacketsPerExchange && _controlPackets.TryDequeue(out var packet))
         {
-            if (activePeers.Contains(packet.PeerSteamId) && PacketCost(packet) <= _sendBudget)
+            if (activePeers.Contains(packet.PeerSteamId) && TryConsumeOutgoing(packet))
             {
                 result.Add(packet);
-                _sendBudget -= PacketCost(packet);
             }
             else _controlPackets.Enqueue(packet);
         }
@@ -1010,12 +1020,11 @@ public sealed class LogStreamingCoordinator
                 network.Sequence = chunk.Sequence;
                 network.Data = chunk.CopyData();
                 network.Hash = chunk.Sha256;
-                if (TryPacket(transfer.SteamId, network, out var relay) && PacketCost(relay) <= _sendBudget)
+                if (TryPacket(transfer.SteamId, network, out var relay) && TryConsumeOutgoing(relay))
                 {
                     result.Add(relay);
                     if (transfer.InFlight.TryGetValue(chunkKey, out var sent)) sent.LastSentAt = now;
                     else transfer.InFlight.Add(chunkKey, new(chunk.Length, now));
-                    _sendBudget -= PacketCost(relay);
                     sentInRound = true;
                 }
             }
@@ -1404,6 +1413,28 @@ public sealed class LogStreamingCoordinator
             budget.AvailablePackets = Math.Min(MaximumIncomingPacketsPerSecondPerPeer,
                 budget.AvailablePackets + seconds * MaximumIncomingPacketsPerSecondPerPeer);
         }
+        foreach (var budget in _outgoingBudgets.Values)
+        {
+            budget.Available = Math.Min(_options.MaximumOutgoingBytesPerSecondPerPeer,
+                budget.Available + seconds * _options.MaximumOutgoingBytesPerSecondPerPeer);
+            budget.AvailablePackets = Math.Min(MaximumOutgoingPacketsPerSecondPerPeer,
+                budget.AvailablePackets + seconds * MaximumOutgoingPacketsPerSecondPerPeer);
+        }
+    }
+
+    private bool TryConsumeOutgoing(LogRelayPacket packet)
+    {
+        if (!_outgoingBudgets.TryGetValue(packet.PeerSteamId, out var budget))
+        {
+            budget = new(_options.MaximumOutgoingBytesPerSecondPerPeer, MaximumOutgoingPacketsPerSecondPerPeer);
+            _outgoingBudgets.Add(packet.PeerSteamId, budget);
+        }
+        int cost = Math.Max(MinimumPacketCost, PacketCost(packet));
+        if (_sendBudget < cost || budget.Available < cost || budget.AvailablePackets < 1) return false;
+        _sendBudget -= cost;
+        budget.Available -= cost;
+        budget.AvailablePackets--;
+        return true;
     }
 
     private bool TryConsumeIncoming(string peerId, int byteCount)
@@ -1483,7 +1514,7 @@ public sealed class LogStreamingCoordinator
         public static IncomingAuthorization From(string steamId, LogStreamNetworkMessage message)
             => new(steamId, message.TransferId, message.ConsentToken);
     }
-    private sealed class IncomingBudget(double available, double availablePackets)
+    private sealed class PacketBudget(double available, double availablePackets)
     {
         public double Available { get; set; } = available;
         public double AvailablePackets { get; set; } = availablePackets;
