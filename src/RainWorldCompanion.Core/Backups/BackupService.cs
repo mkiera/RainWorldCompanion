@@ -16,6 +16,8 @@ namespace RainWorldCompanion.Core.Backups;
 /// </summary>
 public sealed class BackupService
 {
+    public const int RetainedAutomaticBackups = 20;
+
     private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
 
     private const string LockFileName = ".operation-lock";
@@ -303,12 +305,126 @@ public sealed class BackupService
         ReleaseClaim(directory);
         WriteManifest(directory, manifest);
 
+        BackupSnapshot created = BackupSnapshot.Load(directory);
+        if (kind == BackupKind.PreRestoreSafety)
+        {
+            PruneAutomaticBackups(ListBackupsUnpruned());
+        }
+
+        return created;
+    }
+
+    private void PruneAutomaticBackups(IReadOnlyList<BackupSnapshot> snapshots)
+    {
+        IReadOnlyList<BackupSnapshot> automatic = snapshots
+            .Where(snapshot => snapshot.Manifest?.Kind == BackupKind.PreRestoreSafety)
+            .ToList();
+
+        foreach (BackupSnapshot snapshot in automatic.Skip(RetainedAutomaticBackups))
+        {
+            try
+            {
+                DeleteBackup(snapshot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A durable safety backup still succeeds when an older locked folder cannot be removed.
+            }
+        }
+    }
+
+    public BackupSnapshot PreserveSnapshot(
+        BackupSnapshot source,
+        string? label,
+        string? note,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        if (source.Manifest is not { } original)
+        {
+            throw new InvalidOperationException("The snapshot is incomplete and cannot be kept as a backup.");
+        }
+
+        var sourceProblems = new List<string>();
+        foreach (ManifestFileEntry file in original.Files)
+        {
+            if (!TryResolveInside(source.DirectoryPath, file.RelativePath, out string sourcePath))
+            {
+                sourceProblems.Add("unsafe path " + file.RelativePath);
+            }
+            else if (!Hashing.FileMatchesHash(sourcePath, file.Sha256))
+            {
+                sourceProblems.Add(file.RelativePath + " does not match its manifest");
+            }
+        }
+
+        if (sourceProblems.Count > 0)
+        {
+            throw new InvalidDataException("The snapshot could not be verified: " + string.Join("; ", sourceProblems));
+        }
+
+        ct.ThrowIfCancellationRequested();
+        using var lease = AcquireOperationLock();
+        string directory = CreateSnapshotDirectory();
+        var manifest = new BackupManifest
+        {
+            SchemaVersion = BackupManifest.CurrentSchemaVersion,
+            ScopeVersion = original.EffectiveScopeVersion,
+            AppVersion = _appVersion,
+            CreatedUtc = DateTime.UtcNow,
+            Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
+            Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
+            Kind = BackupKind.Manual,
+            Mods = original.Mods,
+            SkippedLinks = original.SkippedLinks.ToList(),
+        };
+
+        foreach (ManifestFileEntry file in original.Files)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!TryResolveInside(source.DirectoryPath, file.RelativePath, out string sourcePath))
+            {
+                throw new InvalidDataException("The snapshot contains an unsafe path: " + file.RelativePath);
+            }
+
+            string destination = Path.Combine(directory, file.RelativePath);
+            string? parent = Path.GetDirectoryName(destination);
+            if (!string.IsNullOrEmpty(parent))
+            {
+                Directory.CreateDirectory(parent);
+            }
+
+            var info = new FileInfo(sourcePath);
+            ManifestFileEntry copied = CopyIntoSnapshot(
+                new ScopeEntry(file.RelativePath, sourcePath, info.Length, info.LastWriteTimeUtc),
+                destination,
+                progress);
+            if (!string.Equals(copied.Sha256, file.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(file.RelativePath + " changed after the snapshot was verified.");
+            }
+
+            manifest.Files.Add(copied);
+        }
+
+        manifest.Slots.AddRange(ReadSlots(directory));
+        manifest.MetadataVersion = SaveMetadataExtractor.Version;
+        ReleaseClaim(directory);
+        WriteManifest(directory, manifest);
         return BackupSnapshot.Load(directory);
     }
 
     /// <summary>Every snapshot folder under the backup root, newest first. A folder with a missing
     /// or broken manifest is still listed.</summary>
     public IReadOnlyList<BackupSnapshot> ListBackups()
+    {
+        IReadOnlyList<BackupSnapshot> snapshots = ListBackupsUnpruned();
+        PruneAutomaticBackups(snapshots);
+        return snapshots.Where(snapshot => Directory.Exists(snapshot.DirectoryPath)).ToList();
+    }
+
+    private IReadOnlyList<BackupSnapshot> ListBackupsUnpruned()
     {
         var snapshots = new List<BackupSnapshot>();
 

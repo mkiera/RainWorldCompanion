@@ -63,4 +63,51 @@ public class MainPageTests
         }
         finally { view.Shutdown(); }
     }
+
+    [Fact]
+    public void Recent_saves_are_a_third_list_while_library_remains_the_default()
+    {
+        var view = new MainViewModel(new SettingsStore(), new GameProcessDetector(), new SlugcatIconProvider(), "1.4.0");
+        try
+        {
+            Assert.True(view.IsLibraryTabSelected);
+            Assert.False(view.IsRecentTabSelected);
+            Assert.False(view.IsBackupsTabSelected);
+
+            view.IsRecentTabSelected = true;
+
+            Assert.False(view.IsLibraryTabSelected);
+            Assert.True(view.IsRecentTabSelected);
+            Assert.False(view.IsBackupsTabSelected);
+
+            view.IsBackupsTabSelected = true;
+
+            Assert.False(view.IsLibraryTabSelected);
+            Assert.False(view.IsRecentTabSelected);
+            Assert.True(view.IsBackupsTabSelected);
+
+            string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+            Assert.Contains("ItemsSource=\"{Binding LiveHistoryEntries}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding RestoreRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding KeepRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Content=\"Restore campaign\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Content=\"Keep in library\"", markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Content=\"Restore all\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Automatic safety backups: newest 20 kept.", markup, StringComparison.Ordinal);
+        }
+        finally { view.Shutdown(); }
+    }
+
+    [Fact]
+    public void Slots_and_campaigns_have_direct_export_actions()
+    {
+        string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+
+        Assert.Contains("Content=\"Export Slot\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Command=\"{Binding ExportSlotCommand}\"", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Store Slot\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Save slot to library\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Export campaign\"", markup, StringComparison.Ordinal);
+        Assert.Contains("DataContext.ExportCampaignCommand", markup, StringComparison.Ordinal);
+    }
 }

@@ -52,6 +52,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     private AppSettings _settings;
     private BackupService? _backupService;
+    private LiveSaveHistory? _liveHistory;
 
     /// <summary>Built beside the backup service, because it borrows that service's safety snapshot.</summary>
     private SlotCopyService? _copyService;
@@ -257,13 +258,17 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// <summary>The named saves, newest first.</summary>
     public ObservableCollection<LibraryEntryViewModel> LibraryEntries { get; } = new();
 
+    public ObservableCollection<LiveHistoryItemViewModel> LiveHistoryEntries { get; } = new();
+
     // Without these, Restore stays enabled while the game is open and the user is walked all the
     // way through the destructive confirmation before Core refuses the job.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(NewBackupCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RestoreRecentSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
-    [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
@@ -278,6 +283,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private string gameStatusText = "Checking whether Rain World is running";
 
     [ObservableProperty]
+    private string liveHistoryStatusText = "";
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RefreshCommand))]
     [NotifyCanExecuteChangedFor(nameof(NewBackupCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
@@ -285,7 +293,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
-    [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(UndoUpdateCommand))]
@@ -300,8 +308,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(DeleteSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(StoreWholeSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(StoreCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(SendCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(ApplyDevourmentContentsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RestoreRecentSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(KeepRecentSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportSettingsCommand))]
@@ -330,18 +341,65 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(TakeSettingsCommand))]
     private LibraryEntryViewModel? selectedLibraryEntry;
 
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RestoreRecentSaveCommand))]
+    [NotifyCanExecuteChangedFor(nameof(KeepRecentSaveCommand))]
+    private LiveHistoryItemViewModel? selectedLiveHistory;
+
     /// <summary>
     /// Only a view state: switching tabs moves no selection, so a backup stays selected while the
     /// library is on screen.
     /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsBackupsTabSelected))]
-    private bool isLibraryTabSelected = true;
+    private SaveListTab _selectedListTab = SaveListTab.Library;
+
+    public bool IsLibraryTabSelected
+    {
+        get => _selectedListTab == SaveListTab.Library;
+        set
+        {
+            if (value)
+            {
+                SelectListTab(SaveListTab.Library);
+            }
+        }
+    }
+
+    public bool IsRecentTabSelected
+    {
+        get => _selectedListTab == SaveListTab.Recent;
+        set
+        {
+            if (value)
+            {
+                SelectListTab(SaveListTab.Recent);
+            }
+        }
+    }
 
     public bool IsBackupsTabSelected
     {
-        get => !IsLibraryTabSelected;
-        set => IsLibraryTabSelected = !value;
+        get => _selectedListTab == SaveListTab.Backups;
+        set
+        {
+            if (value)
+            {
+                SelectListTab(SaveListTab.Backups);
+            }
+        }
+    }
+
+    private void SelectListTab(SaveListTab tab)
+    {
+        if (_selectedListTab == tab)
+        {
+            return;
+        }
+
+        _selectedListTab = tab;
+        OnPropertyChanged(nameof(IsLibraryTabSelected));
+        OnPropertyChanged(nameof(IsRecentTabSelected));
+        OnPropertyChanged(nameof(IsBackupsTabSelected));
     }
 
     /// <summary>
@@ -396,7 +454,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     public bool HasNoLibraryEntries => LibraryEntries.Count == 0;
 
+    public bool HasLiveHistoryEntries => LiveHistoryEntries.Count > 0;
+
+    public bool HasNoLiveHistoryEntries => LiveHistoryEntries.Count == 0;
+
     public string LibraryCountText => LibraryEntries.Count == 1 ? "1 save" : LibraryEntries.Count + " saves";
+
+    public string LiveHistoryCountText => LiveHistoryEntries.Count == 1
+        ? "1 recent"
+        : LiveHistoryEntries.Count + " recent";
 
     public bool HasDetail => Detail is not null;
 
@@ -590,6 +656,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             {
                 SelectedBackup = null;
                 SelectedLibraryEntry = null;
+                SelectedLiveHistory = null;
             }
         }
         finally
@@ -614,6 +681,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             {
                 IsLiveSelected = false;
                 SelectedLibraryEntry = null;
+                SelectedLiveHistory = null;
             }
         }
         finally
@@ -638,6 +706,32 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             {
                 IsLiveSelected = false;
                 SelectedBackup = null;
+                SelectedLiveHistory = null;
+            }
+        }
+        finally
+        {
+            _movingSelection = false;
+        }
+
+        RebuildDetail();
+    }
+
+    partial void OnSelectedLiveHistoryChanged(LiveHistoryItemViewModel? value)
+    {
+        if (_movingSelection)
+        {
+            return;
+        }
+
+        _movingSelection = true;
+        try
+        {
+            if (value is not null)
+            {
+                IsLiveSelected = false;
+                SelectedBackup = null;
+                SelectedLibraryEntry = null;
             }
         }
         finally
@@ -728,6 +822,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         if (SelectedLibraryEntry is { } entry)
         {
             return SnapshotDetailViewModel.ForLibraryEntry(entry, _icons, _liveConfigs, _liveSlotData);
+        }
+
+        if (SelectedLiveHistory is { } recent)
+        {
+            return SnapshotDetailViewModel.ForLiveHistory(recent, _icons, _liveConfigs, _liveSlotData);
         }
 
         return SelectedBackup is { } item
@@ -1170,6 +1269,88 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         ShowLibrarySave(stored!.Id);
     }
 
+    [RelayCommand(CanExecute = nameof(CanExportCampaign))]
+    private async Task ExportCampaignAsync(CampaignViewModel? campaign)
+    {
+        SaveLibrary? library = _library;
+        if (library is null || campaign?.Source is not { CanBeTaken: true } source || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        string name = SuggestCampaignName(campaign);
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export " + campaign.DisplayName + " campaign",
+            Filter = "Rain World campaign (*.rwcampaign)|*.rwcampaign|All files (*.*)|*.*",
+            DefaultExt = ".rwcampaign",
+            AddExtension = true,
+            FileName = SafeFileName(name) + ".rwcampaign",
+        };
+
+        if (dialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        string destination = dialog.FileName;
+        string slugcat = campaign.SlugcatId;
+        ModListSnapshot? recorded = RecordedModsOfSelection();
+        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath
+                              ?? SelectedLiveHistory?.Snapshot.DirectoryPath;
+        Exception? failure = null;
+
+        BeginBusy("Exporting " + campaign.DisplayName, destination);
+        try
+        {
+            if (source.LiveSlot is { } slot)
+            {
+                await Task.Run(() => library.ExportCampaign(
+                    slot, slugcat, name, destination, ct: CancellationToken.None));
+            }
+            else
+            {
+                await Task.Run(() =>
+                {
+                    CampaignSlice slice = ReadCampaignFrom(source, slugcat)
+                        ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
+
+                    library.ExportCampaignFrom(
+                        slice,
+                        source.FileName,
+                        source.Realm,
+                        source.SlotNumber,
+                        name,
+                        destination,
+                        recorded,
+                        configsRoot);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report(campaign.DisplayName + " could not be exported.", failure);
+            return;
+        }
+
+        ShowMessage(
+            "Exported " + campaign.DisplayName + " to:\n" + destination,
+            "Export a campaign",
+            MessageBoxImage.Information);
+    }
+
+    private bool CanExportCampaign(CampaignViewModel? campaign) =>
+        !IsBusy && !IsGameRunning && _library is not null && campaign?.Source is { CanBeTaken: true };
+
     /// <summary>
     /// A move is two writes and the order matters: the campaign lands in the slot it is going to
     /// before it leaves the one it came from, so a refused second write leaves it in both.
@@ -1391,11 +1572,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         finally
         {
             EndBusy();
-        }
-
-        if (result?.LiveFolderModified == true)
-        {
-            await ReleaseSlotClaimAsync(plan.Target);
         }
 
         await ReloadAsync();
@@ -1629,7 +1805,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     /// the campaign card sits in, so it is the snapshot the campaign was read out of.
     /// </summary>
     private ModListSnapshot? RecordedModsOfSelection()
-        => SelectedBackup?.Snapshot.Manifest?.Mods ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
+        => SelectedBackup?.Snapshot.Manifest?.Mods
+           ?? SelectedLiveHistory?.Snapshot.Manifest?.Mods
+           ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
 
     /// <summary>
     /// The mod settings the thing the campaign came out of carries, whichever of the two it is. A
@@ -1640,6 +1818,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         if (SelectedBackup is { } backup)
         {
             return _backupService?.SettingsFor(backup.Snapshot);
+        }
+
+        if (SelectedLiveHistory is { } recent)
+        {
+            return _backupService?.SettingsFor(recent.Snapshot);
         }
 
         return SelectedLibraryEntry is { } entry ? _library?.SettingsFor(entry.Entry) : null;
@@ -1655,6 +1838,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         if (SelectedBackup is { } backup)
         {
             return _backupService?.SettingsToWrite(backup.Snapshot, chosen) ?? Array.Empty<ExtraFileWrite>();
+        }
+
+        if (SelectedLiveHistory is { } recent)
+        {
+            return _backupService?.SettingsToWrite(recent.Snapshot, chosen) ?? Array.Empty<ExtraFileWrite>();
         }
 
         return SelectedLibraryEntry is { } entry
@@ -1783,9 +1971,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         return where.Length > 0 ? where + " " + slot.FileName : slot.FileName;
     }
 
-    /// <summary>Nothing in the save folder is written, so there is no safety snapshot.</summary>
-    [RelayCommand(CanExecute = nameof(CanStoreSlot))]
-    private async Task StoreSlotAsync()
+    [RelayCommand(CanExecute = nameof(CanExportSlot))]
+    private async Task ExportSlotAsync()
     {
         var library = _library;
         var copies = _copyService;
@@ -1797,7 +1984,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         IReadOnlyList<SlotSide> sides;
         Exception? failure = null;
 
-        BeginBusy("Store a slot", "Reading the save folder");
+        BeginBusy("Export a slot", "Reading the save folder");
         try
         {
             sides = await Task.Run(() => ReadStorableSides(copies, _meadow.Present));
@@ -1820,11 +2007,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (sides.Count == 0)
         {
-            ShowMessage("There are no save slots to store.", "Store a slot", MessageBoxImage.Warning);
+            ShowMessage("There are no save slots to export.", "Export a slot", MessageBoxImage.Warning);
             return;
         }
 
-        var dialog = new StoreSlotDialog(sides, FirstSlotWithASave(sides));
+        var dialog = new ExportSlotDialog(sides, FirstSlotWithASave(sides));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -1832,15 +2019,28 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         var source = dialog.ChosenSource;
         var name = dialog.ChosenName;
-        var note = dialog.ChosenNote;
+        var fileDialog = new SaveFileDialog
+        {
+            Title = "Export " + source.FileName,
+            Filter = "Rain World save bundle (*.rwsave)|*.rwsave|All files (*.*)|*.*",
+            DefaultExt = ".rwsave",
+            AddExtension = true,
+            FileName = SafeFileName(name) + ".rwsave",
+        };
+
+        if (fileDialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        string destination = fileDialog.FileName;
         var progress = new Progress<string>(message => BusyMessage = message);
 
-        LibraryEntry? stored = null;
-
-        BeginBusy("Storing " + source.FileName, name);
+        BeginBusy("Exporting " + source.FileName, destination);
         try
         {
-            stored = await Task.Run(() => library.StoreSlot(source, name, note, progress, CancellationToken.None));
+            await Task.Run(() => library.ExportSlot(
+                source, name, destination, progress, CancellationToken.None));
         }
         catch (Exception ex)
         {
@@ -1851,18 +2051,19 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             EndBusy();
         }
 
-        await ReloadAsync();
-
         if (failure is not null)
         {
-            Report("The slot could not be stored.", failure);
+            Report("The slot could not be exported.", failure);
             return;
         }
 
-        ShowLibrarySave(stored!.Id);
+        ShowMessage(
+            "Exported " + source.FileName + " to:\n" + destination,
+            "Export a slot",
+            MessageBoxImage.Information);
     }
 
-    private bool CanStoreSlot() => !IsBusy && !IsGameRunning && _library is not null && _copyService is not null;
+    private bool CanExportSlot() => !IsBusy && !IsGameRunning && _library is not null && _copyService is not null;
 
     /// <summary>The slot it replaces is in a safety snapshot first, as with a slot copy.</summary>
     [RelayCommand(CanExecute = nameof(CanLoadSave))]
@@ -2946,9 +3147,109 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [RelayCommand(CanExecute = nameof(CanRestore))]
     private async Task RestoreAsync()
     {
-        var service = _backupService;
+        if (SelectedLiveHistory is not null)
+        {
+            await RestoreRecentSaveAsync();
+            return;
+        }
+
         var item = SelectedBackup;
-        if (service is null || item is null)
+        if (item is null)
+        {
+            return;
+        }
+
+        await RestoreSnapshotAsync(item, item.DisplayName);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRestoreRecentSave))]
+    private async Task RestoreRecentSaveAsync()
+    {
+        var history = _liveHistory;
+        var backups = _backupService;
+        var item = SelectedLiveHistory;
+        if (history is null || backups is null || item is null)
+        {
+            return;
+        }
+
+        CampaignMovePlan? plan = null;
+        Exception? failure = null;
+        BeginBusy("Restore campaign", "Checking the recent campaign");
+        try
+        {
+            plan = await Task.Run(() => history.PlanRestore(item.Entry, backups));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The recent campaign could not be checked.", failure);
+            return;
+        }
+
+        if (!plan!.CanWrite)
+        {
+            ShowMessage(FormatList(plan.Problems), "Restore campaign", MessageBoxImage.Warning);
+            return;
+        }
+
+        LiveHistoryCampaign campaign = AssertSingleRecentCampaign(item.Entry);
+        string campaignName = SlugcatCatalog.ForId(campaign.SlugcatId).DisplayName;
+        bool confirmed = AskYesNo(
+            $"Restore {campaignName} from {item.CapturedText} into {plan.TargetFileName}?\n\n"
+            + $"Only {campaignName} in {plan.TargetFileName} will be replaced. Every other campaign and slot is left alone.\n\n"
+            + "The whole save folder is copied to Backups first, so this can be undone.",
+            "Restore campaign");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SaveWriteResult? result = null;
+        BeginBusy("Restoring " + campaignName, "Taking a safety backup");
+        try
+        {
+            ModListSnapshot? modsBefore = ModsBeforeThis();
+            result = await Task.Run(() => history.Restore(
+                item.Entry,
+                backups,
+                progress,
+                CancellationToken.None,
+                modsBefore));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The recent campaign could not be restored to " + plan.TargetFileName + ".", failure);
+            return;
+        }
+
+        ReportSaveResult(result!, plan.TargetFileName);
+    }
+
+    private async Task RestoreSnapshotAsync(BackupItemViewModel item, string displayName)
+    {
+        var service = _backupService;
+        if (service is null)
         {
             return;
         }
@@ -2988,8 +3289,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         RestoreConfirmDialog? dialog = null;
         dialog = new RestoreConfirmDialog(
             plan!,
-            item.DisplayName,
-            () => FixMods(item.Snapshot.Manifest?.Mods, item.DisplayName, dialog));
+            displayName,
+            () => FixMods(item.Snapshot.Manifest?.Mods, displayName, dialog));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -3027,11 +3328,67 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        ReportRestoreResult(item, result!);
+        ReportRestoreResult(displayName, result!);
     }
 
     private bool CanRestore() =>
-        !IsBusy && !IsGameRunning && _backupService is not null && SelectedBackup is { CanRestore: true };
+        !IsBusy && !IsGameRunning && _backupService is not null
+        && (SelectedBackup is { CanRestore: true }
+            || SelectedLiveHistory is { Backup.CanRestore: true, Entry.Campaigns.Count: 1 });
+
+    private bool CanRestoreRecentSave() =>
+        !IsBusy
+        && !IsGameRunning
+        && _liveHistory is not null
+        && _backupService is not null
+        && SelectedLiveHistory is { Backup.CanRestore: true, Entry.Campaigns.Count: 1 };
+
+    [RelayCommand(CanExecute = nameof(CanKeepRecentSave))]
+    private async Task KeepRecentSaveAsync()
+    {
+        var history = _liveHistory;
+        var library = _library;
+        var item = SelectedLiveHistory;
+        if (history is null || library is null || item is null)
+        {
+            return;
+        }
+
+        LibraryEntry? created = null;
+        Exception? failure = null;
+
+        BeginBusy("Keeping recent campaign", "Copying it into your library");
+        try
+        {
+            created = await Task.Run(() => history.KeepInLibrary(item.Entry, library));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The recent campaign could not be kept in the library.", failure);
+            return;
+        }
+
+        await ReloadAsync(preserveVerification: true);
+        ShowLibrarySave(created!.Id);
+    }
+
+    private bool CanKeepRecentSave() =>
+        !IsBusy && _liveHistory is not null && _library is not null
+        && SelectedLiveHistory is { Entry.Campaigns.Count: 1 };
+
+    private static LiveHistoryCampaign AssertSingleRecentCampaign(LiveHistoryEntry entry)
+        => entry.Campaigns.Count == 1
+            ? entry.Campaigns[0]
+            : throw new InvalidDataException("A recent save must contain exactly one campaign.");
 
     /// <summary>
     /// Re-hashes each row against its own manifest, one at a time off the UI thread, so a long list
@@ -3582,6 +3939,32 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         _copyService = _backupService?.SlotCopies;
 
+        _liveHistory = null;
+        LiveHistoryStatusText = "";
+        if (_backupService is not null)
+        {
+            var built = await Task.Run<(LiveSaveHistory? History, string? Error)>(() =>
+            {
+                try
+                {
+                    return (new LiveSaveHistory(
+                        savePath,
+                        LiveSaveHistory.DefaultRootFor(savePath),
+                        _appVersion), null);
+                }
+                catch (Exception ex)
+                {
+                    return (null, ex.Message);
+                }
+            });
+
+            _liveHistory = built.History;
+            if (built.Error is not null)
+            {
+                LiveHistoryStatusText = "Recent save history is unavailable: " + built.Error;
+            }
+        }
+
         _modSync = null;
         if (_backupService is { } forMods)
         {
@@ -3648,6 +4031,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         var library = _library;
         var keepId = SelectedBackup?.Id;
         var keepEntryId = SelectedLibraryEntry?.Id;
+        var keepHistoryId = SelectedLiveHistory?.Id;
         var keepLive = IsLiveSelected;
         var backupVerification = preserveVerification
             ? Backups
@@ -3671,8 +4055,10 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             LiveSlots.Clear();
             Backups.Clear();
             LibraryEntries.Clear();
+            LiveHistoryEntries.Clear();
             SelectedBackup = null;
             SelectedLibraryEntry = null;
+            SelectedLiveHistory = null;
             IsLiveSelected = false;
             Detail = null;
             RaiseListStates();
@@ -3696,8 +4082,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 var slots = service.ReadLiveSlots();
                 var snapshots = service.ListBackups();
                 var entries = library?.ListEntries() ?? Array.Empty<LibraryEntry>();
+                var recent = _liveHistory?.Read()
+                             ?? new LiveHistoryView(Array.Empty<LiveHistoryEntry>(), Array.Empty<string>());
                 var measured = MeasureLiveFiles(service.SaveRoot, slots);
-                _icons.Preload(CollectSlugcatIds(slots, snapshots, entries));
+                var snapshotsForIcons = snapshots.Concat(recent.Entries.Select(entry => entry.Snapshot)).ToArray();
+                _icons.Preload(CollectSlugcatIds(slots, snapshotsForIcons, entries));
 
                 // One small json per folder, read here so that selecting a row costs nothing.
                 var liveMeadow = ReadMeadow(service.SaveRoot);
@@ -3730,7 +4119,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                         .ToList(),
                 };
 
-                return (Slots: slots, Snapshots: snapshots, Entries: entries, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods, Configs: configs);
+                return (Slots: slots, Snapshots: snapshots, Entries: entries, Recent: recent, measured.Size, measured.Count, LiveMeadow: liveMeadow, BackupMeadow: backupMeadow, Meadow: meadow, Mods: mods, Configs: configs);
             });
 
             _meadow = data.Meadow;
@@ -3780,7 +4169,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 LibraryEntries.Add(item);
             }
 
-            RestoreSelection(keepId, keepEntryId, keepLive);
+            ReplaceLiveHistoryEntries(data.Recent);
+
+            RestoreSelection(keepId, keepEntryId, keepHistoryId, keepLive);
         }
         catch (Exception ex)
         {
@@ -3833,26 +4224,52 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
-    private void RestoreSelection(string? keepId, string? keepEntryId, bool keepLive)
+    private void ReplaceLiveHistoryEntries(LiveHistoryView view)
+    {
+        LiveHistoryEntries.Clear();
+        foreach (LiveHistoryEntry entry in view.Entries)
+        {
+            LiveHistoryEntries.Add(new LiveHistoryItemViewModel(entry, _icons));
+        }
+
+        if (view.Warnings.Count > 0)
+        {
+            LiveHistoryStatusText = view.Warnings.Count == 1
+                ? view.Warnings[0]
+                : view.Warnings.Count + " recent saves could not be read.";
+        }
+        else if (!IsGameRunning)
+        {
+            LiveHistoryStatusText = "";
+        }
+    }
+
+    private void RestoreSelection(string? keepId, string? keepEntryId, string? keepHistoryId, bool keepLive)
     {
         LibraryEntryViewModel? entry = null;
         BackupItemViewModel? backup = null;
+        LiveHistoryItemViewModel? recent = null;
 
         if (!keepLive)
         {
             entry = FindEntryById(keepEntryId);
             if (entry is null)
             {
-                backup = FindById(keepId);
+                recent = FindHistoryById(keepHistoryId);
+                if (recent is null)
+                {
+                    backup = FindById(keepId);
+                }
             }
         }
 
         _movingSelection = true;
         try
         {
-            IsLiveSelected = entry is null && backup is null;
+            IsLiveSelected = entry is null && recent is null && backup is null;
             SelectedBackup = backup;
             SelectedLibraryEntry = entry;
+            SelectedLiveHistory = recent;
         }
         finally
         {
@@ -3866,6 +4283,12 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         id is null
             ? null
             : LibraryEntries.FirstOrDefault(item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    private LiveHistoryItemViewModel? FindHistoryById(string? id) =>
+        id is null
+            ? null
+            : LiveHistoryEntries.FirstOrDefault(
+                item => string.Equals(item.Id, id, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A file that cannot be measured is left out rather than reported.</summary>
     private static (long Size, int Count) MeasureLiveFiles(string saveRoot, IReadOnlyList<SlotMetadata> slots)
@@ -3979,7 +4402,48 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         try
         {
             var detector = _gameDetector;
-            var running = await Task.Run(() => detector.IsGameRunning(out _), token).ConfigureAwait(false);
+            var poll = await Task.Run(() =>
+            {
+                bool running = detector.IsGameRunning(out _);
+                LiveHistoryView? recent = null;
+                string recentStatus = "";
+
+                if (running && _liveHistory is { } history)
+                {
+                    try
+                    {
+                        LiveHistoryObservation observation = history.Observe(token);
+                        if (observation.Captured is { } captured)
+                        {
+                            recent = history.Read();
+                            recentStatus = "Recent save captured "
+                                           + captured.CapturedUtc.ToLocalTime().ToString("HH:mm:ss");
+                        }
+                        else if (observation.Warnings.Count > 0)
+                        {
+                            recentStatus = observation.Warnings[0];
+                        }
+                        else
+                        {
+                            recentStatus = "Recent save history is watching for the next stable game save.";
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        recentStatus = "Recent save history could not check the save folder: " + ex.Message;
+                    }
+                }
+                else
+                {
+                    _liveHistory?.Reset();
+                }
+
+                return (Running: running, Recent: recent, RecentStatus: recentStatus);
+            }, token).ConfigureAwait(false);
 
             if (token.IsCancellationRequested)
             {
@@ -3987,17 +4451,19 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             }
 
             ApplyGameState(
-                running,
-                running
+                poll.Running,
+                poll.Running
                     ? "Rain World is running - close it before backing up or restoring"
-                    : "Rain World is closed");
+                    : "Rain World is closed",
+                poll.Recent,
+                poll.RecentStatus);
         }
         catch (OperationCanceledException)
         {
         }
         catch (Exception)
         {
-            ApplyGameState(false, "Could not check whether Rain World is running");
+            ApplyGameState(false, "Could not check whether Rain World is running", null, "");
         }
         finally
         {
@@ -4006,12 +4472,25 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     /// <summary>Called from a worker. Drops the result when no dispatcher is left to write to.</summary>
-    private void ApplyGameState(bool running, string status)
+    private void ApplyGameState(
+        bool running,
+        string status,
+        LiveHistoryView? recent,
+        string recentStatus)
     {
         void Apply()
         {
+            string? selectedHistoryId = SelectedLiveHistory?.Id;
             IsGameRunning = running;
             GameStatusText = status;
+            LiveHistoryStatusText = recentStatus;
+
+            if (recent is not null)
+            {
+                ReplaceLiveHistoryEntries(recent);
+                SelectedLiveHistory = FindHistoryById(selectedHistoryId);
+                RaiseListStates();
+            }
         }
 
         if (_shutdown.IsCancellationRequested)
@@ -4058,11 +4537,13 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         RefreshCommand.NotifyCanExecuteChanged();
         NewBackupCommand.NotifyCanExecuteChanged();
         RestoreCommand.NotifyCanExecuteChanged();
+        RestoreRecentSaveCommand.NotifyCanExecuteChanged();
+        KeepRecentSaveCommand.NotifyCanExecuteChanged();
         OpenFolderCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
         OpenSettingsCommand.NotifyCanExecuteChanged();
         CopySlotCommand.NotifyCanExecuteChanged();
-        StoreSlotCommand.NotifyCanExecuteChanged();
+        ExportSlotCommand.NotifyCanExecuteChanged();
         LoadSaveCommand.NotifyCanExecuteChanged();
         UpdateEntryCommand.NotifyCanExecuteChanged();
         UndoUpdateCommand.NotifyCanExecuteChanged();
@@ -4073,6 +4554,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginEditCommand.NotifyCanExecuteChanged();
         SaveEditsCommand.NotifyCanExecuteChanged();
         StoreCampaignCommand.NotifyCanExecuteChanged();
+        ExportCampaignCommand.NotifyCanExecuteChanged();
         SendCampaignCommand.NotifyCanExecuteChanged();
         ApplyDevourmentContentsCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
@@ -4091,6 +4573,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         OnPropertyChanged(nameof(HasLibraryEntries));
         OnPropertyChanged(nameof(HasNoLibraryEntries));
         OnPropertyChanged(nameof(LibraryCountText));
+        OnPropertyChanged(nameof(HasLiveHistoryEntries));
+        OnPropertyChanged(nameof(HasNoLiveHistoryEntries));
+        OnPropertyChanged(nameof(LiveHistoryCountText));
         OnPropertyChanged(nameof(LiveSummaryText));
         OnPropertyChanged(nameof(LiveOnlineText));
         OnPropertyChanged(nameof(LiveAccessibleName));
@@ -4099,7 +4584,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         LoadSaveCommand.NotifyCanExecuteChanged();
     }
 
-    private void ReportRestoreResult(BackupItemViewModel item, RestoreResult result)
+    private void ReportRestoreResult(string displayName, RestoreResult result)
     {
         var safetyName = result.SafetySnapshot?.Id ?? "none was recorded";
         var text = new StringBuilder();
@@ -4108,7 +4593,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (result.Success)
         {
-            text.Append("Restored from: ").Append(item.DisplayName).Append('\n');
+            text.Append("Restored from: ").Append(displayName).Append('\n');
             text.Append("Safety snapshot of your previous save: ").Append(safetyName).Append("\n\n");
             text.Append(SteamGuidance);
 
@@ -4252,5 +4737,12 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             ? MessageBox.Show(owner, message, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
             : MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
         return result == MessageBoxResult.Yes;
+    }
+
+    private enum SaveListTab
+    {
+        Library,
+        Recent,
+        Backups,
     }
 }

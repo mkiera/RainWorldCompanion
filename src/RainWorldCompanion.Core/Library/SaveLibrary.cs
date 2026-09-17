@@ -26,6 +26,8 @@ public sealed class SaveLibrary
     private readonly BackupService _backups;
     private readonly IGameProcessDetector _gameDetector;
     private readonly string _appVersion;
+    private readonly object _slotLinkRecoveryGate = new();
+    private bool _slotLinksRecovered;
 
     public SaveLibrary(BackupService backups, string libraryRoot, IGameProcessDetector gameDetector, string appVersion)
     {
@@ -68,6 +70,8 @@ public sealed class SaveLibrary
             {
                 entries.Add(RefreshStaleMetadata(LibraryEntry.Load(directory)));
             }
+
+            RecoverMissingSlotLinksOnce(entries);
         }
         catch (Exception)
         {
@@ -77,6 +81,113 @@ public sealed class SaveLibrary
         // By content time, so a save just updated with an hour of play moves to the top.
         entries.Sort(static (a, b) => b.ModifiedUtc.CompareTo(a.ModifiedUtc));
         return entries;
+    }
+
+    private void RecoverMissingSlotLinksOnce(List<LibraryEntry> entries)
+    {
+        lock (_slotLinkRecoveryGate)
+        {
+            if (_slotLinksRecovered)
+            {
+                return;
+            }
+
+            _slotLinksRecovered = true;
+            RecoverMissingSlotLinks(entries);
+        }
+    }
+
+    private void RecoverMissingSlotLinks(IReadOnlyList<LibraryEntry> entries)
+    {
+        var claimedSlots = entries
+            .Select(entry => entry.Manifest?.LastLoadedSlotRef)
+            .Where(slot => slot is not null)
+            .Cast<SaveSlotRef>()
+            .ToHashSet();
+        var linkedEntries = entries
+            .Where(entry => entry.Manifest?.LastLoadedSlotRef is not null)
+            .Select(entry => entry.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (SaveRealm realm in Enum.GetValues<SaveRealm>())
+        {
+            for (int number = SaveSlotRef.MinSlot; number <= SaveSlotRef.MaxSlot; number++)
+            {
+                var slot = new SaveSlotRef(realm, number);
+                if (claimedSlots.Contains(slot))
+                {
+                    continue;
+                }
+
+                string livePath = Path.Combine(SaveRoot, slot.FileName);
+                string liveHash;
+                try
+                {
+                    if (!File.Exists(livePath) || CanonicalPath.IsLink(livePath))
+                    {
+                        continue;
+                    }
+
+                    liveHash = Hashing.ComputeFileSha256(livePath);
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+
+                List<LibraryEntry> matches = entries
+                    .Where(entry => !linkedEntries.Contains(entry.Id)
+                                    && !entry.IsCampaign
+                                    && entry.Manifest is { Sha256.Length: > 0 } manifest
+                                    && manifest.SchemaVersion < LibraryManifest.CurrentSchemaVersion
+                                    && HashComparer.Equals(manifest.Sha256, liveHash)
+                                    && Hashing.FileMatchesHash(entry.ContentPath, manifest.Sha256))
+                    .ToList();
+                List<LibraryEntry> sourceMatches = matches
+                    .Where(entry => entry.Manifest?.SourceSlotRef == slot)
+                    .ToList();
+
+                LibraryEntry? match = sourceMatches.Count == 1 ? sourceMatches[0] : null;
+                if (match?.Manifest is not { } manifestToLink)
+                {
+                    continue;
+                }
+
+                if (TryRecoverSlotLink(match, manifestToLink, livePath, slot))
+                {
+                    claimedSlots.Add(slot);
+                    linkedEntries.Add(match.Id);
+                }
+            }
+        }
+    }
+
+    private static bool TryRecoverSlotLink(
+        LibraryEntry entry,
+        LibraryManifest manifest,
+        string slotPath,
+        SaveSlotRef slot)
+    {
+        try
+        {
+            var info = new FileInfo(slotPath);
+            manifest.LastLoadedRealm = slot.Realm;
+            manifest.LastLoadedSlot = slot.Slot;
+            manifest.LastLoadedUtc = DateTime.UtcNow;
+            manifest.LastLoadedSizeBytes = info.Length;
+            manifest.LastLoadedWriteUtc = info.LastWriteTimeUtc;
+            WriteManifest(entry.DirectoryPath, manifest);
+            return true;
+        }
+        catch (Exception)
+        {
+            manifest.LastLoadedRealm = null;
+            manifest.LastLoadedSlot = null;
+            manifest.LastLoadedUtc = null;
+            manifest.LastLoadedSizeBytes = null;
+            manifest.LastLoadedWriteUtc = null;
+            return false;
+        }
     }
 
     private LibraryEntry RefreshStaleMetadata(LibraryEntry entry)
@@ -1290,6 +1401,96 @@ public sealed class SaveLibrary
             entry.ContentPath,
             entry.ContentFileName,
             entry.ConfigsPath);
+    }
+
+    public void ExportSlot(
+        SaveSlotRef source,
+        string name,
+        string destinationPath,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreSlot(source, name, null, progress, ct));
+
+    public void ExportSlotFrom(
+        string sourcePath,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string destinationPath,
+        ModListSnapshot? mods = null,
+        string? configsRoot = null,
+        IProgress<string>? progress = null)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreSlotFrom(
+                sourcePath,
+                sourceFileName,
+                sourceRealm,
+                sourceSlot,
+                name,
+                null,
+                mods,
+                configsRoot,
+                progress));
+
+    public void ExportCampaign(
+        SaveSlotRef source,
+        string slugcatId,
+        string name,
+        string destinationPath,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreCampaign(source, slugcatId, name, null, progress, ct));
+
+    public void ExportCampaignFrom(
+        CampaignSlice slice,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string destinationPath,
+        ModListSnapshot? mods = null,
+        string? configsRoot = null)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreCampaignFrom(
+                slice,
+                sourceFileName,
+                sourceRealm,
+                sourceSlot,
+                name,
+                null,
+                mods,
+                configsRoot));
+
+    private void ExportTransient(string destinationPath, Func<SaveLibrary, LibraryEntry> stage)
+    {
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new ArgumentException("An export needs somewhere to write to.", nameof(destinationPath));
+        }
+
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "RainWorldCompanion",
+            "exports",
+            Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+
+        try
+        {
+            var staging = new SaveLibrary(_backups, root, _gameDetector, _appVersion);
+            LibraryEntry entry = stage(staging);
+            staging.ExportEntry(entry, destinationPath);
+        }
+        finally
+        {
+            TryDeleteDirectory(root);
+        }
     }
 
     /// <summary>An import never writes into the save folder: it lands in the library and is loaded

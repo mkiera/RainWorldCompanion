@@ -1,6 +1,7 @@
 ﻿// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves.Models;
@@ -39,6 +40,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         ISlugcatIconProvider icons,
         string sourceDirectory = "",
         string sourceLabel = "",
+        string sourceFileOverride = "",
         IReadOnlyList<SlotMetadata>? liveSlots = null)
     {
         Mods = modsSection;
@@ -74,6 +76,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
                 sourceLabel: sourceLabel,
+                sourceFileOverride: sourceFileOverride,
                 storable: true,
                 liveSlots: liveSlots);
         _onlineSlots = entry is not null
@@ -85,6 +88,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
                 sourceLabel: sourceLabel,
+                sourceFileOverride: sourceFileOverride,
                 storable: true,
                 liveSlots: liveSlots);
 
@@ -311,6 +315,38 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             // the folder the snapshot is in comes along too.
             sourceDirectory: item.Snapshot.DirectoryPath,
             sourceLabel: "backup " + item.Snapshot.Id,
+            liveSlots: liveSlots);
+    }
+
+    public static SnapshotDetailViewModel ForLiveHistory(
+        LiveHistoryItemViewModel item,
+        ISlugcatIconProvider icons,
+        ModConfigSet? live = null,
+        IReadOnlyList<SlotMetadata>? liveSlots = null)
+    {
+        IReadOnlyList<SlotMetadata> slots = item.Snapshot.Manifest?.Slots is { } recorded
+            ? recorded
+            : Array.Empty<SlotMetadata>();
+        return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForRecorded(item.Snapshot.Manifest?.Mods, fromABackup: true),
+            configsSection: ModConfigSectionViewModel.ForBackup(item.Snapshot.Manifest?.Files, live),
+            isLive: false,
+            title: item.LabelText,
+            subtitle: item.CapturedText + "    " + item.Id,
+            kindText: "Recent live save",
+            sizeText: item.SizeText,
+            fileCountText: FormatFileCount(item.Snapshot.Manifest?.Files.Count ?? 0, "save file"),
+            noteText: "Captured automatically after Rain World saved.",
+            localEmptyText: "This recent save recorded no local campaigns.",
+            onlineEmptyText: "This recent save recorded no Rain Meadow campaigns.",
+            backup: null,
+            entry: null,
+            allSlots: slots,
+            meadow: null,
+            icons: icons,
+            sourceDirectory: item.Snapshot.DirectoryPath,
+            sourceLabel: "recent live save " + item.Id,
+            sourceFileOverride: LibraryEntry.CampaignFileName,
             liveSlots: liveSlots);
     }
 

@@ -1,3 +1,4 @@
+using System.IO;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.ViewModels;
@@ -6,6 +7,18 @@ namespace RainWorldCompanion.App.Tests;
 
 public class DevourmentContentsTargetTests
 {
+    [Fact]
+    public void Applying_contents_keeps_the_library_slot_link()
+    {
+        string source = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "ViewModelSource", "MainViewModel.cs"));
+        int start = source.IndexOf("ApplyDevourmentContentsAsync", StringComparison.Ordinal);
+        int end = source.IndexOf("DeleteCampaignAsync", start, StringComparison.Ordinal);
+
+        Assert.True(start >= 0 && end > start);
+        Assert.DoesNotContain("ReleaseSlotClaimAsync", source[start..end], StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Every_live_campaign_is_offered_including_other_slugcats()
     {

@@ -1,3 +1,5 @@
+using System.Text.Json;
+using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 
@@ -83,6 +85,59 @@ public class LibrarySlotLinkTests
         world.Library.UpdateEntry(entry, Slot2);
 
         Assert.Equal(Slot2, world.Reload(entry).Manifest!.LastLoadedSlotRef);
+    }
+
+    [Fact]
+    public void Restart_recovers_a_unique_exact_slot_match()
+    {
+        using var world = new LibraryWorld();
+        var stored = world.Library.StoreSlot(Slot1, "a save", null);
+        MakeLegacy(stored);
+        var restarted = new SaveLibrary(
+            world.Backups,
+            world.LibraryRoot.Path,
+            world.Detector,
+            LibraryWorld.AppVersion);
+
+        var listed = Assert.Single(restarted.ListEntries());
+
+        Assert.Equal(Slot1, listed.Manifest!.LastLoadedSlotRef);
+        Assert.Equal(Slot1, LibraryEntry.Load(stored.DirectoryPath).Manifest!.LastLoadedSlotRef);
+    }
+
+    [Fact]
+    public void Restart_does_not_guess_between_duplicate_exact_matches()
+    {
+        using var world = new LibraryWorld();
+        MakeLegacy(world.Library.StoreSlot(Slot1, "first copy", null));
+        MakeLegacy(world.Library.StoreSlot(Slot1, "second copy", null));
+        var restarted = new SaveLibrary(
+            world.Backups,
+            world.LibraryRoot.Path,
+            world.Detector,
+            LibraryWorld.AppVersion);
+
+        var listed = restarted.ListEntries();
+
+        Assert.Equal(2, listed.Count);
+        Assert.All(listed, entry => Assert.Null(entry.Manifest!.LastLoadedSlotRef));
+    }
+
+    [Fact]
+    public void Restart_does_not_link_a_slot_that_has_changed_since_storage()
+    {
+        using var world = new LibraryWorld();
+        MakeLegacy(world.Library.StoreSlot(Slot1, "a save", null));
+        world.PlayASlot(Slot1, "CYCLENUM", "99");
+        var restarted = new SaveLibrary(
+            world.Backups,
+            world.LibraryRoot.Path,
+            world.Detector,
+            LibraryWorld.AppVersion);
+
+        var listed = Assert.Single(restarted.ListEntries());
+
+        Assert.Null(listed.Manifest!.LastLoadedSlotRef);
     }
 
     [Fact]
@@ -236,5 +291,13 @@ public class LibrarySlotLinkTests
         return !info.Exists
             || info.Length != manifest.LastLoadedSizeBytes
             || info.LastWriteTimeUtc != manifest.LastLoadedWriteUtc;
+    }
+
+    private static void MakeLegacy(LibraryEntry entry)
+    {
+        entry.Manifest!.SchemaVersion = 1;
+        File.WriteAllText(
+            Path.Combine(entry.DirectoryPath, LibraryEntry.ManifestFileName),
+            JsonSerializer.Serialize(entry.Manifest, BackupJson.Options));
     }
 }

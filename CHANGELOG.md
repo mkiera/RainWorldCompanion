@@ -11,6 +11,23 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## 1.4.0-beta.9 - 2026-09-17
+
+- Stored stomach contents can be copied from one campaign into any chosen live
+  campaign, including a different slugcat, without replacing the rest of the
+  target campaign.
+- While Rain World is open, the Recent tab keeps the first saved state from
+  each cycle for each campaign. Each entry contains only that campaign, can be
+  restored or kept in the library, and the latest five cycles per campaign are
+  retained.
+- Automatic safety backups retain the newest 20 entries. Manual backups are
+  never removed automatically, and the limit is shown above the backups list.
+- Library saves remember which live slot they are tied to after the app
+  restarts.
+- Live slots can be exported directly as `.rwsave` files. Individual campaigns
+  in live saves, backups, and Recent can be exported directly as `.rwcampaign`
+  files without first adding them to the library.
+
 ## 1.4.0-beta.8 - 2026-09-16
 
 - Room changes and gameplay events stream separately from raw logs, so a flood
