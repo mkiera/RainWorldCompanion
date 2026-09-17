@@ -1489,11 +1489,6 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             EndBusy();
         }
 
-        if (result?.LiveFolderModified == true)
-        {
-            await ReleaseSlotClaimAsync(plan.Target);
-        }
-
         await ReloadAsync();
 
         if (failure is not null)
