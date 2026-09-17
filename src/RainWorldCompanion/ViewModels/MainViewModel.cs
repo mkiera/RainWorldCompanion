@@ -267,7 +267,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreRecentSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
-    [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
@@ -292,7 +293,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(DeleteCommand))]
     [NotifyCanExecuteChangedFor(nameof(OpenSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(CopySlotCommand))]
-    [NotifyCanExecuteChangedFor(nameof(StoreSlotCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(LoadSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(UndoUpdateCommand))]
@@ -307,6 +308,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(DeleteSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(StoreWholeSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(StoreCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ExportCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(SendCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(ApplyDevourmentContentsCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreRecentSaveCommand))]
@@ -1267,6 +1269,88 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         ShowLibrarySave(stored!.Id);
     }
 
+    [RelayCommand(CanExecute = nameof(CanExportCampaign))]
+    private async Task ExportCampaignAsync(CampaignViewModel? campaign)
+    {
+        SaveLibrary? library = _library;
+        if (library is null || campaign?.Source is not { CanBeTaken: true } source || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        string name = SuggestCampaignName(campaign);
+        var dialog = new SaveFileDialog
+        {
+            Title = "Export " + campaign.DisplayName + " campaign",
+            Filter = "Rain World campaign (*.rwcampaign)|*.rwcampaign|All files (*.*)|*.*",
+            DefaultExt = ".rwcampaign",
+            AddExtension = true,
+            FileName = SafeFileName(name) + ".rwcampaign",
+        };
+
+        if (dialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        string destination = dialog.FileName;
+        string slugcat = campaign.SlugcatId;
+        ModListSnapshot? recorded = RecordedModsOfSelection();
+        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath
+                              ?? SelectedLiveHistory?.Snapshot.DirectoryPath;
+        Exception? failure = null;
+
+        BeginBusy("Exporting " + campaign.DisplayName, destination);
+        try
+        {
+            if (source.LiveSlot is { } slot)
+            {
+                await Task.Run(() => library.ExportCampaign(
+                    slot, slugcat, name, destination, ct: CancellationToken.None));
+            }
+            else
+            {
+                await Task.Run(() =>
+                {
+                    CampaignSlice slice = ReadCampaignFrom(source, slugcat)
+                        ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
+
+                    library.ExportCampaignFrom(
+                        slice,
+                        source.FileName,
+                        source.Realm,
+                        source.SlotNumber,
+                        name,
+                        destination,
+                        recorded,
+                        configsRoot);
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report(campaign.DisplayName + " could not be exported.", failure);
+            return;
+        }
+
+        ShowMessage(
+            "Exported " + campaign.DisplayName + " to:\n" + destination,
+            "Export a campaign",
+            MessageBoxImage.Information);
+    }
+
+    private bool CanExportCampaign(CampaignViewModel? campaign) =>
+        !IsBusy && !IsGameRunning && _library is not null && campaign?.Source is { CanBeTaken: true };
+
     /// <summary>
     /// A move is two writes and the order matters: the campaign lands in the slot it is going to
     /// before it leaves the one it came from, so a refused second write leaves it in both.
@@ -1887,9 +1971,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         return where.Length > 0 ? where + " " + slot.FileName : slot.FileName;
     }
 
-    /// <summary>Nothing in the save folder is written, so there is no safety snapshot.</summary>
-    [RelayCommand(CanExecute = nameof(CanStoreSlot))]
-    private async Task StoreSlotAsync()
+    [RelayCommand(CanExecute = nameof(CanExportSlot))]
+    private async Task ExportSlotAsync()
     {
         var library = _library;
         var copies = _copyService;
@@ -1901,7 +1984,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         IReadOnlyList<SlotSide> sides;
         Exception? failure = null;
 
-        BeginBusy("Store a slot", "Reading the save folder");
+        BeginBusy("Export a slot", "Reading the save folder");
         try
         {
             sides = await Task.Run(() => ReadStorableSides(copies, _meadow.Present));
@@ -1924,11 +2007,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (sides.Count == 0)
         {
-            ShowMessage("There are no save slots to store.", "Store a slot", MessageBoxImage.Warning);
+            ShowMessage("There are no save slots to export.", "Export a slot", MessageBoxImage.Warning);
             return;
         }
 
-        var dialog = new StoreSlotDialog(sides, FirstSlotWithASave(sides));
+        var dialog = new ExportSlotDialog(sides, FirstSlotWithASave(sides));
         if (ShowDialog(dialog) != true)
         {
             return;
@@ -1936,15 +2019,28 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         var source = dialog.ChosenSource;
         var name = dialog.ChosenName;
-        var note = dialog.ChosenNote;
+        var fileDialog = new SaveFileDialog
+        {
+            Title = "Export " + source.FileName,
+            Filter = "Rain World save bundle (*.rwsave)|*.rwsave|All files (*.*)|*.*",
+            DefaultExt = ".rwsave",
+            AddExtension = true,
+            FileName = SafeFileName(name) + ".rwsave",
+        };
+
+        if (fileDialog.ShowDialog(OwnerWindow) != true)
+        {
+            return;
+        }
+
+        string destination = fileDialog.FileName;
         var progress = new Progress<string>(message => BusyMessage = message);
 
-        LibraryEntry? stored = null;
-
-        BeginBusy("Storing " + source.FileName, name);
+        BeginBusy("Exporting " + source.FileName, destination);
         try
         {
-            stored = await Task.Run(() => library.StoreSlot(source, name, note, progress, CancellationToken.None));
+            await Task.Run(() => library.ExportSlot(
+                source, name, destination, progress, CancellationToken.None));
         }
         catch (Exception ex)
         {
@@ -1955,18 +2051,19 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             EndBusy();
         }
 
-        await ReloadAsync();
-
         if (failure is not null)
         {
-            Report("The slot could not be stored.", failure);
+            Report("The slot could not be exported.", failure);
             return;
         }
 
-        ShowLibrarySave(stored!.Id);
+        ShowMessage(
+            "Exported " + source.FileName + " to:\n" + destination,
+            "Export a slot",
+            MessageBoxImage.Information);
     }
 
-    private bool CanStoreSlot() => !IsBusy && !IsGameRunning && _library is not null && _copyService is not null;
+    private bool CanExportSlot() => !IsBusy && !IsGameRunning && _library is not null && _copyService is not null;
 
     /// <summary>The slot it replaces is in a safety snapshot first, as with a slot copy.</summary>
     [RelayCommand(CanExecute = nameof(CanLoadSave))]
@@ -4446,7 +4543,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         DeleteCommand.NotifyCanExecuteChanged();
         OpenSettingsCommand.NotifyCanExecuteChanged();
         CopySlotCommand.NotifyCanExecuteChanged();
-        StoreSlotCommand.NotifyCanExecuteChanged();
+        ExportSlotCommand.NotifyCanExecuteChanged();
         LoadSaveCommand.NotifyCanExecuteChanged();
         UpdateEntryCommand.NotifyCanExecuteChanged();
         UndoUpdateCommand.NotifyCanExecuteChanged();
@@ -4457,6 +4554,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         BeginEditCommand.NotifyCanExecuteChanged();
         SaveEditsCommand.NotifyCanExecuteChanged();
         StoreCampaignCommand.NotifyCanExecuteChanged();
+        ExportCampaignCommand.NotifyCanExecuteChanged();
         SendCampaignCommand.NotifyCanExecuteChanged();
         ApplyDevourmentContentsCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();

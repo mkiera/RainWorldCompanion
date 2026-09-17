@@ -1199,9 +1199,9 @@
                                            Visibility="{Binding HasActions, Converter={StaticResource BoolToVis}}">
                                     <!--
                                         Edit and Delete change the file the campaign is in, so they
-                                        are drawn only for the live save folder. Save to library and
-                                        Send to slot read it and write somewhere else, so they work
-                                        on a backup and on a library save too. All of them go away
+                                        are drawn only for the live save folder. Save to library,
+                                        Export campaign and Send to slot read it and write somewhere
+                                        else, so they work on a backup and on a library save too. All of them go away
                                         while an editor is open: an unsaved edit and a campaign
                                         moving are two answers to what this campaign is.
                                     -->
@@ -1217,6 +1217,12 @@
                                                 Style="{StaticResource Button.Small}"
                                                 ToolTip="Keeps a copy of this one campaign under a name. This slot is not touched."
                                                 Command="{Binding DataContext.StoreCampaignCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Export campaign" Margin="6,0,0,0"
+                                                Style="{StaticResource Button.Small}"
+                                                ToolTip="Exports this campaign as a .rwcampaign file without adding it to the library."
+                                                Command="{Binding DataContext.ExportCampaignCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}" />
                                         <Button Content="Send to slot" Margin="6,0,0,0"
@@ -2051,9 +2057,9 @@
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 
-                    <Button Content="Store Slot" Style="{StaticResource Button.Small}"
-                            Command="{Binding StoreSlotCommand}"
-                            ToolTip="Keep a copy of one save slot in the library under a name of your choosing." />
+                    <Button Content="Export Slot" Style="{StaticResource Button.Small}"
+                            Command="{Binding ExportSlotCommand}"
+                            ToolTip="Export one live save slot as a .rwsave file without adding it to the library." />
                     <!-- The one way in to a slot copy. Both ends are picked in the dialog, so the
                          slot rows further down carry no buttons of their own. -->
                     <Button Content="Copy Slot" Style="{StaticResource Button.Small}"

@@ -97,4 +97,17 @@ public class MainPageTests
         }
         finally { view.Shutdown(); }
     }
+
+    [Fact]
+    public void Slots_and_campaigns_have_direct_export_actions()
+    {
+        string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+
+        Assert.Contains("Content=\"Export Slot\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Command=\"{Binding ExportSlotCommand}\"", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Store Slot\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Save slot to library\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Export campaign\"", markup, StringComparison.Ordinal);
+        Assert.Contains("DataContext.ExportCampaignCommand", markup, StringComparison.Ordinal);
+    }
 }

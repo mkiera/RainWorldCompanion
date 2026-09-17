@@ -1403,6 +1403,96 @@ public sealed class SaveLibrary
             entry.ConfigsPath);
     }
 
+    public void ExportSlot(
+        SaveSlotRef source,
+        string name,
+        string destinationPath,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreSlot(source, name, null, progress, ct));
+
+    public void ExportSlotFrom(
+        string sourcePath,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string destinationPath,
+        ModListSnapshot? mods = null,
+        string? configsRoot = null,
+        IProgress<string>? progress = null)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreSlotFrom(
+                sourcePath,
+                sourceFileName,
+                sourceRealm,
+                sourceSlot,
+                name,
+                null,
+                mods,
+                configsRoot,
+                progress));
+
+    public void ExportCampaign(
+        SaveSlotRef source,
+        string slugcatId,
+        string name,
+        string destinationPath,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreCampaign(source, slugcatId, name, null, progress, ct));
+
+    public void ExportCampaignFrom(
+        CampaignSlice slice,
+        string sourceFileName,
+        SaveRealm sourceRealm,
+        int sourceSlot,
+        string name,
+        string destinationPath,
+        ModListSnapshot? mods = null,
+        string? configsRoot = null)
+        => ExportTransient(
+            destinationPath,
+            staging => staging.StoreCampaignFrom(
+                slice,
+                sourceFileName,
+                sourceRealm,
+                sourceSlot,
+                name,
+                null,
+                mods,
+                configsRoot));
+
+    private void ExportTransient(string destinationPath, Func<SaveLibrary, LibraryEntry> stage)
+    {
+        if (string.IsNullOrWhiteSpace(destinationPath))
+        {
+            throw new ArgumentException("An export needs somewhere to write to.", nameof(destinationPath));
+        }
+
+        string root = Path.Combine(
+            Path.GetTempPath(),
+            "RainWorldCompanion",
+            "exports",
+            Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture));
+
+        try
+        {
+            var staging = new SaveLibrary(_backups, root, _gameDetector, _appVersion);
+            LibraryEntry entry = stage(staging);
+            staging.ExportEntry(entry, destinationPath);
+        }
+        finally
+        {
+            TryDeleteDirectory(root);
+        }
+    }
+
     /// <summary>An import never writes into the save folder: it lands in the library and is loaded
     /// from there like anything else.</summary>
     public LibraryImportResult ImportFile(string sourcePath)

@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text;
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 
@@ -287,6 +288,53 @@ public class LibraryBundleTests
         world.Library.ExportEntry(entry, outbox.Resolve("out.rwsave"));
 
         SnapshotLayout.AssertTreeUnchanged(before, world.Live.ReadTree());
+    }
+
+    [Fact]
+    public void A_live_slot_can_be_exported_without_adding_it_to_the_library()
+    {
+        using var world = new LibraryWorld();
+        using var outbox = new TempDirectory("outbox");
+        using var elsewhere = new TempDirectory("other-library");
+        var bundle = outbox.Resolve("slot.rwsave");
+
+        world.Library.ExportSlot(LocalTwo, "Local slot 2", bundle);
+
+        Assert.Empty(world.Library.ListEntries());
+        var other = new SaveLibrary(world.Backups, elsewhere.Path, world.Detector, LibraryWorld.AppVersion);
+        var imported = other.ImportFile(bundle);
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.False(imported.Entry!.IsCampaign);
+        SnapshotLayout.AssertBytesEqual(
+            File.ReadAllBytes(world.Live.Resolve("sav2")),
+            File.ReadAllBytes(imported.Entry.SavePath),
+            "save.bin");
+    }
+
+    [Fact]
+    public void A_campaign_can_be_exported_from_a_snapshot_without_adding_it_to_the_library()
+    {
+        using var world = new LibraryWorld();
+        using var outbox = new TempDirectory("outbox");
+        using var elsewhere = new TempDirectory("other-library");
+        var bundle = outbox.Resolve("survivor.rwcampaign");
+        CampaignSlice slice = CampaignFile.ReadFrom(world.Live.Resolve("sav2"), "White")!;
+
+        world.Library.ExportCampaignFrom(
+            slice,
+            "sav2",
+            SaveRealm.Local,
+            2,
+            "Survivor cycle 17",
+            bundle);
+
+        Assert.Empty(world.Library.ListEntries());
+        var other = new SaveLibrary(world.Backups, elsewhere.Path, world.Detector, LibraryWorld.AppVersion);
+        var imported = other.ImportFile(bundle);
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.True(imported.Entry!.IsCampaign);
+        Assert.Equal("White", imported.Entry.Manifest!.CampaignSlugcatId);
+        Assert.Single(imported.Entry.Manifest.Metadata!.Campaigns);
     }
 
     [Fact]
