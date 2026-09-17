@@ -205,6 +205,39 @@ public sealed record SlotDeletePlan(
             problems);
 }
 
+public sealed record DevourmentContentsPlan(
+    SaveWritePlan Write,
+    SaveSlotRef Target,
+    string TargetFileName,
+    string TargetSlugcatId,
+    int EntryCount,
+    IReadOnlyList<string> Problems)
+{
+    public bool CanWrite => Problems.Count == 0 && Write.CanWrite;
+
+    public string Describe()
+    {
+        string campaign = SlugcatCatalog.ForId(TargetSlugcatId).DisplayName;
+        string contents = EntryCount == 0 ? "empty contents" : EntryCount == 1 ? "1 entry" : EntryCount + " entries";
+        return $"Replaces {campaign}'s Devourment stomach contents in {TargetFileName} with {contents}.";
+    }
+
+    internal static DevourmentContentsPlan Refused(
+        string filePath,
+        SaveSlotRef target,
+        string targetFileName,
+        string targetSlugcatId,
+        int entryCount,
+        params string[] problems)
+        => new(
+            SaveWritePlan.CannotBuild(filePath, problems),
+            target,
+            targetFileName,
+            targetSlugcatId,
+            entryCount,
+            problems);
+}
+
 /// <summary>
 /// Writes an edited save over the slot it came from. The edited bytes go into a temp file handed to
 /// <see cref="SlotCopyService.CopyOntoSlot"/> as the source, so the safety snapshot, the operation
@@ -344,6 +377,19 @@ public sealed class SaveSlotWriter
     }
 
     public SaveWriteResult Write(
+        DevourmentContentsPlan plan,
+        IProgress<string>? progress = null,
+        CancellationToken ct = default,
+        ModListSnapshot? modsBefore = null)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+
+        return plan.Problems.Count > 0
+            ? SaveWriteResult.Refused(plan.TargetFileName, plan.Problems.ToArray())
+            : Write(plan.Write, plan.Target, progress, ct, extras: null, modsBefore);
+    }
+
+    public SaveWriteResult Write(
         CampaignMovePlan plan,
         IProgress<string>? progress = null,
         CancellationToken ct = default)
@@ -392,6 +438,62 @@ public sealed class SaveSlotWriter
     /// it.</param>
     public CampaignMovePlan PlanTakeCampaign(SaveSlotRef target, string slugcatId, bool includeMaps)
         => Plan(target, session => session.TakeCampaignOut(slugcatId, includeMaps));
+
+    public DevourmentContentsPlan PlanApplyDevourmentContents(
+        SaveSlotRef target,
+        string targetSlugcatId,
+        DevourmentContents contents)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+
+        SlotEdit open = OpenSlot(target);
+        if (open.Refusal is { } refusal)
+        {
+            return DevourmentContentsPlan.Refused(
+                open.Side.FullPath,
+                target,
+                open.Name,
+                targetSlugcatId,
+                contents.Count,
+                refusal);
+        }
+
+        SaveEditSession session = open.Session!;
+        CampaignRecordRef? campaign = session.Campaigns.FirstOrDefault(candidate =>
+            string.Equals(candidate.SlugcatId, targetSlugcatId, StringComparison.Ordinal));
+
+        if (campaign is null)
+        {
+            string name = SlugcatCatalog.ForId(targetSlugcatId).DisplayName;
+            return DevourmentContentsPlan.Refused(
+                open.Side.FullPath,
+                target,
+                open.Name,
+                targetSlugcatId,
+                contents.Count,
+                $"{name} is no longer in {open.Name}. Refresh and try again.");
+        }
+
+        session.ApplyDevourmentContents(campaign, contents);
+        if (!session.IsDirty)
+        {
+            return DevourmentContentsPlan.Refused(
+                open.Side.FullPath,
+                target,
+                open.Name,
+                targetSlugcatId,
+                contents.Count,
+                $"{open.Name} already holds exactly these Devourment contents for {SlugcatCatalog.ForId(targetSlugcatId).DisplayName}.");
+        }
+
+        return new DevourmentContentsPlan(
+            session.BuildWritePlan(),
+            target,
+            open.Name,
+            targetSlugcatId,
+            contents.Count,
+            Array.Empty<string>());
+    }
 
     /// <summary>Worked out without changing anything.</summary>
     public SlotDeletePlan PlanDeleteSlot(SaveSlotRef target, SlotDeleteDepth depth)

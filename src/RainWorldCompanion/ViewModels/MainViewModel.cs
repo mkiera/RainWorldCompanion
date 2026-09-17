@@ -268,6 +268,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(UpdateEntryCommand))]
     [NotifyCanExecuteChangedFor(nameof(BeginEditCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveEditsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyDevourmentContentsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteSettingsCommand))]
     [NotifyPropertyChangedFor(nameof(IsCurrentPageReady))]
@@ -300,6 +301,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [NotifyCanExecuteChangedFor(nameof(StoreWholeSlotCommand))]
     [NotifyCanExecuteChangedFor(nameof(StoreCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(SendCampaignCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ApplyDevourmentContentsCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteCampaignCommand))]
     [NotifyCanExecuteChangedFor(nameof(ImportSettingsCommand))]
     [NotifyCanExecuteChangedFor(nameof(ExportSettingsCommand))]
@@ -1298,6 +1300,113 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         ReportCampaignMove(campaign.DisplayName, arrival!, departure, WhereItIs(source), target);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanActOnCampaign))]
+    private async Task ApplyDevourmentContentsAsync(CampaignViewModel? campaign)
+    {
+        if (_backupService is not { } backups || campaign?.Source is not { CanBeTaken: true } source
+            || !campaign.CanApplyDevourmentContents || IsBusy || IsGameRunning)
+        {
+            return;
+        }
+
+        CampaignSlice? slice = null;
+        DevourmentContents? contents = null;
+        Exception? failure = null;
+
+        BeginBusy("Reading " + WhereItIs(source), campaign.DisplayName);
+        try
+        {
+            slice = await Task.Run(() => ReadCampaignFrom(source, campaign.SlugcatId));
+            if (slice is not null)
+            {
+                contents = await Task.Run(() => DevourmentContents.Capture(slice));
+            }
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report(WhereItIs(source) + " could not be read.", failure);
+            return;
+        }
+
+        if (slice is null || contents is null)
+        {
+            Report(NotThereAnyMore(campaign.DisplayName, source), null);
+            return;
+        }
+
+        IReadOnlyList<DevourmentContentsTarget> targets = DevourmentContentsTarget.Build(_liveSlotData);
+        if (targets.Count == 0)
+        {
+            Report("No live campaign is available to receive these Devourment contents.", null);
+            return;
+        }
+
+        SaveSlotWriter writer = backups.SlotWriter;
+        ApplyDevourmentContentsDialog dialog;
+        try
+        {
+            dialog = new ApplyDevourmentContentsDialog(
+                campaign.DisplayName,
+                contents.Count,
+                targets,
+                target => writer.PlanApplyDevourmentContents(target.Slot, target.SlugcatId, contents));
+        }
+        catch (Exception ex)
+        {
+            Report("The live save folder could not be read.", ex);
+            return;
+        }
+
+        if (ShowDialog(dialog) != true)
+        {
+            return;
+        }
+
+        DevourmentContentsPlan plan = dialog.ChosenPlan;
+        ModListSnapshot? modsBefore = ModsBeforeThis();
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SaveWriteResult? result = null;
+        failure = null;
+
+        BeginBusy("Applying Devourment contents to " + plan.TargetFileName, "Taking a safety snapshot");
+        try
+        {
+            result = await Task.Run(() => writer.Write(plan, progress, CancellationToken.None, modsBefore));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (result?.LiveFolderModified == true)
+        {
+            await ReleaseSlotClaimAsync(plan.Target);
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The Devourment contents could not be applied to " + plan.TargetFileName + ".", failure);
+            return;
+        }
+
+        ReportSaveResult(result!, plan.TargetFileName);
     }
 
     /// <summary>The map discovery stays, which is what the game's own wipe does.</summary>
@@ -3965,6 +4074,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         SaveEditsCommand.NotifyCanExecuteChanged();
         StoreCampaignCommand.NotifyCanExecuteChanged();
         SendCampaignCommand.NotifyCanExecuteChanged();
+        ApplyDevourmentContentsCommand.NotifyCanExecuteChanged();
         DeleteCampaignCommand.NotifyCanExecuteChanged();
         DeleteSlotCommand.NotifyCanExecuteChanged();
         StoreWholeSlotCommand.NotifyCanExecuteChanged();

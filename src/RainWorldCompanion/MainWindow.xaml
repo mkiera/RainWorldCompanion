@@ -1333,6 +1333,15 @@
                                            Visibility="{Binding HasAnyDevourment, Converter={StaticResource BoolToVis}}">
                                     <TextBlock DockPanel.Dock="Left" Text="DEVOURMENT" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
+                                    <Button DockPanel.Dock="Right"
+                                            Content="Apply contents to campaign"
+                                            Style="{StaticResource Button.Small}"
+                                            Margin="8,0,0,0"
+                                            Visibility="{Binding CanApplyDevourmentContents, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="Copies only these stomach contents into a live campaign you choose."
+                                            Command="{Binding DataContext.ApplyDevourmentContentsCommand,
+                                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
                                     <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                                 </DockPanel>
 
