@@ -167,6 +167,49 @@ public class BackupServiceTests
     }
 
     [Fact]
+    public void Automatic_backups_keep_only_the_newest_twenty()
+    {
+        using var world = new BackupWorld();
+        var created = new List<BackupSnapshot>();
+
+        for (int index = 0; index < BackupService.RetainedAutomaticBackups + 2; index++)
+        {
+            created.Add(world.Service.CreateBackup(
+                "automatic " + index,
+                null,
+                BackupKind.PreRestoreSafety));
+        }
+
+        IReadOnlyList<BackupSnapshot> retained = world.Service.ListBackups();
+        Assert.Equal(BackupService.RetainedAutomaticBackups, retained.Count);
+        Assert.DoesNotContain(retained, snapshot => snapshot.Id == created[0].Id);
+        Assert.DoesNotContain(retained, snapshot => snapshot.Id == created[1].Id);
+        Assert.Contains(retained, snapshot => snapshot.Id == created[^1].Id);
+    }
+
+    [Fact]
+    public void Manual_backups_do_not_count_toward_the_automatic_limit()
+    {
+        using var world = new BackupWorld();
+        BackupSnapshot manual = world.Service.CreateBackup("keep forever", null);
+
+        for (int index = 0; index < BackupService.RetainedAutomaticBackups + 1; index++)
+        {
+            world.Service.CreateBackup(
+                "automatic " + index,
+                null,
+                BackupKind.PreRestoreSafety);
+        }
+
+        IReadOnlyList<BackupSnapshot> retained = world.Service.ListBackups();
+        Assert.Equal(BackupService.RetainedAutomaticBackups + 1, retained.Count);
+        Assert.Contains(retained, snapshot => snapshot.Id == manual.Id);
+        Assert.Equal(
+            BackupService.RetainedAutomaticBackups,
+            retained.Count(snapshot => snapshot.Manifest?.Kind == BackupKind.PreRestoreSafety));
+    }
+
+    [Fact]
     public void CreateBackup_refuses_while_the_game_is_running()
     {
         using var world = new BackupWorld(FakeGameDetector.Running("RainWorld"));

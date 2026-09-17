@@ -2411,16 +2411,23 @@
 
                 <WrapPanel Grid.Row="2" Margin="1,0,0,8"
                            Visibility="{Binding IsRecentTabSelected, Converter={StaticResource BoolToVis}}">
-                    <Button Content="Restore all" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                    <Button Content="Restore campaign" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding RestoreRecentSaveCommand}"
-                            ToolTip="Replace the whole live save folder with this recent save. A safety backup is made first." />
-                    <Button Content="Keep as backup" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            ToolTip="Restore only this campaign to its original slot. Every other campaign and slot is left alone. A safety backup is made first." />
+                    <Button Content="Keep in library" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding KeepRecentSaveCommand}"
-                            ToolTip="Copy this recent save into Backups so it is kept permanently." />
+                            ToolTip="Keep this campaign permanently as a named save in the Library." />
                     <TextBlock Text="{Binding LiveHistoryStatusText}" Style="{StaticResource Text.Tiny}"
                                VerticalAlignment="Center" Margin="0,0,0,6" TextWrapping="Wrap"
                                Visibility="{Binding LiveHistoryStatusText, Converter={StaticResource StringToVis}}" />
                 </WrapPanel>
+
+                <TextBlock Grid.Row="2"
+                           Text="Automatic safety backups: newest 20 kept. Manual backups are never removed automatically."
+                           Style="{StaticResource Text.Tiny}"
+                           Margin="1,0,0,8"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding IsBackupsTabSelected, Converter={StaticResource BoolToVis}}" />
 
                 <Grid Grid.Row="3">
                     <Grid Visibility="{Binding IsBackupsTabSelected, Converter={StaticResource BoolToVis}}">
@@ -2479,7 +2486,7 @@
                             </ListBox.ItemContainerStyle>
                         </ListBox>
 
-                        <TextBlock Text="No recent saves yet. Keep this app open while Rain World runs. A recent save appears after the game writes a stable campaign save."
+                        <TextBlock Text="No recent saves yet. Keep this app open while Rain World runs. A recent save appears after the game writes a stable campaign save. The first save from each cycle is kept, up to five per campaign."
                                    Style="{StaticResource Text.Muted}"
                                    TextWrapping="Wrap"
                                    HorizontalAlignment="Center"

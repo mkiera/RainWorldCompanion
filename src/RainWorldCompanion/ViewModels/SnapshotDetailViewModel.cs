@@ -1,6 +1,7 @@
 ﻿// Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
+using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.Core.Saves.Models;
@@ -39,6 +40,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         ISlugcatIconProvider icons,
         string sourceDirectory = "",
         string sourceLabel = "",
+        string sourceFileOverride = "",
         IReadOnlyList<SlotMetadata>? liveSlots = null)
     {
         Mods = modsSection;
@@ -74,6 +76,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
                 sourceLabel: sourceLabel,
+                sourceFileOverride: sourceFileOverride,
                 storable: true,
                 liveSlots: liveSlots);
         _onlineSlots = entry is not null
@@ -85,6 +88,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 editable: isLive,
                 sourceDirectory: sourceDirectory,
                 sourceLabel: sourceLabel,
+                sourceFileOverride: sourceFileOverride,
                 storable: true,
                 liveSlots: liveSlots);
 
@@ -342,6 +346,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             icons: icons,
             sourceDirectory: item.Snapshot.DirectoryPath,
             sourceLabel: "recent live save " + item.Id,
+            sourceFileOverride: LibraryEntry.CampaignFileName,
             liveSlots: liveSlots);
     }
 

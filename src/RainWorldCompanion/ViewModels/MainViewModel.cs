@@ -340,6 +340,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private LibraryEntryViewModel? selectedLibraryEntry;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RestoreCommand))]
     [NotifyCanExecuteChangedFor(nameof(RestoreRecentSaveCommand))]
     [NotifyCanExecuteChangedFor(nameof(KeepRecentSaveCommand))]
     private LiveHistoryItemViewModel? selectedLiveHistory;
@@ -3049,6 +3050,12 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [RelayCommand(CanExecute = nameof(CanRestore))]
     private async Task RestoreAsync()
     {
+        if (SelectedLiveHistory is not null)
+        {
+            await RestoreRecentSaveAsync();
+            return;
+        }
+
         var item = SelectedBackup;
         if (item is null)
         {
@@ -3061,13 +3068,85 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     [RelayCommand(CanExecute = nameof(CanRestoreRecentSave))]
     private async Task RestoreRecentSaveAsync()
     {
+        var history = _liveHistory;
+        var backups = _backupService;
         var item = SelectedLiveHistory;
-        if (item is null)
+        if (history is null || backups is null || item is null)
         {
             return;
         }
 
-        await RestoreSnapshotAsync(item.Backup, item.DisplayName);
+        CampaignMovePlan? plan = null;
+        Exception? failure = null;
+        BeginBusy("Restore campaign", "Checking the recent campaign");
+        try
+        {
+            plan = await Task.Run(() => history.PlanRestore(item.Entry, backups));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        if (failure is not null)
+        {
+            Report("The recent campaign could not be checked.", failure);
+            return;
+        }
+
+        if (!plan!.CanWrite)
+        {
+            ShowMessage(FormatList(plan.Problems), "Restore campaign", MessageBoxImage.Warning);
+            return;
+        }
+
+        LiveHistoryCampaign campaign = AssertSingleRecentCampaign(item.Entry);
+        string campaignName = SlugcatCatalog.ForId(campaign.SlugcatId).DisplayName;
+        bool confirmed = AskYesNo(
+            $"Restore {campaignName} from {item.CapturedText} into {plan.TargetFileName}?\n\n"
+            + $"Only {campaignName} in {plan.TargetFileName} will be replaced. Every other campaign and slot is left alone.\n\n"
+            + "The whole save folder is copied to Backups first, so this can be undone.",
+            "Restore campaign");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        var progress = new Progress<string>(message => BusyMessage = message);
+        SaveWriteResult? result = null;
+        BeginBusy("Restoring " + campaignName, "Taking a safety backup");
+        try
+        {
+            ModListSnapshot? modsBefore = ModsBeforeThis();
+            result = await Task.Run(() => history.Restore(
+                item.Entry,
+                backups,
+                progress,
+                CancellationToken.None,
+                modsBefore));
+        }
+        catch (Exception ex)
+        {
+            failure = ex;
+        }
+        finally
+        {
+            EndBusy();
+        }
+
+        await ReloadAsync();
+
+        if (failure is not null)
+        {
+            Report("The recent campaign could not be restored to " + plan.TargetFileName + ".", failure);
+            return;
+        }
+
+        ReportSaveResult(result!, plan.TargetFileName);
     }
 
     private async Task RestoreSnapshotAsync(BackupItemViewModel item, string displayName)
@@ -3156,32 +3235,35 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     }
 
     private bool CanRestore() =>
-        !IsBusy && !IsGameRunning && _backupService is not null && SelectedBackup is { CanRestore: true };
+        !IsBusy && !IsGameRunning && _backupService is not null
+        && (SelectedBackup is { CanRestore: true }
+            || SelectedLiveHistory is { Backup.CanRestore: true, Entry.Campaigns.Count: 1 });
 
     private bool CanRestoreRecentSave() =>
         !IsBusy
         && !IsGameRunning
+        && _liveHistory is not null
         && _backupService is not null
-        && SelectedLiveHistory is { Backup.CanRestore: true };
+        && SelectedLiveHistory is { Backup.CanRestore: true, Entry.Campaigns.Count: 1 };
 
     [RelayCommand(CanExecute = nameof(CanKeepRecentSave))]
     private async Task KeepRecentSaveAsync()
     {
         var history = _liveHistory;
-        var backups = _backupService;
+        var library = _library;
         var item = SelectedLiveHistory;
-        if (history is null || backups is null || item is null)
+        if (history is null || library is null || item is null)
         {
             return;
         }
 
-        BackupSnapshot? created = null;
+        LibraryEntry? created = null;
         Exception? failure = null;
 
-        BeginBusy("Keeping recent save", "Copying it into your backups");
+        BeginBusy("Keeping recent campaign", "Copying it into your library");
         try
         {
-            created = await Task.Run(() => history.KeepAsBackup(item.Entry, backups));
+            created = await Task.Run(() => history.KeepInLibrary(item.Entry, library));
         }
         catch (Exception ex)
         {
@@ -3194,17 +3276,22 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         if (failure is not null)
         {
-            Report("The recent save could not be kept as a backup.", failure);
+            Report("The recent campaign could not be kept in the library.", failure);
             return;
         }
 
         await ReloadAsync(preserveVerification: true);
-        IsBackupsTabSelected = true;
-        SelectById(created!.Id);
+        ShowLibrarySave(created!.Id);
     }
 
     private bool CanKeepRecentSave() =>
-        !IsBusy && _liveHistory is not null && _backupService is not null && SelectedLiveHistory is not null;
+        !IsBusy && _liveHistory is not null && _library is not null
+        && SelectedLiveHistory is { Entry.Campaigns.Count: 1 };
+
+    private static LiveHistoryCampaign AssertSingleRecentCampaign(LiveHistoryEntry entry)
+        => entry.Campaigns.Count == 1
+            ? entry.Campaigns[0]
+            : throw new InvalidDataException("A recent save must contain exactly one campaign.");
 
     /// <summary>
     /// Re-hashes each row against its own manifest, one at a time off the UI thread, so a long list

@@ -16,6 +16,8 @@ namespace RainWorldCompanion.Core.Backups;
 /// </summary>
 public sealed class BackupService
 {
+    public const int RetainedAutomaticBackups = 20;
+
     private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
 
     private const string LockFileName = ".operation-lock";
@@ -303,7 +305,32 @@ public sealed class BackupService
         ReleaseClaim(directory);
         WriteManifest(directory, manifest);
 
-        return BackupSnapshot.Load(directory);
+        BackupSnapshot created = BackupSnapshot.Load(directory);
+        if (kind == BackupKind.PreRestoreSafety)
+        {
+            PruneAutomaticBackups(ListBackupsUnpruned());
+        }
+
+        return created;
+    }
+
+    private void PruneAutomaticBackups(IReadOnlyList<BackupSnapshot> snapshots)
+    {
+        IReadOnlyList<BackupSnapshot> automatic = snapshots
+            .Where(snapshot => snapshot.Manifest?.Kind == BackupKind.PreRestoreSafety)
+            .ToList();
+
+        foreach (BackupSnapshot snapshot in automatic.Skip(RetainedAutomaticBackups))
+        {
+            try
+            {
+                DeleteBackup(snapshot);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A durable safety backup still succeeds when an older locked folder cannot be removed.
+            }
+        }
     }
 
     public BackupSnapshot PreserveSnapshot(
@@ -391,6 +418,13 @@ public sealed class BackupService
     /// <summary>Every snapshot folder under the backup root, newest first. A folder with a missing
     /// or broken manifest is still listed.</summary>
     public IReadOnlyList<BackupSnapshot> ListBackups()
+    {
+        IReadOnlyList<BackupSnapshot> snapshots = ListBackupsUnpruned();
+        PruneAutomaticBackups(snapshots);
+        return snapshots.Where(snapshot => Directory.Exists(snapshot.DirectoryPath)).ToList();
+    }
+
+    private IReadOnlyList<BackupSnapshot> ListBackupsUnpruned()
     {
         var snapshots = new List<BackupSnapshot>();
 

@@ -90,6 +90,10 @@ public class MainPageTests
             Assert.Contains("ItemsSource=\"{Binding LiveHistoryEntries}\"", markup, StringComparison.Ordinal);
             Assert.Contains("Command=\"{Binding RestoreRecentSaveCommand}\"", markup, StringComparison.Ordinal);
             Assert.Contains("Command=\"{Binding KeepRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Content=\"Restore campaign\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Content=\"Keep in library\"", markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Content=\"Restore all\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Automatic safety backups: newest 20 kept.", markup, StringComparison.Ordinal);
         }
         finally { view.Shutdown(); }
     }
