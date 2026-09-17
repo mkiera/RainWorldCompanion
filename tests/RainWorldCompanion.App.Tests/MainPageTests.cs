@@ -63,4 +63,34 @@ public class MainPageTests
         }
         finally { view.Shutdown(); }
     }
+
+    [Fact]
+    public void Recent_saves_are_a_third_list_while_library_remains_the_default()
+    {
+        var view = new MainViewModel(new SettingsStore(), new GameProcessDetector(), new SlugcatIconProvider(), "1.4.0");
+        try
+        {
+            Assert.True(view.IsLibraryTabSelected);
+            Assert.False(view.IsRecentTabSelected);
+            Assert.False(view.IsBackupsTabSelected);
+
+            view.IsRecentTabSelected = true;
+
+            Assert.False(view.IsLibraryTabSelected);
+            Assert.True(view.IsRecentTabSelected);
+            Assert.False(view.IsBackupsTabSelected);
+
+            view.IsBackupsTabSelected = true;
+
+            Assert.False(view.IsLibraryTabSelected);
+            Assert.False(view.IsRecentTabSelected);
+            Assert.True(view.IsBackupsTabSelected);
+
+            string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+            Assert.Contains("ItemsSource=\"{Binding LiveHistoryEntries}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding RestoreRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding KeepRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+        }
+        finally { view.Shutdown(); }
+    }
 }

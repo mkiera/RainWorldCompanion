@@ -314,6 +314,37 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             liveSlots: liveSlots);
     }
 
+    public static SnapshotDetailViewModel ForLiveHistory(
+        LiveHistoryItemViewModel item,
+        ISlugcatIconProvider icons,
+        ModConfigSet? live = null,
+        IReadOnlyList<SlotMetadata>? liveSlots = null)
+    {
+        IReadOnlyList<SlotMetadata> slots = item.Snapshot.Manifest?.Slots is { } recorded
+            ? recorded
+            : Array.Empty<SlotMetadata>();
+        return new SnapshotDetailViewModel(
+            modsSection: ModListSectionViewModel.ForRecorded(item.Snapshot.Manifest?.Mods, fromABackup: true),
+            configsSection: ModConfigSectionViewModel.ForBackup(item.Snapshot.Manifest?.Files, live),
+            isLive: false,
+            title: item.LabelText,
+            subtitle: item.CapturedText + "    " + item.Id,
+            kindText: "Recent live save",
+            sizeText: item.SizeText,
+            fileCountText: FormatFileCount(item.Snapshot.Manifest?.Files.Count ?? 0, "save file"),
+            noteText: "Captured automatically after Rain World saved.",
+            localEmptyText: "This recent save recorded no local campaigns.",
+            onlineEmptyText: "This recent save recorded no Rain Meadow campaigns.",
+            backup: null,
+            entry: null,
+            allSlots: slots,
+            meadow: null,
+            icons: icons,
+            sourceDirectory: item.Snapshot.DirectoryPath,
+            sourceLabel: "recent live save " + item.Id,
+            liveSlots: liveSlots);
+    }
+
     /// <param name="fileNameOverride">
     /// Only a library save passes this, having been parsed out of the copy kept under the library's
     /// own storage name.
