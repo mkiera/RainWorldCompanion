@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Saves;
 
@@ -49,6 +50,56 @@ public class LiveSaveHistoryTests
         Assert.Equal(
             new[] { 16, 15, 14, 13, 12 },
             view.Entries.Select(entry => Assert.Single(entry.Campaigns).Cycle.GetValueOrDefault()));
+    }
+
+    [Fact]
+    public void Repeated_changes_in_one_cycle_replace_the_recent_entry()
+    {
+        using var live = new TempDirectory("live-history-save");
+        using var historyRoot = new TempDirectory("live-history-store");
+        var time = new ManualTimeProvider(new DateTimeOffset(2026, 9, 17, 12, 0, 0, TimeSpan.Zero));
+        WriteSlot(live, "Yellow", 56, food: 3);
+        var history = new LiveSaveHistory(live.Path, historyRoot.Path, "test", time);
+        history.Observe();
+
+        WriteSlot(live, "Yellow", 56, food: 4);
+        history.Observe();
+        Assert.NotNull(history.Observe().Captured);
+
+        time.Advance(TimeSpan.FromMinutes(1));
+        WriteSlot(live, "Yellow", 56, food: 5);
+        history.Observe();
+        LiveHistoryEntry newest = Assert.IsType<LiveHistoryEntry>(history.Observe().Captured);
+
+        LiveHistoryEntry retained = Assert.Single(history.Read().Entries);
+        Assert.Equal(newest.Snapshot.Id, retained.Snapshot.Id);
+        Assert.Equal(56, Assert.Single(retained.Campaigns).Cycle);
+    }
+
+    [Fact]
+    public void Reading_history_cleans_up_same_cycle_entries_from_an_older_build()
+    {
+        using var live = new TempDirectory("live-history-save");
+        using var historyRoot = new TempDirectory("live-history-store");
+        WriteSlot(live, "Yellow", 56, food: 4);
+        var snapshotter = new BackupService(
+            live.Path,
+            historyRoot.Path,
+            FakeGameDetector.NotRunning(),
+            "test");
+        BackupSnapshot older = snapshotter.CreateBackup("Recent live save", null);
+        WriteHistoryManifest(historyRoot, older, new DateTimeOffset(2026, 9, 17, 12, 0, 0, TimeSpan.Zero));
+
+        WriteSlot(live, "Yellow", 56, food: 5);
+        BackupSnapshot newer = snapshotter.CreateBackup("Recent live save", null);
+        WriteHistoryManifest(historyRoot, newer, new DateTimeOffset(2026, 9, 17, 12, 1, 0, TimeSpan.Zero));
+        var history = new LiveSaveHistory(live.Path, historyRoot.Path, "test");
+
+        LiveHistoryEntry retained = Assert.Single(history.Read().Entries);
+
+        Assert.Equal(newer.Id, retained.Snapshot.Id);
+        Assert.False(Directory.Exists(older.DirectoryPath));
+        Assert.False(File.Exists(Path.Combine(historyRoot.Path, older.Id + ".live-history.json")));
     }
 
     [Fact]
@@ -134,17 +185,37 @@ public class LiveSaveHistoryTests
         Assert.NotEmpty(view.Warnings);
     }
 
-    private static void WriteSlot(TempDirectory directory, string slugcat, int cycle, string fileName = "sav2")
+    private static void WriteSlot(
+        TempDirectory directory,
+        string slugcat,
+        int cycle,
+        string fileName = "sav2",
+        int food = 3)
     {
         string body = string.Join(SyntheticSave.FieldSeparator, new[]
         {
             "SAV STATE NUMBER" + SyntheticSave.ValueSeparator + slugcat,
             "TIMELINE" + SyntheticSave.ValueSeparator + slugcat,
             "CYCLENUM" + SyntheticSave.ValueSeparator + cycle,
-            "FOOD" + SyntheticSave.ValueSeparator + "3",
+            "FOOD" + SyntheticSave.ValueSeparator + food,
         });
         string payload = SyntheticSave.Progression(new[] { ("SAVE STATE", body), ("MISCPROG", "stays") });
         directory.WriteBytes(fileName, SyntheticSave.SaveFile(payload));
+    }
+
+    private static void WriteHistoryManifest(
+        TempDirectory historyRoot,
+        BackupSnapshot snapshot,
+        DateTimeOffset capturedUtc)
+    {
+        var manifest = new LiveHistoryManifest
+        {
+            CapturedUtc = capturedUtc,
+            Campaigns = [new LiveHistoryCampaign(SaveRealm.Local, 2, "Yellow", 56)],
+        };
+        File.WriteAllText(
+            Path.Combine(historyRoot.Path, snapshot.Id + ".live-history.json"),
+            JsonSerializer.Serialize(manifest, BackupJson.Options));
     }
 
     private sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider

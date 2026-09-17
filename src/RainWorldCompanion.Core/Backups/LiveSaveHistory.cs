@@ -142,12 +142,20 @@ public sealed class LiveSaveHistory
 
             _baseline = current;
             _pending = null;
-            warnings.AddRange(Prune());
+            warnings.AddRange(Prune().Warnings);
             return new LiveHistoryObservation(captured, warnings);
         }
     }
 
     public LiveHistoryView Read()
+    {
+        lock (_gate)
+        {
+            return Prune();
+        }
+    }
+
+    private LiveHistoryView ReadUnpruned()
     {
         var entries = new List<LiveHistoryEntry>();
         var warnings = new List<string>();
@@ -283,11 +291,13 @@ public sealed class LiveSaveHistory
         return new LiveHistoryEntry(snapshot, manifest.CapturedUtc, manifest.Campaigns.ToArray());
     }
 
-    private IReadOnlyList<string> Prune()
+    private LiveHistoryView Prune()
     {
-        LiveHistoryView view = Read();
+        LiveHistoryView view = ReadUnpruned();
         var warnings = new List<string>(view.Warnings);
         var counts = new Dictionary<CampaignKey, int>();
+        var cycles = new Dictionary<CampaignKey, HashSet<int>>();
+        var retainedEntries = new List<LiveHistoryEntry>();
 
         foreach (LiveHistoryEntry entry in view.Entries)
         {
@@ -296,10 +306,19 @@ public sealed class LiveSaveHistory
             {
                 var key = new CampaignKey(campaign.Realm, campaign.Slot, campaign.SlugcatId);
                 counts.TryGetValue(key, out int count);
-                if (count < RetainedPerCampaign)
+                cycles.TryGetValue(key, out HashSet<int>? retainedCycles);
+                bool alreadyHaveCycle = campaign.Cycle is { } cycle
+                                        && retainedCycles?.Contains(cycle) == true;
+                if (count < RetainedPerCampaign && !alreadyHaveCycle)
                 {
                     retained.Add(campaign);
                     counts[key] = count + 1;
+                    if (campaign.Cycle is { } retainedCycle)
+                    {
+                        retainedCycles ??= new HashSet<int>();
+                        retainedCycles.Add(retainedCycle);
+                        cycles[key] = retainedCycles;
+                    }
                 }
             }
 
@@ -318,14 +337,23 @@ public sealed class LiveSaveHistory
                         Campaigns = retained,
                     });
                 }
+
+                if (retained.Count > 0)
+                {
+                    retainedEntries.Add(entry with { Campaigns = retained.ToArray() });
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 warnings.Add("An older recent save could not be pruned: " + ex.Message);
+                if (retained.Count > 0)
+                {
+                    retainedEntries.Add(entry with { Campaigns = retained.ToArray() });
+                }
             }
         }
 
-        return warnings;
+        return new LiveHistoryView(retainedEntries, warnings);
     }
 
     private static Dictionary<CampaignKey, CampaignState> ReadCampaignState(string root)
