@@ -1061,6 +1061,8 @@ public sealed partial class LogCaptureAnalysisViewModel : ObservableObject
             _ => "Estimated time",
         };
         if (moment.DuplicateCount > 1) text += $". Combined from {moment.DuplicateCount:N0} matching log entries";
+        if (moment.LastOccurrence is { } last && last > moment.Timestamp)
+            text += $" through {last.ToLocalTime():g}";
         return text + $". Source: {moment.SourceFile}";
     }
 

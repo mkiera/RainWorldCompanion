@@ -71,7 +71,8 @@ public sealed record CaptureTimelineMoment(
     string? Region = null,
     bool? Dead = null,
     string? Fingerprint = null,
-    int DuplicateCount = 1);
+    int DuplicateCount = 1,
+    DateTimeOffset? LastOccurrence = null);
 
 public sealed record CapturePlayerObservation(
     DateTimeOffset Timestamp,
