@@ -456,6 +456,64 @@ public sealed class LogStreamCaptureWriter
         }
     }
 
+    internal long GetNextSequence(ulong senderSteamId, string sourceSessionId)
+    {
+        lock (_sync)
+        {
+            return _senders.TryGetValue(senderSteamId, out var sender)
+                && sender.Sessions.TryGetValue(sourceSessionId, out var session)
+                    ? session.NextSequence
+                    : 1;
+        }
+    }
+
+    internal bool TryMarkSessionGap(
+        LogStreamPeerIdentity sender,
+        string sourceSessionId,
+        long highestReceivedSequence)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        ValidateSender(sender);
+        LogStreamValidation.RequireToken(sourceSessionId, nameof(sourceSessionId));
+        if (highestReceivedSequence < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(highestReceivedSequence));
+        }
+
+        lock (_sync)
+        {
+            if (_isClosed || (!_senders.ContainsKey(sender.SteamId) && _senders.Count >= MaximumSenders))
+            {
+                TryFlushMetadata();
+                return false;
+            }
+
+            if (_senders.TryGetValue(sender.SteamId, out var knownSender)
+                && !knownSender.Sessions.ContainsKey(sourceSessionId)
+                && knownSender.Sessions.Count >= MaximumSessionsPerSender)
+            {
+                TryFlushMetadata();
+                return false;
+            }
+
+            SenderState senderState;
+            SessionState session;
+            try
+            {
+                senderState = GetOrCreateSender(sender);
+                session = GetOrCreateSession(senderState, sender, sourceSessionId);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                TryFlushMetadata();
+                return false;
+            }
+            MarkGap(session, highestReceivedSequence);
+            TryFlushMetadata();
+            return true;
+        }
+    }
+
     public IReadOnlyList<LogStreamEvent> DrainEvents()
     {
         lock (_sync)

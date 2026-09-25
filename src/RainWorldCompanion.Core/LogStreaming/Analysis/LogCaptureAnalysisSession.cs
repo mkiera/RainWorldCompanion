@@ -1030,7 +1030,7 @@ public sealed partial class LogCaptureAnalysisSession
             ?? observations.Select(item => (DateTimeOffset?)item.Timestamp).FirstOrDefault();
         DateTimeOffset? latest = new[]
         {
-            sequenced.Select(item => (DateTimeOffset?)item.Timestamp).LastOrDefault(),
+            sequenced.Select(item => (DateTimeOffset?)(item.LastOccurrence ?? item.Timestamp)).Max(),
             observations.Select(item => (DateTimeOffset?)item.Timestamp).LastOrDefault(),
             network.Select(item => (DateTimeOffset?)item.Timestamp).LastOrDefault(),
             performance.Select(item => (DateTimeOffset?)item.Timestamp).LastOrDefault(),
@@ -1121,7 +1121,7 @@ public sealed partial class LogCaptureAnalysisSession
     private static List<CaptureTimelineMoment> DeduplicateErrors(IReadOnlyList<CaptureTimelineMoment> moments)
     {
         var result = new List<CaptureTimelineMoment>(moments.Count);
-        var latest = new Dictionary<string, int>(StringComparer.Ordinal);
+        var latest = new Dictionary<string, (int Index, DateTimeOffset LastOccurrence)>(StringComparer.Ordinal);
         foreach (CaptureTimelineMoment moment in moments)
         {
             if (moment.Fingerprint is null)
@@ -1130,23 +1130,27 @@ public sealed partial class LogCaptureAnalysisSession
                 continue;
             }
             string key = moment.SenderId + "\n" + moment.SourceSessionId + "\n" + moment.Fingerprint;
-            if (latest.TryGetValue(key, out int index)
-                && Math.Abs((moment.Timestamp - result[index].Timestamp).TotalSeconds) <= 1)
+            DateTimeOffset lastOccurrence = moment.LastOccurrence ?? moment.Timestamp;
+            if (latest.TryGetValue(key, out var previous)
+                && moment.Timestamp >= previous.LastOccurrence
+                && moment.Timestamp - previous.LastOccurrence <= TimeSpan.FromSeconds(1))
             {
-                CaptureTimelineMoment existing = result[index];
+                CaptureTimelineMoment existing = result[previous.Index];
                 string source = existing.SourceFile.Contains(moment.SourceFile, StringComparison.Ordinal)
                     ? existing.SourceFile : existing.SourceFile + ", " + moment.SourceFile;
                 string details = existing.Details.Length >= moment.Details.Length ? existing.Details : moment.Details;
-                result[index] = existing with
+                result[previous.Index] = existing with
                 {
                     SourceFile = source,
                     Details = details,
                     DuplicateCount = existing.DuplicateCount + moment.DuplicateCount,
                     Severity = (CaptureEventSeverity)Math.Max((int)existing.Severity, (int)moment.Severity),
+                    LastOccurrence = lastOccurrence,
                 };
+                latest[key] = (previous.Index, lastOccurrence);
                 continue;
             }
-            latest[key] = result.Count;
+            latest[key] = (result.Count, lastOccurrence);
             result.Add(moment);
         }
         return result;
@@ -1220,12 +1224,14 @@ public sealed partial class LogCaptureAnalysisSession
                 .Distinct(StringComparer.CurrentCultureIgnoreCase).ToArray();
             bool crossPlayer = ids.Length > 1;
             CaptureEventSeverity severity = (CaptureEventSeverity)cluster.Max(item => (int)item.Severity);
+            long errorCount = cluster.Sum(item => (long)item.DuplicateCount);
             string summary = crossPlayer
-                ? $"{ids.Length} players reported {cluster.Length} errors together"
-                : cluster.Length > 1 ? $"{cluster.Length} related errors from {names.FirstOrDefault() ?? "one player"}"
+                ? $"{ids.Length} players reported {errorCount:N0} errors together"
+                : errorCount > 1 ? $"{errorCount:N0} related errors from {names.FirstOrDefault() ?? "one player"}"
                 : cluster[0].Summary;
             string id = "incident-" + cluster[0].Sequence.ToString(CultureInfo.InvariantCulture);
-            incidents.Add(new(id, cluster[0].Timestamp, cluster[^1].Timestamp, severity, summary,
+            DateTimeOffset ended = cluster.Max(item => item.LastOccurrence ?? item.Timestamp);
+            incidents.Add(new(id, cluster[0].Timestamp, ended, severity, summary,
                 ids, names, cluster.Select(item => item.Sequence).ToArray(), crossPlayer,
                 CommonValue(cluster.Select(item => item.RoomId)), CommonValue(cluster.Select(item => item.Region)),
                 BuildPossibleCauses(cluster, participants, mods)));

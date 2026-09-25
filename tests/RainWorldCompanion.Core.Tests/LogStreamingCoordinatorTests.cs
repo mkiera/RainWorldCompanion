@@ -217,6 +217,91 @@ public sealed class LogStreamingCoordinatorTests
     }
 
     [Fact]
+    public void Reordered_chunks_are_buffered_without_reporting_capture_gaps()
+    {
+        using var source = new TempDirectory("rwc-log-source");
+        using var senderDownloads = new TempDirectory("rwc-log-sender");
+        using var receiverDownloads = new TempDirectory("rwc-log-receiver");
+        string content = new('r', 16_000);
+        source.WriteText("consoleLog.txt", content);
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var sender = Coordinator(source.Path, senderDownloads.Path, clock);
+        var receiver = Coordinator(source.Path, receiverDownloads.Path, clock);
+        int reordered = 0;
+        var session = new Pair(sender, receiver, clock)
+        {
+            TransformSenderPackets = packets =>
+            {
+                if (reordered == 0 && packets.Count(packet => Decode(packet).Kind == LogStreamKinds.Chunk) > 1)
+                {
+                    reordered++;
+                    return Enumerable.Reverse(packets).ToArray();
+                }
+                return packets;
+            }
+        };
+        session.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        sender.PrepareSharing([Pair.ReceiverId]);
+        session.TickUntil(() => sender.Snapshot().Peers.Single().Outgoing.AcknowledgedBytes == content.Length);
+
+        string capture = receiver.Snapshot().CaptureFolder;
+        Assert.Equal(1, reordered);
+        Assert.Equal(content, ReadOnlyLog(capture, "consoleLog.txt"));
+        Assert.DoesNotContain("\"kind\":\"chunkRejected\"", File.ReadAllText(Path.Combine(capture, "events.jsonl")),
+            StringComparison.Ordinal);
+        using JsonDocument metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
+        Assert.False(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
+        Assert.Equal(0, metadata.RootElement.GetProperty("suppressedRejectionEvents").GetInt64());
+    }
+
+    [Fact]
+    public void Missing_chunk_before_buffered_data_keeps_capture_marked_with_a_gap()
+    {
+        using var source = new TempDirectory("rwc-log-source");
+        using var senderDownloads = new TempDirectory("rwc-log-sender");
+        using var receiverDownloads = new TempDirectory("rwc-log-receiver");
+        source.WriteText("consoleLog.txt", new string('m', 16_000));
+        var clock = new TestClock(DateTimeOffset.Parse("2026-09-13T12:00:00Z"));
+        var sender = Coordinator(source.Path, senderDownloads.Path, clock);
+        var receiver = Coordinator(source.Path, receiverDownloads.Path, clock);
+        int dropped = 0;
+        var session = new Pair(sender, receiver, clock)
+        {
+            TransformSenderPackets = packets =>
+            {
+                LogRelayPacket[] chunks = packets.Where(packet => Decode(packet).Kind == LogStreamKinds.Chunk).ToArray();
+                if (dropped == 0 && chunks.Length > 1)
+                {
+                    dropped++;
+                    long firstSequence = chunks.Min(packet => Decode(packet).Sequence);
+                    return packets.Where(packet => Decode(packet).Kind != LogStreamKinds.Chunk
+                        || Decode(packet).Sequence != firstSequence).ToArray();
+                }
+                return packets;
+            }
+        };
+        session.Tick();
+        receiver.SetReceiverAvailability(true);
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Capturing);
+        session.Tick(2);
+        sender.PrepareSharing([Pair.ReceiverId]);
+        session.TickUntil(() => dropped == 1);
+        string capture = receiver.Snapshot().CaptureFolder;
+
+        receiver.SetCaptureMode(LogStreamingCaptureMode.Stopped);
+
+        using JsonDocument metadata = JsonDocument.Parse(File.ReadAllText(Path.Combine(capture, "capture.json")));
+        Assert.True(metadata.RootElement.GetProperty("hasGaps").GetBoolean());
+        JsonElement capturedSession = Assert.Single(metadata.RootElement.GetProperty("sessions").EnumerateArray(),
+            item => item.GetProperty("senderSteamId").GetString() == Pair.SenderId);
+        Assert.True(capturedSession.GetProperty("hasGaps").GetBoolean());
+        Assert.True(capturedSession.GetProperty("isIncomplete").GetBoolean());
+    }
+
+    [Fact]
     public void Explicit_consent_streams_existing_and_appended_bytes_then_acknowledges_them()
     {
         using var senderFiles = new TempDirectory("rwc-log-source");
@@ -1747,6 +1832,7 @@ public sealed class LogStreamingCoordinatorTests
         internal bool ReceiverAdvertisementFresh { get; set; } = true;
         internal bool SenderAdvertisementFresh { get; set; } = true;
         internal bool ForwardReceiverPackets { get; set; } = true;
+        internal Func<LogRelayPacket[], LogRelayPacket[]>? TransformSenderPackets { get; init; }
         internal Func<LogRelayPacket[], LogRelayPacket[]>? TransformReceiverPackets { get; init; }
         internal string SenderGameSession { get; set; } = "sender-game";
         internal string SenderDisplayName { get; set; } = "Sender";
@@ -1771,7 +1857,7 @@ public sealed class LogStreamingCoordinatorTests
                     _receiverAdvertisement, ForwardReceiverPackets ? _toSender : [], ++_senderSequence,
                     SenderGameSession, ReceiverAdvertisementFresh));
                 _senderAdvertisement = senderReply.Advertisement;
-                _toReceiver = senderReply.OutgoingPackets;
+                _toReceiver = TransformSenderPackets?.Invoke(senderReply.OutgoingPackets) ?? senderReply.OutgoingPackets;
                 var receiverReply = _receiver.Exchange(Upstream(ReceiverId, ReceiverDisplayName, ReceiverIsHost,
                     SenderId, SenderDisplayName, SenderIsHost,
                     _senderAdvertisement, _toReceiver, ++_receiverSequence, "receiver-game", SenderAdvertisementFresh));

@@ -68,6 +68,8 @@ public sealed class LogStreamingCoordinator
     private const double MaximumOutgoingPacketsPerSecondPerPeer = 10;
     private const int MaximumPacketsPerExchange = ProtocolInfo.MaximumLogPacketsPerBridgeExchange;
     private const long MaximumUnacknowledgedBytes = 64 * 1024;
+    private const long MaximumBufferedIncomingBytes = MaximumUnacknowledgedBytes;
+    private const int MaximumBufferedIncomingChunks = 256;
     private static readonly TimeSpan IncomingOpenWindow = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan IncomingOpenNoticeInterval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan TransferHeartbeatInterval = TimeSpan.FromSeconds(2);
@@ -1055,7 +1057,32 @@ public sealed class LogStreamingCoordinator
             transfer.OpenDeepSessions.Add(message.LogSessionId);
         }
         else if (IsDeepTraceFile(message.FileId)) return;
-        var result = _capture.Write(new(senderId, peer.DisplayName, peer.IsHost), chunk);
+        var identity = new LogStreamPeerIdentity(senderId, peer.DisplayName, peer.IsHost);
+        long expectedSequence = _capture.GetNextSequence(senderId, message.LogSessionId);
+        if (message.Sequence > expectedSequence)
+        {
+            if (!transfer.TryBuffer(message, chunk, MaximumBufferedIncomingBytes, MaximumBufferedIncomingChunks))
+                _capture.TryMarkSessionGap(identity, message.LogSessionId, message.Sequence);
+            return;
+        }
+
+        WriteIncomingChunk(peer, transfer, identity, message, chunk, now);
+        while (transfer.TryTakeBuffered(message.LogSessionId,
+                   _capture.GetNextSequence(senderId, message.LogSessionId), out var buffered))
+        {
+            if (!WriteIncomingChunk(peer, transfer, identity, buffered.Message, buffered.Chunk, now)) break;
+        }
+    }
+
+    private bool WriteIncomingChunk(
+        LogLobbyPeer peer,
+        IncomingTransfer transfer,
+        LogStreamPeerIdentity identity,
+        LogStreamNetworkMessage message,
+        LogStreamChunk chunk,
+        DateTimeOffset now)
+    {
+        var result = _capture!.Write(identity, chunk);
         if (result.ShouldAcknowledge)
         {
             var acknowledgement = result.Acknowledgement!;
@@ -1072,13 +1099,15 @@ public sealed class LogStreamingCoordinator
                 _sampleBytes += chunk.Length;
                 AddViewer(peer, chunk, now);
             }
+            return true;
         }
-        else if (result.Status is LogStreamWriteStatus.CaptureLimitReached or LogStreamWriteStatus.InsufficientDiskSpace
-                 or LogStreamWriteStatus.IoError)
+        if (result.Status is LogStreamWriteStatus.CaptureLimitReached or LogStreamWriteStatus.InsufficientDiskSpace
+            or LogStreamWriteStatus.IoError)
         {
             transfer.StorageProblem = result.Message;
             QueueNetwork(peer.SteamId, Reply(LogStreamKinds.Error, message, result.Message));
         }
+        return false;
     }
 
     private void ReceiveAcknowledgement(LogStreamNetworkMessage message, DateTimeOffset now)
@@ -1268,6 +1297,8 @@ public sealed class LogStreamingCoordinator
 
     private void InterruptIncoming(IncomingTransfer transfer, string reason)
     {
+        foreach (var buffered in transfer.HighestBufferedSequences())
+            _capture?.TryMarkSessionGap(transfer.Identity, buffered.Key, buffered.Value);
         _capture?.TryMarkSessionInterrupted(transfer.Identity, transfer.LogSessionId, reason);
         if (transfer.EventSessionId.Length > 0)
             _capture?.TryMarkSessionInterrupted(transfer.Identity, transfer.EventSessionId, reason);
@@ -1803,7 +1834,50 @@ public sealed class LogStreamingCoordinator
         public HashSet<string> OpenDeepSessions { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, long> LastAcknowledgedSequences { get; } = new(StringComparer.Ordinal);
         public Dictionary<string, ViewerStream> Viewers { get; } = new(StringComparer.Ordinal);
+        private Dictionary<string, SortedDictionary<long, BufferedIncomingChunk>> BufferedChunks { get; } =
+            new(StringComparer.Ordinal);
+        private long BufferedBytes { get; set; }
+        private int BufferedChunkCount { get; set; }
+
+        public bool TryBuffer(
+            LogStreamNetworkMessage message,
+            LogStreamChunk chunk,
+            long maximumBytes,
+            int maximumChunks)
+        {
+            if (!chunk.HasValidHash()) return false;
+            if (!BufferedChunks.TryGetValue(message.LogSessionId, out var session))
+            {
+                session = [];
+                BufferedChunks.Add(message.LogSessionId, session);
+            }
+            if (session.ContainsKey(message.Sequence)) return true;
+            if (BufferedBytes + chunk.Length > maximumBytes || BufferedChunkCount >= maximumChunks) return false;
+            session.Add(message.Sequence, new(message, chunk));
+            BufferedBytes += chunk.Length;
+            BufferedChunkCount++;
+            return true;
+        }
+
+        public bool TryTakeBuffered(string sourceSessionId, long sequence, out BufferedIncomingChunk chunk)
+        {
+            if (!BufferedChunks.TryGetValue(sourceSessionId, out var session)
+                || !session.Remove(sequence, out chunk!))
+            {
+                chunk = null!;
+                return false;
+            }
+            BufferedBytes -= chunk.Chunk.Length;
+            BufferedChunkCount--;
+            if (session.Count == 0) BufferedChunks.Remove(sourceSessionId);
+            return true;
+        }
+
+        public IEnumerable<KeyValuePair<string, long>> HighestBufferedSequences()
+            => BufferedChunks.Select(item => new KeyValuePair<string, long>(item.Key, item.Value.Keys.Max()));
     }
+
+    private sealed record BufferedIncomingChunk(LogStreamNetworkMessage Message, LogStreamChunk Chunk);
 
     private sealed class ViewerStream(long lastUsed)
     {

@@ -388,6 +388,42 @@ public sealed class LogCaptureAnalysisTests
     }
 
     [Fact]
+    public async Task Continuous_matching_error_storm_is_combined_until_the_stream_goes_quiet()
+    {
+        using var files = new TempDirectory("capture-analysis-error-storm");
+        WriteCapture(files, incomplete: false);
+        string alice = WriteSession(files, "Alice", "1", true, "alice-session");
+        var lines = Enumerable.Range(0, 8)
+            .Select(index => $"[Error : Rain Meadow] Entity not found: #{index}:apo:0002\n")
+            .Append("[Error : Other Mod] DifferentException: unrelated\n")
+            .ToArray();
+        files.WriteText(Path.Combine(alice, "generation-001/BepInEx/LogOutput.log"), string.Concat(lines));
+        long offset = 0;
+        var chunks = new List<object>();
+        for (int index = 0; index < lines.Length; index++)
+        {
+            int bytes = Encoding.UTF8.GetByteCount(lines[index]);
+            chunks.Add(Chunk("1", "alice-session", "BepInEx/LogOutput.log", offset, bytes,
+                index < 8 ? Start.AddSeconds(index * 0.75) : Start.AddSeconds(3)));
+            offset += bytes;
+        }
+        WriteJournal(files, chunks.ToArray());
+
+        CaptureAnalysisSnapshot snapshot = await new LogCaptureAnalysisSession(files.Path).RefreshAsync();
+
+        CaptureTimelineMoment storm = Assert.Single(snapshot.Moments,
+            moment => moment.Details.Contains("Entity not found", StringComparison.Ordinal));
+        Assert.Equal(8, storm.DuplicateCount);
+        Assert.Equal(Start.AddSeconds(5.25), storm.LastOccurrence);
+        Assert.Single(snapshot.Moments,
+            moment => moment.Details.Contains("DifferentException", StringComparison.Ordinal));
+        CaptureIncident incident = Assert.Single(snapshot.Incidents,
+            item => item.MomentSequences.Contains(storm.Sequence));
+        Assert.Equal(Start.AddSeconds(5.25), incident.Ended);
+        Assert.Contains("8 related errors", incident.Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Refresh_discovers_appended_live_events_without_duplicates()
     {
         using var files = new TempDirectory("capture-analysis-live");
