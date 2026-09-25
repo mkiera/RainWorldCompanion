@@ -11,6 +11,13 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
 
+## 1.4.0-beta.10 - 2026-09-25
+
+- Live streamed logs buffer briefly reordered chunks instead of reporting a
+  capture gap. Missing chunks still mark the affected session incomplete.
+- Capture analysis combines continuous repeats of the same error, including
+  changing entity IDs, and reports the repeat count and duration.
+
 ## 1.4.0-beta.9 - 2026-09-17
 
 - Stored stomach contents can be copied from one campaign into any chosen live
