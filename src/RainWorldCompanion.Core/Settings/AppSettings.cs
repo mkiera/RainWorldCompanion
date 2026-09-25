@@ -22,6 +22,15 @@ public sealed class AppSettings
     /// </summary>
     public string? GameInstallPath { get; set; }
 
+    public string? CompanionModInstallRequestedPath { get; set; }
+
+    public bool CompanionGameHookAutomaticSetup { get; set; } = true;
+
+    public bool LiveMapSpoilerMode { get; set; } = true;
+
+    public string LogStreamingDestinationPath { get; set; } = "";
+    public bool AutomaticDeepTraceEnabled { get; set; } = true;
+
     /// <summary>
     /// "stable", "prerelease" or "alpha". Text rather than the enum, because System.Text.Json
     /// writes an enum as its ordinal and inserting a channel would change what old files mean.
@@ -80,6 +89,11 @@ public sealed class AppSettings
         BackupRootPath = BackupRootPath,
         LibraryRootPath = LibraryRootPath,
         GameInstallPath = GameInstallPath,
+        CompanionModInstallRequestedPath = CompanionModInstallRequestedPath,
+        CompanionGameHookAutomaticSetup = CompanionGameHookAutomaticSetup,
+        LiveMapSpoilerMode = LiveMapSpoilerMode,
+        LogStreamingDestinationPath = LogStreamingDestinationPath,
+        AutomaticDeepTraceEnabled = AutomaticDeepTraceEnabled,
         UpdateChannel = UpdateChannel,
         AutoCheckUpdates = AutoCheckUpdates,
         Theme = Theme,

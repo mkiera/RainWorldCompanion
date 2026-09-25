@@ -24,6 +24,10 @@ public class EnabledModsFileTests
     [Theory]
     [InlineData("moreslugcats", "moreslugcats")]
     [InlineData("devtools", "devtools")]
+    [InlineData("expedition", "EXPEDITION")]
+    [InlineData("jollycoop", "JollyCoop")]
+    [InlineData("rwremix", "rwremix")]
+    [InlineData("versioning", "versioning")]
     [InlineData("SomeOtherFolder", "watcher")]
     public void A_builtin_mod_gets_no_line(string folderName, string id)
     {

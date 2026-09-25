@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 
+using RainWorldCompanion.Core.Library;
 using RainWorldCompanion.Core.Mods;
 using RainWorldCompanion.ViewModels;
 
@@ -29,6 +30,42 @@ public partial class ModSyncDialog : Window
     }
 
     private void OnLaunchGame(object sender, RoutedEventArgs e) => Open(ModSyncViewModel.SteamRunUrl);
+
+    private void OnPreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        e.Effects = DroppedLists(e).Count > 0 ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnPreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        var lists = DroppedLists(e);
+
+        // Explorer waits on this handler, so the read is queued behind it.
+        Dispatcher.InvokeAsync(() =>
+        {
+            foreach (string path in lists)
+            {
+                ViewModel?.ImportList(path);
+            }
+        });
+    }
+
+    private static List<string> DroppedLists(DragEventArgs e)
+        => e.Data.GetData(DataFormats.FileDrop) is string[] paths
+            ? paths.Where(path => ImportableFile.Classify(path) == ImportableKind.ModList).ToList()
+            : new List<string>();
 
     private void OnImportList(object sender, RoutedEventArgs e)
     {

@@ -12,6 +12,77 @@ namespace RainWorldCompanion.Tests;
 /// </summary>
 public class SettingsResilienceTests
 {
+    [Fact]
+    public void Automatic_trace_preference_survives_save_clone_and_startup_load()
+    {
+        using var files = new TempDirectory();
+        string path = Path.Combine(files.Path, "settings.json");
+        Assert.True(new AppSettings().AutomaticDeepTraceEnabled);
+        new SettingsStore(path).Save(new AppSettings { AutomaticDeepTraceEnabled = false }.Clone());
+        Assert.False(new SettingsStore(path).ReadForStartup()!.AutomaticDeepTraceEnabled);
+    }
+
+    [Fact]
+    public void A_file_from_before_automatic_game_hook_setup_enables_it_by_default()
+    {
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, """
+        {
+          "schemaVersion": 1,
+          "gameSavePath": "C:\\saves",
+          "backupRootPath": "C:\\backups"
+        }
+        """);
+
+        Assert.True(store.Load().CompanionGameHookAutomaticSetup);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Automatic_game_hook_setup_survives_saving_a_settings_copy(bool enabled)
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "settings.json");
+        new SettingsStore(path).Save(new AppSettings { CompanionGameHookAutomaticSetup = enabled }.Clone());
+
+        Assert.Equal(enabled, new SettingsStore(path).ReadForStartup()!.CompanionGameHookAutomaticSetup);
+    }
+
+    [Fact]
+    public void A_game_hook_install_queued_while_the_game_runs_survives_restart()
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "settings.json");
+        var store = new SettingsStore(path);
+        store.Save(new AppSettings { CompanionModInstallRequestedPath = @"C:\Games\Rain World" });
+
+        Assert.Equal(@"C:\Games\Rain World", store.Load().CompanionModInstallRequestedPath);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Live_map_spoiler_choice_survives_saving_a_settings_copy(bool enabled)
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "settings.json");
+        new SettingsStore(path).Save(new AppSettings { LiveMapSpoilerMode = enabled }.Clone());
+
+        Assert.Equal(enabled, new SettingsStore(path).ReadForStartup()!.LiveMapSpoilerMode);
+    }
+
+    [Fact]
+    public void Log_streaming_destination_survives_saving_a_settings_copy()
+    {
+        using var dir = new TempDirectory();
+        var path = Path.Combine(dir.Path, "settings.json");
+        const string destination = @"D:\Rain World diagnostics";
+        new SettingsStore(path).Save(new AppSettings { LogStreamingDestinationPath = destination }.Clone());
+
+        Assert.Equal(destination, new SettingsStore(path).ReadForStartup()!.LogStreamingDestinationPath);
+    }
+
     private static SettingsStore StoreWith(TempDirectory dir, string json)
     {
         var path = Path.Combine(dir.Path, "settings.json");

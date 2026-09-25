@@ -261,7 +261,7 @@ public class CampaignEditTests : IDisposable
         editor.DenPos = "SU_A17";
 
         Assert.Equal("SU_A17", Field("DENPOS"));
-        Assert.Contains(editor.Warnings, w => w.Contains("not a shelter", StringComparison.Ordinal));
+        Assert.Contains(editor.Warnings, w => w.Contains("cannot verify", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -7,6 +7,7 @@ using RainWorldCompanion.Core.Editing;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Saves.Models;
 using RainWorldCompanion.Core.System;
+using RainWorldCompanion.Services;
 
 namespace RainWorldCompanion.ViewModels;
 
@@ -165,6 +166,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     private readonly SaveEditSession _session;
     private readonly CampaignRecordRef _campaign;
     private readonly CampaignSummary _original;
+    private readonly IDenMapPicker? _denMapPicker;
+    private DenWorldCatalog _denWorld = DenWorldCatalog.Unknown;
     private readonly List<RawFieldRow> _rawFields = new();
 
     private bool _loading = true;
@@ -176,11 +179,14 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         CampaignRecordRef campaign,
         CampaignSummary original,
         ExpansionPresence? expansions = null,
-        bool devourmentInstalled = false)
+        bool devourmentInstalled = false,
+        IDenMapPicker? denMapPicker = null)
     {
         _session = session;
         _campaign = campaign;
         _original = original;
+        _denMapPicker = denMapPicker;
+        RefreshMapAvailability();
 
         DisplayName = SlugcatCatalog.ForId(campaign.SlugcatId).DisplayName;
         IsHunter = RedsIllness.IsHunter(campaign.SlugcatId);
@@ -225,6 +231,87 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     public string DisplayName { get; }
 
     public bool IsHunter { get; }
+
+    public bool CanChooseDenOnMap { get; private set; }
+    public string DenTimeline => DenWorldCatalog.EffectiveTimeline(_campaign.SlugcatId, Timeline);
+
+    public string DenMapStatus { get; private set; } = "Set a Rain World installation folder in Settings to use the map.";
+
+    public void RefreshMapAvailability()
+    {
+        var availability = _denMapPicker?.GetAvailability(_campaign.SlugcatId);
+        CanChooseDenOnMap = availability?.Available ?? false;
+        DenMapStatus = availability?.Reason ?? "Set a Rain World installation folder in Settings to use the map.";
+        _denWorld = _denMapPicker?.LoadWorld() ?? DenWorldCatalog.Unknown;
+        if (CanChooseDenOnMap && !_denWorld.HasVerifiedShelters)
+        {
+            CanChooseDenOnMap = false;
+            DenMapStatus = "The installed shelter data could not be read. Type a den or use the suggestions.";
+        }
+        OnPropertyChanged(nameof(CanChooseDenOnMap));
+        OnPropertyChanged(nameof(DenMapStatus));
+        if (!_loading)
+        {
+            RefreshShelterMatches();
+            RefreshWarnings();
+        }
+    }
+
+    [RelayCommand]
+    private void ChooseShelterOnMap() => ChooseDenOnMap(lastShelter: false);
+
+    [RelayCommand]
+    private void ChooseLastShelterOnMap() => ChooseDenOnMap(lastShelter: true);
+
+    private void ChooseDenOnMap(bool lastShelter)
+    {
+        RefreshMapAvailability();
+        if (!CanChooseDenOnMap || _denMapPicker is null)
+        {
+            return;
+        }
+
+        try
+        {
+            DenMapSelection? selected = _denMapPicker.Pick(lastShelter ? LastDenPos : DenPos,
+                lastShelter ? "Last shelter" : "Shelter", DenTimeline, _denWorld);
+            if (selected is null)
+            {
+                return;
+            }
+
+            RefreshMapAvailability();
+            if (!CanChooseDenOnMap)
+            {
+                return;
+            }
+
+            var access = _denWorld.Check(selected.RoomId, selected.Timeline);
+            if (!access.Available || DenMapCatalog.ForTimeline(selected.Timeline, _denWorld.DownpourEnabled)?.Find(selected.RoomId) is null)
+            {
+                DenMapStatus = _denWorld.Explanation(selected.RoomId, selected.Timeline);
+                OnPropertyChanged(nameof(DenMapStatus));
+                return;
+            }
+            if (!string.Equals(selected.Timeline, DenTimeline, StringComparison.Ordinal))
+                Timeline = selected.Timeline;
+
+            if (lastShelter)
+            {
+                UseLastShelter(access.RoomId);
+            }
+            else
+            {
+                UseShelter(access.RoomId);
+            }
+        }
+        catch (Exception ex) when (ex is global::System.IO.IOException or InvalidOperationException
+            or NotSupportedException or FormatException or global::System.Text.Json.JsonException)
+        {
+            DenMapStatus = "The map could not be loaded. You can still type a room name or use the suggestions.";
+            OnPropertyChanged(nameof(DenMapStatus));
+        }
+    }
 
     public ObservableCollection<FlagEditRow> Flags { get; }
 
@@ -349,7 +436,15 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         RefreshShelterMatches();
     }
 
-    partial void OnTimelineChanged(string value) => SetText(SaveFields.Timeline, value);
+    partial void OnTimelineChanged(string value)
+    {
+        SetText(SaveFields.Timeline, value);
+        if (!_loading)
+        {
+            RefreshShelterMatches();
+            RefreshWarnings();
+        }
+    }
 
     partial void OnSeedChanged(string value) => SetText(SaveFields.Seed, value);
 
@@ -373,7 +468,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     {
         if (!string.IsNullOrWhiteSpace(room))
         {
-            DenPos = room.Trim();
+            DenPos = CanonicalShelter(room);
         }
     }
 
@@ -382,7 +477,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     {
         if (!string.IsNullOrWhiteSpace(room))
         {
-            LastDenPos = room.Trim();
+            LastDenPos = CanonicalShelter(room);
         }
     }
 
@@ -911,7 +1006,7 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         Fill(ShelterMatches, DenPos);
         Fill(LastShelterMatches, LastDenPos);
 
-        static void Fill(ObservableCollection<string> target, string query)
+        void Fill(ObservableCollection<string> target, string query)
         {
             const int Limit = 12;
 
@@ -923,9 +1018,10 @@ public sealed partial class CampaignEditViewModel : ObservableObject
                 return;
             }
 
-            foreach (string room in ShelterCatalog.Search(query).Take(Limit))
+            foreach (string room in ShelterCatalog.Search(query)
+                .Where(room => !CanChooseDenOnMap || _denWorld.Check(room, DenTimeline).Available).Take(Limit))
             {
-                target.Add(room);
+                target.Add(CanonicalShelter(room));
             }
         }
     }
@@ -949,6 +1045,8 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         AddHunterCycleWarning();
         AddShelterWarning(DenPos, "Shelter");
         AddShelterWarning(LastDenPos, "Last shelter");
+        AddDenWorldWarning(DenPos, "Shelter");
+        AddDenWorldWarning(LastDenPos, "Last shelter");
 
         // The Devourment editor works out its own, and it refreshes them before it calls back here.
         foreach (string warning in Devourment.Warnings)
@@ -962,6 +1060,24 @@ public sealed partial class CampaignEditViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(HasWarnings));
+    }
+
+    private string CanonicalShelter(string room) => _denWorld.HasVerifiedShelters
+        ? _denWorld.Check(room, DenTimeline).RoomId
+        : ShelterCatalog.All.FirstOrDefault(d => string.Equals(d, room.Trim(), StringComparison.OrdinalIgnoreCase))
+            ?? CampaignSpawnCatalog.Find(_campaign.SlugcatId, room) ?? room.Trim();
+
+    private void AddDenWorldWarning(string room, string label)
+    {
+        if (string.IsNullOrWhiteSpace(room)) return;
+        var access = _denWorld.Check(room, DenTimeline);
+        bool shelter = ShelterCatalog.IsKnown(room);
+        if (!shelter && !access.RoomExists && CampaignSpawnCatalog.Find(_campaign.SlugcatId, room) is null) return;
+        string canonical = CanonicalShelter(room);
+        if (!string.Equals(room.Trim(), canonical, StringComparison.Ordinal))
+            Warnings.Add($"{label}: use the exact room ID {canonical}. The game's save lookup is case-sensitive.");
+        if (shelter && _denWorld.HasVerifiedShelters && _denWorld.CanVerifyTimeline(DenTimeline) && !access.Available)
+            Warnings.Add($"{label} ({room}): " + _denWorld.Explanation(room, DenTimeline));
     }
 
     /// <summary>
@@ -1049,16 +1165,14 @@ public sealed partial class CampaignEditViewModel : ObservableObject
     {
         string trimmed = value.Trim();
 
-        if (trimmed.Length == 0 || ShelterCatalog.IsKnown(trimmed))
+        if (trimmed.Length == 0 || ShelterCatalog.IsKnown(trimmed)
+            || CampaignSpawnCatalog.Find(_campaign.SlugcatId, trimmed) is not null
+            || _denWorld.Check(trimmed, DenTimeline).RoomExists)
         {
             return;
         }
 
-        string region = ShelterCatalog.RegionOf(trimmed) ?? "";
-
-        Warnings.Add(RegionCatalog.IsKnown(region)
-            ? $"{label} {trimmed} is not a shelter this app knows of in {RegionCatalog.ForCode(region).DisplayName}. If it came from a mod this is fine."
-            : $"{label} {trimmed} is not a shelter this app knows of. The game puts the player in the wrong place, or nowhere, if the room does not exist.");
+        Warnings.Add($"The app cannot verify {label.ToLowerInvariant()} room {trimmed}. Check its spelling and your game installation. Modded rooms may still be valid.");
     }
 
     private static bool TryNumber(string value, out int parsed)

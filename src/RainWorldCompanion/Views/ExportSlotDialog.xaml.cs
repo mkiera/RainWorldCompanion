@@ -12,9 +12,9 @@ namespace RainWorldCompanion.Views;
 
 /// <summary>
 /// Every side of the picked slot comes from what Core read off disk, so the campaigns shown are
-/// the campaigns that will be stored.
+/// the campaigns that will be exported.
 /// </summary>
-public partial class StoreSlotDialog : Window, INotifyPropertyChanged
+public partial class ExportSlotDialog : Window, INotifyPropertyChanged
 {
     public sealed record SlotChoice(SlotSide Side, string Label)
     {
@@ -26,22 +26,13 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
     }
 
     private SlotChoice _selectedSource;
-    private string _entryName = "";
-
-    public StoreSlotDialog(IReadOnlyList<SlotSide> sides, SaveSlotRef initial)
+    public ExportSlotDialog(IReadOnlyList<SlotSide> sides, SaveSlotRef initial)
     {
         Choices = BuildChoices(sides);
         _selectedSource = Find(initial) ?? Choices[0];
-        _entryName = SuggestName(_selectedSource.Side);
 
         InitializeComponent();
         DataContext = this;
-
-        Loaded += (_, _) =>
-        {
-            NameBox.Focus();
-            NameBox.SelectAll();
-        };
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -58,52 +49,16 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
                 return;
             }
 
-            var wasSuggested = _entryName == SuggestName(_selectedSource.Side);
             _selectedSource = value;
-
-            // A name the user typed is theirs. Only a suggestion this dialog made follows the
-            // picker, so changing slots after typing does not throw the typing away.
-            if (wasSuggested)
-            {
-                _entryName = SuggestName(value.Side);
-            }
-
             RaiseAll();
         }
     }
 
-    public string EntryName
-    {
-        get => _entryName;
-        set
-        {
-            if (value == _entryName)
-            {
-                return;
-            }
-
-            _entryName = value ?? "";
-            Raise(nameof(EntryName));
-            Raise(nameof(CanStore));
-            Raise(nameof(BlockedReason));
-        }
-    }
-
-    /// <summary>Read after the dialog closes.</summary>
     public SaveSlotRef ChosenSource => new(_selectedSource.Side.Realm, _selectedSource.Side.Slot);
 
-    public string ChosenName => _entryName.Trim();
+    public string ChosenName => SuggestName(_selectedSource.Side);
 
-    public string? ChosenNote
-    {
-        get
-        {
-            var note = NoteBox.Text?.Trim();
-            return string.IsNullOrWhiteSpace(note) ? null : note;
-        }
-    }
-
-    public bool CanStore => _selectedSource.Side.Exists && _entryName.Trim().Length > 0;
+    public bool CanExport => _selectedSource.Side.Exists;
 
     public string BlockedReason
     {
@@ -114,7 +69,7 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
                 return _selectedSource.Side.FileName + " has no save in it.";
             }
 
-            return _entryName.Trim().Length == 0 ? "Give this save a name." : "";
+            return "";
         }
     }
 
@@ -222,7 +177,7 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
     {
         foreach (var name in new[]
                  {
-                     nameof(SelectedSource), nameof(EntryName), nameof(CanStore), nameof(BlockedReason),
+                     nameof(SelectedSource), nameof(ChosenName), nameof(CanExport), nameof(BlockedReason),
                      nameof(SourceName), nameof(SourceSummary), nameof(SourceCampaigns),
                  })
         {
@@ -234,9 +189,9 @@ public partial class StoreSlotDialog : Window, INotifyPropertyChanged
 
     private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);
 
-    private void OnStore(object sender, RoutedEventArgs e)
+    private void OnChoose(object sender, RoutedEventArgs e)
     {
-        if (CanStore)
+        if (CanExport)
         {
             DialogResult = true;
         }

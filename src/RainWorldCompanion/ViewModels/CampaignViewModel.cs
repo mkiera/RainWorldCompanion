@@ -266,6 +266,8 @@ public sealed partial class CampaignViewModel : ObservableObject
 
     public bool CanBeTaken => Source?.CanBeTaken == true;
 
+    public bool CanApplyDevourmentContents => CanBeTaken && Summary.DevourmentStateCount > 0;
+
     public bool HasActions => CanEdit || CanBeTaken;
 
     /// <summary>

@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 What changed in each release, newest first. Headings are the version on its own,
 without a leading `v`, and match the tag the release was built from. Work that
@@ -10,6 +10,209 @@ fails when it finds none, so rename Unreleased before tagging, not after.
 
 A stable release collects what its pre-releases brought into one section,
 worded as things ended up. The pre-release sections stay for their tags.
+
+## Unreleased
+
+## 1.4.0 - 2026-09-25
+
+- Campaign den fields have a map picker for the supported timelines. Shelter
+  locations can be selected on the map or entered by room name.
+- Live features are part of the main window, with room tracking, player
+  following, and a spoiler mode that reveals explored rooms and connections.
+  Saves and live features remain accessible while the game is running.
+- Companion installs, enables, and updates Companion Game Hook automatically.
+  A setting can disable and remove it, while a hook disabled in Remix stays
+  off. This release includes Game Hook 1.0.14.
+- The live map supports local teleports and Rain Meadow host requests. Guests
+  opt in to host control, and player indicators show who is host and who has
+  granted permission. Host control is on by default for new Game Hook
+  configurations. Teleport all supports travel between regions when every
+  guest has a compatible Game Hook and allows host control.
+- Recover me revives and moves your existing local player to an open position
+  in their current region. It also restores local Rain Meadow players after
+  a void fall removes their network registration. Players whose bodies are
+  gone are shown as dead.
+- Campaign transfers carry discovered passage destinations for the selected
+  slugcat while preserving other progression in the destination slot. Store
+  or update a campaign library entry with this version to include them. Older
+  entries and loose campaign files do not contain this extra data.
+- Modded campaign contents can be copied into a chosen live campaign,
+  including a different slugcat, without replacing the rest of that campaign.
+- While Rain World is open, Recent keeps the first saved state from each cycle
+  for each campaign. Each entry contains only that campaign, can be restored
+  or kept in the library, and the latest five cycles per campaign are retained.
+- Automatic safety backups retain the newest 20 entries. Manual backups are
+  never removed automatically, and the limit is shown above the backups list.
+- Library saves remember which live slot they are tied to after the app
+  restarts.
+- Live slots can be exported directly as `.rwsave` files. Individual campaigns
+  in live saves, backups, and Recent can be exported as `.rwcampaign` files
+  without first adding them to the library.
+- Exported files can be dropped onto the window to import them. A `.rwsave`
+  or `.rwcampaign` file goes into the library, a `.rwconfigs` file opens the
+  settings picker, and a `.rwmods` file opens the Mods window with its list
+  ready. The Mods window also accepts dropped `.rwmods` files.
+- Log bundle filenames include the signed-in Steam display name when available.
+- Steam Rain Meadow lobbies can stream game logs from consenting players into
+  one capture, including the receiver's logs, active mod versions and code
+  fingerprints, reconnection history, connection charts, and event markers.
+  Captures can be saved to a folder chosen in the log streaming panel.
+  Downloads remains the default.
+- Captures open in a synchronized timeline with separate tracks for players,
+  playback, event filters, shared alerts, player locations on the world map,
+  and graphs for errors, network latency, frame time, and memory. The view can
+  follow a capture while it is being recorded.
+- Capture analysis compares mod versions and third-party code fingerprints,
+  flags different builds that report the same version, marks incomplete
+  comparisons, and ranks possible mod causes with the evidence for each.
+  Continuous repeats of the same error, including changing entity IDs, are
+  combined with their repeat count and duration.
+- Captures record lightweight frame and memory summaries with deep trace off.
+  Automatic deep trace records up to 60 seconds from an affected player and
+  the host after sustained gameplay stalls, with a cooldown and visible start
+  and stop events. It can be disabled in the log streaming menu. Manual deep
+  trace can be switched during an approved stream and covers all approved
+  senders. Captures distinguish exact local traces from receiver-observed
+  player, room, lobby, and network data.
+- Log streaming compresses chunks and paces traffic per recipient. Room
+  changes and gameplay events stream separately from raw logs, so repeated
+  errors do not leave the timeline waiting for old data. Remote deep trace
+  uses bandwidth left after normal logs, with an event when sampling is paced.
+  The receiver's local sampling is unchanged.
+- Briefly reordered log chunks are buffered, and delayed acknowledgements
+  avoid repeated retransmissions. Missing chunks still mark a session
+  incomplete. Starting another capture begins with current gameplay metadata.
+  Both sender and receiver must update Companion and Game Hook to use the
+  revised protocol. Existing captures remain readable.
+- Live capture analysis handles partially received lines without repeatedly
+  reading the whole file. Timeline refreshes reuse unchanged controls, and
+  the raw log viewer batches large updates to reduce UI stalls.
+- Following raw logs scrolls only the log panel. Timeline follow stays enabled
+  through new events, zooming, selection, and playhead movement. Horizontal
+  panning turns it off, and enabling it returns to the present. With follow
+  off, new logs leave the playhead and visible time range steady.
+- Completed update downloads stay at 100 percent while the installer is prepared.
+- The Alpha update list includes builds still running on GitHub. Selecting one
+  waits for it to finish, then downloads its installer if the build succeeds.
+
+## 1.4.0-beta.10 - 2026-09-25
+
+- Live streamed logs buffer briefly reordered chunks instead of reporting a
+  capture gap. Missing chunks still mark the affected session incomplete.
+- Capture analysis combines continuous repeats of the same error, including
+  changing entity IDs, and reports the repeat count and duration.
+
+## 1.4.0-beta.9 - 2026-09-17
+
+- Stored stomach contents can be copied from one campaign into any chosen live
+  campaign, including a different slugcat, without replacing the rest of the
+  target campaign.
+- While Rain World is open, the Recent tab keeps the first saved state from
+  each cycle for each campaign. Each entry contains only that campaign, can be
+  restored or kept in the library, and the latest five cycles per campaign are
+  retained.
+- Automatic safety backups retain the newest 20 entries. Manual backups are
+  never removed automatically, and the limit is shown above the backups list.
+- Library saves remember which live slot they are tied to after the app
+  restarts.
+- Live slots can be exported directly as `.rwsave` files. Individual campaigns
+  in live saves, backups, and Recent can be exported directly as `.rwcampaign`
+  files without first adding them to the library.
+
+## 1.4.0-beta.8 - 2026-09-16
+
+- Room changes and gameplay events stream separately from raw logs, so a flood
+  of repeated errors does not leave the live timeline waiting for old log data.
+  Starting another capture begins with current gameplay metadata. Delayed or
+  reordered acknowledgements no longer cause repeated chunk retransmissions.
+- Live capture analysis handles partially received log lines without repeatedly
+  reading the entire file. Timeline refreshes reuse unchanged controls, and the
+  live log viewer batches large updates to reduce UI stalls.
+- Following raw logs scrolls only the log panel. Timeline follow stays enabled
+  through new events, zooming, event selection, and playhead movement. Horizontal
+  panning turns it off, and enabling it returns the view to the present.
+- Includes Companion Game Hook 1.0.14. Both sender and receiver must update
+  Companion and Game Hook to use the revised log streaming protocol. Existing
+  captures remain readable.
+
+## 1.4.0-beta.7 - 2026-09-16
+
+- Captures now record lightweight frame and memory summaries even with deep
+  trace off. Automatic deep trace records up to 60 seconds from an affected
+  player and the host after sustained gameplay stalls, with a cooldown and
+  visible start and stop events. Manual deep trace still covers all approved
+  senders. Automatic recording can be disabled in the log streaming menu.
+- Log streaming compresses chunks between updated apps and gives the receiver
+  more capacity for simultaneous senders. Game Hook drains busy relay queues
+  more frequently so room events and other logs can keep up in larger lobbies.
+  Remote deep trace samples use available bandwidth after normal logs, with an
+  event marking when sampling is paced. The receiver's local sampling is unchanged.
+
+## 1.4.0-beta.6 - 2026-09-16
+
+- Fixed remote room changes and gameplay events falling far behind during log
+  streaming. Transfers now pace traffic per recipient and batch small raw-log writes.
+
+## 1.4.0-beta.5 - 2026-09-15
+
+- Live capture timelines keep their playhead and visible time range steady while
+  Follow live edge is off, as new logs arrive.
+
+## 1.4.0-beta.4 - 2026-09-14
+
+- Streamed-log captures can be loaded into a synchronized, multitrack timeline
+  with playback, event filters, shared alerts, player locations on the world
+  map, and graphs for errors, network latency, frame time, and memory. The view
+  can follow a capture live while it is still being recorded.
+- Capture analysis compares each player's reported mod versions and third-party
+  code fingerprints, clearly flags different builds that report the same
+  version, marks incomplete comparisons, and ranks possible mod causes for an
+  incident with the evidence behind each likelihood.
+- Remote log sharing keeps room changes and other structured events moving
+  during heavy raw-log activity.
+
+## 1.4.0-beta.3 - 2026-09-13
+
+- Files the app exports can be dropped onto the window to import them. A
+  `.rwsave` or `.rwcampaign` file goes into the library, a `.rwconfigs` file
+  opens the settings picker, and a `.rwmods` file opens the Mods window with
+  its list ready. The Mods window takes a dropped `.rwmods` file too.
+- Companion installs and enables Companion Game Hook automatically on startup. A
+  setting can disable and remove it, while a hook disabled in Remix stays off.
+  Rain Meadow host control is on by default for new Game Hook configurations.
+- Log bundle filenames include the signed-in Steam display name when available.
+- Steam Rain Meadow lobbies can stream game logs from consenting players into one
+  capture, including the receiver's own logs, active mod versions and code
+  fingerprints, reconnection history, live connection charts, and event markers.
+- Deep trace can be switched during an approved stream. Captures keep exact local
+  player traces separate from receiver-observed Meadow roster, room, life state,
+  lobby configuration, and network data available for every visible player.
+- Streamed-log captures can be saved to a persistent folder chosen in the log
+  streaming panel. Downloads remains the default.
+
+## 1.4.0-beta.2 - 2026-09-13
+
+- Recover me restores local Rain Meadow players after a void fall removes their
+  network registration. Players whose bodies are gone are shown as dead.
+
+## 1.4.0-beta.1 - 2026-09-12
+
+- Campaign den fields have a map picker with maps for the supported timelines.
+  Shelter locations can be selected on the map or entered by room name.
+- Live features are part of the main window, with room tracking, player following,
+  and a spoiler mode that reveals explored rooms and their connections. Companion
+  installs, enables, and updates Companion Game Hook, which supplies live game data.
+  You can switch between saves and live features while the game is running.
+- The live map supports local teleports and Rain Meadow host requests. Guests opt
+  in to host control, and player indicators show who is host and who has granted
+  permission. Teleport all supports travel between regions when every guest has
+  a compatible Game Hook and allows host control. Recover me revives and moves
+  your existing local player to an open position in their current region.
+- Campaign transfers now carry discovered passage destinations for the selected
+  slugcat, preserving other progression in the destination slot. Store or update
+  a campaign library entry with this version to include those destinations.
+  Older entries and loose campaign files do not contain this extra data.
+- Completed update downloads stay at 100 percent while the installer is prepared.
 
 ## 1.3.0 - 2026-09-05
 

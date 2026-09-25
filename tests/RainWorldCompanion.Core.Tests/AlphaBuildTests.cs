@@ -14,8 +14,9 @@ public class AlphaBuildTests
         string branch,
         int runNumber,
         string sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        string conclusion = "success") =>
-        new(id, "Build Test", branch, sha, runNumber, conclusion, DateTimeOffset.UnixEpoch);
+        string conclusion = "success",
+        string status = "completed") =>
+        new(id, "Build Test", branch, sha, runNumber, conclusion, DateTimeOffset.UnixEpoch, status);
 
     private static BuildStamp Nothing => BuildStamp.ForVersion("1.0.0");
 
@@ -78,6 +79,25 @@ public class AlphaBuildTests
         Assert.Equal(2, builds.Count);
         Assert.Equal(13, builds[0].RunId);
         Assert.Equal(11, builds.Single(b => b.Branch == "feature/updater").RunId);
+    }
+
+    [Theory]
+    [InlineData("queued")]
+    [InlineData("in_progress")]
+    [InlineData("waiting")]
+    public void A_workflow_still_running_replaces_the_older_finished_build(string status)
+    {
+        var runs = new[]
+        {
+            Run(10, "feature/updater", 3),
+            Run(11, "feature/updater", 4, conclusion: "", status: status),
+        };
+
+        var build = Assert.Single(AlphaBuilds.FromRuns(runs, Nothing));
+
+        Assert.Equal(11, build.RunId);
+        Assert.True(build.IsPending);
+        Assert.False(build.IsReady);
     }
 
     [Theory]

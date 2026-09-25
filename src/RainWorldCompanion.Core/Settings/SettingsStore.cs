@@ -190,6 +190,12 @@ public sealed class SettingsStore
         settings.BackupRootPath = ReadString(root, "backupRootPath", settings.BackupRootPath);
         settings.LibraryRootPath = ReadString(root, "libraryRootPath", settings.LibraryRootPath);
         settings.GameInstallPath = ReadStringOrNull(root, "gameInstallPath");
+        settings.CompanionModInstallRequestedPath = ReadStringOrNull(root, "companionModInstallRequestedPath");
+        settings.CompanionGameHookAutomaticSetup = ReadBool(root, "companionGameHookAutomaticSetup", settings.CompanionGameHookAutomaticSetup);
+        settings.LiveMapSpoilerMode = ReadBool(root, "liveMapSpoilerMode", settings.LiveMapSpoilerMode);
+        settings.LogStreamingDestinationPath = ReadString(
+            root, "logStreamingDestinationPath", settings.LogStreamingDestinationPath);
+        settings.AutomaticDeepTraceEnabled = ReadBool(root, "automaticDeepTraceEnabled", settings.AutomaticDeepTraceEnabled);
         settings.UpdateChannel = ReadString(root, "updateChannel", settings.UpdateChannel);
         settings.AutoCheckUpdates = ReadBool(root, "autoCheckUpdates", settings.AutoCheckUpdates);
         settings.Theme = ReadString(root, "theme", "light");

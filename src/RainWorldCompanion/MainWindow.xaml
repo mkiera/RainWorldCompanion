@@ -5,11 +5,15 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:RainWorldCompanion"
         xmlns:vm="clr-namespace:RainWorldCompanion.ViewModels"
+        xmlns:views="clr-namespace:RainWorldCompanion.Views"
         xmlns:behaviors="clr-namespace:RainWorldCompanion.Views.Behaviors"
         mc:Ignorable="d"
         Title="{x:Static local:AppInfo.DisplayName}"
         Height="720" Width="1150" MinHeight="560" MinWidth="1024"
         WindowStartupLocation="CenterScreen"
+        AllowDrop="True"
+        PreviewDragOver="OnPreviewDragOver"
+        PreviewDrop="OnPreviewDrop"
         Background="{DynamicResource Brush.Window}"
         Foreground="{DynamicResource Brush.Text}"
         TextOptions.TextFormattingMode="Display"
@@ -821,8 +825,13 @@
                 <!-- The shelter the player wakes up in. Typing filters the list; anything can be typed. -->
                 <StackPanel Margin="0,4,0,0">
                     <TextBlock Text="Shelter" Style="{StaticResource Text.Tiny}" />
-                    <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
-                             Text="{Binding DenPos, UpdateSourceTrigger=PropertyChanged}" />
+                    <WrapPanel>
+                        <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
+                                 Text="{Binding DenPos, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Content="Choose on map…" Margin="8,0,0,0" Style="{StaticResource Button.Small}"
+                                Command="{Binding ChooseShelterOnMapCommand}" IsEnabled="{Binding CanChooseDenOnMap}"
+                                ToolTip="{Binding DenMapStatus}" ToolTipService.ShowOnDisabled="True" />
+                    </WrapPanel>
                     <ItemsControl ItemsSource="{Binding ShelterMatches}" Margin="0,4,0,0"
                                   ItemTemplate="{StaticResource ShelterSuggestionTemplate}"
                                   ItemsPanel="{StaticResource WrapPanelTemplate}" />
@@ -830,11 +839,17 @@
 
                 <StackPanel Margin="0,8,0,0">
                     <TextBlock Text="Last shelter" Style="{StaticResource Text.Tiny}" />
-                    <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
-                             Text="{Binding LastDenPos, UpdateSourceTrigger=PropertyChanged}" />
+                    <WrapPanel>
+                        <TextBox Style="{StaticResource Edit.WideBox}" HorizontalAlignment="Left"
+                                 Text="{Binding LastDenPos, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button Content="Choose on map…" Margin="8,0,0,0" Style="{StaticResource Button.Small}"
+                                Command="{Binding ChooseLastShelterOnMapCommand}" IsEnabled="{Binding CanChooseDenOnMap}"
+                                ToolTip="{Binding DenMapStatus}" ToolTipService.ShowOnDisabled="True" />
+                    </WrapPanel>
                     <ItemsControl ItemsSource="{Binding LastShelterMatches}" Margin="0,4,0,0"
                                   ItemTemplate="{StaticResource LastShelterSuggestionTemplate}"
                                   ItemsPanel="{StaticResource WrapPanelTemplate}" />
+                    <TextBlock Text="{Binding DenMapStatus}" Style="{StaticResource Text.Muted}" Margin="0,5,0,0" TextWrapping="Wrap" />
                 </StackPanel>
 
                 <DockPanel Margin="0,12,0,7">
@@ -1184,9 +1199,9 @@
                                            Visibility="{Binding HasActions, Converter={StaticResource BoolToVis}}">
                                     <!--
                                         Edit and Delete change the file the campaign is in, so they
-                                        are drawn only for the live save folder. Save to library and
-                                        Send to slot read it and write somewhere else, so they work
-                                        on a backup and on a library save too. All of them go away
+                                        are drawn only for the live save folder. Save to library,
+                                        Export campaign and Send to slot read it and write somewhere
+                                        else, so they work on a backup and on a library save too. All of them go away
                                         while an editor is open: an unsaved edit and a campaign
                                         moving are two answers to what this campaign is.
                                     -->
@@ -1202,6 +1217,12 @@
                                                 Style="{StaticResource Button.Small}"
                                                 ToolTip="Keeps a copy of this one campaign under a name. This slot is not touched."
                                                 Command="{Binding DataContext.StoreCampaignCommand,
+                                                          RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}" />
+                                        <Button Content="Export campaign" Margin="6,0,0,0"
+                                                Style="{StaticResource Button.Small}"
+                                                ToolTip="Exports this campaign as a .rwcampaign file without adding it to the library."
+                                                Command="{Binding DataContext.ExportCampaignCommand,
                                                           RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}" />
                                         <Button Content="Send to slot" Margin="6,0,0,0"
@@ -1318,6 +1339,15 @@
                                            Visibility="{Binding HasAnyDevourment, Converter={StaticResource BoolToVis}}">
                                     <TextBlock DockPanel.Dock="Left" Text="DEVOURMENT" Margin="0,0,8,0"
                                                Style="{StaticResource Text.SectionLabel}" />
+                                    <Button DockPanel.Dock="Right"
+                                            Content="Apply contents to campaign"
+                                            Style="{StaticResource Button.Small}"
+                                            Margin="8,0,0,0"
+                                            Visibility="{Binding CanApplyDevourmentContents, Converter={StaticResource BoolToVis}}"
+                                            ToolTip="Copies only these stomach contents into a live campaign you choose."
+                                            Command="{Binding DataContext.ApplyDevourmentContentsCommand,
+                                                      RelativeSource={RelativeSource AncestorType=Window}}"
+                                            CommandParameter="{Binding}" />
                                     <Border Height="1" Background="{DynamicResource Brush.Border}" VerticalAlignment="Center" />
                                 </DockPanel>
 
@@ -1749,7 +1779,7 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Root" Background="Transparent" Padding="2,4,14,6"
+                        <Border x:Name="Root" Background="Transparent" Padding="2,4,8,6"
                                 BorderThickness="0,0,0,2" BorderBrush="Transparent">
                             <ContentPresenter VerticalAlignment="Center" />
                         </Border>
@@ -1961,6 +1991,35 @@
             </StackPanel>
         </DataTemplate>
 
+        <DataTemplate x:Key="LiveHistoryRowTemplate">
+            <StackPanel ToolTip="{Binding TooltipText}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding SizeText}"
+                               Style="{StaticResource Text.Tiny}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding CapturedText}" Style="{StaticResource Text.Muted}"
+                               VerticalAlignment="Center" />
+                </DockPanel>
+
+                <TextBlock Text="{Binding LabelText}" FontWeight="SemiBold" Margin="0,2,0,0"
+                           TextTrimming="CharacterEllipsis" />
+
+                <ItemsControl ItemsSource="{Binding Portraits}"
+                              ItemTemplate="{StaticResource Portrait.Small}"
+                              ItemsPanel="{StaticResource WrapPanelTemplate}"
+                              Margin="0,6,0,0"
+                              Visibility="{Binding HasPortraits, Converter={StaticResource BoolToVis}}" />
+
+                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                    <Border Style="{StaticResource Chip}" Padding="6,1" Margin="0,0,8,0">
+                        <TextBlock Text="{Binding CampaignCountText}" FontSize="10" />
+                    </Border>
+                    <Border Style="{StaticResource Chip}" Padding="6,1">
+                        <TextBlock Text="Automatic" FontSize="10" />
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
+
     </Window.Resources>
 
     <Grid>
@@ -1968,6 +2027,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <!-- Top bar: whether the game is running, and every command -->
@@ -1983,6 +2043,7 @@
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center"
                             Margin="10,0,0,0">
 
+                    <StackPanel Orientation="Horizontal" Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}">
                     <Button Content="New Backup" Style="{StaticResource Button.Accent}"
                             MinWidth="98" MinHeight="26" Padding="10,4" FontSize="12"
                             Command="{Binding NewBackupCommand}" />
@@ -1996,9 +2057,9 @@
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 
-                    <Button Content="Store Slot" Style="{StaticResource Button.Small}"
-                            Command="{Binding StoreSlotCommand}"
-                            ToolTip="Keep a copy of one save slot in the library under a name of your choosing." />
+                    <Button Content="Export Slot" Style="{StaticResource Button.Small}"
+                            Command="{Binding ExportSlotCommand}"
+                            ToolTip="Export one live save slot as a .rwsave file without adding it to the library." />
                     <!-- The one way in to a slot copy. Both ends are picked in the dialog, so the
                          slot rows further down carry no buttons of their own. -->
                     <Button Content="Copy Slot" Style="{StaticResource Button.Small}"
@@ -2032,6 +2093,14 @@
 
                     <Rectangle Style="{StaticResource Toolbar.Separator}" />
 
+                    </StackPanel>
+                    <Button Content="Live features" Style="{StaticResource Button.Small}"
+                            Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}"
+                            Margin="0,0,4,0" Command="{Binding OpenLiveFeaturesCommand}"
+                            ToolTip="Open the live map and Companion Game Hook setup." />
+                    <Button Content="Back to saves" Margin="0,0,4,0" Command="{Binding OpenSavesCommand}"
+                            Style="{StaticResource Button.Small}"
+                            Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}" />
                     <Button Content="Updates" Style="{StaticResource Button.Small}"
                             Command="{Binding OpenUpdatesCommand}" />
                     <Button Style="{StaticResource Button.Icon}"
@@ -2060,7 +2129,7 @@
                                 <Setter Property="BorderBrush" Value="{DynamicResource Brush.Ok}" />
                                 <Setter Property="BorderThickness" Value="1" />
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                    <DataTrigger Binding="{Binding IsCurrentPageReady}" Value="False">
                                         <Setter Property="Background" Value="{DynamicResource Brush.DangerSoft}" />
                                         <Setter Property="BorderBrush" Value="{DynamicResource Brush.Danger}" />
                                     </DataTrigger>
@@ -2073,7 +2142,7 @@
                                     <Style TargetType="Ellipse">
                                         <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                            <DataTrigger Binding="{Binding IsCurrentPageReady}" Value="False">
                                                 <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -2087,7 +2156,7 @@
                                     <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Body}">
                                         <Setter Property="Foreground" Value="{DynamicResource Brush.Ok}" />
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsGameRunning}" Value="True">
+                                            <DataTrigger Binding="{Binding IsCurrentPageReady}" Value="False">
                                                 <Setter Property="Foreground" Value="{DynamicResource Brush.Danger}" />
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -2099,6 +2168,7 @@
 
                     <Button Grid.Column="1" Content="Refresh" Margin="10,0,0,0"
                             Style="{StaticResource Button.Small}"
+                            Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}"
                             Command="{Binding RefreshCommand}" />
                 </Grid>
             </DockPanel>
@@ -2108,7 +2178,7 @@
              and nothing below has to renumber. Both can be showing at once, and sometimes should:
              an update being available while the save folder is misconfigured is a real state, and
              hiding one behind the other helps nobody. -->
-        <StackPanel Grid.Row="1">
+        <StackPanel Grid.Row="1" Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}">
 
             <!-- Configuration problem banner -->
             <Border Style="{StaticResource Banner.Warn}"
@@ -2238,13 +2308,13 @@
 
         </StackPanel>
 
-        <Grid Grid.Row="2" Margin="16,12,16,14">
+        <Grid Grid.Row="2" Margin="16,12,16,14" Visibility="{Binding IsSavePageVisible, Converter={StaticResource BoolToVis}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="330" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <!-- List column: the live save, then either the backups or the library, newest first -->
+            <!-- List column: the live save, then the chosen saved-list view, newest first -->
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
@@ -2285,8 +2355,7 @@
                     </StackPanel>
                 </Button>
 
-                <!-- Two lists in one column. Switching tabs moves no selection, so a backup stays
-                     open in the panel on the right while the library is being read on the left. -->
+                <!-- Switching tabs moves no selection, so the open detail remains visible. -->
                 <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="1,16,0,7">
                     <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
                                  IsChecked="{Binding IsLibraryTabSelected, Mode=TwoWay}"
@@ -2295,6 +2364,16 @@
                             <TextBlock Text="LIBRARY" Style="{StaticResource ListTabText}" />
                             <TextBlock Text="{Binding LibraryCountText}" Style="{StaticResource Text.Muted}"
                                        Margin="8,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </RadioButton>
+
+                    <RadioButton Style="{StaticResource ListTab}" GroupName="ListTabs"
+                                 IsChecked="{Binding IsRecentTabSelected, Mode=TwoWay}"
+                                 AutomationProperties.Name="Recent saves tab">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="RECENT" Style="{StaticResource ListTabText}" />
+                            <TextBlock Text="{Binding LiveHistoryCountText}" Style="{StaticResource Text.Muted}"
+                                       Margin="5,0,0,0" VerticalAlignment="Center" />
                         </StackPanel>
                     </RadioButton>
 
@@ -2330,11 +2409,31 @@
                             Command="{Binding RenameEntryCommand}" />
                     <Button Content="Import" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding ImportSaveCommand}"
-                            ToolTip="Read a .rwsave file, or a bare save file, into the library." />
+                            ToolTip="Read a .rwsave file, or a bare save file, into the library. Dropping one onto the window does the same." />
                     <Button Content="Export" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
                             Command="{Binding ExportSaveCommand}"
                             ToolTip="Write this library save out as a single .rwsave file." />
                 </WrapPanel>
+
+                <WrapPanel Grid.Row="2" Margin="1,0,0,8"
+                           Visibility="{Binding IsRecentTabSelected, Converter={StaticResource BoolToVis}}">
+                    <Button Content="Restore campaign" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding RestoreRecentSaveCommand}"
+                            ToolTip="Restore only this campaign to its original slot. Every other campaign and slot is left alone. A safety backup is made first." />
+                    <Button Content="Keep in library" Style="{StaticResource Button.Small}" Margin="0,0,6,6"
+                            Command="{Binding KeepRecentSaveCommand}"
+                            ToolTip="Keep this campaign permanently as a named save in the Library." />
+                    <TextBlock Text="{Binding LiveHistoryStatusText}" Style="{StaticResource Text.Tiny}"
+                               VerticalAlignment="Center" Margin="0,0,0,6" TextWrapping="Wrap"
+                               Visibility="{Binding LiveHistoryStatusText, Converter={StaticResource StringToVis}}" />
+                </WrapPanel>
+
+                <TextBlock Grid.Row="2"
+                           Text="Automatic safety backups: newest 20 kept. Manual backups are never removed automatically."
+                           Style="{StaticResource Text.Tiny}"
+                           Margin="1,0,0,8"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding IsBackupsTabSelected, Converter={StaticResource BoolToVis}}" />
 
                 <Grid Grid.Row="3">
                     <Grid Visibility="{Binding IsBackupsTabSelected, Converter={StaticResource BoolToVis}}">
@@ -2371,7 +2470,7 @@
                             </ListBox.ItemContainerStyle>
                         </ListBox>
 
-                        <TextBlock Text="No saves in the library yet. Use Store Slot to keep one of your slots here under a name, or Import to read one in."
+                        <TextBlock Text="No saves in the library yet. Use Store Slot to keep one of your slots here under a name, or Import to read one in. A save file dropped onto the window is read in too."
                                    Style="{StaticResource Text.Muted}"
                                    TextWrapping="Wrap"
                                    HorizontalAlignment="Center"
@@ -2379,6 +2478,28 @@
                                    Margin="20"
                                    IsHitTestVisible="False"
                                    Visibility="{Binding HasNoLibraryEntries, Converter={StaticResource BoolToVis}}" />
+                    </Grid>
+
+                    <Grid Visibility="{Binding IsRecentTabSelected, Converter={StaticResource BoolToVis}}">
+                        <ListBox ItemsSource="{Binding LiveHistoryEntries}"
+                                 SelectedItem="{Binding SelectedLiveHistory, Mode=TwoWay}"
+                                 ItemTemplate="{StaticResource LiveHistoryRowTemplate}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Text}" />
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                        </ListBox>
+
+                        <TextBlock Text="No recent saves yet. Keep this app open while Rain World runs. A recent save appears after the game writes a stable campaign save. The first save from each cycle is kept, up to five per campaign."
+                                   Style="{StaticResource Text.Muted}"
+                                   TextWrapping="Wrap"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   Margin="20"
+                                   IsHitTestVisible="False"
+                                   Visibility="{Binding HasNoLiveHistoryEntries, Converter={StaticResource BoolToVis}}" />
                     </Grid>
                 </Grid>
 
@@ -2693,7 +2814,7 @@
                                                 Style="{StaticResource Button.Small}"
                                                 Margin="0,0,8,6"
                                                 Command="{Binding ImportSettingsCommand}"
-                                                ToolTip="Takes mod settings from a .rwconfigs file somebody exported. You pick which mods, and a safety snapshot is taken before anything is replaced." />
+                                                ToolTip="Takes mod settings from a .rwconfigs file somebody exported. You pick which mods, and a safety snapshot is taken before anything is replaced. Dropping the file onto the window does the same." />
                                         <Button Content="Export ticked"
                                                 Style="{StaticResource Button.Small}"
                                                 Margin="0,0,8,6"
@@ -2710,7 +2831,7 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <TextBlock Text="Select the live save, a backup or a library save on the left to see what is in it."
+                    <TextBlock Text="Select the live save, a recent save, a backup or a library save on the left to see what is in it."
                                Style="{StaticResource Text.Muted}"
                                TextWrapping="Wrap"
                                HorizontalAlignment="Center"
@@ -2721,8 +2842,49 @@
             </Border>
         </Grid>
 
-        <!-- Busy overlay -->
-        <Border Grid.Row="0" Grid.RowSpan="3"
+        <ContentControl Grid.Row="1" Grid.RowSpan="2" Content="{Binding Live}"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                        Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}">
+            <ContentControl.ContentTemplate>
+                <DataTemplate><views:LiveSessionView /></DataTemplate>
+            </ContentControl.ContentTemplate>
+        </ContentControl>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Left"
+                    Margin="16,6,16,8">
+            <Button Command="{Binding OpenLiveFeaturesCommand}" Style="{StaticResource Button.Small}"
+                    AutomationProperties.Name="Companion Game Hook status" ToolTip="{Binding Live.SetupText}">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="7" Height="7" Margin="0,0,7,0" VerticalAlignment="Center">
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Setter Property="Fill" Value="{DynamicResource Brush.Danger}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Live.SetupReady}" Value="True">
+                                        <Setter Property="Fill" Value="{DynamicResource Brush.Ok}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
+                    </Ellipse>
+                    <TextBlock Text="{Binding Live.IndicatorText}" FontSize="11" />
+                </StackPanel>
+            </Button>
+            <Button x:Name="DeveloperMenuButton" Content="Dev"
+                    Command="{Binding OpenDeveloperWindowCommand}"
+                    Style="{StaticResource Button.Tiny}" Margin="6,0,0,0"
+                    MinWidth="38" FontSize="11"
+                    Foreground="{DynamicResource Brush.TextMuted}"
+                    BorderBrush="{DynamicResource Brush.Border}"
+                    Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}"
+                    AutomationProperties.Name="Open developer menu"
+                    ToolTip="Open developer data and log streaming." />
+            <TextBlock Text="{Binding LiveHistoryStatusText}" Style="{StaticResource Text.Tiny}"
+                       VerticalAlignment="Center" Margin="10,0,0,0"
+                       Visibility="{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}" />
+        </StackPanel>
+
+        <Border Grid.Row="0" Grid.RowSpan="4"
                 Panel.ZIndex="10"
                 Background="{DynamicResource Brush.Overlay}"
                 Visibility="{Binding IsBusy, Converter={StaticResource BoolToVis}}">

@@ -1,0 +1,60 @@
+<Window x:Class="RainWorldCompanion.Views.ApplyDevourmentContentsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Apply Devourment contents"
+        Width="540"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Brush.Window}"
+        Foreground="{DynamicResource Brush.Text}"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="Segoe UI"
+        FontSize="13">
+
+    <StackPanel Margin="20">
+        <TextBlock Text="{Binding HeadlineText}" Style="{StaticResource Text.Title}" TextWrapping="Wrap" />
+        <TextBlock Text="Choose the live campaign whose stomach contents should be replaced. Its cycle, karma, progress, friends, maps, and every other campaign field stay unchanged."
+                   Style="{StaticResource Text.Body}" TextWrapping="Wrap" Margin="0,8,0,0" />
+
+        <TextBlock Text="TARGET CAMPAIGN" Style="{StaticResource Text.SectionLabel}" Margin="0,16,0,6" />
+        <ComboBox ItemsSource="{Binding Targets}"
+                  SelectedItem="{Binding SelectedTarget, Mode=TwoWay}"
+                  DisplayMemberPath="Label"
+                  AutomationProperties.Name="Live campaign to receive the Devourment contents" />
+
+        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="10,8">
+            <StackPanel>
+                <TextBlock Text="{Binding EffectText}" Style="{StaticResource Text.Body}" TextWrapping="Wrap" />
+                <TextBlock Text="The source save is only read and is left exactly as it is."
+                           Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,5,0,0" />
+            </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="10,8"
+                Background="{DynamicResource Brush.PanelAlt}">
+            <StackPanel>
+                <TextBlock Text="A backup is taken first" Style="{StaticResource Text.Value}" />
+                <TextBlock Text="The whole save folder is copied before anything is written. Restoring that backup puts every save back as it is now."
+                           Style="{StaticResource Text.Muted}" TextWrapping="Wrap" Margin="0,3,0,0" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Text="{Binding BlockedReason}"
+                   Style="{StaticResource Text.Muted}"
+                   Foreground="{DynamicResource Brush.Warn}"
+                   TextWrapping="Wrap"
+                   Margin="0,12,0,0"
+                   Visibility="{Binding BlockedVisibility}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <Button Content="Apply contents" Style="{StaticResource Button.Accent}" Margin="0,0,8,0"
+                    IsEnabled="{Binding CanApply}" Click="OnApply" />
+            <Button x:Name="CancelButton" Content="Cancel" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

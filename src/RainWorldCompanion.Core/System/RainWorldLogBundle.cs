@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO.Compression;
+using RainWorldCompanion.Core.LogStreaming;
 
 namespace RainWorldCompanion.Core.System;
 
@@ -9,24 +10,18 @@ public sealed record RainWorldLogBundleResult(
 
 public static class RainWorldLogBundle
 {
-    private static readonly (string ArchiveName, string RelativePath)[] LogFiles =
-    [
-        ("consoleLog.txt", "consoleLog.txt"),
-        ("exceptionLog.txt", "exceptionLog.txt"),
-        ("BepInEx/LogOutput.log", Path.Combine("BepInEx", "LogOutput.log")),
-    ];
-
     public static RainWorldLogBundleResult Create(
         string installPath,
         string destinationDirectory,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        string? steamName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(destinationDirectory);
 
         var installRoot = Path.GetFullPath(installPath.Trim());
-        var sources = LogFiles
-            .Select(log => new { Name = log.ArchiveName, Path = Path.Combine(installRoot, log.RelativePath) })
+        var sources = LogStreamFileCatalog.Files
+            .Select(log => new { Name = log.Id, Path = Path.Combine(installRoot, log.RelativePath) })
             .Where(source => File.Exists(source.Path))
             .ToList();
 
@@ -51,7 +46,8 @@ public static class RainWorldLogBundle
             var timestamp = (timeProvider ?? TimeProvider.System)
                 .GetLocalNow()
                 .ToString("yyyy-MM-dd HH-mm-ss", CultureInfo.InvariantCulture);
-            var stem = "Rain World logs " + timestamp;
+            var safeName = SafeFileNamePart(steamName);
+            var stem = "Rain World logs " + (safeName.Length == 0 ? "" : safeName + " ") + timestamp;
             var archivePath = MoveToAvailableName(temporaryPath, destinationRoot, stem);
 
             return new RainWorldLogBundleResult(
@@ -63,6 +59,14 @@ public static class RainWorldLogBundle
             TryDelete(temporaryPath);
             throw;
         }
+    }
+
+    private static string SafeFileNamePart(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        const string invalid = "<>:\"/\\|?*";
+        return new string(value.Trim().Select(character =>
+            char.IsControl(character) || invalid.Contains(character) ? '_' : character).ToArray()).TrimEnd(' ', '.');
     }
 
     private static void WriteArchive(

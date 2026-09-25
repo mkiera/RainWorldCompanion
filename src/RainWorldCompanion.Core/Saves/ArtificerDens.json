@@ -1,0 +1,604 @@
+[
+  {
+    "RoomId": "SU_S01",
+    "RegionCode": "SU",
+    "X": 2455,
+    "Y": 3808
+  },
+  {
+    "RoomId": "SU_S03",
+    "RegionCode": "SU",
+    "X": 2169,
+    "Y": 3774
+  },
+  {
+    "RoomId": "SU_S04",
+    "RegionCode": "SU",
+    "X": 2567,
+    "Y": 3545
+  },
+  {
+    "RoomId": "SU_S05",
+    "RegionCode": "SU",
+    "X": 2004,
+    "Y": 4005
+  },
+  {
+    "RoomId": "HI_S01",
+    "RegionCode": "HI",
+    "X": 3066,
+    "Y": 3356
+  },
+  {
+    "RoomId": "HI_S02",
+    "RegionCode": "HI",
+    "X": 3422,
+    "Y": 3561
+  },
+  {
+    "RoomId": "HI_S03",
+    "RegionCode": "HI",
+    "X": 2944,
+    "Y": 3569
+  },
+  {
+    "RoomId": "HI_S04",
+    "RegionCode": "HI",
+    "X": 3476,
+    "Y": 3795
+  },
+  {
+    "RoomId": "HI_S05",
+    "RegionCode": "HI",
+    "X": 3563,
+    "Y": 3350
+  },
+  {
+    "RoomId": "HI_S06",
+    "RegionCode": "HI",
+    "X": 4026,
+    "Y": 3504
+  },
+  {
+    "RoomId": "CC_S01",
+    "RegionCode": "CC",
+    "X": 3438,
+    "Y": 2848
+  },
+  {
+    "RoomId": "CC_S03",
+    "RegionCode": "CC",
+    "X": 3990,
+    "Y": 2826
+  },
+  {
+    "RoomId": "CC_S04",
+    "RegionCode": "CC",
+    "X": 3532,
+    "Y": 2392
+  },
+  {
+    "RoomId": "CC_S05",
+    "RegionCode": "CC",
+    "X": 4002,
+    "Y": 2416
+  },
+  {
+    "RoomId": "CC_S06",
+    "RegionCode": "CC",
+    "X": 3684,
+    "Y": 3118
+  },
+  {
+    "RoomId": "CC_S07",
+    "RegionCode": "CC",
+    "X": 3856,
+    "Y": 3240
+  },
+  {
+    "RoomId": "SI_S03",
+    "RegionCode": "SI",
+    "X": 2122,
+    "Y": 2715
+  },
+  {
+    "RoomId": "SI_S04",
+    "RegionCode": "SI",
+    "X": 2024,
+    "Y": 2405
+  },
+  {
+    "RoomId": "SI_S05",
+    "RegionCode": "SI",
+    "X": 2510,
+    "Y": 2452
+  },
+  {
+    "RoomId": "SI_S06",
+    "RegionCode": "SI",
+    "X": 2536,
+    "Y": 2604
+  },
+  {
+    "RoomId": "LF_S01",
+    "RegionCode": "LF",
+    "X": 593,
+    "Y": 3427
+  },
+  {
+    "RoomId": "LF_S02",
+    "RegionCode": "LF",
+    "X": 1338,
+    "Y": 3323
+  },
+  {
+    "RoomId": "LF_S03",
+    "RegionCode": "LF",
+    "X": 182,
+    "Y": 3555
+  },
+  {
+    "RoomId": "LF_S04",
+    "RegionCode": "LF",
+    "X": 104,
+    "Y": 3351
+  },
+  {
+    "RoomId": "LF_S05",
+    "RegionCode": "LF",
+    "X": 1423,
+    "Y": 3671
+  },
+  {
+    "RoomId": "LF_S06",
+    "RegionCode": "LF",
+    "X": 701,
+    "Y": 3324
+  },
+  {
+    "RoomId": "LF_S07",
+    "RegionCode": "LF",
+    "X": 1571,
+    "Y": 3462
+  },
+  {
+    "RoomId": "DS_S01r",
+    "RegionCode": "DS",
+    "X": 2685,
+    "Y": 4671
+  },
+  {
+    "RoomId": "DS_S02l",
+    "RegionCode": "DS",
+    "X": 3216,
+    "Y": 4667
+  },
+  {
+    "RoomId": "DS_S03",
+    "RegionCode": "DS",
+    "X": 2504,
+    "Y": 4853
+  },
+  {
+    "RoomId": "DS_S04",
+    "RegionCode": "DS",
+    "X": 2931,
+    "Y": 4615
+  },
+  {
+    "RoomId": "SB_S01",
+    "RegionCode": "SB",
+    "X": 2250,
+    "Y": 5481
+  },
+  {
+    "RoomId": "SB_S02",
+    "RegionCode": "SB",
+    "X": 3085,
+    "Y": 5344
+  },
+  {
+    "RoomId": "SB_S03",
+    "RegionCode": "SB",
+    "X": 2343,
+    "Y": 5277
+  },
+  {
+    "RoomId": "SB_S04",
+    "RegionCode": "SB",
+    "X": 2423,
+    "Y": 5192
+  },
+  {
+    "RoomId": "SB_S05",
+    "RegionCode": "SB",
+    "X": 3724,
+    "Y": 5124
+  },
+  {
+    "RoomId": "SB_S06",
+    "RegionCode": "SB",
+    "X": 1666,
+    "Y": 5206
+  },
+  {
+    "RoomId": "SB_S07",
+    "RegionCode": "SB",
+    "X": 2055,
+    "Y": 5270
+  },
+  {
+    "RoomId": "SB_S09",
+    "RegionCode": "SB",
+    "X": 1944,
+    "Y": 4887
+  },
+  {
+    "RoomId": "SB_S10",
+    "RegionCode": "SB",
+    "X": 2595,
+    "Y": 5486
+  },
+  {
+    "RoomId": "VS_S01",
+    "RegionCode": "VS",
+    "X": 4064,
+    "Y": 3959
+  },
+  {
+    "RoomId": "VS_S02",
+    "RegionCode": "VS",
+    "X": 5870,
+    "Y": 4346
+  },
+  {
+    "RoomId": "VS_S03",
+    "RegionCode": "VS",
+    "X": 4234,
+    "Y": 4389
+  },
+  {
+    "RoomId": "VS_S04",
+    "RegionCode": "VS",
+    "X": 4394,
+    "Y": 3918
+  },
+  {
+    "RoomId": "VS_S05",
+    "RegionCode": "VS",
+    "X": 4947,
+    "Y": 3929
+  },
+  {
+    "RoomId": "VS_S06",
+    "RegionCode": "VS",
+    "X": 4919,
+    "Y": 4345
+  },
+  {
+    "RoomId": "VS_S07",
+    "RegionCode": "VS",
+    "X": 4661,
+    "Y": 4147
+  },
+  {
+    "RoomId": "VS_S08",
+    "RegionCode": "VS",
+    "X": 4089,
+    "Y": 4230
+  },
+  {
+    "RoomId": "VS_S09",
+    "RegionCode": "VS",
+    "X": 4565,
+    "Y": 3734
+  },
+  {
+    "RoomId": "SH_S01",
+    "RegionCode": "SH",
+    "X": 4981,
+    "Y": 3452
+  },
+  {
+    "RoomId": "SH_S02",
+    "RegionCode": "SH",
+    "X": 5736,
+    "Y": 3416
+  },
+  {
+    "RoomId": "SH_S03",
+    "RegionCode": "SH",
+    "X": 4654,
+    "Y": 3263
+  },
+  {
+    "RoomId": "SH_S04",
+    "RegionCode": "SH",
+    "X": 5190,
+    "Y": 3327
+  },
+  {
+    "RoomId": "SH_S05",
+    "RegionCode": "SH",
+    "X": 6322,
+    "Y": 3450
+  },
+  {
+    "RoomId": "SH_S06",
+    "RegionCode": "SH",
+    "X": 5400,
+    "Y": 3677
+  },
+  {
+    "RoomId": "SH_S07",
+    "RegionCode": "SH",
+    "X": 5710,
+    "Y": 3630
+  },
+  {
+    "RoomId": "SH_S08",
+    "RegionCode": "SH",
+    "X": 5341,
+    "Y": 3805
+  },
+  {
+    "RoomId": "SH_S09",
+    "RegionCode": "SH",
+    "X": 5798,
+    "Y": 3744
+  },
+  {
+    "RoomId": "SH_S10",
+    "RegionCode": "SH",
+    "X": 5441,
+    "Y": 3411
+  },
+  {
+    "RoomId": "SH_S11",
+    "RegionCode": "SH",
+    "X": 4926,
+    "Y": 3601
+  },
+  {
+    "RoomId": "UW_S01",
+    "RegionCode": "UW",
+    "X": 5707,
+    "Y": 2927
+  },
+  {
+    "RoomId": "UW_S02",
+    "RegionCode": "UW",
+    "X": 6604,
+    "Y": 2856
+  },
+  {
+    "RoomId": "UW_S03",
+    "RegionCode": "UW",
+    "X": 5461,
+    "Y": 2257
+  },
+  {
+    "RoomId": "UW_S04",
+    "RegionCode": "UW",
+    "X": 5406,
+    "Y": 2886
+  },
+  {
+    "RoomId": "UW_S05",
+    "RegionCode": "UW",
+    "X": 7180,
+    "Y": 3586
+  },
+  {
+    "RoomId": "UW_S06",
+    "RegionCode": "UW",
+    "X": 7170,
+    "Y": 3246
+  },
+  {
+    "RoomId": "UW_S07",
+    "RegionCode": "UW",
+    "X": 7260,
+    "Y": 2877
+  },
+  {
+    "RoomId": "SS_S01",
+    "RegionCode": "SS",
+    "X": 6898,
+    "Y": 2618
+  },
+  {
+    "RoomId": "SS_S02",
+    "RegionCode": "SS",
+    "X": 6451,
+    "Y": 2317
+  },
+  {
+    "RoomId": "SS_S03",
+    "RegionCode": "SS",
+    "X": 7195,
+    "Y": 2240
+  },
+  {
+    "RoomId": "SS_S04",
+    "RegionCode": "SS",
+    "X": 6695,
+    "Y": 1371
+  },
+  {
+    "RoomId": "SS_S05",
+    "RegionCode": "SS",
+    "X": 6490,
+    "Y": 2024
+  },
+  {
+    "RoomId": "LC_shelter_above",
+    "RegionCode": "LC",
+    "X": 5792,
+    "Y": 968
+  },
+  {
+    "RoomId": "LC_A05",
+    "RegionCode": "LC",
+    "X": 6457,
+    "Y": 1009
+  },
+  {
+    "RoomId": "LC_S03",
+    "RegionCode": "LC",
+    "X": 7354,
+    "Y": 739
+  },
+  {
+    "RoomId": "LC_S01",
+    "RegionCode": "LC",
+    "X": 6766,
+    "Y": 1067
+  },
+  {
+    "RoomId": "LC_S06",
+    "RegionCode": "LC",
+    "X": 7185,
+    "Y": 1163
+  },
+  {
+    "RoomId": "LC_ShelterTrain1",
+    "RegionCode": "LC",
+    "X": 6329,
+    "Y": 1187
+  },
+  {
+    "RoomId": "LC_S05",
+    "RegionCode": "LC",
+    "X": 7502,
+    "Y": 1079
+  },
+  {
+    "RoomId": "LC_S04",
+    "RegionCode": "LC",
+    "X": 8048,
+    "Y": 743
+  },
+  {
+    "RoomId": "GW_S05",
+    "RegionCode": "GW",
+    "X": 3845,
+    "Y": 4983
+  },
+  {
+    "RoomId": "GW_S04",
+    "RegionCode": "GW",
+    "X": 5139,
+    "Y": 4908
+  },
+  {
+    "RoomId": "GW_S03",
+    "RegionCode": "GW",
+    "X": 3702,
+    "Y": 4763
+  },
+  {
+    "RoomId": "GW_S02",
+    "RegionCode": "GW",
+    "X": 4400,
+    "Y": 4526
+  },
+  {
+    "RoomId": "GW_S07",
+    "RegionCode": "GW",
+    "X": 4706,
+    "Y": 4559
+  },
+  {
+    "RoomId": "GW_S01",
+    "RegionCode": "GW",
+    "X": 4011,
+    "Y": 4854
+  },
+  {
+    "RoomId": "GW_S06",
+    "RegionCode": "GW",
+    "X": 4420,
+    "Y": 4945
+  },
+  {
+    "RoomId": "GW_S08",
+    "RegionCode": "GW",
+    "X": 4614,
+    "Y": 4817
+  },
+  {
+    "RoomId": "GW_S09",
+    "RegionCode": "GW",
+    "X": 5518,
+    "Y": 4573
+  },
+  {
+    "RoomId": "LM_S02",
+    "RegionCode": "LM",
+    "X": 6934,
+    "Y": 4591
+  },
+  {
+    "RoomId": "LM_S07",
+    "RegionCode": "LM",
+    "X": 5731,
+    "Y": 4657
+  },
+  {
+    "RoomId": "LM_S05",
+    "RegionCode": "LM",
+    "X": 6427,
+    "Y": 4762
+  },
+  {
+    "RoomId": "LM_S09",
+    "RegionCode": "LM",
+    "X": 6332,
+    "Y": 4931
+  },
+  {
+    "RoomId": "LM_S03",
+    "RegionCode": "LM",
+    "X": 6599,
+    "Y": 4902
+  },
+  {
+    "RoomId": "LM_S04",
+    "RegionCode": "LM",
+    "X": 6393,
+    "Y": 5054
+  },
+  {
+    "RoomId": "LM_S11",
+    "RegionCode": "LM",
+    "X": 7008,
+    "Y": 4764
+  },
+  {
+    "RoomId": "LM_S13",
+    "RegionCode": "LM",
+    "X": 6074,
+    "Y": 4129
+  },
+  {
+    "RoomId": "LM_S06",
+    "RegionCode": "LM",
+    "X": 6603,
+    "Y": 4222
+  },
+  {
+    "RoomId": "LC_sroofs",
+    "RegionCode": "LC",
+    "X": 6339,
+    "Y": 954,
+    "HasMapIcon": false
+  },
+  {
+    "RoomId": "VS_S20",
+    "RegionCode": "VS",
+    "X": 4450,
+    "Y": 3992,
+    "HasMapIcon": false
+  }
+]

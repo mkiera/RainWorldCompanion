@@ -1,0 +1,113 @@
+using System.IO;
+using RainWorldCompanion.Core.Settings;
+using RainWorldCompanion.Core.System;
+using RainWorldCompanion.Services;
+using RainWorldCompanion.ViewModels;
+
+namespace RainWorldCompanion.App.Tests;
+
+public class MainPageTests
+{
+    [Fact]
+    public void Live_footer_uses_the_shortcut_command_for_developer_menu_while_disconnected()
+    {
+        var view = new MainViewModel(new SettingsStore(), new GameProcessDetector(), new SlugcatIconProvider(), "1.4.0");
+        try
+        {
+            view.Live.AdoptSetup(false, false, null, "Companion Game Hook is not installed.");
+            view.OpenLiveFeaturesCommand.Execute(null);
+
+            Assert.False(view.IsGameRunning);
+            Assert.False(view.Live.SetupReady);
+            Assert.True(view.IsLivePageVisible);
+            Assert.True(view.OpenDeveloperWindowCommand.CanExecute(null));
+
+            string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+            Assert.Contains("x:Name=\"DeveloperMenuButton\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding OpenDeveloperWindowCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Visibility=\"{Binding IsLivePageVisible, Converter={StaticResource BoolToVis}}\"", markup, StringComparison.Ordinal);
+
+            string shortcutSource = File.ReadAllText(Path.Combine(
+                AppContext.BaseDirectory, "AppSource", "App.xaml.cs"));
+            Assert.Contains("viewModel.OpenDeveloperWindowCommand.Execute(null);", shortcutSource, StringComparison.Ordinal);
+        }
+        finally { view.Shutdown(); }
+    }
+
+    [Fact]
+    public void Game_start_and_exit_switch_pages_without_replacing_live_state()
+    {
+        var view = new MainViewModel(new SettingsStore(), new GameProcessDetector(), new SlugcatIconProvider(), "1.3.0");
+        try
+        {
+            var live = view.Live;
+            Assert.True(view.IsSavePageVisible);
+            view.OpenLiveFeaturesCommand.Execute(null);
+            Assert.True(view.IsLivePageVisible);
+            view.OpenSavesCommand.Execute(null);
+            Assert.True(view.IsSavePageVisible);
+            view.IsGameRunning = true;
+            Assert.True(view.IsLivePageVisible);
+            Assert.False(view.IsSavePageVisible);
+            view.OpenSavesCommand.Execute(null);
+            Assert.True(view.IsSavePageVisible);
+            Assert.False(view.IsCurrentPageReady);
+            view.IsGameRunning = true;
+            Assert.True(view.IsSavePageVisible);
+            view.OpenLiveFeaturesCommand.Execute(null);
+            Assert.True(view.IsLivePageVisible);
+            Assert.True(view.IsCurrentPageReady);
+            view.IsGameRunning = false;
+            Assert.True(view.IsSavePageVisible);
+            Assert.Same(live, view.Live);
+        }
+        finally { view.Shutdown(); }
+    }
+
+    [Fact]
+    public void Recent_saves_are_a_third_list_while_library_remains_the_default()
+    {
+        var view = new MainViewModel(new SettingsStore(), new GameProcessDetector(), new SlugcatIconProvider(), "1.4.0");
+        try
+        {
+            Assert.True(view.IsLibraryTabSelected);
+            Assert.False(view.IsRecentTabSelected);
+            Assert.False(view.IsBackupsTabSelected);
+
+            view.IsRecentTabSelected = true;
+
+            Assert.False(view.IsLibraryTabSelected);
+            Assert.True(view.IsRecentTabSelected);
+            Assert.False(view.IsBackupsTabSelected);
+
+            view.IsBackupsTabSelected = true;
+
+            Assert.False(view.IsLibraryTabSelected);
+            Assert.False(view.IsRecentTabSelected);
+            Assert.True(view.IsBackupsTabSelected);
+
+            string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+            Assert.Contains("ItemsSource=\"{Binding LiveHistoryEntries}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding RestoreRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Command=\"{Binding KeepRecentSaveCommand}\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Content=\"Restore campaign\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Content=\"Keep in library\"", markup, StringComparison.Ordinal);
+            Assert.DoesNotContain("Content=\"Restore all\"", markup, StringComparison.Ordinal);
+            Assert.Contains("Automatic safety backups: newest 20 kept.", markup, StringComparison.Ordinal);
+        }
+        finally { view.Shutdown(); }
+    }
+
+    [Fact]
+    public void Slots_and_campaigns_have_direct_export_actions()
+    {
+        string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+
+        Assert.Contains("Content=\"Export Slot\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Command=\"{Binding ExportSlotCommand}\"", markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Store Slot\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Save slot to library\"", markup, StringComparison.Ordinal);
+        Assert.Contains("Content=\"Export campaign\"", markup, StringComparison.Ordinal);
+        Assert.Contains("DataContext.ExportCampaignCommand", markup, StringComparison.Ordinal);
+    }
+}

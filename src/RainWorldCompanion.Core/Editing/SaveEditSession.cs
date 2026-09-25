@@ -293,6 +293,34 @@ public sealed class SaveEditSession
         Apply(campaign, newBody);
     }
 
+    public void ApplyDevourmentContents(CampaignRecordRef campaign, DevourmentContents contents)
+    {
+        ArgumentNullException.ThrowIfNull(contents);
+
+        string before = GetRecordBody(campaign);
+        string after = before;
+
+        while (Fields.Has(after, DevourmentEditState.EntryField))
+        {
+            after = Fields.Remove(after, DevourmentEditState.EntryField);
+        }
+
+        foreach (string? entry in contents.Entries)
+        {
+            after = Fields.Append(after, Fields.Field(DevourmentEditState.EntryField, entry));
+        }
+
+        if (string.Equals(before, after, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string note = contents.Count == 0
+            ? "cleared the Devourment stomach contents"
+            : $"replaced the Devourment stomach contents with {contents.Count} entries";
+        ReplaceRecordBody(campaign, after, PartKey(campaign, DevourmentEditState.EntryField, 0), note);
+    }
+
     /// <summary>Logs the change in the caller's own words.</summary>
     /// <param name="changeKey">Two edits sharing a key read as one line, so doing the same thing
     /// again replaces the line rather than adding one.</param>

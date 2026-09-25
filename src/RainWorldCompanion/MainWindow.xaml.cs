@@ -17,6 +17,7 @@ public partial class MainWindow : Window
         InitializeComponent();
         Loaded += OnLoaded;
         Closed += OnClosed;
+        Activated += (_, _) => (DataContext as MainViewModel)?.RefreshEditorMapAvailability();
     }
 
     /// <summary>
@@ -91,6 +92,49 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             MessageBox.Show(this, "The app could not finish starting.\n\n" + ex.Message,
+                AppInfo.DisplayName, MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    // Tunnelling, so a file lands here before the list rows that handle their own row drags.
+    private void OnPreviewDragOver(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        e.Effects = DataContext is MainViewModel { IsBusy: false } ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void OnPreviewDrop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop) || DataContext is not MainViewModel viewModel)
+        {
+            return;
+        }
+
+        e.Handled = true;
+
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths)
+        {
+            return;
+        }
+
+        // Explorer waits on this handler, so the dialogs the import opens are queued behind it.
+        Dispatcher.InvokeAsync(() => DropAsync(viewModel, paths));
+    }
+
+    private async Task DropAsync(MainViewModel viewModel, string[] paths)
+    {
+        try
+        {
+            await viewModel.DropFilesAsync(paths);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "The dropped files could not be read.\n\n" + ex.Message,
                 AppInfo.DisplayName, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
