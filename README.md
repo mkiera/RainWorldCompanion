@@ -71,6 +71,7 @@ library.** Delete those folders yourself when you want them gone.
 - [Copying a slot](#copying-a-slot)
 - [The library](#the-library)
 - [Backups and restores](#backups-and-restores)
+- [Live map and log captures](#live-map-and-log-captures)
 - [Steam Cloud](#steam-cloud)
 - [Where things are stored](#where-things-are-stored)
 - [Building](#building)
@@ -223,13 +224,21 @@ slot copy runs: safety snapshot first, then one byte for byte copy, verified on 
 library save or a `.rwsave` bundle that no longer matches its recorded checksum is refused rather
 than written over a live slot.
 
+Live slots can also be exported directly as `.rwsave` files. Individual campaigns in live saves,
+backups, and Recent can be exported as `.rwcampaign` files. Drop either file onto the main window
+to import it into the library. Dropped `.rwconfigs` files open the settings picker, and `.rwmods`
+files open the Mods window.
+
 ---
 
 ## Backups and restores
 
-Close Rain World first. Anything that reads or writes a save file is refused while the game is
-running, and the window header shows whether it is open. The check repeats during a restore or a
-copy, so a game launched mid-operation stops it rather than racing it.
+Close Rain World before restoring or replacing saves. The window header shows whether it is
+open. The check repeats during a restore or a copy, so a game launched mid-operation stops it.
+
+While the game is open, Recent records the first saved state from each cycle for each campaign.
+It retains the latest five cycles per campaign. An entry can be restored after closing the game
+or kept in the library.
 
 Every file copied into a backup is verified against the file it came from: same length, same
 timestamp, same SHA-256 on both sides. A save that changes during the copy is copied again, and
@@ -243,6 +252,32 @@ Every restore and slot copy takes a safety snapshot of the save folder first and
 backup list, so the state before the operation can always be put back. Backups taken before this
 version covered fewer files, and a restore deletes a file only when the backup's own rules
 covered it too, so restoring an old backup does not delete files added to the list since.
+
+The newest 20 automatic safety backups are retained. Manual backups are never removed
+automatically.
+
+---
+
+## Live map and log captures
+
+The main window's live map tracks rooms and players. Spoiler mode reveals explored rooms and
+their connections. Campaign den fields also have a map picker for choosing a shelter.
+
+Companion installs and updates Companion Game Hook to supply live data. It can be disabled and
+removed in Settings. The map supports local teleports and Rain Meadow host requests, with guest
+permission required for host control. Recover me restores an existing local player in their
+current region.
+
+In Steam Rain Meadow lobbies, consenting players can stream their game logs into one capture.
+The log streaming panel selects where captures are saved. A capture can be opened during or
+after recording to compare player timelines, room locations, errors, mod versions, network
+latency, frame time, and memory. Analysis identifies repeated errors and possible mod causes
+with the available evidence.
+
+Lightweight performance summaries are recorded with deep trace off. Automatic deep trace
+captures sustained gameplay stalls and can be disabled in the log streaming menu. Manual deep
+trace covers approved senders. Both sender and receiver need current Companion and Game Hook
+versions for the streaming protocol. Older captures remain readable.
 
 ---
 
