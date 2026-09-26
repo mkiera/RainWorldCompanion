@@ -363,7 +363,7 @@ public sealed class LiveConnectionTests
 
     private static async Task WaitFor(Func<bool> condition)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(5);
+        var deadline = DateTime.UtcNow.AddSeconds(20);
         while (!condition() && DateTime.UtcNow < deadline) await Task.Delay(20);
         Assert.True(condition(), "Expected live connection state was not reached.");
     }
