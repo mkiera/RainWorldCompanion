@@ -214,7 +214,8 @@ same detail panel.
 - **Put in slot** writes a library save into whichever slot you pick, local or online.
 - **Take from slot** replaces a library save with what is in that slot now, which is how an hour
   of play gets back into the save it came from. The replaced save is kept, and **Undo take** puts
-  it back.
+  it back. A take or undo that fails partway leaves the library save as it was, and one cut off by
+  a crash is undone the next time the library opens.
 - **Export** writes a save out as a single `.rwsave` file. **Import** reads one back, and also
   accepts a bare save file copied straight out of somebody's save folder.
 
@@ -251,10 +252,12 @@ than a merge, and the confirmation lists every add, overwrite and delete before 
 Every restore and slot copy takes a safety snapshot of the save folder first and keeps it in the
 backup list, so the state before the operation can always be put back. Backups taken before this
 version covered fewer files, and a restore deletes a file only when the backup's own rules
-covered it too, so restoring an old backup does not delete files added to the list since.
+covered it too, so restoring an old backup does not delete files added to the list since. A file
+that appears or changes after the safety backup is taken is left as it is, and the restore reports
+it rather than overwriting or deleting it.
 
-The newest 20 automatic safety backups are retained. Manual backups are never removed
-automatically.
+The newest 20 automatic safety backups are retained, and one being restored is kept until the
+restore finishes. Manual backups are never removed automatically.
 
 ---
 

@@ -13,13 +13,22 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
-- Restoring an automatic backup keeps it protected from cleanup until the restore finishes.
-- Failed library updates and Undo take operations preserve the last complete save and settings.
-  Interrupted updates recover when the library entry is reopened.
-- Restore leaves a file in place and reports a problem if it appeared or changed after the
-  safety backup. Windows keeps each file locked while checking and changing it.
-- New backup and library folders follow existing junctions when checking folder separation.
-  Storage locations are checked again when they are created.
+## 1.5.0 - 2026-10-02
+
+- Restoring an automatic backup keeps that backup from being cleaned up until
+  the restore finishes.
+- When taking a slot into a library save or undoing a take fails partway, the
+  library save keeps its last complete save, its earlier save, and its
+  settings. A take cut off by a crash is undone the next time the library
+  opens.
+- Taking a slot into a library save stops without changing anything when the
+  stored save or its earlier save no longer matches its checksum.
+- A restore no longer overwrites or deletes a file that appeared or changed
+  after its safety backup was taken, for example by a cloud sync. The file is
+  left as it is and the restore reports it.
+- Backup and library folders that do not exist yet are checked through any
+  junctions above them, so they cannot end up inside the save folder. Both
+  folders are checked again before anything is written to them.
 
 ## 1.4.0 - 2026-09-25
 
