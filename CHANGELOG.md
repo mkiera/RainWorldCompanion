@@ -13,6 +13,14 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- Restoring an automatic backup keeps it protected from cleanup until the restore finishes.
+- Failed library updates and Undo take operations preserve the last complete save and settings.
+  Interrupted updates recover when the library entry is reopened.
+- Restore leaves a file in place and reports a problem if it appeared or changed after the
+  safety backup. Windows keeps each file locked while checking and changing it.
+- New backup and library folders follow existing junctions when checking folder separation.
+  Storage locations are checked again when they are created.
+
 ## 1.4.0 - 2026-09-25
 
 - Campaign den fields have a map picker for the supported timelines. Shelter

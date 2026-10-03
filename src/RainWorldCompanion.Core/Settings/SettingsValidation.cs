@@ -53,7 +53,7 @@ public static class SettingsValidation
         {
             normalisedSave = Normalise(save);
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
         {
             return "The game save folder is not a valid path.";
         }
@@ -62,7 +62,7 @@ public static class SettingsValidation
         {
             normalisedBackup = Normalise(backup);
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
         {
             return "The backup folder is not a valid path.";
         }
@@ -122,17 +122,18 @@ public static class SettingsValidation
         }
 
         string normalisedLibrary;
+        string normalisedSave;
+        string normalisedBackup;
         try
         {
             normalisedLibrary = Normalise(libraryRootPath.Trim());
+            normalisedSave = Normalise(gameSavePath.Trim());
+            normalisedBackup = Normalise(backupRootPath.Trim());
         }
-        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or IOException or UnauthorizedAccessException)
         {
             return "The library folder is not a valid path.";
         }
-
-        var normalisedSave = Normalise(gameSavePath.Trim());
-        var normalisedBackup = Normalise(backupRootPath.Trim());
 
         if (string.Equals(normalisedLibrary, normalisedSave, StringComparison.OrdinalIgnoreCase))
         {
