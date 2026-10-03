@@ -175,6 +175,22 @@ public class SlotCopyTests
         SnapshotLayout.AssertBytesEqual(source, world.Live.ReadBytes("online_sav3"), "online_sav3");
     }
 
+    [JunctionFact]
+    public void A_dangling_link_in_place_of_the_target_is_reported_rather_than_thrown()
+    {
+        using var world = new SlotWorld();
+        using var elsewhere = new TempDirectory("elsewhere");
+        File.Delete(world.Live.Resolve("online_sav3"));
+        var gone = elsewhere.CreateSubdirectory("gone");
+        Assert.True(Links.TryCreateDirectoryJunction(world.Live.Resolve("online_sav3"), gone));
+        Directory.Delete(gone);
+
+        var plan = world.Service.SlotCopies.PlanCopy(LocalOne, OnlineThree);
+
+        Assert.False(plan.CanCopy);
+        Assert.Contains(plan.Problems, problem => problem.Contains("is a link", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void A_safety_snapshot_is_taken_before_the_copy()
     {

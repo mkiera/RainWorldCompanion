@@ -1121,8 +1121,18 @@ public sealed class SlotCopyService
         }
     }
 
-    private static bool SamePath(string left, string right) =>
-        string.Equals(CanonicalPath.Resolve(left), CanonicalPath.Resolve(right), StringComparison.OrdinalIgnoreCase);
+    private static bool SamePath(string left, string right)
+    {
+        try
+        {
+            return string.Equals(CanonicalPath.Resolve(left), CanonicalPath.Resolve(right), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // An unresolvable link is already reported by the link checks above.
+            return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     private static void ClearReadOnly(string path)
     {

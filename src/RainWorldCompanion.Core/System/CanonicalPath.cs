@@ -1,4 +1,5 @@
 // Usings sit above the namespace: RainWorldCompanion.Core.System would otherwise shadow System.
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
 
@@ -7,7 +8,7 @@ namespace RainWorldCompanion.Core.System;
 /// <summary>
 /// Path.GetFullPath is purely textual: it does not follow a junction, expand an 8.3 short name,
 /// resolve a subst drive, or strip a \\?\ prefix. The checks here open the path and ask Windows
-/// for the name it resolves to, falling back to the text when the path does not exist yet.
+/// for the name it resolves to, including the existing parents of a new path.
 /// </summary>
 public static class CanonicalPath
 {
@@ -16,10 +17,6 @@ public static class CanonicalPath
     private const uint FileFlagBackupSemantics = 0x02000000;
     private const int MaxResolvedLength = 32 * 1024;
 
-    /// <summary>
-    /// The name Windows resolves a path to, with trailing separators removed. A path that does not
-    /// exist, or that cannot be opened, falls back to <see cref="Path.GetFullPath(string)"/>.
-    /// </summary>
     public static string Resolve(string path)
     {
         var textual = Trim(Path.GetFullPath(path));
@@ -29,14 +26,34 @@ public static class CanonicalPath
             return textual;
         }
 
-        try
+        var remaining = new Stack<string>();
+        var ancestor = textual;
+        while (true)
         {
-            var resolved = FinalPath(textual);
-            return resolved is null ? textual : Trim(resolved);
-        }
-        catch (Exception)
-        {
-            return textual;
+            var resolved = FinalPath(ancestor);
+            if (resolved is not null)
+            {
+                foreach (var component in remaining)
+                {
+                    resolved = Path.Combine(resolved, component);
+                }
+
+                return Trim(resolved);
+            }
+
+            if (IsLink(ancestor))
+            {
+                throw new IOException($"The folder {ancestor} could not be resolved safely.");
+            }
+
+            var parent = Path.GetDirectoryName(ancestor);
+            if (string.IsNullOrEmpty(parent))
+            {
+                return textual;
+            }
+
+            remaining.Push(Path.GetFileName(ancestor));
+            ancestor = parent;
         }
     }
 
@@ -55,6 +72,11 @@ public static class CanonicalPath
         if (!candidate.StartsWith(container, StringComparison.OrdinalIgnoreCase))
         {
             return false;
+        }
+
+        if (Path.EndsInDirectorySeparator(container))
+        {
+            return true;
         }
 
         var boundary = candidate[container.Length];
@@ -119,8 +141,12 @@ public static class CanonicalPath
         return false;
     }
 
-    private static string Trim(string path) =>
-        path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    private static string Trim(string path)
+    {
+        var root = Path.GetPathRoot(path) ?? "";
+        var trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return trimmed.Length < root.Length ? root : trimmed;
+    }
 
     private static string? FinalPath(string path)
     {
@@ -135,14 +161,20 @@ public static class CanonicalPath
 
         if (handle.IsInvalid)
         {
-            return null;
+            var error = Marshal.GetLastWin32Error();
+            if (error is 2 or 3)
+            {
+                return null;
+            }
+
+            throw new IOException($"The folder {path} could not be resolved.", new Win32Exception(error));
         }
 
         var buffer = new char[MaxResolvedLength];
         var length = GetFinalPathNameByHandleW(handle, buffer, (uint)buffer.Length, 0);
         if (length == 0 || length >= buffer.Length)
         {
-            return null;
+            throw new IOException($"The folder {path} could not be resolved.");
         }
 
         return StripPrefix(new string(buffer, 0, (int)length));

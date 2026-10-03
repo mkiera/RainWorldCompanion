@@ -218,6 +218,15 @@ public sealed class LibraryEntry
         var full = Path.GetFullPath(directoryPath);
         var created = ReadCreatedTime(full);
 
+        try
+        {
+            LibraryEntryTransaction.Recover(full);
+        }
+        catch (Exception ex)
+        {
+            return new LibraryEntry(full, null, "the interrupted update could not be recovered: " + ex.Message, created);
+        }
+
         var manifestPath = Path.Combine(full, ManifestFileName);
 
         if (!File.Exists(manifestPath))

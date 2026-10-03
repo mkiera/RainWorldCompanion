@@ -610,7 +610,7 @@ public sealed class SaveLibrary
             throw new IOException($"{source.FileName} is a link, and this app copies only real files inside the save folder.");
         }
 
-        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+        var directory = CreateEntryDirectory();
         var savePath = Path.Combine(directory, LibraryEntry.SaveFileName);
 
         var copied = CopyProving(sourcePath, savePath, source.FileName, progress);
@@ -678,7 +678,7 @@ public sealed class SaveLibrary
             throw new IOException($"{sourceFileName} is a link, and this app copies only real files.");
         }
 
-        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+        var directory = CreateEntryDirectory();
         var savePath = Path.Combine(directory, LibraryEntry.SaveFileName);
 
         var copied = CopyProving(sourcePath, savePath, sourceFileName, progress);
@@ -788,7 +788,7 @@ public sealed class SaveLibrary
         }
 
         var payload = CampaignFile.ToPayload(slice);
-        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+        var directory = CreateEntryDirectory();
         var campaignPath = Path.Combine(directory, LibraryEntry.CampaignFileName);
 
         File.WriteAllBytes(campaignPath, CampaignFile.ToBytes(slice));
@@ -1079,6 +1079,8 @@ public sealed class SaveLibrary
         ArgumentNullException.ThrowIfNull(source);
 
         EnsureOwnedEntry(entry, "update");
+        using var lease = _backups.AcquireOperationLock();
+        entry = LibraryEntry.Load(entry.DirectoryPath);
 
         if (entry.Manifest is not { } manifest)
         {
@@ -1091,7 +1093,17 @@ public sealed class SaveLibrary
 
         var sourcePath = ResolveSlotPath(source);
 
-        using var lease = _backups.AcquireOperationLock();
+        var verification = VerifyEntry(entry);
+        if (!verification.Ok)
+        {
+            throw new IOException("The stored save does not match its recorded checksum, so it was not updated.");
+        }
+
+        if (manifest.PreviousSha256 is { Length: > 0 } previousHash
+            && !Hashing.FileMatchesHash(entry.PreviousContentPath, previousHash))
+        {
+            throw new IOException("The earlier save does not match its recorded checksum, so it was not replaced.");
+        }
 
         if (!File.Exists(sourcePath))
         {
@@ -1116,15 +1128,20 @@ public sealed class SaveLibrary
         progress?.Report($"Reading what is in {source.FileName}");
         var metadata = SaveMetadataExtractor.Extract(stagedPath, source.Slot, source.Realm);
 
+        using var transaction = LibraryEntryTransaction.Begin(entry.DirectoryPath);
         File.Move(entry.SavePath, entry.PreviousSavePath, overwrite: true);
+        progress?.Report("Earlier save kept");
         File.Move(stagedPath, entry.SavePath, overwrite: true);
+        progress?.Report("New save installed");
 
         manifest.PreviousSha256 = manifest.Sha256;
         manifest.PreviousSizeBytes = manifest.SizeBytes;
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
-        manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
+        MoveConfigsAside(entry);
+        manifest.PreviousConfigs = manifest.Configs;
+        progress?.Report("Earlier settings kept");
 
         manifest.SizeBytes = copied.SizeBytes;
         manifest.Sha256 = copied.Sha256;
@@ -1132,12 +1149,14 @@ public sealed class SaveLibrary
         manifest.MetadataVersion = SaveMetadataExtractor.Version;
         manifest.Mods = _backups.TryReadMods();
         manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
+        progress?.Report("New settings installed");
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
         manifest.UpdatedUtc = DateTime.UtcNow;
 
         WriteManifest(entry.DirectoryPath, manifest);
+        transaction.Commit();
 
         // The entry now holds exactly what the slot holds, so the link is new again. Without this a
         // row reads "changed since" about the very slot it was just brought level with.
@@ -1169,18 +1188,24 @@ public sealed class SaveLibrary
 
         File.WriteAllBytes(stagedPath, CampaignFile.ToBytes(slice));
 
+        using var transaction = LibraryEntryTransaction.Begin(entry.DirectoryPath);
         File.Move(entry.CampaignPath, entry.PreviousContentPath, overwrite: true);
+        progress?.Report("Earlier save kept");
         File.Move(stagedPath, entry.CampaignPath, overwrite: true);
+        progress?.Report("New save installed");
 
         manifest.PreviousSha256 = manifest.Sha256;
         manifest.PreviousSizeBytes = manifest.SizeBytes;
         manifest.PreviousReplacedUtc = DateTime.UtcNow;
         manifest.PreviousMetadata = manifest.Metadata;
         manifest.PreviousMods = manifest.Mods;
-        manifest.PreviousConfigs = MoveConfigsAside(entry) ? manifest.Configs : null;
+        MoveConfigsAside(entry);
+        manifest.PreviousConfigs = manifest.Configs;
+        progress?.Report("Earlier settings kept");
         manifest.PreviousCampaignDiscoveredShelters = manifest.CampaignDiscoveredShelters;
         manifest.Mods = _backups.TryReadMods();
         manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
+        progress?.Report("New settings installed");
 
         manifest.SizeBytes = new FileInfo(entry.CampaignPath).Length;
         manifest.Sha256 = Hashing.ComputeFileSha256(entry.CampaignPath);
@@ -1195,6 +1220,7 @@ public sealed class SaveLibrary
         manifest.UpdatedUtc = DateTime.UtcNow;
 
         WriteManifest(entry.DirectoryPath, manifest);
+        transaction.Commit();
 
         progress?.Report("Updated");
         return LibraryEntry.Load(entry.DirectoryPath);
@@ -1207,6 +1233,8 @@ public sealed class SaveLibrary
         ArgumentNullException.ThrowIfNull(entry);
 
         EnsureOwnedEntry(entry, "undo the update of");
+        using var lease = _backups.AcquireOperationLock();
+        entry = LibraryEntry.Load(entry.DirectoryPath);
 
         if (entry.Manifest is not { } manifest)
         {
@@ -1226,6 +1254,7 @@ public sealed class SaveLibrary
                 $"The earlier save kept for \"{entry.Name}\" does not match its recorded checksum, so it was not put back.");
         }
 
+        using var transaction = LibraryEntryTransaction.Begin(entry.DirectoryPath);
         var metadata = manifest.PreviousMetadata;
 
         var stagedPath = Path.Combine(entry.DirectoryPath, entry.ContentFileName + ".tmp");
@@ -1242,12 +1271,8 @@ public sealed class SaveLibrary
         manifest.Mods = manifest.PreviousMods;
         manifest.CampaignDiscoveredShelters = manifest.PreviousCampaignDiscoveredShelters;
 
-        // A record that outlived the files it describes would be worse than none, so the settings
-        // only go back in the manifest if they went back on disk.
-        if (MoveConfigsBack(entry))
-        {
-            manifest.Configs = manifest.PreviousConfigs;
-        }
+        MoveConfigsBack(entry);
+        manifest.Configs = manifest.PreviousConfigs;
 
         manifest.PreviousSha256 = null;
         manifest.PreviousSizeBytes = null;
@@ -1269,7 +1294,8 @@ public sealed class SaveLibrary
 
         WriteManifest(entry.DirectoryPath, manifest);
 
-        TryDelete(entry.PreviousContentPath);
+        File.Delete(entry.PreviousContentPath);
+        transaction.Commit();
 
         return LibraryEntry.Load(entry.DirectoryPath);
     }
@@ -1519,7 +1545,7 @@ public sealed class SaveLibrary
             });
         }
 
-        var directory = TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+        var directory = CreateEntryDirectory();
 
         try
         {
@@ -1671,51 +1697,29 @@ public sealed class SaveLibrary
         return CanonicalPath.IsInside(root, candidate) ? candidate : null;
     }
 
-    /// <summary>
-    /// Moves the settings an update is replacing into configs.previous, following save.previous.bin
-    /// exactly: one generation, and the next update replaces it. False when the folder would not
-    /// move, which is the caller's cue not to record a previous generation the folder does not hold.
-    /// </summary>
-    private static bool MoveConfigsAside(LibraryEntry entry)
+    private static void MoveConfigsAside(LibraryEntry entry)
     {
-        try
+        if (Directory.Exists(entry.PreviousConfigsPath))
         {
-            TryDeleteDirectory(entry.PreviousConfigsPath);
-
-            if (Directory.Exists(entry.ConfigsPath))
-            {
-                Directory.Move(entry.ConfigsPath, entry.PreviousConfigsPath);
-            }
-
-            return true;
+            Directory.Delete(entry.PreviousConfigsPath, recursive: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+
+        if (Directory.Exists(entry.ConfigsPath))
         {
-            return false;
+            Directory.Move(entry.ConfigsPath, entry.PreviousConfigsPath);
         }
     }
 
-    /// <summary>
-    /// Puts the earlier settings back. False leaves the newer ones in place and configs.previous
-    /// where it is: the next update clears it, and nothing is lost in the meantime.
-    /// </summary>
-    private static bool MoveConfigsBack(LibraryEntry entry)
+    private static void MoveConfigsBack(LibraryEntry entry)
     {
-        try
+        if (Directory.Exists(entry.ConfigsPath))
         {
-            if (!Directory.Exists(entry.PreviousConfigsPath))
-            {
-                TryDeleteDirectory(entry.ConfigsPath);
-                return true;
-            }
-
-            TryDeleteDirectory(entry.ConfigsPath);
-            Directory.Move(entry.PreviousConfigsPath, entry.ConfigsPath);
-            return true;
+            Directory.Delete(entry.ConfigsPath, recursive: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+
+        if (Directory.Exists(entry.PreviousConfigsPath))
         {
-            return false;
+            Directory.Move(entry.PreviousConfigsPath, entry.ConfigsPath);
         }
     }
 
@@ -1881,6 +1885,23 @@ public sealed class SaveLibrary
         {
             throw new InvalidOperationException(
                 $"Refusing to {verb} \"{target}\": it sits inside the save folder {SaveRoot}.");
+        }
+    }
+
+    private string CreateEntryDirectory()
+    {
+        ValidateLibraryRoot();
+        Directory.CreateDirectory(LibraryRoot);
+        ValidateLibraryRoot();
+        return TimestampedFolders.Create(LibraryRoot, LibraryEntry.ClaimFileName, "library folder");
+    }
+
+    private void ValidateLibraryRoot()
+    {
+        var problem = SettingsValidation.Validate(SaveRoot, _backups.BackupRoot, LibraryRoot);
+        if (problem is not null)
+        {
+            throw new IOException(problem);
         }
     }
 

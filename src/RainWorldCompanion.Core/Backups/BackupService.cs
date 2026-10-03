@@ -32,6 +32,7 @@ public sealed class BackupService
     private readonly string _appVersion;
     private readonly Func<CurrentMods>? _modListSource;
     private readonly object _lockGate = new();
+    private readonly Dictionary<string, int> _restoreSources = new(PathComparer);
 
     private FileStream? _operationLock;
     private int _operationDepth;
@@ -738,6 +739,7 @@ public sealed class BackupService
         }
 
         using var lease = AcquireOperationLock();
+        using var sourceLease = ProtectRestoreSource(snapshot);
 
         progress?.Report("Checking the backup");
         var verification = Verify(snapshot);
@@ -786,6 +788,17 @@ public sealed class BackupService
             errors.Add($"The safety copy {safety.Id} did not finish ({safety.Problem}), so the restore was abandoned and nothing was changed.");
             return new RestoreResult(false, safety, errors, warnings, false);
         }
+
+        var safetyVerification = Verify(safety);
+        if (!safetyVerification.Ok)
+        {
+            errors.Add($"The safety copy {safety.Id} failed verification, so nothing was changed.");
+            errors.AddRange(safetyVerification.Problems);
+            return new RestoreResult(false, safety, errors, warnings, false);
+        }
+
+        var safetyFiles = safety.Manifest!.Files.ToDictionary(
+            file => NormaliseRelative(file.RelativePath), PathComparer);
 
         // The safety copy took several seconds, so the player may have started the game during it.
         // Nothing has been overwritten yet, so this can still refuse outright.
@@ -853,8 +866,8 @@ public sealed class BackupService
                 }
 
                 progress?.Report($"Restoring {relative} ({FormatSize(file.SizeBytes)})");
-                ClearReadOnly(destination);
-                File.Copy(source, destination, overwrite: true);
+                safetyFiles.TryGetValue(relative, out var captured);
+                RestoreFileProtection.Copy(SaveRoot, source, destination, safety, captured);
                 liveModified = true;
                 restored.Add(file);
             }
@@ -915,8 +928,8 @@ public sealed class BackupService
                     try
                     {
                         progress?.Report($"Removing {liveEntry.RelativePath}");
-                        ClearReadOnly(liveEntry.FullPath);
-                        File.Delete(liveEntry.FullPath);
+                        safetyFiles.TryGetValue(NormaliseRelative(liveEntry.RelativePath), out var captured);
+                        RestoreFileProtection.Delete(SaveRoot, liveEntry.FullPath, safety, captured);
                         liveModified = true;
                         removed.Add(liveEntry.RelativePath);
                     }
@@ -1020,7 +1033,15 @@ public sealed class BackupService
         }
 
         using var lease = AcquireOperationLock();
-        Directory.Delete(target, recursive: true);
+        lock (_lockGate)
+        {
+            if (_restoreSources.ContainsKey(target))
+            {
+                throw new IOException("This backup is being restored and cannot be removed yet.");
+            }
+
+            Directory.Delete(target, recursive: true);
+        }
     }
 
     /// <summary>A slot that cannot be parsed comes back with its ParseError set rather than throwing.</summary>
@@ -1168,7 +1189,9 @@ public sealed class BackupService
         {
             if (_operationDepth == 0)
             {
+                ValidateStorageRoots();
                 Directory.CreateDirectory(BackupRoot);
+                ValidateStorageRoots();
 
                 try
                 {
@@ -1190,6 +1213,41 @@ public sealed class BackupService
         }
 
         return new OperationLease(this);
+    }
+
+    private void ValidateStorageRoots()
+    {
+        var problem = SettingsValidation.Validate(SaveRoot, BackupRoot);
+        if (problem is not null)
+        {
+            throw new IOException(problem);
+        }
+    }
+
+    private IDisposable ProtectRestoreSource(BackupSnapshot snapshot)
+    {
+        var path = TrimSeparators(Path.GetFullPath(snapshot.DirectoryPath));
+        lock (_lockGate)
+        {
+            _restoreSources.TryGetValue(path, out var count);
+            _restoreSources[path] = count + 1;
+        }
+
+        return new RestoreSourceLease(this, path);
+    }
+
+    private sealed class RestoreSourceLease(BackupService service, string path) : IDisposable
+    {
+        public void Dispose()
+        {
+            lock (service._lockGate)
+            {
+                if (--service._restoreSources[path] == 0)
+                {
+                    service._restoreSources.Remove(path);
+                }
+            }
+        }
     }
 
     private void ReleaseOperationLock()
