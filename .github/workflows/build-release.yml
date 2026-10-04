@@ -138,6 +138,12 @@ jobs:
           exit 0
 
       # Before the publish, so a red suite cannot cut a release.
+      - name: Test version selection
+        shell: pwsh
+        run: |
+          ./scripts/Test-ReleaseVersion.ps1
+          ./scripts/Test-BranchBuildVersion.ps1
+
       - name: Test
         run: dotnet test RainWorldCompanion.sln -c Release
 
