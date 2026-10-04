@@ -63,7 +63,13 @@ jobs:
           $props = [xml](Get-Content Directory.Build.props)
           $aimedCore = ((@($props.Project.PropertyGroup.Version | Where-Object { $_ })[0]).Trim() -split '[-+]')[0]
 
-          $describe = git describe --tags --long --match 'v[0-9]*' 2>$null
+          $withdrawnTags = @()
+          if (Test-Path '.github/withdrawn-release-tags.txt') {
+            $withdrawnTags = @(Get-Content '.github/withdrawn-release-tags.txt' | Where-Object { $_ -match '^v[0-9]' })
+          }
+          $describeArgs = @('describe', '--tags', '--long', '--match', 'v[0-9]*')
+          $describeArgs += @($withdrawnTags | ForEach-Object { "--exclude=$_" })
+          $describe = git @describeArgs 2>$null
 
           $tag = ''
           $count = 0
@@ -75,6 +81,7 @@ jobs:
 
           $latestStable = ''
           foreach ($candidate in @(git tag --list 'v[0-9]*')) {
+            if ($withdrawnTags -contains $candidate) { continue }
             if ($candidate -notmatch '^v(?<core>\d+\.\d+\.\d+)$') { continue }
 
             $candidateCore = $Matches.core
@@ -133,6 +140,12 @@ jobs:
           Write-Host "version: $version  numeric: $vernum"
           "VERSION=$version" | Add-Content $env:GITHUB_OUTPUT
           "VERNUM=$vernum" | Add-Content $env:GITHUB_OUTPUT
+
+      - name: Test version selection
+        shell: pwsh
+        run: |
+          ./scripts/Test-ReleaseVersion.ps1
+          ./scripts/Test-BranchBuildVersion.ps1
 
       - name: Test
         run: dotnet test RainWorldCompanion.sln -c Release
