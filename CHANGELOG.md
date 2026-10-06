@@ -138,7 +138,7 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## 1.4.0-beta.9 - 2026-09-17
 
-- Stored stomach contents can be copied from one campaign into any chosen live
+- A mod's stored contents can be copied from one campaign into any chosen live
   campaign, including a different slugcat, without replacing the rest of the
   target campaign.
 - While Rain World is open, the Recent tab keeps the first saved state from
