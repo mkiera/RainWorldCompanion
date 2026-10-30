@@ -1,0 +1,69 @@
+name: UI Check
+
+# Runs the app on a clean GitHub Windows machine, drives it with the scripts in tests/ui-checks
+# and uploads screenshots, so a change can be checked in the running app without a desktop.
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: Check name wildcard (file name in tests/ui-checks/checks without .ps1)
+        default: '*'
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - '**.md'
+
+concurrency:
+  group: ui-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ui:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Screen size
+        shell: pwsh
+        run: |
+          # The runner's screen starts at 1024x768, smaller than the app's 1150x720 window plus the taskbar.
+          try { Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop } catch { Write-Host "Set-DisplayResolution failed: $_" }
+          Add-Type -AssemblyName System.Windows.Forms
+          Write-Host "screen: $([System.Windows.Forms.SystemInformation]::VirtualScreen)"
+          Write-Host "session: $([System.Diagnostics.Process]::GetCurrentProcess().SessionId) interactive: $([Environment]::UserInteractive)"
+
+      - name: Build the app
+        run: >
+          dotnet publish src/RainWorldCompanion/RainWorldCompanion.csproj
+          -c Release
+          -r win-x64
+          --self-contained false
+          -p:PublishSingleFile=false
+          -o ui-app
+
+      - name: Run UI checks
+        shell: pwsh
+        run: |
+          $filter = '${{ github.event.inputs.filter }}'
+          if (-not $filter) { $filter = '*' }
+          ./tests/ui-checks/Invoke-UiChecks.ps1 -AppPath ui-app/RainWorldCompanion.exe -OutDir ui-results -Filter $filter
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-check-results
+          path: ui-results
+          retention-days: 14
+          if-no-files-found: warn
