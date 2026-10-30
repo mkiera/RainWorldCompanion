@@ -2652,7 +2652,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         var confirm = AskYesNo(
             "Go back to the save \"" + item.Name + "\" held before it was last updated?\n\n" +
-            "What is stored now is discarded.",
+            "What is stored now is kept as the earlier save, so Undo take brings it back.",
             "Undo an update");
         if (!confirm)
         {
@@ -3552,7 +3552,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         var confirm = AskYesNo(
-            "Delete this library save for good?\n\n" + item.Name + "\n" + item.CampaignCountText + "   " + item.SizeText +
+            "Move this library save to the Recycle Bin?\n\n" + item.Name + "\n" + item.CampaignCountText + "   " + item.SizeText +
             "\nFolder: " + item.Id +
             "\n\nThe live save slots are not changed.",
             "Delete library save");

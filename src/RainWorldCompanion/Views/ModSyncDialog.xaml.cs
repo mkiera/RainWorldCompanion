@@ -177,7 +177,7 @@ public partial class ModSyncDialog : Window
 
         MessageBoxResult answer = MessageBox.Show(
             this,
-            $"Replace \"{profile.Name}\" with the mods currently ticked in this window?",
+            $"Replace \"{profile.Name}\" with the mods currently ticked in this window?\n\nA copy of the old list goes to the Recycle Bin.",
             "Replace saved list",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -196,7 +196,7 @@ public partial class ModSyncDialog : Window
 
         MessageBoxResult answer = MessageBox.Show(
             this,
-            $"Delete the saved list \"{profile.Name}\"?",
+            $"Move the saved list \"{profile.Name}\" to the Recycle Bin?",
             "Delete saved list",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);

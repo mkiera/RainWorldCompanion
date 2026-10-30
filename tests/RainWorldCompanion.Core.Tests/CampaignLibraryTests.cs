@@ -591,9 +591,19 @@ public class CampaignLibraryTests
         LibraryEntry undone = world.Library.UndoUpdate(updated);
 
         Assert.Equal(storedCycle, undone.Manifest!.Metadata!.Campaigns[0].CycleNum);
-        Assert.False(undone.HasPrevious);
+        Assert.Equal(999, undone.Manifest.PreviousMetadata!.Campaigns[0].CycleNum);
+        Assert.True(undone.HasPrevious);
         Assert.True(world.Library.VerifyEntry(undone).Ok);
+
+        LibraryEntry redone = world.Library.UndoUpdate(undone);
+
+        Assert.Equal(999, ReadCycle(world.Library.ReadStoredCampaign(redone)!));
+        Assert.True(world.Library.VerifyEntry(redone).Ok);
     }
+
+    private static int? ReadCycle(CampaignSlice slice) =>
+        SaveMetadataExtractor.FromPayload(
+            CampaignFile.ToPayload(slice), LibraryEntry.CampaignFileName, 2, SaveRealm.Local).Campaigns[0].CycleNum;
 
     [Fact]
     public void A_campaign_is_taken_back_from_the_slot_it_was_put_into()

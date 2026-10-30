@@ -1,6 +1,7 @@
 using System.Text.Json;
 
 using RainWorldCompanion.Core.Backups;
+using RainWorldCompanion.Core.System;
 
 namespace RainWorldCompanion.Core.Mods;
 
@@ -87,14 +88,16 @@ public sealed class ModListCatalog
     private const int CurrentSchemaVersion = 1;
     private static readonly Guid LegacyHistoryId = Guid.Parse("1a19042b-4040-45cc-b2b3-6692e6c850a6");
     private readonly TimeProvider _timeProvider;
+    private readonly IRecycleBin _recycleBin;
 
-    public ModListCatalog(string? root = null, TimeProvider? timeProvider = null)
+    public ModListCatalog(string? root = null, TimeProvider? timeProvider = null, IRecycleBin? recycleBin = null)
     {
         Root = string.IsNullOrWhiteSpace(root) ? ModStateStore.DefaultFolder : Path.GetFullPath(root.Trim());
         ProfilesRoot = Path.Combine(Root, "profiles");
         HistoryRoot = Path.Combine(Root, "history");
         PreviousPath = Path.Combine(Root, ModStateStore.FileName);
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _recycleBin = recycleBin ?? WindowsRecycleBin.Instance;
     }
 
     public string Root { get; }
@@ -229,12 +232,55 @@ public sealed class ModListCatalog
             Snapshot = snapshot,
         };
 
+        if (!TryRecycleCopy(existing, out problem))
+        {
+            return Failed(problem!);
+        }
+
         if (!TryWrite(ProfilePath(changed.Id), ToDocument(changed), out problem))
         {
             return Failed(problem!);
         }
 
         return Success(changed.Id, warning);
+    }
+
+    // The copy gets its own id, so restoring it from the Recycle Bin adds a list rather than clashing with this one.
+    private bool TryRecycleCopy(ModListProfile existing, out string? problem)
+    {
+        var copy = new ModListProfile
+        {
+            Id = Guid.NewGuid(),
+            Name = existing.Name,
+            CreatedAt = existing.CreatedAt,
+            UpdatedAt = existing.UpdatedAt,
+            Snapshot = existing.Snapshot,
+        };
+        string copyPath = ProfilePath(copy.Id);
+
+        if (!TryWrite(copyPath, ToDocument(copy), out problem))
+        {
+            return false;
+        }
+
+        try
+        {
+            _recycleBin.Recycle(copyPath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                File.Delete(copyPath);
+            }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            problem = "The old list could not be moved to the Recycle Bin, so it was not replaced: " + ex.Message;
+            return false;
+        }
     }
 
     private ModListCatalogResult Delete(DeleteProfile command)
@@ -252,11 +298,11 @@ public sealed class ModListCatalog
 
         try
         {
-            File.Delete(ProfilePath(command.Id));
+            _recycleBin.Recycle(ProfilePath(command.Id));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
-            return Failed("The saved list could not be deleted: " + ex.Message);
+            return Failed("The saved list could not be moved to the Recycle Bin, so it was not deleted: " + ex.Message);
         }
 
         return Success(command.Id, warning);

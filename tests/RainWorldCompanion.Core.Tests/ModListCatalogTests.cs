@@ -9,7 +9,7 @@ public class ModListCatalogTests
     {
         using var files = new TempDirectory("mod-list-catalog");
         var clock = new Clock("2026-09-04T14:31:00Z");
-        var catalog = new ModListCatalog(files.Path, clock);
+        var catalog = new ModListCatalog(files.Path, clock, new FakeRecycleBin());
 
         ModListCatalogResult saved = catalog.Execute(new SaveProfile(" Co-op ", Snapshot("slugbase")));
 
@@ -237,6 +237,72 @@ public class ModListCatalogTests
         Assert.True(result.Succeeded);
         Assert.Single(result.View.Profiles);
         Assert.Equal(0, result.View.UnreadableEntryCount);
+    }
+
+    [Fact]
+    public void Deleting_a_list_sends_it_to_the_recycle_bin()
+    {
+        using var files = new TempDirectory("mod-list-catalog");
+        var bin = new FakeRecycleBin();
+        var catalog = new ModListCatalog(files.Path, recycleBin: bin);
+        Guid id = catalog.Execute(new SaveProfile("Friends", Snapshot("slugbase"))).EntryId!.Value;
+
+        Assert.True(catalog.Execute(new DeleteProfile(id)).Succeeded);
+
+        Assert.EndsWith(id.ToString("D") + ".json", Assert.Single(bin.Recycled), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("slugbase", Assert.Single(bin.RecycledFileText), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_delete_the_recycle_bin_refuses_keeps_the_list()
+    {
+        using var files = new TempDirectory("mod-list-catalog");
+        var bin = new FakeRecycleBin();
+        var catalog = new ModListCatalog(files.Path, recycleBin: bin);
+        Guid id = catalog.Execute(new SaveProfile("Friends", Snapshot("slugbase"))).EntryId!.Value;
+        bin.Failure = new IOException("no Recycle Bin on this drive");
+
+        ModListCatalogResult deleted = catalog.Execute(new DeleteProfile(id));
+
+        Assert.False(deleted.Succeeded);
+        Assert.Contains("Recycle Bin", deleted.Problem, StringComparison.Ordinal);
+        Assert.Equal(id, Assert.Single(deleted.View.Profiles).Id);
+    }
+
+    [Fact]
+    public void Replacing_a_list_sends_a_copy_of_the_old_one_to_the_recycle_bin_first()
+    {
+        using var files = new TempDirectory("mod-list-catalog");
+        var bin = new FakeRecycleBin();
+        var catalog = new ModListCatalog(files.Path, recycleBin: bin);
+        Guid id = catalog.Execute(new SaveProfile("Friends", Snapshot("slugbase"))).EntryId!.Value;
+
+        ModListCatalogResult replaced = catalog.Execute(new ReplaceProfile(id, Snapshot("dressmyslugcat")));
+
+        Assert.True(replaced.Succeeded);
+        string recycled = Assert.Single(bin.RecycledFileText);
+        Assert.Contains("slugbase", recycled, StringComparison.Ordinal);
+        Assert.DoesNotContain("dressmyslugcat", recycled, StringComparison.Ordinal);
+        Assert.DoesNotContain(id.ToString("D"), recycled, StringComparison.OrdinalIgnoreCase);
+        ModListProfile profile = Assert.Single(replaced.View.Profiles);
+        Assert.Equal("dressmyslugcat", Assert.Single(profile.Snapshot.Mods).Id);
+    }
+
+    [Fact]
+    public void A_replace_the_recycle_bin_refuses_keeps_the_old_list()
+    {
+        using var files = new TempDirectory("mod-list-catalog");
+        var bin = new FakeRecycleBin();
+        var catalog = new ModListCatalog(files.Path, recycleBin: bin);
+        Guid id = catalog.Execute(new SaveProfile("Friends", Snapshot("slugbase"))).EntryId!.Value;
+        bin.Failure = new IOException("no Recycle Bin on this drive");
+
+        ModListCatalogResult replaced = catalog.Execute(new ReplaceProfile(id, Snapshot("dressmyslugcat")));
+
+        Assert.False(replaced.Succeeded);
+        ModListProfile profile = Assert.Single(replaced.View.Profiles);
+        Assert.Equal("slugbase", Assert.Single(profile.Snapshot.Mods).Id);
+        Assert.Single(Directory.GetFiles(Path.Combine(files.Path, "profiles")));
     }
 
     private static ModListSnapshot Snapshot(params string[] ids)
