@@ -27,6 +27,9 @@ public sealed class SettingsStore
 
     public string? LoadProblem { get; private set; }
 
+    // Set while an unreadable file could not be copied aside, so Save must not replace it yet.
+    private bool _unreadableNotKept;
+
     public static string DefaultSettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RainWorldCompanion",
@@ -39,6 +42,7 @@ public sealed class SettingsStore
     public AppSettings Load()
     {
         var settings = ReadFile(out var problem);
+        _unreadableNotKept = false;
         LoadProblem = problem is null ? null : KeepUnreadableFile(problem);
         settings ??= AppSettings.CreateDefault();
 
@@ -91,6 +95,16 @@ public sealed class SettingsStore
             Directory.CreateDirectory(directory);
         }
 
+        if (_unreadableNotKept)
+        {
+            KeepUnreadableFile("it could not be read when the app started");
+            if (_unreadableNotKept)
+            {
+                throw new IOException(
+                    $"{SettingsPath} could not be read and no copy of it could be kept, so it was not replaced.");
+            }
+        }
+
         DurableFile.ReplaceText(SettingsPath, Merge(settings, ReadObject()));
     }
 
@@ -100,18 +114,21 @@ public sealed class SettingsStore
         var read = $"{SettingsPath} could not be read because {problem}.";
         try
         {
-            if (new FileInfo(SettingsPath).Length == 0)
+            if (!File.Exists(SettingsPath) || new FileInfo(SettingsPath).Length == 0)
             {
+                _unreadableNotKept = false;
                 return read;
             }
 
             var copy = SettingsPath + ".corrupt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
             DurableFile.Copy(SettingsPath, copy);
+            _unreadableNotKept = false;
             return $"{read} A copy of it was kept at {copy}.";
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            return $"{read} A copy of it could not be kept: {e.Message}";
+            _unreadableNotKept = true;
+            return $"{read} A copy of it could not be kept, so it will not be replaced until one can be: {e.Message}";
         }
     }
 

@@ -168,6 +168,42 @@ public class SettingsResilienceTests
     }
 
     [Fact]
+    public void A_file_that_could_not_be_copied_aside_is_copied_before_the_next_save_replaces_it()
+    {
+        using var dir = new TempDirectory();
+        const string truncated = """{ "backupRootPath": "D:\\My backups", "libraryRootPath": "D:\\My lib""";
+        var store = StoreWith(dir, truncated);
+
+        AppSettings settings;
+        using (new FileStream(store.SettingsPath, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            settings = store.Load();
+            Assert.Empty(Directory.GetFiles(dir.Path, "settings.json.corrupt-*"));
+        }
+
+        store.Save(settings);
+
+        var kept = Assert.Single(Directory.GetFiles(dir.Path, "settings.json.corrupt-*"));
+        Assert.Equal(truncated, File.ReadAllText(kept));
+    }
+
+    [Fact]
+    public void A_file_that_still_cannot_be_copied_aside_is_not_replaced()
+    {
+        using var dir = new TempDirectory();
+        const string truncated = """{ "backupRootPath": "D:\\My backups", "libraryRootPath": "D:\\My lib""";
+        var store = StoreWith(dir, truncated);
+
+        using (new FileStream(store.SettingsPath, FileMode.Open, FileAccess.Read, FileShare.Delete))
+        {
+            var settings = store.Load();
+            Assert.Throws<IOException>(() => store.Save(settings));
+        }
+
+        Assert.Equal(truncated, File.ReadAllText(store.SettingsPath));
+    }
+
+    [Fact]
     public void An_empty_file_is_reported_without_keeping_a_copy()
     {
         using var dir = new TempDirectory();
