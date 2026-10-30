@@ -36,6 +36,7 @@ public sealed class BackupService
 
     private FileStream? _operationLock;
     private int _operationDepth;
+    private int _operationOwner;
     private SlotCopyService? _slotCopies;
     private SaveSlotWriter? _slotWriter;
 
@@ -1181,12 +1182,17 @@ public sealed class BackupService
     private static void ReleaseClaim(string directory) =>
         TimestampedFolders.ReleaseClaim(directory, ClaimFileName);
 
-    /// <summary>Holds the backup folder for the length of one operation. Re-entrant, because a
-    /// restore takes its safety snapshot through the same lock.</summary>
+    /// <summary>Holds the backup folder for the length of one operation. Re-entrant on the thread
+    /// that holds it, because a restore takes its safety snapshot through the same lock.</summary>
     internal IDisposable AcquireOperationLock()
     {
         lock (_lockGate)
         {
+            if (_operationDepth > 0 && _operationOwner != Environment.CurrentManagedThreadId)
+            {
+                throw new BackupBusyException(BackupRoot);
+            }
+
             if (_operationDepth == 0)
             {
                 ValidateStorageRoots();
@@ -1207,6 +1213,8 @@ public sealed class BackupService
                 {
                     throw new BackupBusyException(BackupRoot, ex);
                 }
+
+                _operationOwner = Environment.CurrentManagedThreadId;
             }
 
             _operationDepth++;
