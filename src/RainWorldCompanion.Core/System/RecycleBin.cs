@@ -76,7 +76,7 @@ public sealed class WindowsRecycleBin : IRecycleBin
                 && Records(bin).Except(recordsBefore, StringComparer.OrdinalIgnoreCase)
                     .Any(record => string.Equals(OriginalPath(record), full, StringComparison.OrdinalIgnoreCase));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
             recycled = false;
         }
@@ -91,7 +91,7 @@ public sealed class WindowsRecycleBin : IRecycleBin
         {
             CopyItem(keep, full);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
             throw new IOException(
                 $"{Path.GetFileName(full)} could not be confirmed in the Recycle Bin and could not be put back. A copy is at {keep}.", e);
@@ -122,10 +122,28 @@ public sealed class WindowsRecycleBin : IRecycleBin
         }
 
         var version = BitConverter.ToInt64(bytes, 0);
-        var text = version >= 2
-            ? global::System.Text.Encoding.Unicode.GetString(bytes, 28, Math.Min(BitConverter.ToInt32(bytes, 24) * 2, bytes.Length - 28))
-            : global::System.Text.Encoding.Unicode.GetString(bytes, 24, Math.Min(520, bytes.Length - 24));
-        return text.TrimEnd('\0').Split('\0')[0];
+        int offset, length;
+        if (version == 1)
+        {
+            (offset, length) = (24, Math.Min(520, bytes.Length - 24));
+        }
+        else if (version == 2)
+        {
+            var characters = BitConverter.ToInt32(bytes, 24);
+            if (characters <= 0 || characters > (bytes.Length - 28) / 2)
+            {
+                return null;
+            }
+
+            (offset, length) = (28, characters * 2);
+        }
+        else
+        {
+            return null;
+        }
+
+        var text = global::System.Text.Encoding.Unicode.GetString(bytes, offset, length & ~1);
+        return text.Split('\0')[0];
     }
 
     private static void DeleteQuietly(string path)
