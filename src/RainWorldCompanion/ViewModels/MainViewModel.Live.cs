@@ -312,7 +312,7 @@ public sealed partial class MainViewModel
             if (_shutdown.IsCancellationRequested || path != _settings.GameInstallPath) return;
             Live.AdoptSetup(status.Installed, status.Ready, status.Version, status.Problem ?? "Companion Game Hook is installed and enabled.");
             AdoptLiveConnection();
-            if (IsBusy) return;
+            if (IsBusy || IsDialogOpen) return;
             var setupAction = CompanionModSetupPolicy.Decide(_settings.CompanionGameHookAutomaticSetup, status);
             if (setupAction == CompanionModSetupAction.Remove)
             {

@@ -9,7 +9,8 @@ namespace RainWorldCompanion.App.Tests;
 
 /// <summary>
 /// Closing the window or ending the session kills the background thread that writes a save, so
-/// the app refuses while busy.
+/// the app refuses while busy. Busy is counted, because the Game Hook timer starts its own busy
+/// work and finishing it must not clear the flag under a restore that is still writing.
 /// </summary>
 public class BusyStateTests : IDisposable
 {
@@ -53,6 +54,24 @@ public class BusyStateTests : IDisposable
         EndBusy();
 
         Assert.Null(_viewModel.WhyNotClose());
+    }
+
+    [Fact]
+    public void Finishing_one_operation_leaves_busy_set_while_another_still_runs()
+    {
+        BeginBusy("Restoring backup");
+        BeginBusy("Companion Game Hook");
+
+        EndBusy();
+
+        Assert.True(_viewModel.IsBusy);
+        Assert.NotNull(_viewModel.WhyNotClose());
+        Assert.NotNull(_viewModel.WhyNotNow());
+
+        EndBusy();
+
+        Assert.False(_viewModel.IsBusy);
+        Assert.Null(_viewModel.WhyNotNow());
     }
 
     private void BeginBusy(string title) => Invoke("BeginBusy", title, "message");
