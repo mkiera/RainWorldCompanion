@@ -13,6 +13,9 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- The empty library tells you to use Save slot to library, the button that
+  replaced Store Slot.
+
 ## 1.4.2-beta.1 - 2026-10-30
 
 - The app refuses to close, and asks Windows not to sign out or shut down,
