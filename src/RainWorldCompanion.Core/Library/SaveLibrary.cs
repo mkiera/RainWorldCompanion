@@ -909,6 +909,7 @@ public sealed class SaveLibrary
         {
             // A slot holding one campaign from this entry and everything else of its own is not the
             // entry's bytes, so no claim on the slot is recorded and any older one still stands.
+            RecordCampaignPut(entry, target);
             progress?.Report(move.Describe());
         }
 
@@ -923,6 +924,25 @@ public sealed class SaveLibrary
         {
             SettingsWritten = result.SettingsWritten,
         };
+    }
+
+    // Best effort, like RecordSlotLink: the campaign is already in the slot.
+    private static void RecordCampaignPut(LibraryEntry entry, SaveSlotRef slot)
+    {
+        try
+        {
+            if (LibraryEntry.Load(entry.DirectoryPath).Manifest is not { } manifest)
+            {
+                return;
+            }
+
+            manifest.LastPutRealm = slot.Realm;
+            manifest.LastPutSlot = slot.Slot;
+            WriteManifest(entry.DirectoryPath, manifest);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     /// <summary>A whole slot is written over the target and a campaign is written into it, so a
@@ -1150,6 +1170,7 @@ public sealed class SaveLibrary
         manifest.Mods = _backups.TryReadMods();
         manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
         progress?.Report("New settings installed");
+        KeepPreviousSource(manifest);
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -1214,6 +1235,7 @@ public sealed class SaveLibrary
         manifest.MetadataVersion = SaveMetadataExtractor.Version;
         manifest.CampaignSlugcatId = slice.SlugcatId;
         manifest.CampaignDiscoveredShelters = slice.DiscoveredShelters?.ToList();
+        KeepPreviousSource(manifest);
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -1224,6 +1246,13 @@ public sealed class SaveLibrary
 
         progress?.Report("Updated");
         return LibraryEntry.Load(entry.DirectoryPath);
+    }
+
+    private static void KeepPreviousSource(LibraryManifest manifest)
+    {
+        manifest.PreviousSourceFileName = manifest.SourceFileName;
+        manifest.PreviousSourceRealm = manifest.SourceRealm;
+        manifest.PreviousSourceSlot = manifest.SourceSlot;
     }
 
     /// <summary>Refuses when the previous bytes are not both on disk and recorded, and proves them
@@ -1271,6 +1300,14 @@ public sealed class SaveLibrary
         manifest.Mods = manifest.PreviousMods;
         manifest.CampaignDiscoveredShelters = manifest.PreviousCampaignDiscoveredShelters;
 
+        // An update made before these were recorded leaves the source it set.
+        if (manifest.PreviousSourceFileName is { } previousFileName)
+        {
+            manifest.SourceFileName = previousFileName;
+            manifest.SourceRealm = manifest.PreviousSourceRealm ?? manifest.SourceRealm;
+            manifest.SourceSlot = manifest.PreviousSourceSlot ?? manifest.SourceSlot;
+        }
+
         MoveConfigsBack(entry);
         manifest.Configs = manifest.PreviousConfigs;
 
@@ -1281,6 +1318,9 @@ public sealed class SaveLibrary
         manifest.PreviousMods = null;
         manifest.PreviousConfigs = null;
         manifest.PreviousCampaignDiscoveredShelters = null;
+        manifest.PreviousSourceFileName = null;
+        manifest.PreviousSourceRealm = null;
+        manifest.PreviousSourceSlot = null;
 
         manifest.UpdatedUtc = DateTime.UtcNow;
 
@@ -1564,6 +1604,8 @@ public sealed class SaveLibrary
             manifest.LastLoadedUtc = null;
             manifest.LastLoadedSizeBytes = null;
             manifest.LastLoadedWriteUtc = null;
+            manifest.LastPutRealm = null;
+            manifest.LastPutSlot = null;
 
             // The bundle carries one save, so there is no earlier generation to go back to here.
             manifest.PreviousSha256 = null;
@@ -1572,6 +1614,12 @@ public sealed class SaveLibrary
             manifest.PreviousMetadata = null;
             manifest.PreviousMods = null;
             manifest.PreviousConfigs = null;
+            manifest.PreviousSourceFileName = null;
+            manifest.PreviousSourceRealm = null;
+            manifest.PreviousSourceSlot = null;
+
+            // The entry is relabelled with this build's schema, so fields only a later one knows are dropped as before.
+            manifest.UnknownFields = null;
 
             // manifest.Mods and manifest.Configs are deliberately left standing: they describe the
             // machine the save was played on, which is what a load onto this machine is compared

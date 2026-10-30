@@ -596,6 +596,54 @@ public class CampaignLibraryTests
     }
 
     [Fact]
+    public void A_campaign_is_taken_back_from_the_slot_it_was_put_into()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        Assert.True(world.Library.LoadCampaignOntoSlot(entry, LocalThree).Success);
+        world.PlayASlot(LocalThree, "CYCLENUM", "777");
+
+        LibraryEntry put = world.Reload(entry);
+        Assert.Equal(LocalThree, put.Manifest!.TakeFromSlotRef);
+        Assert.Null(put.Manifest.LastLoadedSlotRef);
+
+        LibraryEntry taken = world.Library.UpdateEntry(put, put.Manifest.TakeFromSlotRef!);
+        Assert.Equal(777, taken.Manifest!.Metadata!.Campaigns[0].CycleNum);
+    }
+
+    [Fact]
+    public void An_imported_campaign_file_can_be_taken_back_once_it_is_in_a_slot()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry stored = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+        string loose = Path.Combine(world.BackupRoot.Path, "Survivor.bin");
+        File.Copy(stored.CampaignPath, loose);
+        LibraryEntry imported = world.Library.ImportFile(loose).Entry!;
+        Assert.Null(imported.Manifest!.TakeFromSlotRef);
+
+        Assert.True(world.Library.LoadCampaignOntoSlot(imported, LocalThree).Success);
+
+        Assert.Equal(LocalThree, world.Reload(imported).Manifest!.TakeFromSlotRef);
+    }
+
+    [Fact]
+    public void Undoing_a_take_puts_back_the_slot_the_campaign_came_from()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        LibraryEntry updated = world.Library.UpdateEntry(entry, LocalThree);
+        Assert.Equal(3, updated.Manifest!.SourceSlot);
+
+        LibraryManifest undone = world.Library.UndoUpdate(updated).Manifest!;
+
+        Assert.Equal("sav2", undone.SourceFileName);
+        Assert.Equal(SaveRealm.Local, undone.SourceRealm);
+        Assert.Equal(2, undone.SourceSlot);
+    }
+
+    [Fact]
     public void A_campaign_file_is_the_records_the_game_writes_and_nothing_else()
     {
         using var world = new LibraryWorld();

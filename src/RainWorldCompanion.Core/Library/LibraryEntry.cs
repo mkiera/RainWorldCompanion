@@ -1,6 +1,7 @@
 // RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Saves;
 using RainWorldCompanion.Core.Mods;
@@ -108,14 +109,40 @@ public sealed class LibraryManifest
     /// <summary>Follows <see cref="PreviousMods"/> exactly.</summary>
     public ModConfigSet? PreviousConfigs { get; set; }
 
+    // The slot a campaign was last put into. Not a claim like LastLoaded*: that slot also holds other campaigns.
+    public SaveRealm? LastPutRealm { get; set; }
+
+    public int? LastPutSlot { get; set; }
+
+    public string? PreviousSourceFileName { get; set; }
+
+    public SaveRealm? PreviousSourceRealm { get; set; }
+
+    public int? PreviousSourceSlot { get; set; }
+
+    // Fields written by a later schema, kept so a rewrite by this build does not drop them.
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? UnknownFields { get; set; }
+
     public SaveSlotRef? LastLoadedSlotRef =>
         LastLoadedRealm is { } realm && LastLoadedSlot is { } slot
             ? new SaveSlotRef(realm, slot)
             : null;
 
+    [JsonIgnore]
+    public SaveSlotRef? LastPutSlotRef =>
+        LastPutRealm is { } realm && LastPutSlot is { } slot
+            && new SaveSlotRef(realm, slot) is { IsRealSlot: true } slotRef
+            ? slotRef
+            : null;
+
     /// <summary>Null for an import whose file name named no slot.</summary>
     public SaveSlotRef? SourceSlotRef =>
         new SaveSlotRef(SourceRealm, SourceSlot) is { IsRealSlot: true } slot ? slot : null;
+
+    // The slot that was played is the one a take reads: where the entry was last put, else where it came from.
+    [JsonIgnore]
+    public SaveSlotRef? TakeFromSlotRef => LastLoadedSlotRef ?? LastPutSlotRef ?? SourceSlotRef;
 }
 
 /// <summary>

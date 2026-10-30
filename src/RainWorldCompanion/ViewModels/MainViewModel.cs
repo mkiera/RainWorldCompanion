@@ -2575,10 +2575,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // The slot this save was put into is the one that was played. One that has never been put
-        // anywhere still knows the slot it was taken from.
-        var manifest = item.Entry.Manifest;
-        var source = manifest?.LastLoadedSlotRef ?? manifest?.SourceSlotRef;
+        var source = item.Entry.Manifest?.TakeFromSlotRef;
         if (source is null)
         {
             ShowMessage(
