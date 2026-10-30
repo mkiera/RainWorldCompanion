@@ -18,6 +18,7 @@ $script:AE = [System.Windows.Automation.AutomationElement]
 $script:Descendants = [System.Windows.Automation.TreeScope]::Descendants
 $script:Proc = $null
 $script:Shot = 0
+$script:Detached = New-Object System.Collections.Generic.List[object]
 
 function Get-RwcOutDir {
     $dir = $env:RWC_UI_OUT
@@ -167,6 +168,8 @@ function Find-RwcElement {
         [string]$ControlType,
         [int]$Index = 0,
         [string]$Window,
+        # A window element from Find-RwcWindow, for a dialog that shares its title with another window.
+        [System.Windows.Automation.AutomationElement]$Scope,
         [int]$TimeoutSeconds = 10
     )
 
@@ -182,8 +185,8 @@ function Find-RwcElement {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
-        $scope = Get-RwcWindow -Title $Window
-        $all = $scope.FindAll($Descendants, $cond)
+        $root = if ($Scope) { $Scope } else { Get-RwcWindow -Title $Window }
+        $all = $root.FindAll($Descendants, $cond)
         if ($all.Count -gt $Index) { return $all.Item($Index) }
         Start-Sleep -Milliseconds 250
     } while ((Get-Date) -lt $deadline)
@@ -227,8 +230,8 @@ function Set-RwcText {
 
 function Get-RwcTree {
     # Writes every named control to <out>\<name>.txt and returns the lines.
-    param([string]$Window, [string]$Name = 'tree')
-    $scope = Get-RwcWindow -Title $Window
+    param([string]$Window, [string]$Name = 'tree', [System.Windows.Automation.AutomationElement]$Scope)
+    $scope = if ($Scope) { $Scope } else { Get-RwcWindow -Title $Window }
     $cond = New-Object System.Windows.Automation.PropertyCondition($AE::IsControlElementProperty, $true)
     $lines = foreach ($e in $scope.FindAll($Descendants, $cond)) {
         $c = $e.Current
@@ -288,6 +291,137 @@ function Assert-Rwc {
     param([Parameter(Mandatory)][bool]$Condition, [Parameter(Mandatory)][string]$Message)
     if (-not $Condition) { throw "check failed: $Message" }
     Write-Host "ok: $Message"
+}
+
+function Get-RwcWindowList {
+    # Every top-level window of the app and every window nested under one, owned dialogs included.
+    $proc = Get-RwcProcess
+    $byPid = New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $proc.Id)
+    $isWindow = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window)
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($top in $AE::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children, $byPid)) {
+        $list.Add($top)
+        foreach ($w in $top.FindAll($Descendants, $isWindow)) { $list.Add($w) }
+    }
+    return , $list
+}
+
+function Get-RwcText {
+    # The names of every text element under an element: a message box's message, a dialog's lines.
+    param([Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Element)
+    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
+    $names = @(foreach ($e in $Element.FindAll($Descendants, $cond)) { $e.Current.Name })
+    return $names
+}
+
+function Find-RwcWindow {
+    # A message box (Win32 class #32770) often carries the title of the dialog that raised it,
+    # so -Message tells the two apart. -Text needs one text line matching the wildcard.
+    param(
+        [string]$Title = '*',
+        [switch]$Message,
+        [string]$Text,
+        [int]$TimeoutSeconds = 20
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        foreach ($w in (Get-RwcWindowList)) {
+            try {
+                $c = $w.Current
+                if ($c.Name -notlike $Title) { continue }
+                if ($Message.IsPresent -ne ($c.ClassName -eq '#32770')) { continue }
+                if ($Text -and -not @(Get-RwcText $w | Where-Object { $_ -like $Text }).Count) { continue }
+                return $w
+            }
+            catch [System.Windows.Automation.ElementNotAvailableException] { }
+        }
+        Start-Sleep -Milliseconds 300
+    } while ((Get-Date) -lt $deadline)
+    $kind = if ($Message) { 'message box' } else { 'window' }
+    throw "no $kind titled '$Title'$(if ($Text) { " with text '$Text'" })"
+}
+
+function Close-RwcMessage {
+    # Clicks a message box button by its caption: OK, Yes, No, Cancel.
+    param([Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Window, [string]$Button = 'OK')
+    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+    foreach ($b in $Window.FindAll($Descendants, $cond)) {
+        if (($b.Current.Name -replace '&', '') -eq $Button) { Invoke-RwcElement $b; return }
+    }
+    throw "message box '$($Window.Current.Name)' has no '$Button' button"
+}
+
+function Invoke-RwcElementDetached {
+    # For a control whose click handler opens a modal box before it returns, such as a menu item:
+    # a plain Invoke can wait on that box. This one returns at once.
+    param([Parameter(Mandatory, ValueFromPipeline)]$Element)
+    process {
+        $ps = [PowerShell]::Create()
+        $null = $ps.AddScript({
+            param($e)
+            $e.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+        }).AddArgument($Element)
+        $null = $ps.BeginInvoke()
+        $script:Detached.Add($ps)
+        Start-Sleep -Milliseconds 600
+    }
+}
+
+function Get-RwcAncestor {
+    # The nearest ancestor of a control type, for a button whose only name is the text inside it.
+    param([Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Element, [Parameter(Mandatory)][string]$ControlType)
+    $ct = [System.Windows.Automation.ControlType]::$ControlType
+    $walker = [System.Windows.Automation.TreeWalker]::RawViewWalker
+    $e = $walker.GetParent($Element)
+    while ($e -and $e.Current.ControlType -ne $ct) { $e = $walker.GetParent($e) }
+    if (-not $e) { throw "no $ControlType above '$($Element.Current.Name)'" }
+    return $e
+}
+
+function Select-RwcComboItem {
+    # Opens a combo box, selects the item with that name and closes it again.
+    param([Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$ComboBox, [Parameter(Mandatory)][string]$Item)
+    $ec = Get-RwcPattern $ComboBox ([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+    $ec.Expand()
+    Start-Sleep -Milliseconds 500
+    $cond = New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, $Item)
+    $deadline = (Get-Date).AddSeconds(5)
+    $found = $null
+    do {
+        $found = $ComboBox.FindFirst($Descendants, $cond)
+        if (-not $found) { Start-Sleep -Milliseconds 250 }
+    } while (-not $found -and (Get-Date) -lt $deadline)
+    if (-not $found) {
+        $names = @(foreach ($e in $ComboBox.FindAll($Descendants, [System.Windows.Automation.Condition]::TrueCondition)) { $e.Current.Name }) -join ' | '
+        throw "combo box '$($ComboBox.Current.Name)' has no item '$Item'. Items: $names"
+    }
+    (Get-RwcPattern $found ([System.Windows.Automation.SelectionItemPattern]::Pattern)).Select()
+    Start-Sleep -Milliseconds 300
+    try { $ec.Collapse() } catch { }
+    Start-Sleep -Milliseconds 500
+}
+
+function Wait-Rwc {
+    # Polls a script block until it returns something true. Fails the check with the message.
+    param([Parameter(Mandatory)][scriptblock]$Until, [Parameter(Mandatory)][string]$Message, [int]$TimeoutSeconds = 30)
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (& $Until) { Write-Host "ok: $Message"; return }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+    throw "check failed after $TimeoutSeconds s: $Message"
+}
+
+function Get-RwcRecycleBin {
+    # What the Recycle Bin of this user holds. Name is the original name, which can lack its extension.
+    $bin = (New-Object -ComObject Shell.Application).Namespace(10)
+    foreach ($i in @($bin.Items())) {
+        [pscustomobject]@{
+            Name        = $i.Name
+            DeletedFrom = "$($i.ExtendedProperty('System.Recycle.DeletedFrom'))"
+            Path        = $i.Path
+        }
+    }
 }
 
 Export-ModuleMember -Function *-Rwc*

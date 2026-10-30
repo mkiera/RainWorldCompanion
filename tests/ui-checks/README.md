@@ -61,6 +61,14 @@ empty folder, or `-Settings @{ theme = 'dark' }` to change a setting before laun
 | `Save-RwcScreenshot -Name [-Window]` | One window, captured with `PrintWindow` |
 | `Save-RwcDesktopScreenshot -Name` | The whole screen, for message boxes |
 | `Assert-Rwc <condition> <message>` | Fails the check with the message |
+| `Find-RwcWindow -Title -Message -Text` | A window by title wildcard. `-Message` picks a message box, which often shares its title with the dialog that raised it |
+| `Get-RwcText`, `Close-RwcMessage -Button` | The text lines under a window. Clicks a message box button such as OK or Yes |
+| `Find-RwcElement -Scope` | Searches one window element from `Find-RwcWindow` |
+| `Select-RwcComboItem` | Picks a combo box item by name |
+| `Get-RwcAncestor` | The nearest ancestor of a control type, for a button named only by its text |
+| `Invoke-RwcElementDetached` | Clicks without waiting, for a menu item whose handler opens a message box |
+| `Wait-Rwc { } <message>` | Polls until the block returns true |
+| `Get-RwcRecycleBin` | The Recycle Bin items, by original name |
 
 WPF puts a templated item's view model type name in its Name, not in its AutomationId. Run
 `Get-RwcTree` first to see what a window exposes.
