@@ -8,6 +8,14 @@ $p = Initialize-RwcProfile
 $library = Join-Path $p.Root 'library'
 function Get-EntryFolders { @(Get-ChildItem $library -Directory | Where-Object { Test-Path (Join-Path $_.FullName 'entry.json') }) }
 
+# Windows keeps this per volume and creates the key on first use, so a fresh runner has none yet.
+$bb = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket'
+$guid = ((Get-CimInstance Win32_Volume -Filter "DriveLetter='$($env:SystemDrive)'").DeviceID -replace '^.*(\{[^}]+\}).*$', '$1')
+$volumeKey = "$bb\Volume\$guid"
+New-Item -Force -Path $volumeKey | Out-Null
+Set-ItemProperty -Path $volumeKey -Name NukeOnDelete -Value 1 -Type DWord
+Write-Host "bin turned off for $volumeKey"
+
 Start-Rwc | Out-Null
 Get-RwcTree -Name 'main-tree' | Out-Null
 
@@ -26,18 +34,16 @@ Wait-Rwc { (Find-RwcElement -Name 'Delete' -ControlType Button).Current.IsEnable
 Save-RwcScreenshot -Name 'library-selected' | Out-Null
 Get-RwcTree -Name 'library-tree' | Out-Null
 
-$bb = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\BitBucket'
-New-Item -Force -Path $bb | Out-Null
-Set-ItemProperty -Path $bb -Name NukeOnDelete -Value 1 -Type DWord
-if (Test-Path "$bb\Volume") {
-    Get-ChildItem "$bb\Volume" | ForEach-Object { Set-ItemProperty -Path $_.PSPath -Name NukeOnDelete -Value 1 -Type DWord }
-}
-
 Find-RwcElement -Name 'Delete' -ControlType Button | Invoke-RwcElement
 $box = Find-RwcWindow -Title 'Delete library save' -Message -TimeoutSeconds 20
 Close-RwcMessage -Window $box -Button 'Yes'
 
-$err = Find-RwcWindow -Title '*' -Message -TimeoutSeconds 30
+try { $err = Find-RwcWindow -Title '*' -Message -TimeoutSeconds 30 }
+catch {
+    $stillThere = Test-Path (Join-Path $entry.FullName 'entry.json')
+    $inBin = @(Get-RwcRecycleBin | Where-Object { $_.Name -eq $entry.Name }).Count
+    throw "no message after the delete. Folder still there: $stillThere. Items named $($entry.Name) in the Recycle Bin: $inBin"
+}
 $text = (Get-RwcText $err) -join "`n"
 Write-Host "message: $text"
 Save-RwcDesktopScreenshot -Name 'bin-off-refusal' | Out-Null
@@ -47,8 +53,7 @@ Close-RwcMessage -Window $err -Button 'OK'
 Assert-Rwc (Test-Path (Join-Path $entry.FullName 'entry.json')) 'the entry folder is still in the library'
 Assert-Rwc (@(Get-RwcRecycleBin | Where-Object { $_.Name -eq $entry.Name }).Count -eq 0) 'nothing of it is in the Recycle Bin'
 
-Get-ChildItem $bb -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Remove-ItemProperty -Path $_.PSPath -Name NukeOnDelete -ErrorAction SilentlyContinue }
-Remove-ItemProperty -Path $bb -Name NukeOnDelete -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force $volumeKey
 
 Save-RwcScreenshot -Name 'library-after-refusal' | Out-Null
 Stop-Rwc
