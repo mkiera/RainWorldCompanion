@@ -192,8 +192,8 @@ internal sealed record SlotWriteOutcome(
 
 /// <summary>
 /// Copies one whole save slot file onto another, byte for byte. Nothing here parses or rewrites a
-/// save: the operation is File.Copy and nothing else, so the UTF-8 BOM, the trailing NUL padding
-/// and the MD5 digest inside the payload all arrive unchanged.
+/// save: the operation is a byte copy and nothing else, so the UTF-8 BOM, the trailing NUL
+/// padding and the MD5 digest inside the payload all arrive unchanged.
 /// </summary>
 public sealed class SlotCopyService
 {
@@ -586,8 +586,15 @@ public sealed class SlotCopyService
         try
         {
             progress?.Report($"Deleting {relative}");
-            ClearReadOnly(target);
-            File.Delete(target);
+
+            try
+            {
+                RestoreFileProtection.Delete(SaveRoot, target, safety, SnapshotEntry(safety, relative));
+            }
+            catch (ChangedSinceSafetyCopyException)
+            {
+                return $"it changed after the safety copy {safety.Id} was taken, or that copy of it cannot be read, so deleting it could not be undone";
+            }
 
             if (File.Exists(target))
             {
@@ -803,8 +810,15 @@ public sealed class SlotCopyService
 
             try
             {
-                ClearReadOnly(targetPath);
-                File.Copy(sourcePath, targetPath, overwrite: true);
+                RestoreFileProtection.Copy(SaveRoot, sourcePath, targetPath, safety, SnapshotEntry(safety, targetName));
+            }
+            catch (ChangedSinceSafetyCopyException)
+            {
+                errors.Add(
+                    $"{targetName} changed after the safety copy {safety.Id} was taken, or that copy of it cannot be read, " +
+                    "so overwriting it could not be undone. Nothing was changed. Wait for Steam Cloud to finish syncing " +
+                    "and try again.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
             }
             catch (Exception ex)
             {
@@ -1054,8 +1068,14 @@ public sealed class SlotCopyService
 
             progress?.Report($"Writing {extra.Label}");
 
-            ClearReadOnly(destination);
-            File.Copy(extra.SourcePath, destination, overwrite: true);
+            try
+            {
+                RestoreFileProtection.Copy(SaveRoot, extra.SourcePath, destination, safety, SnapshotEntry(safety, relative));
+            }
+            catch (ChangedSinceSafetyCopyException)
+            {
+                return $"it changed after the safety copy {safety.Id} was taken, or that copy of it cannot be read, so overwriting it could not be undone";
+            }
 
             if (!HashComparer.Equals(Hashing.ComputeFileSha256(destination), sourceHash))
             {
@@ -1072,11 +1092,14 @@ public sealed class SlotCopyService
 
     /// <summary>Whether the snapshot's manifest lists a file, by its whole path below the save
     /// folder.</summary>
-    private static bool SnapshotHolds(BackupSnapshot snapshot, string relativePath)
+    private static bool SnapshotHolds(BackupSnapshot snapshot, string relativePath) =>
+        SnapshotEntry(snapshot, relativePath) is not null;
+
+    private static ManifestFileEntry? SnapshotEntry(BackupSnapshot snapshot, string relativePath)
     {
         if (snapshot.Manifest is not { } manifest)
         {
-            return false;
+            return null;
         }
 
         string wanted = Flatten(relativePath);
@@ -1085,16 +1108,16 @@ public sealed class SlotCopyService
         {
             if (string.Equals(Flatten(file.RelativePath ?? ""), wanted, StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return file;
             }
         }
 
-        return false;
+        return null;
     }
 
     private static string Flatten(string relativePath) => relativePath.Replace('/', '\\').Trim('\\');
 
-    /// <summary>File.Copy can truncate the destination and then fail, so "the copy threw" is not
+    /// <summary>The copy can truncate the destination and then fail, so "the copy threw" is not
     /// the same answer as "the save folder was not changed".</summary>
     private static bool TargetChanged(string targetPath, bool existedBefore, string? hashBefore)
     {
@@ -1131,33 +1154,6 @@ public sealed class SlotCopyService
         {
             // An unresolvable link is already reported by the link checks above.
             return string.Equals(Path.GetFullPath(left), Path.GetFullPath(right), StringComparison.OrdinalIgnoreCase);
-        }
-    }
-
-    private static void ClearReadOnly(string path)
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                return;
-            }
-
-            FileAttributes attributes = File.GetAttributes(path);
-
-            // Attributes on a link belong to the link, not to what it points at.
-            if (attributes.HasFlag(FileAttributes.ReparsePoint))
-            {
-                return;
-            }
-
-            if (attributes.HasFlag(FileAttributes.ReadOnly))
-            {
-                File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
-            }
-        }
-        catch (Exception)
-        {
         }
     }
 }
