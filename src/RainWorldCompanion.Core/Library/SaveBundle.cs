@@ -177,16 +177,16 @@ internal static class SaveBundle
                 return BundleKind.Bundle;
             }
 
-            if (read >= 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF)
-            {
-                return BundleKind.BareContainer;
-            }
-
             // A campaign file has no mark on the front, so what identifies one is its first record,
-            // which is always the campaign.
+            // which is always the campaign. Tested before the mark, which an editor may have added.
             if (CampaignFile.LooksLikeOne(seen))
             {
                 return BundleKind.BareCampaign;
+            }
+
+            if (read >= 3 && head[0] == 0xEF && head[1] == 0xBB && head[2] == 0xBF)
+            {
+                return BundleKind.BareContainer;
             }
         }
         catch (Exception)
