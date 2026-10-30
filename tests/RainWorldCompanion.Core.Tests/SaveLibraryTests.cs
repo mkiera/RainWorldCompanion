@@ -301,6 +301,30 @@ public class SaveLibraryTests
     }
 
     [Fact]
+    public void Deleting_sends_the_entry_to_the_recycle_bin()
+    {
+        using var world = new LibraryWorld();
+        var doomed = world.Library.StoreSlot(LocalTwo, "doomed", null);
+
+        world.Library.DeleteEntry(doomed);
+
+        Assert.Equal(doomed.DirectoryPath, Assert.Single(world.RecycleBin.Recycled));
+    }
+
+    [Fact]
+    public void A_delete_the_recycle_bin_refuses_leaves_the_entry_in_place()
+    {
+        using var world = new LibraryWorld();
+        var entry = world.Library.StoreSlot(LocalTwo, "kept", null);
+        world.RecycleBin.Failure = new IOException("no Recycle Bin on this drive");
+
+        Assert.Throws<IOException>(() => world.Library.DeleteEntry(entry));
+
+        Assert.True(File.Exists(entry.SavePath));
+        Assert.True(world.Library.VerifyEntry(world.Reload(entry)).Ok);
+    }
+
+    [Fact]
     public void Deleting_an_entry_that_is_already_gone_does_nothing()
     {
         using var world = new LibraryWorld();
@@ -422,14 +446,32 @@ public class SaveLibraryTests
     }
 
     [Fact]
-    public void An_undone_update_leaves_nothing_to_undo_a_second_time()
+    public void Undoing_an_update_keeps_the_newer_save_so_undoing_again_brings_it_back()
     {
         using var world = new LibraryWorld();
+        var older = world.Live.ReadBytes("sav2");
+        var newer = world.Live.ReadBytes("sav3");
         var entry = world.Library.StoreSlot(LocalTwo, "Ironclaw run", null);
-        var undone = world.Library.UndoUpdate(world.Library.UpdateEntry(entry, LocalThree));
+        var updated = world.Library.UpdateEntry(entry, LocalThree);
+        var newerHash = updated.Manifest!.Sha256;
 
-        Assert.False(undone.HasPrevious);
-        Assert.Throws<InvalidOperationException>(() => world.Library.UndoUpdate(undone));
+        var undone = world.Library.UndoUpdate(updated);
+
+        Assert.True(undone.HasPrevious);
+        Assert.Equal(newerHash, undone.Manifest!.PreviousSha256);
+        SnapshotLayout.AssertBytesEqual(newer, File.ReadAllBytes(undone.PreviousSavePath), "save.previous.bin");
+        Assert.Equal(2, undone.Manifest.SourceSlot);
+        Assert.Equal(3, undone.Manifest.PreviousSourceSlot);
+        Assert.Empty(world.RecycleBin.Recycled);
+
+        var redone = world.Library.UndoUpdate(undone);
+
+        SnapshotLayout.AssertBytesEqual(newer, File.ReadAllBytes(redone.SavePath), "save.bin");
+        SnapshotLayout.AssertBytesEqual(older, File.ReadAllBytes(redone.PreviousSavePath), "save.previous.bin");
+        Assert.Equal(newerHash, redone.Manifest!.Sha256);
+        Assert.Equal("sav3", redone.Manifest.SourceFileName);
+        Assert.Equal(3, redone.Manifest.SourceSlot);
+        Assert.True(world.Library.VerifyEntry(redone).Ok);
     }
 
     [Fact]
@@ -506,8 +548,10 @@ internal sealed class LibraryWorld : IDisposable
         Detector = detector ?? FakeGameDetector.NotRunning();
 
         Backups = new BackupService(Live.Path, BackupRoot.Path, Detector, AppVersion, modListSource);
-        Library = new SaveLibrary(Backups, LibraryRoot.Path, Detector, AppVersion);
+        Library = new SaveLibrary(Backups, LibraryRoot.Path, Detector, AppVersion, RecycleBin);
     }
+
+    public FakeRecycleBin RecycleBin { get; } = new();
 
     public TempDirectory Live { get; }
 

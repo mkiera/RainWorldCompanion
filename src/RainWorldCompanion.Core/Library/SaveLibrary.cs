@@ -25,14 +25,21 @@ public sealed class SaveLibrary
     private readonly BackupService _backups;
     private readonly IGameProcessDetector _gameDetector;
     private readonly string _appVersion;
+    private readonly IRecycleBin _recycleBin;
     private readonly object _slotLinkRecoveryGate = new();
     private bool _slotLinksRecovered;
 
-    public SaveLibrary(BackupService backups, string libraryRoot, IGameProcessDetector gameDetector, string appVersion)
+    public SaveLibrary(
+        BackupService backups,
+        string libraryRoot,
+        IGameProcessDetector gameDetector,
+        string appVersion,
+        IRecycleBin? recycleBin = null)
     {
         _backups = backups ?? throw new ArgumentNullException(nameof(backups));
         _gameDetector = gameDetector ?? throw new ArgumentNullException(nameof(gameDetector));
         _appVersion = appVersion ?? "";
+        _recycleBin = recycleBin ?? WindowsRecycleBin.Instance;
 
         if (string.IsNullOrWhiteSpace(libraryRoot))
         {
@@ -908,6 +915,7 @@ public sealed class SaveLibrary
         {
             // A slot holding one campaign from this entry and everything else of its own is not the
             // entry's bytes, so no claim on the slot is recorded and any older one still stands.
+            RecordCampaignPut(entry, target);
             progress?.Report(move.Describe());
         }
 
@@ -922,6 +930,25 @@ public sealed class SaveLibrary
         {
             SettingsWritten = result.SettingsWritten,
         };
+    }
+
+    // Best effort, like RecordSlotLink: the campaign is already in the slot.
+    private static void RecordCampaignPut(LibraryEntry entry, SaveSlotRef slot)
+    {
+        try
+        {
+            if (LibraryEntry.Load(entry.DirectoryPath).Manifest is not { } manifest)
+            {
+                return;
+            }
+
+            manifest.LastPutRealm = slot.Realm;
+            manifest.LastPutSlot = slot.Slot;
+            WriteManifest(entry.DirectoryPath, manifest);
+        }
+        catch (Exception)
+        {
+        }
     }
 
     /// <summary>A whole slot is written over the target and a campaign is written into it, so a
@@ -1149,6 +1176,7 @@ public sealed class SaveLibrary
         manifest.Mods = _backups.TryReadMods();
         manifest.Configs = StoreConfigs(entry.DirectoryPath, SaveRoot);
         progress?.Report("New settings installed");
+        KeepPreviousSource(manifest);
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -1213,6 +1241,7 @@ public sealed class SaveLibrary
         manifest.MetadataVersion = SaveMetadataExtractor.Version;
         manifest.CampaignSlugcatId = slice.SlugcatId;
         manifest.CampaignDiscoveredShelters = slice.DiscoveredShelters?.ToList();
+        KeepPreviousSource(manifest);
         manifest.SourceFileName = source.FileName;
         manifest.SourceRealm = source.Realm;
         manifest.SourceSlot = source.Slot;
@@ -1223,6 +1252,13 @@ public sealed class SaveLibrary
 
         progress?.Report("Updated");
         return LibraryEntry.Load(entry.DirectoryPath);
+    }
+
+    private static void KeepPreviousSource(LibraryManifest manifest)
+    {
+        manifest.PreviousSourceFileName = manifest.SourceFileName;
+        manifest.PreviousSourceRealm = manifest.SourceRealm;
+        manifest.PreviousSourceSlot = manifest.SourceSlot;
     }
 
     /// <summary>Refuses when the previous bytes are not both on disk and recorded, and proves them
@@ -1254,34 +1290,49 @@ public sealed class SaveLibrary
         }
 
         using var transaction = LibraryEntryTransaction.Begin(entry.DirectoryPath);
-        var metadata = manifest.PreviousMetadata;
 
+        // The two generations trade places, so undoing again brings the newer one back.
         var stagedPath = Path.Combine(entry.DirectoryPath, entry.ContentFileName + ".tmp");
         File.Copy(entry.PreviousContentPath, stagedPath, overwrite: true);
+        File.Move(entry.ContentPath, entry.PreviousContentPath, overwrite: true);
         File.Move(stagedPath, entry.ContentPath, overwrite: true);
+        SwapConfigs(entry);
 
-        manifest.SizeBytes = manifest.PreviousSizeBytes ?? new FileInfo(entry.ContentPath).Length;
+        var now = DateTime.UtcNow;
+        var current = (manifest.Sha256, manifest.SizeBytes, manifest.Metadata, manifest.Mods, manifest.Configs,
+            manifest.CampaignDiscoveredShelters, manifest.SourceFileName, manifest.SourceRealm, manifest.SourceSlot);
+
         manifest.Sha256 = previousHash;
-        manifest.Metadata = metadata;
+        manifest.SizeBytes = manifest.PreviousSizeBytes ?? new FileInfo(entry.ContentPath).Length;
+        manifest.Metadata = manifest.PreviousMetadata;
 
         // The restored metadata may predate this extractor, so the next listing decides for itself.
         manifest.MetadataVersion = 0;
 
         manifest.Mods = manifest.PreviousMods;
+        manifest.Configs = manifest.PreviousConfigs;
         manifest.CampaignDiscoveredShelters = manifest.PreviousCampaignDiscoveredShelters;
 
-        MoveConfigsBack(entry);
-        manifest.Configs = manifest.PreviousConfigs;
+        // An update made before these were recorded leaves the source it set.
+        if (manifest.PreviousSourceFileName is { } previousFileName)
+        {
+            manifest.SourceFileName = previousFileName;
+            manifest.SourceRealm = manifest.PreviousSourceRealm ?? manifest.SourceRealm;
+            manifest.SourceSlot = manifest.PreviousSourceSlot ?? manifest.SourceSlot;
+        }
 
-        manifest.PreviousSha256 = null;
-        manifest.PreviousSizeBytes = null;
-        manifest.PreviousReplacedUtc = null;
-        manifest.PreviousMetadata = null;
-        manifest.PreviousMods = null;
-        manifest.PreviousConfigs = null;
-        manifest.PreviousCampaignDiscoveredShelters = null;
+        manifest.PreviousSha256 = current.Sha256;
+        manifest.PreviousSizeBytes = current.SizeBytes;
+        manifest.PreviousReplacedUtc = now;
+        manifest.PreviousMetadata = current.Metadata;
+        manifest.PreviousMods = current.Mods;
+        manifest.PreviousConfigs = current.Configs;
+        manifest.PreviousCampaignDiscoveredShelters = current.CampaignDiscoveredShelters;
+        manifest.PreviousSourceFileName = current.SourceFileName;
+        manifest.PreviousSourceRealm = current.SourceRealm;
+        manifest.PreviousSourceSlot = current.SourceSlot;
 
-        manifest.UpdatedUtc = DateTime.UtcNow;
+        manifest.UpdatedUtc = now;
 
         // The entry now holds the older save again, which is not what any slot holds, so it is in
         // no slot until it is loaded somewhere.
@@ -1292,8 +1343,6 @@ public sealed class SaveLibrary
         manifest.LastLoadedWriteUtc = null;
 
         WriteManifest(entry.DirectoryPath, manifest);
-
-        File.Delete(entry.PreviousContentPath);
         transaction.Commit();
 
         return LibraryEntry.Load(entry.DirectoryPath);
@@ -1325,7 +1374,7 @@ public sealed class SaveLibrary
         return LibraryEntry.Load(entry.DirectoryPath);
     }
 
-    /// <summary>Deletes an entry folder. Refuses anything that is not a direct child of the root.</summary>
+    /// <summary>Sends an entry folder to the Recycle Bin. Refuses anything that is not a direct child of the root.</summary>
     public void DeleteEntry(LibraryEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -1337,7 +1386,7 @@ public sealed class SaveLibrary
             return;
         }
 
-        Directory.Delete(entry.DirectoryPath, recursive: true);
+        _recycleBin.Recycle(entry.DirectoryPath);
     }
 
     public VerifyResult VerifyEntry(LibraryEntry entry)
@@ -1563,6 +1612,8 @@ public sealed class SaveLibrary
             manifest.LastLoadedUtc = null;
             manifest.LastLoadedSizeBytes = null;
             manifest.LastLoadedWriteUtc = null;
+            manifest.LastPutRealm = null;
+            manifest.LastPutSlot = null;
 
             // The bundle carries one save, so there is no earlier generation to go back to here.
             manifest.PreviousSha256 = null;
@@ -1571,6 +1622,12 @@ public sealed class SaveLibrary
             manifest.PreviousMetadata = null;
             manifest.PreviousMods = null;
             manifest.PreviousConfigs = null;
+            manifest.PreviousSourceFileName = null;
+            manifest.PreviousSourceRealm = null;
+            manifest.PreviousSourceSlot = null;
+
+            // The entry is relabelled with this build's schema, so fields only a later one knows are dropped as before.
+            manifest.UnknownFields = null;
 
             // manifest.Mods and manifest.Configs are deliberately left standing: they describe the
             // machine the save was played on, which is what a load onto this machine is compared
@@ -1709,16 +1766,29 @@ public sealed class SaveLibrary
         }
     }
 
-    private static void MoveConfigsBack(LibraryEntry entry)
+    private static void SwapConfigs(LibraryEntry entry)
     {
+        var swapPath = Path.Combine(entry.DirectoryPath, LibraryEntry.ConfigsFolderName + ".swap");
+
+        // Left by an interrupted swap, whose transaction already put both real folders back.
+        if (Directory.Exists(swapPath))
+        {
+            Directory.Delete(swapPath, recursive: true);
+        }
+
         if (Directory.Exists(entry.ConfigsPath))
         {
-            Directory.Delete(entry.ConfigsPath, recursive: true);
+            Directory.Move(entry.ConfigsPath, swapPath);
         }
 
         if (Directory.Exists(entry.PreviousConfigsPath))
         {
             Directory.Move(entry.PreviousConfigsPath, entry.ConfigsPath);
+        }
+
+        if (Directory.Exists(swapPath))
+        {
+            Directory.Move(swapPath, entry.PreviousConfigsPath);
         }
     }
 

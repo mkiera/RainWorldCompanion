@@ -616,8 +616,66 @@ public class CampaignLibraryTests
         LibraryEntry undone = world.Library.UndoUpdate(updated);
 
         Assert.Equal(storedCycle, undone.Manifest!.Metadata!.Campaigns[0].CycleNum);
-        Assert.False(undone.HasPrevious);
+        Assert.Equal(999, undone.Manifest.PreviousMetadata!.Campaigns[0].CycleNum);
+        Assert.True(undone.HasPrevious);
         Assert.True(world.Library.VerifyEntry(undone).Ok);
+
+        LibraryEntry redone = world.Library.UndoUpdate(undone);
+
+        Assert.Equal(999, ReadCycle(world.Library.ReadStoredCampaign(redone)!));
+        Assert.True(world.Library.VerifyEntry(redone).Ok);
+    }
+
+    private static int? ReadCycle(CampaignSlice slice) =>
+        SaveMetadataExtractor.FromPayload(
+            CampaignFile.ToPayload(slice), LibraryEntry.CampaignFileName, 2, SaveRealm.Local).Campaigns[0].CycleNum;
+
+    [Fact]
+    public void A_campaign_is_taken_back_from_the_slot_it_was_put_into()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        Assert.True(world.Library.LoadCampaignOntoSlot(entry, LocalThree).Success);
+        world.PlayASlot(LocalThree, "CYCLENUM", "777");
+
+        LibraryEntry put = world.Reload(entry);
+        Assert.Equal(LocalThree, put.Manifest!.TakeFromSlotRef);
+        Assert.Null(put.Manifest.LastLoadedSlotRef);
+
+        LibraryEntry taken = world.Library.UpdateEntry(put, put.Manifest.TakeFromSlotRef!);
+        Assert.Equal(777, taken.Manifest!.Metadata!.Campaigns[0].CycleNum);
+    }
+
+    [Fact]
+    public void An_imported_campaign_file_can_be_taken_back_once_it_is_in_a_slot()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry stored = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+        string loose = Path.Combine(world.BackupRoot.Path, "Survivor.bin");
+        File.Copy(stored.CampaignPath, loose);
+        LibraryEntry imported = world.Library.ImportFile(loose).Entry!;
+        Assert.Null(imported.Manifest!.TakeFromSlotRef);
+
+        Assert.True(world.Library.LoadCampaignOntoSlot(imported, LocalThree).Success);
+
+        Assert.Equal(LocalThree, world.Reload(imported).Manifest!.TakeFromSlotRef);
+    }
+
+    [Fact]
+    public void Undoing_a_take_puts_back_the_slot_the_campaign_came_from()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        LibraryEntry updated = world.Library.UpdateEntry(entry, LocalThree);
+        Assert.Equal(3, updated.Manifest!.SourceSlot);
+
+        LibraryManifest undone = world.Library.UndoUpdate(updated).Manifest!;
+
+        Assert.Equal("sav2", undone.SourceFileName);
+        Assert.Equal(SaveRealm.Local, undone.SourceRealm);
+        Assert.Equal(2, undone.SourceSlot);
     }
 
     [Fact]
