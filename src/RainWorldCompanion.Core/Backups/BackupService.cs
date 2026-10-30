@@ -1299,11 +1299,7 @@ public sealed class BackupService
     private static void WriteManifest(string directory, BackupManifest manifest)
     {
         var path = Path.Combine(directory, BackupSnapshot.ManifestFileName);
-        var temporary = path + ".tmp";
-        var json = JsonSerializer.Serialize(manifest, BackupJson.Options);
-
-        File.WriteAllText(temporary, json);
-        File.Move(temporary, path, overwrite: true);
+        DurableFile.ReplaceText(path, JsonSerializer.Serialize(manifest, BackupJson.Options));
     }
 
     /// <summary>
