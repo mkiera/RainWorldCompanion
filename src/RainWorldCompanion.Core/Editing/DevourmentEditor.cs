@@ -284,9 +284,19 @@ public sealed class DevourmentEditState
         // item keeps the rest of its coordinate, which a creature does not carry at all.
         if (CreatureBlobBuilder.Parse(predatorBlob) is { } predator)
         {
-            entry.Prey = entry.PreyIsItem
-                ? ItemBlobBuilder.WithRoom(entry.Prey, predator.Room)
-                : CreatureBlobBuilder.WithRoom(entry.Prey, predator.Room, predator.Node);
+            if (entry.PreyIsItem)
+            {
+                entry.Prey = ItemBlobBuilder.WithRoom(entry.Prey, predator.Room);
+            }
+            else if (entry.PreyId is { Length: > 0 } movedId)
+            {
+                // A creature is also written in FRIENDS and as the predator of what it holds.
+                UpdateEveryCopy(movedId, blob => CreatureBlobBuilder.WithRoom(blob, predator.Room, predator.Node));
+            }
+            else
+            {
+                entry.Prey = CreatureBlobBuilder.WithRoom(entry.Prey, predator.Room, predator.Node);
+            }
         }
 
         _entriesChanged = true;

@@ -650,6 +650,30 @@ public class DevourmentEditorTests : IDisposable
         });
     }
 
+    /// <summary>A creature is written as prey, as the predator of what it holds, and in the tamed
+    /// list, and a move has to put every one of them in the new room.</summary>
+    [Fact]
+    public void A_moved_creature_is_put_in_the_new_room_in_every_copy_of_it()
+    {
+        string body = SyntheticBody(SyntheticLizard);
+        var state = DevourmentEditState.Read(body);
+        string elsewhere = "GreenLizard<cA>ID.5.9<cB>0<cA>SU_A01.2<cA>";
+
+        Assert.True(state.SetPredator(0, elsewhere));
+
+        var reread = DevourmentEditState.Read(state.Apply(body));
+        var copies = CopiesOf(reread, "ID.5.7");
+
+        Assert.Equal(3, copies.Count);
+        Assert.All(copies, blob =>
+        {
+            CreatureBlob parsed = CreatureBlobBuilder.Parse(blob)!;
+
+            Assert.Equal("SU_A01", parsed.Room);
+            Assert.Equal(2, parsed.Node);
+        });
+    }
+
     private static List<string> CopiesOf(DevourmentEditState state, string entityId)
     {
         var copies = new List<string>();
