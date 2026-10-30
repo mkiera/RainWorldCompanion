@@ -38,6 +38,9 @@ Add `checks/<name>.ps1`. A check passes when it exits without an error.
     Assert-Rwc (Test-Path (Join-Path $p.Saves 'sav')) 'slot 1 save is still there'
     Stop-Rwc
 
+The window opens at 1600x960, a normal working size. Clipping that shows only near the 1024x560
+minimum or the 1150x720 first-launch size is not a defect.
+
 `Initialize-RwcProfile` wipes `%LOCALAPPDATA%\RainWorldCompanion`, so it refuses to run outside
 CI unless `RWC_UI_ALLOW_LOCAL=1` is set. Set that only in a throwaway Windows session.
 
