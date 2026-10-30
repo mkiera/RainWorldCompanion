@@ -80,7 +80,7 @@ internal static class RestoreFileProtection
         }
     }
 
-    private static IOException Changed(string path) => new(
+    private static ChangedSinceSafetyCopyException Changed(string path) => new(
         $"{Path.GetFileName(path)} appeared or changed after the safety copy, or its safety copy is unavailable. Its current contents were left in place. Try restoring again after synchronization finishes.");
 
     private static void RefuseLinks(string root, string path)
@@ -109,3 +109,5 @@ internal static class RestoreFileProtection
     private static extern bool SetFileInformationByHandle(SafeFileHandle handle, int informationClass,
         ref byte information, uint size);
 }
+
+internal sealed class ChangedSinceSafetyCopyException(string message) : IOException(message);

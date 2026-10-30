@@ -211,6 +211,22 @@ public class ModConfigServiceTests
     }
 
     [Fact]
+    public void Delete_leaves_a_file_rewritten_after_the_safety_snapshot()
+    {
+        using var world = new LibraryWorld();
+        ModConfigs.Populate(world.Live);
+        var hook = ProgressHook.On("Deleting", _ => world.Live.WriteText(DevourmentFile, "synced = 1"), limit: 1);
+
+        SettingsDeleteResult result = ServiceFor(world).Delete(new[] { Devourment }, progress: hook);
+
+        Assert.Equal(1, hook.Fired);
+        Assert.Equal("synced = 1", File.ReadAllText(world.Live.Resolve(DevourmentFile)));
+        Assert.Contains(result.Warnings, warning =>
+            warning.Contains("devourment.txt", StringComparison.OrdinalIgnoreCase)
+            && warning.Contains("changed after the safety copy", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Delete_refuses_while_the_game_is_running()
     {
         using var world = new LibraryWorld(new FakeGameDetector("RainWorld"));
