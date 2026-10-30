@@ -110,4 +110,19 @@ public class MainPageTests
         Assert.Contains("Content=\"Export campaign\"", markup, StringComparison.Ordinal);
         Assert.Contains("DataContext.ExportCampaignCommand", markup, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void Empty_library_hint_names_buttons_that_exist()
+    {
+        string markup = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Xaml", "MainWindow.xaml"));
+        var hint = System.Text.RegularExpressions.Regex.Match(markup, "Text=\"(No saves in the library yet[^\"]*)\"");
+
+        Assert.True(hint.Success);
+        Assert.DoesNotContain("Store Slot", hint.Groups[1].Value, StringComparison.Ordinal);
+        foreach (var button in new[] { "Save slot to library", "Import" })
+        {
+            Assert.Contains(button, hint.Groups[1].Value, StringComparison.Ordinal);
+            Assert.Contains($"Content=\"{button}\"", markup, StringComparison.Ordinal);
+        }
+    }
 }

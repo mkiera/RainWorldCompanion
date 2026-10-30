@@ -13,6 +13,9 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- The empty library tells you to use Save slot to library, the button that
+  replaced Store Slot.
+
 ## 1.4.1 - 2026-10-04
 
 - Restoring an automatic backup keeps that backup from being cleaned up until
