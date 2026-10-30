@@ -153,6 +153,48 @@ public class SettingsResilienceTests
     }
 
     [Fact]
+    public void An_unreadable_file_is_kept_aside_before_defaults_are_saved_over_it()
+    {
+        using var dir = new TempDirectory();
+        const string truncated = """{ "backupRootPath": "D:\\My backups", "libraryRootPath": "D:\\My lib""";
+        var store = StoreWith(dir, truncated);
+
+        var settings = store.Load();
+        store.Save(settings);
+
+        var kept = Assert.Single(Directory.GetFiles(dir.Path, "settings.json.corrupt-*"));
+        Assert.Equal(truncated, File.ReadAllText(kept));
+        Assert.Contains(kept, store.LoadProblem);
+    }
+
+    [Fact]
+    public void An_empty_file_is_reported_without_keeping_a_copy()
+    {
+        using var dir = new TempDirectory();
+        var store = StoreWith(dir, "");
+
+        store.Load();
+
+        Assert.NotNull(store.LoadProblem);
+        Assert.Empty(Directory.GetFiles(dir.Path, "settings.json.corrupt-*"));
+    }
+
+    [Fact]
+    public void A_readable_or_missing_file_reports_no_problem()
+    {
+        using var dir = new TempDirectory();
+        var store = new SettingsStore(Path.Combine(dir.Path, "settings.json"));
+
+        store.Load();
+        Assert.Null(store.LoadProblem);
+
+        store.Save(new AppSettings { BackupRootPath = @"D:\My backups" });
+        Assert.Equal(@"D:\My backups", store.Load().BackupRootPath);
+        Assert.Null(store.LoadProblem);
+        Assert.Equal(["settings.json"], Directory.GetFiles(dir.Path).Select(Path.GetFileName));
+    }
+
+    [Fact]
     public void Saving_over_a_corrupt_file_still_writes_the_settings()
     {
         using var dir = new TempDirectory();

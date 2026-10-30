@@ -557,6 +557,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         try
         {
             _settings = await Task.Run(_settingsStore.Load);
+            if (_settingsStore.LoadProblem is { } problem)
+            {
+                ShowMessage("The settings file could not be read, so defaults are in use.\n\n" + problem,
+                    "Settings", MessageBoxImage.Warning);
+            }
         }
         catch (Exception ex)
         {
