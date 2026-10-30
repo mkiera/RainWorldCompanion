@@ -42,11 +42,11 @@ Add `checks/<name>.ps1`. A check passes when it exits without an error.
 CI unless `RWC_UI_ALLOW_LOCAL=1` is set. Set that only in a throwaway Windows session.
 
 The staged save folder holds the parser fixtures from `RainWorldCompanion.Core.Tests/Fixtures`
-as `sav`, `sav2`, `online_sav`, `expCore1`, `exp1` and `options`, with `sav2.bin` in both slots.
-`-ModSave` puts `sav3.bin` in slot 2, which carries a mod's records. Its screenshots show that
-mod's name, and the artifacts of this public repository can be downloaded, so use it only for a
-check about that mod's data. Pass `-NoSaves` for an empty folder, or
-`-Settings @{ theme = 'dark' }` to change a setting before launch.
+as `sav`, `sav2`, `online_sav`, `expCore1` and `exp1`, with `sav2.bin` in both slots.
+`-ModData` puts `sav3.bin` in slot 2 and adds `options.bin`. Both carry one mod's records, and the
+main window and the Mods window then show that mod's name. Artifacts of this public repository can
+be downloaded, so use `-ModData` only for a check about that mod's data. Pass `-NoSaves` for an
+empty folder, or `-Settings @{ theme = 'dark' }` to change a setting before launch.
 
 | Function | Does |
 | --- | --- |
