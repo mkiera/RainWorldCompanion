@@ -36,7 +36,8 @@ public sealed partial class UpdateViewModel : ObservableObject
     private readonly Func<DateTimeOffset> _now;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
 
-    public static readonly TimeSpan BranchBuildPollInterval = TimeSpan.FromSeconds(30);
+    // One request a poll, so 30 an hour against GitHub's anonymous limit of 60.
+    public static readonly TimeSpan BranchBuildPollInterval = TimeSpan.FromMinutes(2);
 
     /// <summary>
     /// Never written to disk on purpose: persisting a skipped version is how somebody ends up
@@ -425,7 +426,8 @@ public sealed partial class UpdateViewModel : ObservableObject
     /// In this class rather than the window: a second copy of the guard, the progress and the
     /// handoff is a second chance to forget to ask whether a save is being written.
     /// </summary>
-    public async Task InstallBranchBuildAsync(AlphaBuild? build, CancellationToken cancellationToken)
+    public async Task InstallBranchBuildAsync(AlphaBuild? build, CancellationToken cancellationToken,
+        Func<string, bool>? confirmWhenReady = null)
     {
         if (build is null || IsDownloading)
         {
@@ -443,6 +445,13 @@ public sealed partial class UpdateViewModel : ObservableObject
                 build = await WaitForBranchBuildAsync(build, cancellationToken);
                 if (build is null)
                 {
+                    return;
+                }
+
+                if (build.IsReady && confirmWhenReady is not null
+                    && !confirmWhenReady($"{build.Label} is ready. Install it now? RainWorld Companion will close while it installs."))
+                {
+                    Say($"{build.Label} is ready but was not installed.", problem: false);
                     return;
                 }
             }
