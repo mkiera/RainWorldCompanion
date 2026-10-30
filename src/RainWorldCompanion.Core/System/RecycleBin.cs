@@ -45,11 +45,14 @@ public sealed class WindowsRecycleBin : IRecycleBin
         }
 
         // Windows deletes outright, without failing, an item too big for the bin or on a drive whose bin is
-        // turned off. Only the bin's item count shows that, so a copy is kept to put the item back.
-        var before = info.i64NumItems;
+        // turned off. A copy is kept until the bin's own record of this path proves the item went there.
+        var bin = BinFolder(full);
+        var recordsBefore = Records(bin);
         var keep = Path.Combine(Path.GetTempPath(), "RainWorldCompanion-recycle", Guid.NewGuid().ToString("N"));
         CopyItem(full, keep);
-        var keepCopy = false;
+
+        int result = -1;
+        var aborted = false;
         try
         {
             var operation = new SHFILEOPSTRUCT
@@ -58,57 +61,92 @@ public sealed class WindowsRecycleBin : IRecycleBin
                 pFrom = full + "\0\0",
                 fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT,
             };
-
-            int result = SHFileOperation(ref operation);
-            if (result != 0 || operation.fAnyOperationsAborted)
-            {
-                throw new IOException(
-                    $"{Path.GetFileName(full)} could not be moved to the Recycle Bin, so it was not deleted (code 0x{result:X}).");
-            }
-
-            if (File.Exists(full) || Directory.Exists(full))
-            {
-                throw new IOException($"{Path.GetFileName(full)} is still there after being sent to the Recycle Bin.");
-            }
-
-            var after = new SHQUERYRBINFO { cbSize = Marshal.SizeOf<SHQUERYRBINFO>() };
-            if (SHQueryRecycleBin(Path.GetPathRoot(full)!, ref after) == 0 && after.i64NumItems <= before)
-            {
-                try
-                {
-                    CopyItem(keep, full);
-                }
-                catch (Exception e)
-                {
-                    keepCopy = true;
-                    throw new IOException(
-                        $"{Path.GetFileName(full)} was deleted instead of recycled and could not be put back. A copy is at {keep}.", e);
-                }
-
-                throw new IOException(
-                    $"{Path.GetFileName(full)} was not deleted, because Windows would not keep it in the Recycle Bin. "
-                    + "It may be too big for the Recycle Bin, or the Recycle Bin may be turned off for its drive.");
-            }
+            result = SHFileOperation(ref operation);
+            aborted = operation.fAnyOperationsAborted;
         }
-        finally
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
-            try
-            {
-                if (!keepCopy && Directory.Exists(keep)) Directory.Delete(keep, recursive: true);
-                else if (!keepCopy && File.Exists(keep)) File.Delete(keep);
-            }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-            {
-            }
+            result = e.HResult;
+        }
+
+        bool recycled;
+        try
+        {
+            recycled = result == 0 && !aborted && !File.Exists(full) && !Directory.Exists(full)
+                && Records(bin).Except(recordsBefore, StringComparer.OrdinalIgnoreCase)
+                    .Any(record => string.Equals(OriginalPath(record), full, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            recycled = false;
+        }
+
+        if (recycled)
+        {
+            DeleteQuietly(keep);
+            return;
+        }
+
+        try
+        {
+            CopyItem(keep, full);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new IOException(
+                $"{Path.GetFileName(full)} could not be confirmed in the Recycle Bin and could not be put back. A copy is at {keep}.", e);
+        }
+
+        DeleteQuietly(keep);
+        throw new IOException(
+            $"{Path.GetFileName(full)} was not deleted, because Windows did not keep it in the Recycle Bin (code 0x{result:X}). "
+            + "It may be in use or too big for the Recycle Bin, or the Recycle Bin may be turned off for its drive.");
+    }
+
+    [global::System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string BinFolder(string full) => Path.Combine(
+        Path.GetPathRoot(full)!,
+        "$Recycle.Bin",
+        global::System.Security.Principal.WindowsIdentity.GetCurrent().User!.Value);
+
+    private static string[] Records(string bin) =>
+        Directory.Exists(bin) ? Directory.GetFiles(bin, "$I*") : [];
+
+    // $I records hold the original path: version 1 at offset 24 in 520 bytes, version 2 after a length at 24.
+    private static string? OriginalPath(string record)
+    {
+        var bytes = File.ReadAllBytes(record);
+        if (bytes.Length < 28)
+        {
+            return null;
+        }
+
+        var version = BitConverter.ToInt64(bytes, 0);
+        var text = version >= 2
+            ? global::System.Text.Encoding.Unicode.GetString(bytes, 28, Math.Min(BitConverter.ToInt32(bytes, 24) * 2, bytes.Length - 28))
+            : global::System.Text.Encoding.Unicode.GetString(bytes, 24, Math.Min(520, bytes.Length - 24));
+        return text.TrimEnd('\0').Split('\0')[0];
+    }
+
+    private static void DeleteQuietly(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path)) Directory.Delete(path, recursive: true);
+            else if (File.Exists(path)) File.Delete(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
         }
     }
 
+    // Puts back only what is missing, so a partly deleted folder is completed without overwriting what stayed.
     private static void CopyItem(string source, string destination)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         if (File.Exists(source))
         {
-            File.Copy(source, destination);
+            if (!File.Exists(destination)) File.Copy(source, destination);
             return;
         }
 
@@ -120,7 +158,8 @@ public sealed class WindowsRecycleBin : IRecycleBin
 
         foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
         {
-            File.Copy(file, Path.Combine(destination, Path.GetRelativePath(source, file)));
+            var target = Path.Combine(destination, Path.GetRelativePath(source, file));
+            if (!File.Exists(target)) File.Copy(file, target);
         }
     }
 
