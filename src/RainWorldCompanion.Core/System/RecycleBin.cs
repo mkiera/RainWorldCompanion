@@ -17,7 +17,6 @@ public sealed class WindowsRecycleBin : IRecycleBin
     private const ushort FOF_NOCONFIRMATION = 0x0010;
     private const ushort FOF_ALLOWUNDO = 0x0040;
     private const ushort FOF_NOERRORUI = 0x0400;
-    private const ushort FOF_WANTNUKEWARNING = 0x4000;
 
     private WindowsRecycleBin()
     {
@@ -45,25 +44,83 @@ public sealed class WindowsRecycleBin : IRecycleBin
                 $"{Path.GetFileName(full)} was not deleted, because its drive has no Recycle Bin (error 0x{query:X8}).");
         }
 
-        var operation = new SHFILEOPSTRUCT
+        // Windows deletes outright, without failing, an item too big for the bin or on a drive whose bin is
+        // turned off. Only the bin's item count shows that, so a copy is kept to put the item back.
+        var before = info.i64NumItems;
+        var keep = Path.Combine(Path.GetTempPath(), "RainWorldCompanion-recycle", Guid.NewGuid().ToString("N"));
+        CopyItem(full, keep);
+        var keepCopy = false;
+        try
         {
-            wFunc = FO_DELETE,
-            pFrom = full + "\0\0",
+            var operation = new SHFILEOPSTRUCT
+            {
+                wFunc = FO_DELETE,
+                pFrom = full + "\0\0",
+                fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT,
+            };
 
-            // FOF_WANTNUKEWARNING asks the user before an item too large for the Recycle Bin is deleted outright.
-            fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT | FOF_WANTNUKEWARNING,
-        };
+            int result = SHFileOperation(ref operation);
+            if (result != 0 || operation.fAnyOperationsAborted)
+            {
+                throw new IOException(
+                    $"{Path.GetFileName(full)} could not be moved to the Recycle Bin, so it was not deleted (code 0x{result:X}).");
+            }
 
-        int result = SHFileOperation(ref operation);
-        if (result != 0 || operation.fAnyOperationsAborted)
+            if (File.Exists(full) || Directory.Exists(full))
+            {
+                throw new IOException($"{Path.GetFileName(full)} is still there after being sent to the Recycle Bin.");
+            }
+
+            var after = new SHQUERYRBINFO { cbSize = Marshal.SizeOf<SHQUERYRBINFO>() };
+            if (SHQueryRecycleBin(Path.GetPathRoot(full)!, ref after) == 0 && after.i64NumItems <= before)
+            {
+                try
+                {
+                    CopyItem(keep, full);
+                }
+                catch (Exception e)
+                {
+                    keepCopy = true;
+                    throw new IOException(
+                        $"{Path.GetFileName(full)} was deleted instead of recycled and could not be put back. A copy is at {keep}.", e);
+                }
+
+                throw new IOException(
+                    $"{Path.GetFileName(full)} was not deleted, because Windows would not keep it in the Recycle Bin. "
+                    + "It may be too big for the Recycle Bin, or the Recycle Bin may be turned off for its drive.");
+            }
+        }
+        finally
         {
-            throw new IOException(
-                $"{Path.GetFileName(full)} could not be moved to the Recycle Bin, so it was not deleted (code 0x{result:X}).");
+            try
+            {
+                if (!keepCopy && Directory.Exists(keep)) Directory.Delete(keep, recursive: true);
+                else if (!keepCopy && File.Exists(keep)) File.Delete(keep);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private static void CopyItem(string source, string destination)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        if (File.Exists(source))
+        {
+            File.Copy(source, destination);
+            return;
         }
 
-        if (File.Exists(full) || Directory.Exists(full))
+        Directory.CreateDirectory(destination);
+        foreach (var directory in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
         {
-            throw new IOException($"{Path.GetFileName(full)} is still there after being sent to the Recycle Bin.");
+            Directory.CreateDirectory(Path.Combine(destination, Path.GetRelativePath(source, directory)));
+        }
+
+        foreach (var file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+        {
+            File.Copy(file, Path.Combine(destination, Path.GetRelativePath(source, file)));
         }
     }
 
