@@ -13,6 +13,41 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- The app refuses to close, and asks Windows not to sign out or shut down,
+  while a backup, restore, copy or edit is still running, so a save is no
+  longer left half written.
+- An automatic Companion Game Hook install no longer turns the buttons back on,
+  or lets an update start, while a restore or another save write is running.
+- A failed Companion Game Hook download shows one error on the Live page
+  instead of an error box every few seconds.
+- On the Alpha channel, closing the Updates window cancels a waiting "Install
+  when ready", and the app asks before it installs the finished build and
+  closes.
+- If the settings file is damaged, the app keeps a copy of it next to the
+  original and warns you. Before, it replaced the file with defaults and lost
+  your backup and library folders.
+- Backup records are fully written to disk before they replace the old ones,
+  so a power cut cannot leave a backup that the app refuses to restore.
+- Copying a slot, loading a library save, or writing or deleting mod settings
+  no longer overwrites or deletes a file that changed after its safety backup
+  was taken. The file is left as it is and the action reports it.
+- Changing how much a creature likes you in the editor keeps its fear of you
+  and the rest of its relationships as they were.
+- Moving a creature in the editor puts every saved copy of it in the new room.
+- Take from slot on a library campaign takes from the slot you put it into,
+  and Undo take puts back the slot it came from.
+- Deleting a library save, or deleting or replacing a saved mod list, sends
+  the old one to the Recycle Bin. Undo take keeps the newer save, so a second
+  Undo take brings it back.
+- Renaming a library save or releasing its slot keeps details that a newer
+  version of the app recorded.
+- Saving a campaign or a whole slot to the library from a backup or a Recent
+  save keeps that save's mod settings, as Export campaign already did.
+- A campaign file that an editor saved with a byte order mark imports as a
+  campaign, not as a whole slot.
+- The Live page stops reporting an incompatible Companion Game Hook after the
+  game closes.
+
 ## 1.4.1 - 2026-10-04
 
 - Restoring an automatic backup keeps that backup from being cleaned up until
