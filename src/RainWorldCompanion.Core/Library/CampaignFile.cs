@@ -22,6 +22,8 @@ public static class CampaignFile
 
     private static readonly UTF8Encoding Utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
+    private static ReadOnlySpan<byte> Utf8Bom => [0xEF, 0xBB, 0xBF];
+
     /// <summary>The SAVE STATE record first, then its map records, closed off with the separator the
     /// game writes after every record.</summary>
     public static string ToPayload(CampaignSlice slice)
@@ -92,6 +94,11 @@ public static class CampaignFile
 
     public static bool LooksLikeOne(ReadOnlySpan<byte> head)
     {
+        if (head.StartsWith(Utf8Bom))
+        {
+            head = head[Utf8Bom.Length..];
+        }
+
         Span<byte> prefix = stackalloc byte[64];
         int written = Utf8.GetBytes(Prefix, prefix);
 

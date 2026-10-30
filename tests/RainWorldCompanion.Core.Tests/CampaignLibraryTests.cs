@@ -371,6 +371,31 @@ public class CampaignLibraryTests
         Assert.Single(imported.Entry.Manifest.Metadata!.Campaigns);
     }
 
+    /// <summary>
+    /// An editor can add a byte order mark when it saves the file. That mark is also what a save
+    /// container starts with, so it must not turn the campaign into a whole slot.
+    /// </summary>
+    [Fact]
+    public void A_campaign_file_that_gained_a_byte_order_mark_still_imports_as_a_campaign()
+    {
+        using var world = new LibraryWorld();
+        LibraryEntry entry = world.Library.StoreCampaign(LocalTwo, "White", "run", null);
+
+        string marked = Path.Combine(world.BackupRoot.Path, "Survivor.rwcampaign");
+        File.WriteAllBytes(marked, [0xEF, 0xBB, 0xBF, .. File.ReadAllBytes(entry.CampaignPath)]);
+
+        Assert.True(CampaignFile.IsOne(marked));
+        Assert.Equal("White", CampaignFile.ReadFrom(marked)!.SlugcatId);
+
+        LibraryImportResult imported = world.Library.ImportFile(marked);
+
+        Assert.True(imported.Success, string.Join("; ", imported.Errors));
+        Assert.True(imported.Entry!.IsCampaign);
+        Assert.Equal("White", imported.Entry.Manifest!.CampaignSlugcatId);
+        Assert.Single(imported.Entry.Manifest.Metadata!.Campaigns);
+        Assert.Empty(imported.Warnings);
+    }
+
     [Fact]
     public void Something_that_is_neither_says_which_three_it_could_have_been()
     {

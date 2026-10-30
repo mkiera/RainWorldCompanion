@@ -34,6 +34,9 @@ public sealed class LogBridgeServer : IDisposable
     private string _lastEvent = "Listener has not started.";
     private LogBridgeStatus _status = LogBridgeStatus.Waiting;
     private LogLobbySnapshot? _lobby;
+    private long _incompatibleSeen;
+    // Longer than the mod's reconnect cycle (about 1 s), since the server drops incompatible clients itself.
+    private static readonly TimeSpan IncompatibleGrace = TimeSpan.FromSeconds(5);
 
     public LogBridgeServer(Func<LogBridgeUpstream, LogBridgeDownstream> exchange,
         Func<string?>? gameInstallPath = null)
@@ -99,7 +102,14 @@ public sealed class LogBridgeServer : IDisposable
                 ValidateInstallPath(upstream.GameInstallPath);
                 if (upstream.ProtocolVersion != ProtocolInfo.LogStreamingVersion)
                 {
-                    lock (_sync) { _status = LogBridgeStatus.Incompatible; _lastEvent = "Log bridge protocol is incompatible."; }
+                    long seen;
+                    lock (_sync)
+                    {
+                        _status = LogBridgeStatus.Incompatible;
+                        _lastEvent = "Log bridge protocol is incompatible.";
+                        seen = ++_incompatibleSeen;
+                    }
+                    _ = ClearIncompatibleAsync(seen);
                     return;
                 }
                 authenticated = true;
@@ -146,6 +156,20 @@ public sealed class LogBridgeServer : IDisposable
                     if (_status != LogBridgeStatus.Incompatible) _status = LogBridgeStatus.Disconnected;
                     _lobby = null;
                 }
+            }
+        }
+    }
+
+    private async Task ClearIncompatibleAsync(long seen)
+    {
+        try { await Task.Delay(IncompatibleGrace, _stop.Token); }
+        catch (OperationCanceledException) { return; }
+        lock (_sync)
+        {
+            if (_status == LogBridgeStatus.Incompatible && _incompatibleSeen == seen)
+            {
+                _status = LogBridgeStatus.Disconnected;
+                _lobby = null;
             }
         }
     }

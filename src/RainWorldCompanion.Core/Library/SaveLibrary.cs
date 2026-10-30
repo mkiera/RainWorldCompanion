@@ -1,7 +1,6 @@
 ﻿// RainWorldCompanion.Core.System exists in this assembly, so a using written inside the namespace
 // body would bind "System" to that namespace instead of the BCL root.
 using System.Globalization;
-using System.Text;
 using System.Text.Json;
 using RainWorldCompanion.Core.Backups;
 using RainWorldCompanion.Core.Editing;
@@ -1619,7 +1618,7 @@ public sealed class SaveLibrary
         }
 
         var metadata = SaveMetadataExtractor.FromPayload(
-            Encoding.UTF8.GetString(payload), LibraryEntry.CampaignFileName, 0, SaveRealm.Local);
+            File.ReadAllText(campaignPath), LibraryEntry.CampaignFileName, 0, SaveRealm.Local);
 
         return new LibraryManifest
         {

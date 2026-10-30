@@ -1238,6 +1238,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // A campaign taken out of a backup carries that snapshot's mod list rather than what is on
         // right now. The bytes are from then, so the record has to be too.
         ModListSnapshot? recorded = RecordedModsOfSelection();
+        string? configsRoot = ConfigsRootOfSelection();
 
         LibraryEntry? stored = null;
         Exception? failure = null;
@@ -1256,7 +1257,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                         ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
 
                     return library.StoreCampaignFrom(
-                        slice, source.FileName, source.Realm, source.SlotNumber, name, note, recorded);
+                        slice, source.FileName, source.Realm, source.SlotNumber, name, note, recorded, configsRoot);
                 });
         }
         catch (Exception ex)
@@ -1306,8 +1307,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         string destination = dialog.FileName;
         string slugcat = campaign.SlugcatId;
         ModListSnapshot? recorded = RecordedModsOfSelection();
-        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath
-                              ?? SelectedLiveHistory?.Snapshot.DirectoryPath;
+        string? configsRoot = ConfigsRootOfSelection();
         Exception? failure = null;
 
         BeginBusy("Exporting " + campaign.DisplayName, destination);
@@ -1819,6 +1819,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
            ?? SelectedLiveHistory?.Snapshot.Manifest?.Mods
            ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
 
+    internal string? ConfigsRootOfSelection()
+        => SelectedBackup?.Snapshot.DirectoryPath ?? SelectedLiveHistory?.Snapshot.DirectoryPath;
+
     /// <summary>
     /// The mod settings the thing the campaign came out of carries, whichever of the two it is. A
     /// backup keeps them at the path the save folder had; a library entry keeps its own copy.
@@ -1923,7 +1926,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // A slot taken out of a backup carries that snapshot's mod list and its settings rather
         // than what is on right now. The bytes are from then, so the record has to be too.
         ModListSnapshot? recorded = RecordedModsOfSelection();
-        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath;
+        string? configsRoot = ConfigsRootOfSelection();
 
         var progress = new Progress<string>(message => BusyMessage = message);
         LibraryEntry? stored = null;

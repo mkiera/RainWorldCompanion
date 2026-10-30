@@ -508,6 +508,33 @@ public sealed class LogBridgeTests
     }
 
     [Fact]
+    public async Task Incompatible_status_clears_once_the_game_stops_reconnecting()
+    {
+        using var server = new LogBridgeServer(_ => new());
+        var endpoint = server.Start();
+        using (var client = await Connect(endpoint.Port))
+        {
+            await Send(client, new()
+            {
+                Token = endpoint.Token,
+                ProtocolVersion = ProtocolInfo.LogStreamingVersion + 1,
+                Sequence = 1,
+                GameSessionId = "game",
+                Lobby = new()
+            });
+            await WaitUntil(
+                () => server.CaptureDiagnostics().Status == LogBridgeStatus.Incompatible,
+                () => server.CaptureDiagnostics().LastEvent);
+        }
+        await Task.Delay(500);
+        Assert.Equal(LogBridgeStatus.Incompatible, server.CaptureDiagnostics().Status);
+        DateTime deadline = DateTime.UtcNow.AddSeconds(20);
+        while (server.CaptureDiagnostics().Status == LogBridgeStatus.Incompatible && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        Assert.Equal(LogBridgeStatus.Disconnected, server.CaptureDiagnostics().Status);
+    }
+
+    [Fact]
     public async Task Null_bridge_fields_are_rejected_and_a_later_valid_connection_still_works()
     {
         int exchanges = 0;
