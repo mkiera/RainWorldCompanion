@@ -329,11 +329,91 @@ public class UpdatesWindowTests
 
         Assert.True(row.IsBuilding);
         Assert.Equal("Install when ready", row.ActionText);
+        List<string> asked = [];
+        window.ConfirmQueuedInstall = message =>
+        {
+            asked.Add(message);
+            return true;
+        };
 
         await window.InstallBranchCommand.ExecuteAsync(row);
 
+        Assert.Contains("feature/updater #47 is ready", Assert.Single(asked));
         Assert.Equal([99L], world.Downloader.BranchRuns);
         Assert.Single(world.Launcher.Started);
+        Assert.Equal(1, world.ShutdownRequests);
+    }
+
+    [Fact]
+    public async Task A_queued_build_that_becomes_ready_installs_nothing_when_the_user_declines()
+    {
+        List<TimeSpan> waits = [];
+        var world = new UpdateWorld
+        {
+            Delay = (interval, _) =>
+            {
+                waits.Add(interval);
+                return Task.CompletedTask;
+            },
+        };
+        world.Source.Runs.Add(Run(99, "feature/updater", 47, conclusion: "", status: "in_progress"));
+        world.Source.WhileGettingRuns = call =>
+        {
+            if (call == 3)
+            {
+                world.Source.Runs[0] = Run(99, "feature/updater", 47);
+            }
+        };
+
+        var updates = world.Build("1.0.0");
+        updates.Channel = UpdateChannel.Alpha;
+        var window = Window(world, updates);
+        await window.InitializeAsync(CancellationToken.None);
+        var asked = 0;
+        window.ConfirmQueuedInstall = _ =>
+        {
+            asked++;
+            return false;
+        };
+
+        await window.InstallBranchCommand.ExecuteAsync(Assert.Single(window.BranchBuilds));
+
+        Assert.Equal(1, asked);
+        Assert.Empty(world.Downloader.BranchRuns);
+        Assert.Empty(world.Launcher.Started);
+        Assert.Equal(0, world.ShutdownRequests);
+        Assert.False(updates.IsDownloading);
+        // Anonymous GitHub requests are capped at 60 an hour, shared with every other check.
+        Assert.Equal(2, waits.Count);
+        Assert.All(waits, interval => Assert.True(TimeSpan.FromHours(1) / interval <= 30, interval.ToString()));
+    }
+
+    [Fact]
+    public async Task Closing_the_window_cancels_a_queued_build()
+    {
+        var world = new UpdateWorld
+        {
+            Delay = (_, token) => Task.Delay(Timeout.Infinite, token),
+        };
+        world.Source.Runs.Add(Run(99, "feature/updater", 47, conclusion: "", status: "in_progress"));
+
+        var updates = world.Build("1.0.0");
+        updates.Channel = UpdateChannel.Alpha;
+        var window = Window(world, updates);
+        await window.InitializeAsync(CancellationToken.None);
+        window.ConfirmQueuedInstall = _ => true;
+        var row = Assert.Single(window.BranchBuilds);
+
+        var install = window.InstallBranchCommand.ExecuteAsync(row);
+        Assert.True(updates.IsDownloading);
+        window.CancelQueuedInstall();
+        await install.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(updates.IsDownloading);
+        Assert.False(row.IsQueued);
+        Assert.Empty(world.Downloader.BranchRuns);
+        Assert.Empty(world.Launcher.Started);
+        Assert.Equal(0, world.ShutdownRequests);
     }
 
     [Fact]
