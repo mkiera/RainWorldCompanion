@@ -326,7 +326,11 @@ public sealed partial class MainViewModel
             }
             else if (_settings.CompanionModInstallRequestedPath == path)
             {
-                if (!IsGameRunning) await InstallCompanionModAsync();
+                if (!IsGameRunning)
+                {
+                    _nextModSetupAttempt = DateTimeOffset.UtcNow.AddHours(6);
+                    await InstallCompanionModAsync();
+                }
             }
             else if (setupAction == CompanionModSetupAction.InstallOrRepair)
             {
@@ -343,7 +347,7 @@ public sealed partial class MainViewModel
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException or JsonException or InvalidOperationException)
+        catch (Exception error) when (IsCompanionModFailure(error))
         {
             Live.OperationText = "Companion Game Hook check failed: " + error.Message;
         }
@@ -444,7 +448,7 @@ public sealed partial class MainViewModel
                 : null;
             if (existing?.Compatible == true) installedVersion = existing.Version;
             var channel = UpdateChannels.Parse(_settings.UpdateChannel);
-            var source = await Task.Run(() => CreateModUpdateSource(channel), _shutdown.Token);
+            var source = await Task.Run(() => (ModUpdateSourceFactory ?? CreateModUpdateSource)(channel), _shutdown.Token);
             var result = await new CompanionModUpdater(source, manager).CheckAndInstallAsync(
                 installedVersion, _appVersion, ProtocolInfo.Version, channel, _shutdown.Token);
             if (result?.Outcome == CompanionModInstallOutcome.Deferred)
@@ -481,11 +485,13 @@ public sealed partial class MainViewModel
             }
             else Live.OperationText = $"Companion Game Hook updated to {result!.Version}.";
         }
-        catch (OperationCanceledException) { }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or HttpRequestException or JsonException or InvalidOperationException)
+        catch (OperationCanceledException) when (_shutdown.IsCancellationRequested) { }
+        catch (Exception error)
         {
-            Live.OperationText = "Companion Game Hook installation failed: " + error.Message;
+            // Cleared even for an unexpected error, or the 2-second poll retries it and stacks error boxes.
             if (enable) PersistSetting(settings => settings.CompanionModInstallRequestedPath = null);
+            if (!IsCompanionModFailure(error)) throw;
+            Live.OperationText = "Companion Game Hook installation failed: " + error.Message;
         }
         finally
         {
@@ -493,6 +499,12 @@ public sealed partial class MainViewModel
             EndBusy();
         }
     }
+
+    private static bool IsCompanionModFailure(Exception error) => error is IOException or UnauthorizedAccessException or
+        HttpRequestException or JsonException or InvalidOperationException or InvalidDataException or KeyNotFoundException or
+        ArgumentException or TaskCanceledException;
+
+    internal Func<UpdateChannel, ICompanionModUpdateSource>? ModUpdateSourceFactory { get; set; }
 
     private ICompanionModUpdateSource CreateModUpdateSource(UpdateChannel channel)
     {
