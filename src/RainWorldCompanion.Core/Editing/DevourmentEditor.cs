@@ -427,24 +427,42 @@ public sealed class DevourmentEditState
             .FirstOrDefault() ?? "";
     }
 
-    /// <summary>Setting the liking to zero takes the whole relationship out, along with what the
-    /// creature knew of the player, because that is what the game's own writer does with it.</summary>
+    /// <summary>Keeps what fear of the player each copy already holds. Setting the liking to zero
+    /// when there is no fear takes the whole relationship out, along with what the creature knew of
+    /// the player, because that is what the game's own writer does with it.</summary>
     public void SetFeelingTowardPlayer(string entityId, float? like, float? know)
-        => SetFeeling(entityId, CreatureBlobBuilder.PlayerEntityId, like, null, know);
+        => UpdateEveryCopy(entityId, blob => WithFeeling(
+            blob,
+            CreatureBlobBuilder.PlayerEntityId,
+            like,
+            parsed => CreatureBlobBuilder.ReadRelations(parsed.State)
+                .FirstOrDefault(relation => string.Equals(
+                    relation.SubjectId,
+                    CreatureBlobBuilder.PlayerEntityId,
+                    StringComparison.Ordinal))
+                ?.Fear,
+            know));
 
     /// <summary>Writes every copy of the creature the record holds.</summary>
     public void SetFeeling(string entityId, string subjectId, float? like, float? fear, float? know)
-        => UpdateEveryCopy(entityId, blob =>
-        {
-            CreatureBlob? parsed = CreatureBlobBuilder.Parse(blob);
+        => UpdateEveryCopy(entityId, blob => WithFeeling(blob, subjectId, like, _ => fear, know));
 
-            return parsed is null
-                ? blob
-                : CreatureBlobBuilder.ToBlob(parsed with
-                {
-                    State = CreatureBlobBuilder.SetRelation(parsed.State, subjectId, like, fear, know),
-                });
-        });
+    private static string WithFeeling(
+        string blob,
+        string subjectId,
+        float? like,
+        Func<CreatureBlob, float?> fear,
+        float? know)
+    {
+        CreatureBlob? parsed = CreatureBlobBuilder.Parse(blob);
+
+        return parsed is null
+            ? blob
+            : CreatureBlobBuilder.ToBlob(parsed with
+            {
+                State = CreatureBlobBuilder.SetRelation(parsed.State, subjectId, like, fear(parsed), know),
+            });
+    }
 
     public CreatureBlobBuilder.Relation? FeelingTowardPlayer(string entityId)
         => EveryCopy(entityId)

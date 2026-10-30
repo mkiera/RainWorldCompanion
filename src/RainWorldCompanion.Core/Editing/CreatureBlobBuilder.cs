@@ -299,39 +299,55 @@ public static class CreatureBlobBuilder
     }
 
     /// <summary>SocialMemory.Relationship.ToString writes nothing at all when like and fear are both
-    /// zero, so setting a creature's liking to zero takes the whole entry out and what it knows of
-    /// the subject goes with it. The game's rule, kept rather than worked around.</summary>
+    /// zero, so setting both to zero takes the whole entry out and what it knows of the subject
+    /// goes with it. The game's rule, kept rather than worked around. Only the subject's own entry is
+    /// rewritten: the others, and any part of it this does not know, stay as the text they were.</summary>
     public static string SetRelation(string? state, string subjectId, float? like, float? fear, float? know)
     {
-        var relations = ReadRelations(state).ToList();
-        int at = relations.FindIndex(relation =>
-            string.Equals(relation.SubjectId, subjectId, StringComparison.Ordinal));
+        string? social = GetStateBlock(state, SocialTag);
+        var chunks = string.IsNullOrEmpty(social)
+            ? new List<string>()
+            : social.Split(RelationSeparator, StringSplitOptions.None).ToList();
 
-        var updated = new Relation(subjectId, like, fear, know);
-
-        if (at >= 0)
+        int at = chunks.FindIndex(chunk =>
         {
-            relations[at] = updated;
+            string[] pieces = chunk.Split(RelationPartSeparator, StringSplitOptions.None);
+
+            return pieces.Length >= 2
+                && pieces[0] == "REL"
+                && string.Equals(pieces[1].Trim(), subjectId, StringComparison.Ordinal);
+        });
+
+        // The game's reader keeps parts it does not know and its writer puts them back after K.
+        IEnumerable<string> unknown = at < 0
+            ? Enumerable.Empty<string>()
+            : chunks[at].Split(RelationPartSeparator, StringSplitOptions.None)
+                .Skip(2)
+                .Where(part => part.Split(RelationValueSeparator, 2, StringSplitOptions.None)[0]
+                    is not ("L" or "F" or "K"));
+
+        string written = Write(new Relation(subjectId, like, fear, know), unknown);
+
+        if (at < 0)
+        {
+            if (written.Length > 0)
+            {
+                chunks.Add(written);
+            }
+        }
+        else if (written.Length > 0)
+        {
+            chunks[at] = written;
         }
         else
         {
-            relations.Add(updated);
+            chunks.RemoveAt(at);
         }
 
-        return SetRelations(state, relations);
+        return SetStateBlock(state, SocialTag, chunks.Count == 0 ? null : string.Join(RelationSeparator, chunks));
     }
 
-    public static string SetRelations(string? state, IReadOnlyList<Relation> relations)
-    {
-        var written = relations
-            .Select(Write)
-            .Where(text => text.Length > 0)
-            .ToList();
-
-        return SetStateBlock(state, SocialTag, written.Count == 0 ? null : string.Join(RelationSeparator, written));
-    }
-
-    private static string Write(Relation relation)
+    private static string Write(Relation relation, IEnumerable<string> unknown)
     {
         // The game's own condition for writing a relationship at all.
         if (Zero(relation.Like) && Zero(relation.Fear))
@@ -344,6 +360,7 @@ public static class CreatureBlobBuilder
         text += Part("L", relation.Like);
         text += Part("F", relation.Fear);
         text += Part("K", relation.Know);
+        text += string.Concat(unknown.Select(part => RelationPartSeparator + part));
 
         return text;
 
