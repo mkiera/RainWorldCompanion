@@ -85,8 +85,8 @@ function Initialize-RwcProfile {
         installId                = '00000000000000000000000000000000'
         telemetryEnabled         = $false
         lastSeenChangelogVersion = '999.0.0'
-        windowWidth              = 1150
-        windowHeight             = 720
+        windowWidth              = 1600
+        windowHeight             = 960
         windowLeft               = 20
         windowTop                = 20
         windowMaximized          = $false
