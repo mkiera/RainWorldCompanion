@@ -179,6 +179,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
           + "Let it finish, then update."
         : null;
 
+    public string? WhyNotClose() => IsBusy
+        ? "RainWorld Companion is still working (" + BusyTitle + "). "
+          + "Closing it now could leave a save half written. Let it finish, then close it."
+        : null;
+
     /// <summary>
     /// App.OnStartup applies the stored theme before the window is shown, off its own read of the
     /// file. This runs it again for the value that arrives through the full load, and for the one

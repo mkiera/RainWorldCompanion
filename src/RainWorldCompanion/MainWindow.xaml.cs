@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.ComponentModel;
+using System.Windows;
 using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.ViewModels;
 
@@ -16,6 +17,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        Closing += OnClosing;
         Closed += OnClosed;
         Activated += (_, _) => (DataContext as MainViewModel)?.RefreshEditorMapAvailability();
     }
@@ -137,6 +139,18 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "The dropped files could not be read.\n\n" + ex.Message,
                 AppInfo.DisplayName, MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    // Application.Shutdown raises this too but ignores Cancel, so the message can show while it closes anyway.
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        if (DataContext is not MainViewModel viewModel || viewModel.WhyNotClose() is not { } reason)
+        {
+            return;
+        }
+
+        e.Cancel = true;
+        MessageBox.Show(this, reason, AppInfo.DisplayName, MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     private void OnClosed(object? sender, EventArgs e)
