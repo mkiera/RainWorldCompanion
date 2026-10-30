@@ -191,8 +191,13 @@ public class ModConfigLibraryTests
         LibraryEntry undone = world.Library.UndoUpdate(updated);
 
         Assert.Contains("false", File.ReadAllText(Path.Combine(undone.ConfigsPath, "devourment.txt")));
-        Assert.Null(undone.Manifest!.PreviousConfigs);
-        Assert.False(Directory.Exists(undone.PreviousConfigsPath));
+        Assert.Contains("true", File.ReadAllText(Path.Combine(undone.PreviousConfigsPath, "devourment.txt")));
+        Assert.NotNull(undone.Manifest!.PreviousConfigs);
+
+        LibraryEntry redone = world.Library.UndoUpdate(undone);
+
+        Assert.Contains("true", File.ReadAllText(Path.Combine(redone.ConfigsPath, "devourment.txt")));
+        Assert.Contains("false", File.ReadAllText(Path.Combine(redone.PreviousConfigsPath, "devourment.txt")));
     }
 
     /// <summary>One generation, following save.previous.bin exactly.</summary>

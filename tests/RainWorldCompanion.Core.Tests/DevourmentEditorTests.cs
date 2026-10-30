@@ -601,6 +601,79 @@ public class DevourmentEditorTests : IDisposable
         Assert.Equal(seed, DelimitedFields.Record.GetValue(body, "SEED"));
     }
 
+    private const string Synthetic = "<dvD>";
+
+    private const string SyntheticLizard =
+        "PinkLizard<cA>ID.5.7<cB>0<cA>SU_S04.0<cA>"
+        + "Social<cC>REL<rA>ID.-1.0<rA>L<rB>1<rA>F<rB>0.4<rA>K<rB>0.5<cB>";
+
+    private static string SyntheticBody(string lizard)
+    {
+        var fields = DelimitedFields.Record;
+        string slugcat = "Slugcat<cA>ID.-1.0<cB>0<cA>SU_S04.0<cA>";
+        string fly = "Fly<cA>ID.5.8<cB>0<cA>SU_S04.0<cA>";
+        string body = "";
+
+        body = fields.Append(body, fields.Field(
+            DevourmentEditState.EntryField,
+            string.Join(Synthetic, slugcat, lizard, DevourmentStatus.Held, "0")));
+        body = fields.Append(body, fields.Field(
+            DevourmentEditState.EntryField,
+            string.Join(Synthetic, lizard, fly, DevourmentStatus.Held, "0")));
+
+        return fields.Append(body, fields.Field(
+            DevourmentEditState.FriendsField,
+            lizard + DevourmentEditState.FriendSeparator));
+    }
+
+    [Theory]
+    [InlineData(0.3f)]
+    [InlineData(0f)]
+    public void Changing_how_much_a_creature_likes_the_player_keeps_its_fear(float like)
+    {
+        string body = SyntheticBody(SyntheticLizard);
+        var state = DevourmentEditState.Read(body);
+
+        state.SetFeelingTowardPlayer("ID.5.7", like, know: 0.5f);
+
+        var reread = DevourmentEditState.Read(state.Apply(body));
+        var copies = CopiesOf(reread, "ID.5.7");
+
+        Assert.Equal(3, copies.Count);
+        Assert.All(copies, blob =>
+        {
+            var relation = CreatureBlobBuilder.ReadRelations(CreatureBlobBuilder.Parse(blob)!.State)
+                .Single(r => r.SubjectId == CreatureBlobBuilder.PlayerEntityId);
+
+            Assert.Equal(0.4f, relation.Fear);
+            Assert.Equal(0.5f, relation.Know);
+        });
+    }
+
+    /// <summary>A creature is written as prey, as the predator of what it holds, and in the tamed
+    /// list, and a move has to put every one of them in the new room.</summary>
+    [Fact]
+    public void A_moved_creature_is_put_in_the_new_room_in_every_copy_of_it()
+    {
+        string body = SyntheticBody(SyntheticLizard);
+        var state = DevourmentEditState.Read(body);
+        string elsewhere = "GreenLizard<cA>ID.5.9<cB>0<cA>SU_A01.2<cA>";
+
+        Assert.True(state.SetPredator(0, elsewhere));
+
+        var reread = DevourmentEditState.Read(state.Apply(body));
+        var copies = CopiesOf(reread, "ID.5.7");
+
+        Assert.Equal(3, copies.Count);
+        Assert.All(copies, blob =>
+        {
+            CreatureBlob parsed = CreatureBlobBuilder.Parse(blob)!;
+
+            Assert.Equal("SU_A01", parsed.Room);
+            Assert.Equal(2, parsed.Node);
+        });
+    }
+
     private static List<string> CopiesOf(DevourmentEditState state, string entityId)
     {
         var copies = new List<string>();

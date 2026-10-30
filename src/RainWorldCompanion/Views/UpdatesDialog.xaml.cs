@@ -14,6 +14,7 @@ public partial class UpdatesDialog : Window
         InitializeComponent();
         DataContext = viewModel;
         viewModel.CloseRequested += OnCloseRequested;
+        viewModel.ConfirmQueuedInstall = ConfirmQueuedInstall;
         Loaded += OnLoaded;
         Closed += OnClosed;
     }
@@ -37,10 +38,14 @@ public partial class UpdatesDialog : Window
 
     private void OnCloseRequested() => Close();
 
+    private bool ConfirmQueuedInstall(string message) => MessageBox.Show(this, message, "Install branch build?",
+        MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
+
     private void OnClosed(object? sender, EventArgs e)
     {
         _viewModel.CloseRequested -= OnCloseRequested;
         _closing.Cancel();
         _closing.Dispose();
+        _viewModel.CancelQueuedInstall();
     }
 }

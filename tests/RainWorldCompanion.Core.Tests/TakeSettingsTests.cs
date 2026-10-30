@@ -174,6 +174,22 @@ public class TakeSettingsTests
     }
 
     [Fact]
+    public void A_settings_file_rewritten_after_the_safety_copy_is_left_as_it_is()
+    {
+        using var world = new LibraryWorld();
+        var entry = StoredWith(world, "theirs = 1", "yours = 1");
+        var hook = ProgressHook.On("Writing", _ => world.Live.WriteText(DevourmentPath, "synced = 1"));
+
+        var result = world.Library.AdoptSettings(entry, new[] { Devourment }, hook);
+
+        Assert.True(hook.Fired > 0);
+        Assert.Equal("synced = 1", File.ReadAllText(world.Live.Resolve(DevourmentPath)));
+        Assert.Contains(result.Warnings, warning =>
+            warning.Contains("devourment.txt", StringComparison.OrdinalIgnoreCase)
+            && warning.Contains("changed after the safety copy", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void The_game_running_refuses_before_anything_is_taken()
     {
         using var world = new LibraryWorld();

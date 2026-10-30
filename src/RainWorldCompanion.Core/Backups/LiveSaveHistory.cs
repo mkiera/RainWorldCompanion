@@ -647,18 +647,14 @@ public sealed class LiveSaveHistory
 
     private static void WriteHistoryManifest(string directory, LiveHistoryManifest manifest)
     {
-        string path = HistoryManifestPath(directory);
-        string temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(manifest, BackupJson.Options));
-        File.Move(temporary, path, overwrite: true);
+        DurableFile.ReplaceText(HistoryManifestPath(directory), JsonSerializer.Serialize(manifest, BackupJson.Options));
     }
 
     private static void WriteSnapshotManifest(string directory, BackupManifest manifest)
     {
-        string path = Path.Combine(directory, BackupSnapshot.ManifestFileName);
-        string temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(manifest, BackupJson.Options));
-        File.Move(temporary, path, overwrite: true);
+        DurableFile.ReplaceText(
+            Path.Combine(directory, BackupSnapshot.ManifestFileName),
+            JsonSerializer.Serialize(manifest, BackupJson.Options));
     }
 
     private static string HistoryManifestPath(string directory)

@@ -129,6 +129,7 @@ public sealed partial class UpdatesViewModel : ObservableObject
     private DateTimeOffset _releasesFetchedAt;
     private IReadOnlyList<AlphaBuild>? _cachedBranches;
     private DateTimeOffset _branchesFetchedAt;
+    private readonly CancellationTokenSource _closed = new();
 
     public UpdatesViewModel(UpdateViewModel updates, Func<DateTimeOffset>? now = null)
     {
@@ -147,6 +148,11 @@ public sealed partial class UpdatesViewModel : ObservableObject
     public event Action? CloseRequested;
 
     public UpdateViewModel Updates => _updates;
+
+    // Declines by default, so a queued build never closes the app unless the window can ask.
+    public Func<string, bool> ConfirmQueuedInstall { get; set; } = _ => false;
+
+    public void CancelQueuedInstall() => _closed.Cancel();
 
     public ObservableCollection<ChannelViewModel> Channels { get; } = new();
 
@@ -249,7 +255,8 @@ public sealed partial class UpdatesViewModel : ObservableObject
         row.IsQueued = row.Build.IsPending;
         try
         {
-            await _updates.InstallBranchBuildAsync(row.Build, CancellationToken.None);
+            await _updates.InstallBranchBuildAsync(row.Build,
+                row.Build.IsPending ? _closed.Token : CancellationToken.None, ConfirmQueuedInstall);
             Adopt();
         }
         finally

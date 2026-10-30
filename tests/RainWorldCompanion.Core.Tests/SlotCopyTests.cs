@@ -325,6 +325,24 @@ public class SlotCopyTests
     }
 
     [Fact]
+    public void A_target_rewritten_after_the_safety_copy_is_not_overwritten()
+    {
+        // The safety snapshot holds the target, but an older version of it. The rewrite lands
+        // after every earlier check, as a Steam Cloud sync can, and is in no backup.
+        using var world = new SlotWorld();
+        var rewritten = "rewritten by a sync"u8.ToArray();
+        var hook = ProgressHook.On("Copying sav onto", _ => world.Live.WriteBytes("online_sav3", rewritten), limit: 1);
+
+        var result = world.Service.CopySlot(LocalOne, OnlineThree, hook);
+
+        Assert.Equal(1, hook.Fired);
+        Assert.False(result.Success);
+        Assert.False(result.LiveFolderModified);
+        Assert.Contains(result.Errors, error => error.Contains("changed after the safety copy", StringComparison.Ordinal));
+        SnapshotLayout.AssertBytesEqual(rewritten, world.Live.ReadBytes("online_sav3"), "online_sav3");
+    }
+
+    [Fact]
     public void A_target_present_all_along_is_still_copied_over()
     {
         // The mirror image of the test above. The re-check must refuse only the file the safety
