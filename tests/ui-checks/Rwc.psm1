@@ -14,6 +14,33 @@ public static class RwcWin32 {
 }
 "@
 
+# UI Automation lists no children for a Win32 message box here, so its text and buttons are read
+# and clicked through its window handle.
+Add-Type -TypeDefinition @"
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class RwcMsg {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+    public static List<object[]> Children(IntPtr parent) {
+        var list = new List<object[]>();
+        EnumChildWindows(parent, (h, l) => {
+            var c = new StringBuilder(256); GetClassName(h, c, 256);
+            var t = new StringBuilder(4096); GetWindowText(h, t, 4096);
+            list.Add(new object[] { c.ToString(), t.ToString(), h });
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+    public static void Click(IntPtr button) { PostMessage(button, 0x00F5, IntPtr.Zero, IntPtr.Zero); }
+}
+"@
+
 $script:AE = [System.Windows.Automation.AutomationElement]
 $script:Descendants = [System.Windows.Automation.TreeScope]::Descendants
 $script:Proc = $null
@@ -309,6 +336,9 @@ function Get-RwcWindowList {
 function Get-RwcText {
     # The names of every text element under an element: a message box's message, a dialog's lines.
     param([Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Element)
+    if ($Element.Current.ClassName -eq '#32770') {
+        return @(foreach ($c in [RwcMsg]::Children([IntPtr]$Element.Current.NativeWindowHandle)) { if ($c[0] -eq 'Static' -and $c[1]) { $c[1] } })
+    }
     $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
     $names = @(foreach ($e in $Element.FindAll($Descendants, $cond)) { $e.Current.Name })
     return $names
@@ -344,6 +374,19 @@ function Find-RwcWindow {
 function Close-RwcMessage {
     # Clicks a message box button by its caption: OK, Yes, No, Cancel.
     param([Parameter(Mandatory)][System.Windows.Automation.AutomationElement]$Window, [string]$Button = 'OK')
+    if ($Window.Current.ClassName -eq '#32770') {
+        $h = [IntPtr]$Window.Current.NativeWindowHandle
+        foreach ($c in [RwcMsg]::Children($h)) {
+            if ($c[0] -eq 'Button' -and ($c[1] -replace '&', '') -eq $Button) {
+                [RwcWin32]::SetForegroundWindow($h) | Out-Null
+                [RwcMsg]::Click($c[2])
+                Start-Sleep -Milliseconds 600
+                return
+            }
+        }
+        $all = @(foreach ($c in [RwcMsg]::Children($h)) { "$($c[0]):$($c[1])" }) -join ' | '
+        throw "message box '$($Window.Current.Name)' has no '$Button' button. Children: $all"
+    }
     $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
     foreach ($b in $Window.FindAll($Descendants, $cond)) {
         if (($b.Current.Name -replace '&', '') -eq $Button) { Invoke-RwcElement $b; return }

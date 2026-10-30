@@ -27,6 +27,9 @@ try {
 
     $proc = Get-Process RainWorldCompanion
     $proc.CloseMainWindow() | Out-Null
+    Start-Sleep -Seconds 2
+    Save-RwcDesktopScreenshot -Name 'after-close' | Out-Null
+    try { Get-RwcWindowList | ForEach-Object { Write-Host "window: '$($_.Current.Name)' class=$($_.Current.ClassName) offscreen=$($_.Current.IsOffscreen)" } } catch { Write-Host "window list failed: $_" }
 
     try {
         $box = Find-RwcWindow -Title 'RainWorld Companion' -Message -Text '*still working*' -TimeoutSeconds 20
