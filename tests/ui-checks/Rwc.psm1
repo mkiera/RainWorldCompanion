@@ -36,6 +36,9 @@ function Initialize-RwcProfile {
     # Deletes %LOCALAPPDATA%\RainWorldCompanion, so it refuses to run on a machine with a real install.
     param(
         [switch]$NoSaves,
+        # Slot 2 becomes sav3.bin, which carries a mod's records. Its screenshots then show that
+        # mod's name, so leave it off unless the check is about that mod's data.
+        [switch]$ModSave,
         [hashtable]$Settings = @{}
     )
 
@@ -58,15 +61,15 @@ function Initialize-RwcProfile {
     if (-not $NoSaves) {
         $fixtures = Join-Path $PSScriptRoot '..\RainWorldCompanion.Core.Tests\Fixtures'
         $map = [ordered]@{
-            'sav2.bin'       = 'sav'
-            'sav3.bin'       = 'sav2'
-            'online_sav.bin' = 'online_sav'
-            'expCore1.bin'   = 'expCore1'
-            'exp1.bin'       = 'exp1'
-            'options.bin'    = 'options'
+            'sav'        = 'sav2.bin'
+            'sav2'       = $(if ($ModSave) { 'sav3.bin' } else { 'sav2.bin' })
+            'online_sav' = 'online_sav.bin'
+            'expCore1'   = 'expCore1.bin'
+            'exp1'       = 'exp1.bin'
+            'options'    = 'options.bin'
         }
         foreach ($k in $map.Keys) {
-            Copy-Item (Join-Path $fixtures $k) (Join-Path $saves $map[$k])
+            Copy-Item (Join-Path $fixtures $map[$k]) (Join-Path $saves $k)
         }
     }
 
