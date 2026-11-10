@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using RainWorldCompanion.Core.System;
 
@@ -24,6 +25,11 @@ public sealed class SettingsStore
 
     public string SettingsPath { get; }
 
+    public string? LoadProblem { get; private set; }
+
+    // Set while an unreadable file could not be copied aside, so Save must not replace it yet.
+    private bool _unreadableNotKept;
+
     public static string DefaultSettingsPath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "RainWorldCompanion",
@@ -35,7 +41,9 @@ public sealed class SettingsStore
     /// </summary>
     public AppSettings Load()
     {
-        var settings = ReadFile();
+        var settings = ReadFile(out var problem);
+        _unreadableNotKept = false;
+        LoadProblem = problem is null ? null : KeepUnreadableFile(problem);
         settings ??= AppSettings.CreateDefault();
 
         if (string.IsNullOrWhiteSpace(settings.GameSavePath))
@@ -75,7 +83,7 @@ public sealed class SettingsStore
     /// instead runs <see cref="SavePathResolver.FindSavePath"/> on a first-run file, which can
     /// stall.
     /// </summary>
-    public AppSettings? ReadForStartup() => ReadFile();
+    public AppSettings? ReadForStartup() => ReadFile(out _);
 
     public void Save(AppSettings settings)
     {
@@ -87,9 +95,41 @@ public sealed class SettingsStore
             Directory.CreateDirectory(directory);
         }
 
-        var tempPath = SettingsPath + ".tmp";
-        File.WriteAllText(tempPath, Merge(settings, ReadObject()));
-        File.Move(tempPath, SettingsPath, overwrite: true);
+        if (_unreadableNotKept)
+        {
+            KeepUnreadableFile("it could not be read when the app started");
+            if (_unreadableNotKept)
+            {
+                throw new IOException(
+                    $"{SettingsPath} could not be read and no copy of it could be kept, so it was not replaced.");
+            }
+        }
+
+        DurableFile.ReplaceText(SettingsPath, Merge(settings, ReadObject()));
+    }
+
+    // The next save writes defaults over the file, and it may be the only record of the backup folder.
+    private string KeepUnreadableFile(string problem)
+    {
+        var read = $"{SettingsPath} could not be read because {problem}.";
+        try
+        {
+            if (!File.Exists(SettingsPath) || new FileInfo(SettingsPath).Length == 0)
+            {
+                _unreadableNotKept = false;
+                return read;
+            }
+
+            var copy = SettingsPath + ".corrupt-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+            DurableFile.Copy(SettingsPath, copy);
+            _unreadableNotKept = false;
+            return $"{read} A copy of it was kept at {copy}.";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _unreadableNotKept = true;
+            return $"{read} A copy of it could not be kept, so it will not be replaced until one can be: {e.Message}";
+        }
     }
 
     // Carries across keys this build has no property for. Serializing the object alone drops them,
@@ -132,8 +172,9 @@ public sealed class SettingsStore
         }
     }
 
-    private AppSettings? ReadFile()
+    private AppSettings? ReadFile(out string? problem)
     {
+        problem = null;
         try
         {
             if (!File.Exists(SettingsPath))
@@ -144,12 +185,14 @@ public sealed class SettingsStore
             var json = File.ReadAllText(SettingsPath);
             if (string.IsNullOrWhiteSpace(json))
             {
+                problem = "it is empty";
                 return null;
             }
 
             using var document = JsonDocument.Parse(json);
             if (document.RootElement.ValueKind != JsonValueKind.Object)
             {
+                problem = "it does not hold settings";
                 return null;
             }
 
@@ -157,22 +200,27 @@ public sealed class SettingsStore
         }
         catch (JsonException)
         {
+            problem = "it is damaged";
             return null;
         }
-        catch (IOException)
+        catch (IOException e)
         {
+            problem = e.Message;
             return null;
         }
-        catch (UnauthorizedAccessException)
+        catch (UnauthorizedAccessException e)
         {
+            problem = e.Message;
             return null;
         }
-        catch (NotSupportedException)
+        catch (NotSupportedException e)
         {
+            problem = e.Message;
             return null;
         }
-        catch (ArgumentException)
+        catch (ArgumentException e)
         {
+            problem = e.Message;
             return null;
         }
     }

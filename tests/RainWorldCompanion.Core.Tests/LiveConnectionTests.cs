@@ -211,6 +211,24 @@ public sealed class LiveConnectionTests
         Assert.Equal(1, fixture.Server.CaptureDiagnostics().Rejected);
     }
 
+    /// <summary>
+    /// The server closes an incompatible client's connection itself and the mod reconnects about
+    /// once a second, so the status holds through that gap and clears only once nothing returns.
+    /// </summary>
+    [Fact]
+    public async Task Incompatible_status_clears_once_the_game_stops_reconnecting()
+    {
+        using var fixture = new ServerFixture();
+        using (var client = await fixture.Connect())
+        {
+            await fixture.Send(client, new LiveSnapshot { SessionId = "one", Sequence = 1, ProtocolVersion = 2 });
+            await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Incompatible);
+        }
+        await Task.Delay(500);
+        Assert.Equal(LiveConnectionStatus.Incompatible, fixture.Server.Status);
+        await WaitFor(() => fixture.Server.Status == LiveConnectionStatus.Disconnected);
+    }
+
     [Fact]
     public async Task Reconnect_replaces_session_and_older_sequence_does_not_replace_snapshot()
     {

@@ -27,6 +27,9 @@ public sealed class LiveConnectionServer : IDisposable
     private LiveCommand? _queuedCommand;
     private TaskCompletionSource<LiveCommandResult>? _commandCompletion;
     private string? _commandId;
+    private long _incompatibleSeen;
+    // Longer than the mod's reconnect cycle (about 1 s), since the server drops incompatible clients itself.
+    private static readonly TimeSpan IncompatibleGrace = TimeSpan.FromSeconds(5);
 
     public Task<LiveCommandResult> TeleportAsync(string gameplayId, string playerId, string roomId, string region)
         => SendCommandAsync(gameplayId, playerId, roomId, region, null);
@@ -174,7 +177,10 @@ public sealed class LiveConnectionServer : IDisposable
                 if (incoming.ProtocolVersion != ProtocolInfo.Version || !SemVer.TryParse(incoming.ModVersion, out var modVersion) || modVersion.Major != Version.Parse(ProtocolInfo.ModVersion.Split('-')[0]).Major)
                 {
                     RecordEvent("Protocol or mod version is incompatible.", true);
-                    SetState(LiveConnectionStatus.Incompatible, null);
+                    long seen;
+                    lock (_stateLock) { Snapshot = null; Status = LiveConnectionStatus.Incompatible; seen = ++_incompatibleSeen; }
+                    Changed?.Invoke();
+                    _ = ClearIncompatibleAsync(seen);
                     return;
                 }
                 if (string.IsNullOrWhiteSpace(incoming.SessionId) || !ValidPlayers(incoming.Players)
@@ -226,6 +232,19 @@ public sealed class LiveConnectionServer : IDisposable
             }
             if (authenticated && Status != LiveConnectionStatus.Incompatible) SetState(LiveConnectionStatus.Disconnected, null);
         }
+    }
+
+    private async Task ClearIncompatibleAsync(long seen)
+    {
+        try { await Task.Delay(IncompatibleGrace, _stop.Token); }
+        catch (OperationCanceledException) { return; }
+        lock (_stateLock)
+        {
+            if (Status != LiveConnectionStatus.Incompatible || _incompatibleSeen != seen) return;
+            Status = LiveConnectionStatus.Disconnected;
+            Snapshot = null;
+        }
+        Changed?.Invoke();
     }
 
     private static async Task<string?> ReadBoundedLineAsync(StreamReader reader, CancellationToken cancellationToken)

@@ -2470,7 +2470,7 @@
                             </ListBox.ItemContainerStyle>
                         </ListBox>
 
-                        <TextBlock Text="No saves in the library yet. Use Store Slot to keep one of your slots here under a name, or Import to read one in. A save file dropped onto the window is read in too."
+                        <TextBlock Text="No saves in the library yet. Use Save slot to library to keep one of your slots here under a name, or Import to read one in. A save file dropped onto the window is read in too."
                                    Style="{StaticResource Text.Muted}"
                                    TextWrapping="Wrap"
                                    HorizontalAlignment="Center"

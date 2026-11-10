@@ -110,6 +110,17 @@ public partial class App : Application
         }
     }
 
+    // Sign-out, shutdown and the Restart Manager all ask here. Windows can still end the session by force.
+    protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
+    {
+        if (MainWindow?.DataContext is MainViewModel viewModel && viewModel.WhyNotClose() is not null)
+        {
+            e.Cancel = true;
+        }
+
+        base.OnSessionEnding(e);
+    }
+
     protected override void OnExit(ExitEventArgs e)
     {
         InputManager.Current.PreProcessInput -= OnDeveloperShortcut;

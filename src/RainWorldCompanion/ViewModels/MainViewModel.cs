@@ -179,6 +179,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
           + "Let it finish, then update."
         : null;
 
+    public string? WhyNotClose() => IsBusy
+        ? "RainWorld Companion is still working (" + BusyTitle + "). "
+          + "Closing it now could leave a save half written. Let it finish, then close it."
+        : null;
+
     /// <summary>
     /// App.OnStartup applies the stored theme before the window is shown, off its own read of the
     /// file. This runs it again for the value that arrives through the full load, and for the one
@@ -552,6 +557,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         try
         {
             _settings = await Task.Run(_settingsStore.Load);
+            if (_settingsStore.LoadProblem is { } problem)
+            {
+                ShowMessage("The settings file could not be read, so defaults are in use.\n\n" + problem,
+                    "Settings", MessageBoxImage.Warning);
+            }
         }
         catch (Exception ex)
         {
@@ -1228,6 +1238,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // A campaign taken out of a backup carries that snapshot's mod list rather than what is on
         // right now. The bytes are from then, so the record has to be too.
         ModListSnapshot? recorded = RecordedModsOfSelection();
+        string? configsRoot = ConfigsRootOfSelection();
 
         LibraryEntry? stored = null;
         Exception? failure = null;
@@ -1246,7 +1257,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                         ?? throw new InvalidOperationException(NotThereAnyMore(campaign.DisplayName, source));
 
                     return library.StoreCampaignFrom(
-                        slice, source.FileName, source.Realm, source.SlotNumber, name, note, recorded);
+                        slice, source.FileName, source.Realm, source.SlotNumber, name, note, recorded, configsRoot);
                 });
         }
         catch (Exception ex)
@@ -1296,8 +1307,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         string destination = dialog.FileName;
         string slugcat = campaign.SlugcatId;
         ModListSnapshot? recorded = RecordedModsOfSelection();
-        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath
-                              ?? SelectedLiveHistory?.Snapshot.DirectoryPath;
+        string? configsRoot = ConfigsRootOfSelection();
         Exception? failure = null;
 
         BeginBusy("Exporting " + campaign.DisplayName, destination);
@@ -1809,6 +1819,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
            ?? SelectedLiveHistory?.Snapshot.Manifest?.Mods
            ?? SelectedLibraryEntry?.Entry.Manifest?.Mods;
 
+    internal string? ConfigsRootOfSelection()
+        => SelectedBackup?.Snapshot.DirectoryPath ?? SelectedLiveHistory?.Snapshot.DirectoryPath;
+
     /// <summary>
     /// The mod settings the thing the campaign came out of carries, whichever of the two it is. A
     /// backup keeps them at the path the save folder had; a library entry keeps its own copy.
@@ -1913,7 +1926,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         // A slot taken out of a backup carries that snapshot's mod list and its settings rather
         // than what is on right now. The bytes are from then, so the record has to be too.
         ModListSnapshot? recorded = RecordedModsOfSelection();
-        string? configsRoot = SelectedBackup?.Snapshot.DirectoryPath;
+        string? configsRoot = ConfigsRootOfSelection();
 
         var progress = new Progress<string>(message => BusyMessage = message);
         LibraryEntry? stored = null;
@@ -2575,10 +2588,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             return;
         }
 
-        // The slot this save was put into is the one that was played. One that has never been put
-        // anywhere still knows the slot it was taken from.
-        var manifest = item.Entry.Manifest;
-        var source = manifest?.LastLoadedSlotRef ?? manifest?.SourceSlotRef;
+        var source = item.Entry.Manifest?.TakeFromSlotRef;
         if (source is null)
         {
             ShowMessage(
@@ -2655,7 +2665,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
         var confirm = AskYesNo(
             "Go back to the save \"" + item.Name + "\" held before it was last updated?\n\n" +
-            "What is stored now is discarded.",
+            "What is stored now is kept as the earlier save, so Undo take brings it back.",
             "Undo an update");
         if (!confirm)
         {
@@ -3555,7 +3565,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
 
         var confirm = AskYesNo(
-            "Delete this library save for good?\n\n" + item.Name + "\n" + item.CampaignCountText + "   " + item.SizeText +
+            "Move this library save to the Recycle Bin?\n\n" + item.Name + "\n" + item.CampaignCountText + "   " + item.SizeText +
             "\nFolder: " + item.Id +
             "\n\nThe live save slots are not changed.",
             "Delete library save");
@@ -4518,15 +4528,29 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
+    // Counted, because the Game Hook timer can start its own busy work while a user action is busy.
+    private int _busyDepth;
+
     private void BeginBusy(string title, string message)
     {
         BusyTitle = title;
         BusyMessage = message;
+        _busyDepth++;
         IsBusy = true;
     }
 
     private void EndBusy()
     {
+        if (_busyDepth > 0)
+        {
+            _busyDepth--;
+        }
+
+        if (_busyDepth > 0)
+        {
+            return;
+        }
+
         IsBusy = false;
         BusyTitle = "";
         BusyMessage = "";
@@ -4706,6 +4730,11 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         }
     }
 
+    // The Game Hook timer still ticks under a modal confirmation, before the action sets IsBusy.
+    private static int s_openDialogs;
+
+    private static bool IsDialogOpen => s_openDialogs > 0;
+
     private static bool? ShowDialog(Window dialog)
     {
         var owner = OwnerWindow;
@@ -4714,7 +4743,15 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             dialog.Owner = owner;
         }
 
-        return dialog.ShowDialog();
+        s_openDialogs++;
+        try
+        {
+            return dialog.ShowDialog();
+        }
+        finally
+        {
+            s_openDialogs--;
+        }
     }
 
     private static void ShowMessage(string message, string title, MessageBoxImage icon)
@@ -4733,10 +4770,18 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
     private static bool AskYesNo(string message, string title)
     {
         var owner = OwnerWindow;
-        var result = owner is not null
-            ? MessageBox.Show(owner, message, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
-            : MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
-        return result == MessageBoxResult.Yes;
+        s_openDialogs++;
+        try
+        {
+            var result = owner is not null
+                ? MessageBox.Show(owner, message, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
+                : MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+            return result == MessageBoxResult.Yes;
+        }
+        finally
+        {
+            s_openDialogs--;
+        }
     }
 
     private enum SaveListTab

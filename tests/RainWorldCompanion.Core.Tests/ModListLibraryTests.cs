@@ -82,7 +82,7 @@ public class ModListLibraryTests
         LibraryEntry undone = world.Library.UndoUpdate(updated);
 
         Assert.Equal("1.0", undone.Manifest!.Mods!.Mods[0].Version);
-        Assert.Null(undone.Manifest.PreviousMods);
+        Assert.Equal("2.0", undone.Manifest.PreviousMods!.Mods[0].Version);
     }
 
     /// <summary>The bundle carries the whole manifest, so the mod record travels with no extra work from the bundle writer.</summary>

@@ -449,8 +449,9 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
     }
 
     /// <summary>
-    /// Setting the liking to zero, or clearing it, takes the whole relationship out and what the
-    /// creature knew of the player with it, because that is what the game's own writer does.
+    /// Setting the liking to zero, or clearing it, when the creature has no fear of the player takes
+    /// the whole relationship out and what it knew of the player with it, because that is what the
+    /// game's own writer does.
     /// </summary>
     internal void SetFeeling(DevourmentEditNode node)
     {
@@ -463,9 +464,9 @@ public sealed partial class DevourmentEditViewModel : ObservableObject, IReorder
 
         Apply(
             "devourment|feeling|" + node.EntityId,
-            node.LikesValue is null or 0f
+            State.FeelingTowardPlayer(node.EntityId) is null
                 ? $"made the {node.DisplayName} forget you"
-                : $"set the {node.DisplayName} to like you {node.LikesValue.Value.ToString("0.##", CultureInfo.InvariantCulture)}",
+                : $"set the {node.DisplayName} to like you {(node.LikesValue ?? 0f).ToString("0.##", CultureInfo.InvariantCulture)}",
             rebuild: false);
     }
 

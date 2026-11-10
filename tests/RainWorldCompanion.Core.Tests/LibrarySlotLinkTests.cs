@@ -267,6 +267,31 @@ public class LibrarySlotLinkTests
         Assert.Null(imported.Entry!.Manifest!.SourceSlotRef);
     }
 
+    [Fact]
+    public void Renaming_or_releasing_keeps_fields_from_a_later_schema()
+    {
+        using var world = new LibraryWorld();
+        var entry = world.Library.StoreSlot(Slot1, "a save", null);
+        Assert.True(world.Library.LoadEntry(entry, Slot1).Success);
+
+        var path = Path.Combine(entry.DirectoryPath, LibraryEntry.ManifestFileName);
+        var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        json["schemaVersion"] = LibraryManifest.CurrentSchemaVersion + 1;
+        json["laterField"] = new System.Text.Json.Nodes.JsonObject { ["kept"] = 42 };
+        File.WriteAllText(path, json.ToJsonString());
+
+        world.Library.RenameEntry(world.Reload(entry), "renamed", null);
+        Assert.Contains("\"kept\": 42", File.ReadAllText(path), StringComparison.Ordinal);
+
+        world.Library.ReleaseSlot(Slot1);
+
+        var written = File.ReadAllText(path);
+        Assert.Contains("\"laterField\"", written, StringComparison.Ordinal);
+        Assert.Contains("\"kept\": 42", written, StringComparison.Ordinal);
+        Assert.Null(world.Reload(entry).Manifest!.LastLoadedSlotRef);
+        Assert.Equal("renamed", world.Reload(entry).Name);
+    }
+
     /// <summary>Writes to a slot the way the game does, so its size and write time both move.</summary>
     private static void PlayInto(LibraryWorld world, SaveSlotRef slot)
     {

@@ -293,4 +293,28 @@ public class CreatureBlobBuilderTests
         Assert.StartsWith("MeatLeft<cC>3<cB>SomeModBlock<cC>17<cB>", updated);
         Assert.Contains("Social<cC>REL<rA>ID.4.9<rA>L<rB>1<cB>", updated);
     }
+
+    [Fact]
+    public void Setting_one_relationship_leaves_the_text_of_the_others_as_it_was()
+    {
+        const string other = "REL<rA>ID.4.9<rA>L<rB>0.5<rA>X<rB>7";
+        string state = "Social<cC>REL<rA>ID.-1.0<rA>L<rB>1<smA>" + other + "<smA>MOD<rA>whatever<cB>";
+
+        string updated = CreatureBlobBuilder.SetRelation(state, CreatureBlobBuilder.PlayerEntityId, 0.5f, null, null);
+
+        Assert.Equal(
+            "Social<cC>REL<rA>ID.-1.0<rA>L<rB>0.5<smA>" + other + "<smA>MOD<rA>whatever<cB>",
+            updated);
+    }
+
+    /// <summary>The game's reader keeps a part it does not know and its writer puts it back after K.</summary>
+    [Fact]
+    public void A_part_the_editor_does_not_know_survives_an_edit_of_its_relationship()
+    {
+        string state = "Social<cC>REL<rA>ID.-1.0<rA>L<rB>1<rA>X<rB>7<rA>K<rB>1<cB>";
+
+        string updated = CreatureBlobBuilder.SetRelation(state, CreatureBlobBuilder.PlayerEntityId, 0.5f, null, 1f);
+
+        Assert.Equal("Social<cC>REL<rA>ID.-1.0<rA>L<rB>0.5<rA>K<rB>1<rA>X<rB>7<cB>", updated);
+    }
 }

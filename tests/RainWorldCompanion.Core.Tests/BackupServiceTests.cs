@@ -447,6 +447,57 @@ public class BackupServiceTests
         Assert.False(string.IsNullOrWhiteSpace(broken.ParseError));
         Assert.Null(slots.Single(s => s.FileName == "sav3").ParseError);
     }
+
+    [Fact]
+    public void The_operation_lock_refuses_a_second_thread_while_one_holds_it()
+    {
+        using var world = new BackupWorld();
+        using var held = world.Service.AcquireOperationLock();
+
+        Exception? second = null;
+        var other = new Thread(() =>
+        {
+            try
+            {
+                world.Service.AcquireOperationLock().Dispose();
+            }
+            catch (Exception ex)
+            {
+                second = ex;
+            }
+        });
+        other.Start();
+        other.Join();
+
+        Assert.IsType<BackupBusyException>(second);
+        using (world.Service.AcquireOperationLock())
+        {
+        }
+    }
+
+    [Fact]
+    public void The_operation_lock_is_free_for_another_thread_once_released()
+    {
+        using var world = new BackupWorld();
+        world.Service.AcquireOperationLock().Dispose();
+
+        Exception? second = null;
+        var other = new Thread(() =>
+        {
+            try
+            {
+                world.Service.AcquireOperationLock().Dispose();
+            }
+            catch (Exception ex)
+            {
+                second = ex;
+            }
+        });
+        other.Start();
+        other.Join();
+
+        Assert.Null(second);
+    }
 }
 
 /// <summary>Shared by the backup and restore suites so both run against the same layout.</summary>

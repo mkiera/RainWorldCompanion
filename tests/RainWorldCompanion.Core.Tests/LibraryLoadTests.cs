@@ -247,6 +247,23 @@ public class LibraryLoadTests
     }
 
     [Fact]
+    public void Loading_refuses_a_slot_rewritten_after_the_safety_copy()
+    {
+        using var world = new LibraryWorld();
+        var entry = world.Library.StoreSlot(LocalTwo, "Ironclaw run", null);
+        var rewritten = "rewritten by a sync"u8.ToArray();
+        var hook = ProgressHook.On("Loading", _ => world.Live.WriteBytes("sav3", rewritten), limit: 1);
+
+        var result = world.Library.LoadEntry(entry, LocalThree, hook);
+
+        Assert.Equal(1, hook.Fired);
+        Assert.False(result.Success);
+        Assert.False(result.LiveFolderModified);
+        Assert.Contains(result.Errors, error => error.Contains("changed after the safety copy", StringComparison.Ordinal));
+        SnapshotLayout.AssertBytesEqual(rewritten, world.Live.ReadBytes("sav3"), "sav3");
+    }
+
+    [Fact]
     public void A_refused_load_says_nothing_was_changed()
     {
         using var world = new LibraryWorld();
