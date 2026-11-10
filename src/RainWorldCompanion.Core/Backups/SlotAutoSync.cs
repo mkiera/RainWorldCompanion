@@ -30,6 +30,9 @@ public sealed class SlotAutoSync
     // A failed write already took a safety backup, so it is not retried on every poll.
     private static readonly TimeSpan RetryAfterFailure = TimeSpan.FromSeconds(30);
 
+    // A sync the game asked for skips the two-check wait, except for a file written this recently.
+    private static readonly TimeSpan JustWritten = TimeSpan.FromSeconds(2);
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -41,6 +44,9 @@ public sealed class SlotAutoSync
     private readonly string _statePath;
     private readonly TimeProvider _time;
     private readonly object _gate = new();
+
+    // The poll and a sync the game asked for run on different threads. One slot is copied at a time.
+    private readonly object _checkLock = new();
     private readonly Dictionary<string, FileStamp> _seen = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, (FileStamp Stamp, string Hash)> _hashes = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, SlotAutoSyncStatus> _status = new();
@@ -110,6 +116,16 @@ public sealed class SlotAutoSync
         }
     }
 
+    public int[] EnabledSlots()
+    {
+        lock (_gate)
+        {
+            return Enumerable.Range(SaveSlotRef.MinSlot, SaveSlotRef.MaxSlot - SaveSlotRef.MinSlot + 1)
+                .Where(slot => _state.Slots.TryGetValue(Key(slot), out SlotState? state) && state.Enabled)
+                .ToArray();
+        }
+    }
+
     public SlotAutoSyncStatus StatusFor(int slot)
     {
         lock (_gate)
@@ -127,6 +143,72 @@ public sealed class SlotAutoSync
 
     /// <summary>Returns true when a file in the save folder was written.</summary>
     public bool Check(CancellationToken ct = default)
+    {
+        lock (_checkLock)
+        {
+            return CheckAll(ct);
+        }
+    }
+
+    // The game is held until this returns, so files skip the two-check wait.
+    public SlotAutoSyncStatus SyncNow(int slot, out bool wrote, CancellationToken ct = default)
+    {
+        wrote = false;
+        if (slot < SaveSlotRef.MinSlot || slot > SaveSlotRef.MaxSlot)
+        {
+            throw new ArgumentOutOfRangeException(nameof(slot));
+        }
+
+        if (!Monitor.TryEnter(_checkLock, TimeSpan.FromSeconds(3)))
+        {
+            return new SlotAutoSyncStatus(slot, SlotAutoSyncState.Waiting, "Autosync was already copying, so the game loaded the save as it was.");
+        }
+
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            SlotState? state;
+            lock (_gate)
+            {
+                if (!(_state.Slots.TryGetValue(Key(slot), out state) && state.Enabled))
+                {
+                    return new SlotAutoSyncStatus(slot, SlotAutoSyncState.Off, "");
+                }
+            }
+
+            SlotAutoSyncStatus? status;
+            try
+            {
+                status = CheckSlot(slot, state, ref wrote, ct, gameIsWaiting: true);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                status = new SlotAutoSyncStatus(slot, SlotAutoSyncState.Failed, "Autosync could not check this slot: " + ex.Message);
+            }
+
+            if (status is null)
+            {
+                return StatusFor(slot);
+            }
+
+            lock (_gate)
+            {
+                _status[slot] = status;
+            }
+
+            return status;
+        }
+        finally
+        {
+            Monitor.Exit(_checkLock);
+        }
+    }
+
+    private bool CheckAll(CancellationToken ct)
     {
         bool wrote = false;
 
@@ -171,7 +253,7 @@ public sealed class SlotAutoSync
 
     /// <summary>Null keeps the status shown before, which is what a check that is still waiting for a
     /// file to settle should do.</summary>
-    private SlotAutoSyncStatus? CheckSlot(int slot, SlotState state, ref bool wrote, CancellationToken ct)
+    private SlotAutoSyncStatus? CheckSlot(int slot, SlotState state, ref bool wrote, CancellationToken ct, bool gameIsWaiting = false)
     {
         string? last;
         lock (_gate)
@@ -186,11 +268,13 @@ public sealed class SlotAutoSync
 
         // The game writes a save in more than one step, so a file is only read once two checks in a
         // row found it unchanged.
-        bool localSettled = Settled(localPath, out FileStamp? localStamp);
-        bool onlineSettled = Settled(onlinePath, out FileStamp? onlineStamp);
+        bool localSettled = Settled(localPath, out FileStamp? localStamp) || (gameIsWaiting && Old(localStamp));
+        bool onlineSettled = Settled(onlinePath, out FileStamp? onlineStamp) || (gameIsWaiting && Old(onlineStamp));
         if (!localSettled || !onlineSettled)
         {
-            return null;
+            return gameIsWaiting
+                ? new SlotAutoSyncStatus(slot, SlotAutoSyncState.Waiting, "A save file was still being written, so the game loaded it as it was.")
+                : null;
         }
 
         if (localStamp is null && onlineStamp is null)
@@ -265,9 +349,14 @@ public sealed class SlotAutoSync
         }
 
         // SetEnabled replaces the slot's state, so a switch turned off or on again since this check
-        // began stops the write.
+        // began stops the write. So does a game that stopped waiting for it.
         bool StillWanted()
         {
+            if (ct.IsCancellationRequested)
+            {
+                return false;
+            }
+
             lock (_gate)
             {
                 return _state.Slots.TryGetValue(Key(slot), out SlotState? now) && ReferenceEquals(now, state) && now.Enabled;
@@ -436,6 +525,9 @@ public sealed class SlotAutoSync
             return known && before == stamp;
         }
     }
+
+    private bool Old(FileStamp? stamp)
+        => stamp is null || _time.GetUtcNow().UtcDateTime - stamp.LastWriteUtc >= JustWritten;
 
     private string HashOf(string path, FileStamp stamp)
     {

@@ -26,6 +26,7 @@
     <Compile Include="..\..\src\RWCompanion.Mod\MeadowPlayers.cs" Link="MeadowPlayers.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\LogAdvertisement.cs" Link="LogAdvertisement.cs" />
     <Compile Include="..\..\src\RWCompanion.Mod\FramePerformanceSampler.cs" Link="FramePerformanceSampler.cs" />
+    <Compile Include="..\..\src\RWCompanion.Mod\LiveTransport.cs" Link="LiveTransport.cs" />
   </ItemGroup>
 
   <ItemGroup>

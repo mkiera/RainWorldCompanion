@@ -15,7 +15,6 @@ public sealed class Plugin : BaseUnityPlugin
     private Type? _rainWorldType;
     private Type? _gameType;
     private float _nextSample;
-    private long _sequence;
     private bool _reportedFailure;
     private bool _reportedLogStreamingFailure;
     private object? _game;
@@ -39,9 +38,11 @@ public sealed class Plugin : BaseUnityPlugin
         _activeModInventory = new ActiveModInventory();
         _transport.Start();
         _logBridge.Start();
+        SaveSyncHook.Install(_transport, () => _enabledMods.Contains("rwcompanion", StringComparer.OrdinalIgnoreCase), message => Logger.LogInfo(message));
     }
     public void OnDisable()
     {
+        SaveSyncHook.Uninstall();
         _performance.Reset();
         _teleport?.Cancel();
         _teleport = null;
@@ -157,7 +158,6 @@ public sealed class Plugin : BaseUnityPlugin
                 TeleportAllUnavailableReason = _hostControl?.AllUnavailableReason() ?? "Host control is unavailable.",
                 HostActionText = _hostControl?.LastAction ?? "",
                 AllowHostControl = _allowHostControl?.Value == true,
-                Sequence = ++_sequence,
                 GameVersion = GameAccess.Text(_rainWorldType, "GAME_VERSION_STRING"),
                 GameInstallPath = Path.GetDirectoryName(Application.dataPath) ?? "",
                 State = game == null ? "menu" : paused ? "paused" : "gameplay",
@@ -185,7 +185,6 @@ public sealed class Plugin : BaseUnityPlugin
             {
                 SessionId = _session,
                 CommandVersion = 1,
-                Sequence = ++_sequence,
                 GameVersion = GameAccess.Text(_rainWorldType, "GAME_VERSION_STRING"),
                 GameInstallPath = Path.GetDirectoryName(Application.dataPath) ?? "",
                 ActiveMods = modInventory.Mods,

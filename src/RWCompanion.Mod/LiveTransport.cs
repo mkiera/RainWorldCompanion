@@ -8,11 +8,58 @@ namespace RWCompanion.Mod;
 internal sealed class LiveTransport
 {
     private readonly object _sync = new();
+    private readonly string _discoveryDirectory;
     private LiveSnapshot? _latest;
     private long _publishedAt;
     private CancellationTokenSource? _stop;
     private TcpClient? _client;
     private LiveCommand? _command;
+    private long _sequence;
+    private int[]? _autoSyncSlots;
+    private long _repliedAt;
+    private SaveSyncWait? _saveSync;
+
+    private sealed class SaveSyncWait
+    {
+        internal readonly LiveSaveSyncRequest Request;
+        internal readonly ManualResetEventSlim Done = new(false);
+        internal bool Sent;
+        internal string? Message;
+
+        internal SaveSyncWait(LiveSaveSyncRequest request) => Request = request;
+
+        internal void Finish(string message)
+        {
+            Message = message;
+            Done.Set();
+        }
+    }
+
+    private static double SecondsSince(long timestamp)
+        => (System.Diagnostics.Stopwatch.GetTimestamp() - timestamp) / (double)System.Diagnostics.Stopwatch.Frequency;
+
+    // Blocks the game thread, so it only waits when Companion answered recently and has autosync on for the slot.
+    internal string? SyncSave(int slot, TimeSpan wait)
+    {
+        SaveSyncWait request;
+        lock (_sync)
+        {
+            if (_latest == null || _saveSync != null || _autoSyncSlots == null || Array.IndexOf(_autoSyncSlots, slot) < 0 || SecondsSince(_repliedAt) > 3)
+                return null;
+            request = new SaveSyncWait(new LiveSaveSyncRequest { Id = Guid.NewGuid().ToString("N"), Slot = slot });
+            _saveSync = request;
+        }
+        try
+        {
+            return request.Done.Wait(wait) ? request.Message : "Companion did not answer in time, so the save loaded as it was.";
+        }
+        finally
+        {
+            lock (_sync) if (_saveSync == request) _saveSync = null;
+        }
+    }
+
+    internal LiveTransport(string? discoveryDirectory = null) => _discoveryDirectory = discoveryDirectory ?? ProtocolInfo.DiscoveryDirectory;
 
     internal LiveCommand? TakeCommand()
     {
@@ -23,6 +70,7 @@ internal sealed class LiveTransport
     {
         lock (_sync)
         {
+            snapshot.Sequence = ++_sequence;
             _latest = snapshot;
             _publishedAt = System.Diagnostics.Stopwatch.GetTimestamp();
         }
@@ -49,7 +97,7 @@ internal sealed class LiveTransport
         {
             try
             {
-                var discovery = LiveJson.Deserialize<LiveDiscovery>(File.ReadAllText(Path.Combine(ProtocolInfo.DiscoveryDirectory, "endpoint.json")));
+                var discovery = LiveJson.Deserialize<LiveDiscovery>(File.ReadAllText(Path.Combine(_discoveryDirectory, "endpoint.json")));
                 using var client = new TcpClient();
                 _client = client;
                 var connect = client.ConnectAsync(IPAddress.Loopback, discovery.Port);
@@ -62,20 +110,48 @@ internal sealed class LiveTransport
                 while (!stop.IsCancellationRequested)
                 {
                     LiveSnapshot? snapshot;
-                    lock (_sync) snapshot = (System.Diagnostics.Stopwatch.GetTimestamp() - _publishedAt) / (double)System.Diagnostics.Stopwatch.Frequency < 2 ? _latest : null;
+                    SaveSyncWait? saveSync = null;
+                    string json = "";
+                    lock (_sync)
+                    {
+                        snapshot = SecondsSince(_publishedAt) < 2 ? _latest : null;
+                        // The game thread is waiting in SyncSave and publishes nothing, so the last
+                        // snapshot is sent again with the request and a new sequence.
+                        if (_saveSync is { Sent: false } pending && _latest != null)
+                        {
+                            saveSync = pending;
+                            pending.Sent = true;
+                            snapshot = _latest;
+                            snapshot.Sequence = ++_sequence;
+                        }
+                        if (snapshot != null && snapshot.Sequence != lastSequence)
+                        {
+                            snapshot.Token = discovery.Token;
+                            snapshot.SaveSync = saveSync?.Request;
+                            json = LiveJson.SerializeLiveSnapshot(snapshot);
+                            snapshot.SaveSync = null;
+                        }
+                    }
                     if (snapshot != null && snapshot.Sequence != lastSequence)
                     {
-                        snapshot.Token = discovery.Token;
-                        string json = LiveJson.SerializeLiveSnapshot(snapshot);
                         var write = writer.WriteLineAsync(json);
                         if (await Task.WhenAny(write, Task.Delay(2000, stop)) != write) break;
                         await write;
                         lastSequence = snapshot.Sequence;
                         var read = ReadReply(reader);
-                        if (await Task.WhenAny(read, Task.Delay(3000, stop)) != read) break;
+                        if (await Task.WhenAny(read, Task.Delay(saveSync != null ? 6000 : 3000, stop)) != read) { saveSync?.Finish("The connection to Companion stopped, so the save loaded as it was."); break; }
                         var reply = LiveJson.Deserialize<LiveCommandReply>(await read);
-                        if (reply.Token != discovery.Token) break;
-                        lock (_sync) _command = reply.Command ?? _command;
+                        if (reply.Token != discovery.Token) { saveSync?.Finish("Companion's reply was rejected, so the save loaded as it was."); break; }
+                        lock (_sync)
+                        {
+                            _command = reply.Command ?? _command;
+                            _autoSyncSlots = reply.AutoSyncSlots;
+                            _repliedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+                        }
+                        if (saveSync != null)
+                            saveSync.Finish(reply.SaveSyncResult is { } result && result.Id == saveSync.Request.Id
+                                ? result.Message
+                                : "Companion is too old to sync before load, so the save loaded as it was.");
                     }
                     await Task.Delay(200, stop);
                 }

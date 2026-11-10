@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <CompanionModVersion Condition="'$(CompanionModVersion)' == ''">1.0.14</CompanionModVersion>
+    <CompanionModVersion Condition="'$(CompanionModVersion)' == ''">1.0.15</CompanionModVersion>
   </PropertyGroup>
 
   <PropertyGroup>

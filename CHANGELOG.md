@@ -15,7 +15,9 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 - Each slot in the Rain Meadow section has an Autosync switch. While Companion
   is open, every new save in that slot is copied to its other file, with a
-  backup first, so local and online play continue from the same place.
+  backup first, so local and online play continue from the same place. With
+  Companion Game Hook 1.0.15, the copy also happens the moment you join or
+  leave a lobby, before the game loads the save.
 
 - The empty library tells you to use Save slot to library, the button that
   replaced Store Slot.

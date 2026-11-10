@@ -69,6 +69,20 @@ public sealed class LiveSnapshot
     public LivePlayer[] Players { get; set; } = Array.Empty<LivePlayer>();
     public LiveMeadowSnapshot? Meadow { get; set; }
     public LiveTrace? Trace { get; set; }
+    public LiveSaveSyncRequest? SaveSync { get; set; }
+}
+
+public sealed class LiveSaveSyncRequest
+{
+    public string Id { get; set; } = "";
+    public int Slot { get; set; }
+}
+
+public sealed class LiveSaveSyncResult
+{
+    public string Id { get; set; } = "";
+    public bool Wrote { get; set; }
+    public string Message { get; set; } = "";
 }
 
 public sealed class LiveModInfo
@@ -98,6 +112,8 @@ public sealed class LiveCommandReply
 {
     public string Token { get; set; } = "";
     public LiveCommand? Command { get; set; }
+    public int[]? AutoSyncSlots { get; set; }
+    public LiveSaveSyncResult? SaveSyncResult { get; set; }
 }
 
 public sealed class LiveCommandResult

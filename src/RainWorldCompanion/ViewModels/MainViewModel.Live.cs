@@ -95,7 +95,11 @@ public sealed partial class MainViewModel
         }
         try
         {
-            _liveServer = new LiveConnectionServer(gameInstallPath: () => _settings.GameInstallPath);
+            _liveServer = new LiveConnectionServer(gameInstallPath: () => _settings.GameInstallPath)
+            {
+                AutoSyncSlots = () => _autoSync?.EnabledSlots() ?? Array.Empty<int>(),
+                SaveSyncHandler = SyncSlotForGame,
+            };
             _liveServer.Changed += OnLiveConnectionChanged;
             _liveServer.Start(logEndpoint);
         }

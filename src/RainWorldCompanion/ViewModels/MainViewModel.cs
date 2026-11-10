@@ -19,6 +19,7 @@ using RainWorldCompanion.Core.Settings;
 using RainWorldCompanion.Core.System;
 using RainWorldCompanion.Core.Telemetry;
 using RainWorldCompanion.Core.Updates;
+using RainWorldCompanion.LiveProtocol;
 using RainWorldCompanion.Services;
 using RainWorldCompanion.Theming;
 using RainWorldCompanion.Views;
@@ -4595,6 +4596,49 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         if (problem is not null && AutoSyncSlots.FirstOrDefault(item => item.Slot == slot) is { } failed)
         {
             failed.Apply(failed.IsEnabled, new SlotAutoSyncStatus(slot, SlotAutoSyncState.Failed, problem));
+        }
+    }
+
+    // Runs on a worker while the Game Hook holds the game just before it loads this slot.
+    private LiveSaveSyncResult SyncSlotForGame(int slot, CancellationToken ct)
+    {
+        if (_autoSync is not { } sync)
+        {
+            return new LiveSaveSyncResult { Message = "Autosync is not available." };
+        }
+
+        if (Volatile.Read(ref _busyDepth) != 0)
+        {
+            return new LiveSaveSyncResult { Message = "Companion was busy, so the save loaded as it was." };
+        }
+
+        SlotAutoSyncStatus status = sync.SyncNow(slot, out bool wrote, ct);
+        ApplyGameSync(wrote);
+        return new LiveSaveSyncResult { Wrote = wrote, Message = status.Text.Length > 0 ? status.Text : "Autosync is off." };
+    }
+
+    private void ApplyGameSync(bool wrote)
+    {
+        void Apply()
+        {
+            ApplyAutoSyncStatus();
+            if (wrote && !IsBusy && _backupService is not null)
+            {
+                _ = ReloadAsync(preserveVerification: true);
+            }
+        }
+
+        var dispatcher = Application.Current?.Dispatcher;
+        try
+        {
+            if (dispatcher is not null && !dispatcher.HasShutdownStarted && !dispatcher.HasShutdownFinished)
+            {
+                dispatcher.BeginInvoke(Apply);
+            }
+        }
+        catch (InvalidOperationException)
+        {
+            // The dispatcher finished shutting down between the check and the post.
         }
     }
 

@@ -99,6 +99,14 @@ public sealed class LiveConnectionServer : IDisposable
         }
     }
     public LiveSnapshot? Snapshot { get; private set; }
+
+    // Sent with every reply: the Game Hook waits for a sync only on these slots.
+    public Func<int[]>? AutoSyncSlots { get; set; }
+
+    public Func<int, CancellationToken, LiveSaveSyncResult>? SaveSyncHandler { get; set; }
+
+    // The Game Hook waits up to 6 seconds for the reply.
+    private static readonly TimeSpan SaveSyncBudget = TimeSpan.FromSeconds(4);
     public LiveConnectionStatus Status { get; private set; } = LiveConnectionStatus.Waiting;
     public event Action? Changed;
 
@@ -214,7 +222,16 @@ public sealed class LiveConnectionServer : IDisposable
                         command = _queuedCommand;
                         _queuedCommand = null;
                     }
-                    await writer.WriteLineAsync(LiveJson.Serialize(new LiveCommandReply { Token = _token, Command = command }).AsMemory(), timeout.Token);
+                    LiveSaveSyncResult? syncResult = incoming.SaveSync is { } request ? await SyncForGameAsync(request) : null;
+                    int[]? slots;
+                    try { slots = AutoSyncSlots?.Invoke(); }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { slots = null; }
+                    using var write = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                    write.CancelAfter(TimeSpan.FromSeconds(3));
+                    await writer.WriteLineAsync(LiveJson.Serialize(new LiveCommandReply
+                    {
+                        Token = _token, Command = command, AutoSyncSlots = slots, SaveSyncResult = syncResult
+                    }).AsMemory(), write.Token);
                 }
             }
         }
@@ -232,6 +249,36 @@ public sealed class LiveConnectionServer : IDisposable
             }
             if (authenticated && Status != LiveConnectionStatus.Incompatible) SetState(LiveConnectionStatus.Disconnected, null);
         }
+    }
+
+    private async Task<LiveSaveSyncResult> SyncForGameAsync(LiveSaveSyncRequest request)
+    {
+        var result = new LiveSaveSyncResult { Id = request.Id ?? "" };
+        if (SaveSyncHandler is not { } handler || result.Id.Length is 0 or > 64 || request.Slot is < 1 or > 3)
+        {
+            result.Message = "Companion did not sync this slot.";
+            return result;
+        }
+
+        using var budget = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+        budget.CancelAfter(SaveSyncBudget);
+        try
+        {
+            LiveSaveSyncResult handled = await Task.Run(() => handler(request.Slot, budget.Token), budget.Token).WaitAsync(budget.Token);
+            result.Wrote = handled.Wrote;
+            result.Message = handled.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            result.Message = "Autosync took too long, so the game loaded the save as it was.";
+        }
+        catch (Exception ex)
+        {
+            result.Message = "Autosync failed: " + ex.Message;
+        }
+
+        if (result.Message.Length > 512) result.Message = result.Message[..512];
+        return result;
     }
 
     private async Task ClearIncompatibleAsync(long seen)
