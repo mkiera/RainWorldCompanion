@@ -840,12 +840,6 @@ public sealed class SlotCopyService
                 return SlotWriteOutcome.Refused(safety, errors, warnings);
             }
 
-            if (job.StillWanted is { } stillWanted && !stillWanted())
-            {
-                errors.Add($"The {job.OperationNoun} was turned off before {targetName} was written, so nothing was changed.");
-                return SlotWriteOutcome.Refused(safety, errors, warnings);
-            }
-
             // A job built from the target's own bytes is only valid while the target still holds
             // them.
             if (job.TargetExpectedSha256 is { Length: > 0 } expectedTarget)
@@ -895,6 +889,12 @@ public sealed class SlotCopyService
             if (job.SourceExpectedSha256 is { Length: > 0 } expected && !HashComparer.Equals(sourceHash, expected))
             {
                 errors.Add($"{job.SourceLabel} does not match the checksum recorded for it, so nothing was changed.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
+            }
+
+            if (job.StillWanted is { } stillWanted && !stillWanted())
+            {
+                errors.Add($"The {job.OperationNoun} was turned off before {targetName} was written, so nothing was changed.");
                 return SlotWriteOutcome.Refused(safety, errors, warnings);
             }
 
