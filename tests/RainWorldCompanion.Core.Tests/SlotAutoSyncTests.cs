@@ -172,6 +172,27 @@ public class SlotAutoSyncTests
         Assert.Equal(world.Read("online_sav3"), world.Read("sav3"));
     }
 
+    [Fact]
+    public void A_sync_turned_off_while_its_backup_was_taken_writes_nothing()
+    {
+        using var world = new SyncWorld();
+        byte[] local = Save(10);
+        world.Write("sav3", local);
+        world.Write("online_sav3", Save(11));
+        string sourceHash = Hashing.ComputeFileSha256(world.Live.Resolve("online_sav3"));
+        string targetHash = Hashing.ComputeFileSha256(world.Live.Resolve("sav3"));
+
+        SlotCopyResult result = world.Backups.SlotCopies.SyncSlot(
+            new(Core.Saves.SaveRealm.Online, 3),
+            new(Core.Saves.SaveRealm.Local, 3),
+            sourceHash,
+            targetHash,
+            stillWanted: () => false);
+
+        Assert.False(result.Success);
+        Assert.Equal(local, world.Read("sav3"));
+    }
+
     [Theory]
     [InlineData("a", "b", "a", SlotAutoSync.SyncDirection.OnlineToLocal)]
     [InlineData("b", "a", "a", SlotAutoSync.SyncDirection.LocalToOnline)]

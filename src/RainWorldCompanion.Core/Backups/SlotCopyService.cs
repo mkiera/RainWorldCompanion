@@ -130,7 +130,9 @@ internal sealed record SlotWriteJob(
     IReadOnlyList<ExtraFileWrite>? Extras = null,
     ModListSnapshot? SafetyMods = null,
     bool AllowWhileGameRuns = false,
-    string? SafetyOrigin = null);
+    string? SafetyOrigin = null,
+    bool TargetMustBeAbsent = false,
+    Func<bool>? StillWanted = null);
 
 /// <summary>
 /// One more file to write into the save folder beside the slot, named the way a manifest names it:
@@ -387,6 +389,7 @@ public sealed class SlotCopyService
         SaveSlotRef to,
         string sourceSha256,
         string? targetSha256,
+        Func<bool>? stillWanted = null,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(sourceSha256);
@@ -431,7 +434,9 @@ public sealed class SlotCopyService
                 : $"Automatic copy taken before autosync copied {source.FileName} to {target.FileName}, which did not exist yet.",
             TargetExpectedSha256: targetSha256,
             AllowWhileGameRuns: true,
-            SafetyOrigin: BackupManifest.AutoSyncOrigin);
+            SafetyOrigin: BackupManifest.AutoSyncOrigin,
+            TargetMustBeAbsent: targetSha256 is null,
+            StillWanted: stillWanted);
 
         SlotWriteOutcome outcome = CopyOntoSlot(job, null, ct);
 
@@ -826,6 +831,18 @@ public sealed class SlotCopyService
                     $"{targetName} appeared while the safety copy {safety.Id} was being taken, so that copy " +
                     "does not hold it and overwriting it could not be undone. Nothing was changed. Wait for Steam " +
                     "Cloud to finish syncing and try again.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
+            }
+
+            if (job.TargetMustBeAbsent && targetExistsNow)
+            {
+                errors.Add($"{targetName} appeared while the safety copy was being taken, so nothing was changed.");
+                return SlotWriteOutcome.Refused(safety, errors, warnings);
+            }
+
+            if (job.StillWanted is { } stillWanted && !stillWanted())
+            {
+                errors.Add($"The {job.OperationNoun} was turned off before {targetName} was written, so nothing was changed.");
                 return SlotWriteOutcome.Refused(safety, errors, warnings);
             }
 

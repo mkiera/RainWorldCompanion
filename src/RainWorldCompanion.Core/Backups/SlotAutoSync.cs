@@ -134,21 +134,19 @@ public sealed class SlotAutoSync
         {
             ct.ThrowIfCancellationRequested();
 
-            string? last;
+            SlotState? state;
             lock (_gate)
             {
-                if (!(_state.Slots.TryGetValue(Key(slot), out SlotState? state) && state.Enabled))
+                if (!(_state.Slots.TryGetValue(Key(slot), out state) && state.Enabled))
                 {
                     continue;
                 }
-
-                last = state.LastSyncedSha256;
             }
 
             SlotAutoSyncStatus? status;
             try
             {
-                status = CheckSlot(slot, last, ref wrote, ct);
+                status = CheckSlot(slot, state, ref wrote, ct);
             }
             catch (OperationCanceledException)
             {
@@ -173,8 +171,14 @@ public sealed class SlotAutoSync
 
     /// <summary>Null keeps the status shown before, which is what a check that is still waiting for a
     /// file to settle should do.</summary>
-    private SlotAutoSyncStatus? CheckSlot(int slot, string? last, ref bool wrote, CancellationToken ct)
+    private SlotAutoSyncStatus? CheckSlot(int slot, SlotState state, ref bool wrote, CancellationToken ct)
     {
+        string? last;
+        lock (_gate)
+        {
+            last = state.LastSyncedSha256;
+        }
+
         var localRef = new SaveSlotRef(SaveRealm.Local, slot);
         var onlineRef = new SaveSlotRef(SaveRealm.Online, slot);
         string localPath = Path.Combine(_copies.SaveRoot, localRef.FileName);
@@ -260,14 +264,26 @@ public sealed class SlotAutoSync
             }
         }
 
-        SlotCopyResult result = _copies.SyncSlot(from, to, sourceHash, targetHash, ct);
+        // SetEnabled replaces the slot's state, so a switch turned off or on again since this check
+        // began stops the write.
+        bool StillWanted()
+        {
+            lock (_gate)
+            {
+                return _state.Slots.TryGetValue(Key(slot), out SlotState? now) && ReferenceEquals(now, state) && now.Enabled;
+            }
+        }
+
+        SlotCopyResult result = _copies.SyncSlot(from, to, sourceHash, targetHash, StillWanted, ct);
         wrote |= result.LiveFolderModified;
 
         // The target was just written, so its stamp is stale. It reads as settled on the next check
         // only if nothing writes it again.
         lock (_gate)
         {
+            // The copy can keep the source's length and time, so the cached hash goes too.
             _seen.Remove(Path.Combine(_copies.SaveRoot, to.FileName));
+            _hashes.Remove(Path.Combine(_copies.SaveRoot, to.FileName));
         }
 
         if (!result.Success)
