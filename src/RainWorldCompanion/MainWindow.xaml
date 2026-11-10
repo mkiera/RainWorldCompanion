@@ -1531,17 +1531,25 @@
                     BorderBrush="{DynamicResource Brush.Border}"
                     SnapsToDevicePixels="True">
                 <StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,9">
-                        <Border Width="24" Height="24" CornerRadius="4"
-                                Background="{DynamicResource Brush.PanelAlt}"
-                                BorderBrush="{DynamicResource Brush.BorderStrong}"
-                                BorderThickness="1">
-                            <TextBlock Text="{Binding NumberText}" FontSize="12" FontWeight="SemiBold"
-                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
-                        <TextBlock Text="{Binding HeaderText}" Style="{StaticResource Text.Title}"
-                                   Margin="9,0,0,0" VerticalAlignment="Center" />
-                    </StackPanel>
+                    <DockPanel Margin="0,0,0,9">
+                        <CheckBox DockPanel.Dock="Right" VerticalAlignment="Center"
+                                  Content="Autosync"
+                                  IsChecked="{Binding AutoSync.IsEnabled, Mode=TwoWay}"
+                                  Visibility="{Binding HasAutoSync, Converter={StaticResource BoolToVis}}"
+                                  ToolTip="Each time the game saves this slot, copy the save to its other file, so local play and Rain Meadow play continue from the same place. A backup is taken before every copy."
+                                  AutomationProperties.Name="{Binding HeaderText, StringFormat='Autosync {0}'}" />
+                        <StackPanel Orientation="Horizontal">
+                            <Border Width="24" Height="24" CornerRadius="4"
+                                    Background="{DynamicResource Brush.PanelAlt}"
+                                    BorderBrush="{DynamicResource Brush.BorderStrong}"
+                                    BorderThickness="1">
+                                <TextBlock Text="{Binding NumberText}" FontSize="12" FontWeight="SemiBold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Text="{Binding HeaderText}" Style="{StaticResource Text.Title}"
+                                       Margin="9,0,0,0" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DockPanel>
 
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -1561,6 +1569,20 @@
                                           Content="{Binding Online}"
                                           ContentTemplate="{StaticResource SlotPairSideTemplate}" />
                     </Grid>
+
+                    <TextBlock Margin="0,8,0,0" TextWrapping="Wrap"
+                               Text="{Binding AutoSync.StatusText}"
+                               Visibility="{Binding AutoSync.HasStatus, Converter={StaticResource BoolToVis}, FallbackValue=Collapsed}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding AutoSync.IsProblem}" Value="True">
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Warn}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </StackPanel>
             </Border>
             </GroupBox>

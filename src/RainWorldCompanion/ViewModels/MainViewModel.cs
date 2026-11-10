@@ -56,6 +56,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
 
     /// <summary>Built beside the backup service, because it borrows that service's safety snapshot.</summary>
     private SlotCopyService? _copyService;
+    private SlotAutoSync? _autoSync;
 
     /// <summary>Built beside the backup service too, for the same reason: a load takes a snapshot.</summary>
     private SaveLibrary? _library;
@@ -110,6 +111,9 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         _gameDetector = gameDetector;
         _icons = icons;
         _appVersion = appVersion;
+        AutoSyncSlots = Enumerable.Range(SaveSlotRef.MinSlot, SaveSlotRef.MaxSlot)
+            .Select(slot => new SlotAutoSyncViewModel(slot, SetAutoSync))
+            .ToList();
         Live = new LiveSessionViewModel(InstallCompanionModAsync,
             TeleportLivePlayerAsync,
             SetLiveHostControlAsync,
@@ -826,7 +830,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                 _liveMeadow,
                 _icons,
                 _currentMods,
-                _liveConfigs);
+                _liveConfigs,
+                AutoSyncSlots);
         }
 
         if (SelectedLibraryEntry is { } entry)
@@ -3975,6 +3980,21 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             }
         }
 
+        _autoSync = null;
+        if (_copyService is { } forSync)
+        {
+            try
+            {
+                _autoSync = new SlotAutoSync(forSync, SlotAutoSync.DefaultStatePathFor(savePath));
+            }
+            catch (Exception)
+            {
+                // Without it every switch reads as off and nothing is synced.
+            }
+        }
+
+        ApplyAutoSyncStatus();
+
         _modSync = null;
         if (_backupService is { } forMods)
         {
@@ -4415,6 +4435,25 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
             var poll = await Task.Run(() =>
             {
                 bool running = detector.IsGameRunning(out _);
+                bool synced = false;
+
+                // Before recent save history looks, so a synced file is captured as it now is.
+                if (_autoSync is { } autoSync && Volatile.Read(ref _busyDepth) == 0)
+                {
+                    try
+                    {
+                        synced = autoSync.Check(token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (Exception)
+                    {
+                        // Each slot reports its own failure. This only guards the poll itself.
+                    }
+                }
+
                 LiveHistoryView? recent = null;
                 string recentStatus = "";
 
@@ -4452,7 +4491,7 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                     _liveHistory?.Reset();
                 }
 
-                return (Running: running, Recent: recent, RecentStatus: recentStatus);
+                return (Running: running, Recent: recent, RecentStatus: recentStatus, Synced: synced);
             }, token).ConfigureAwait(false);
 
             if (token.IsCancellationRequested)
@@ -4466,7 +4505,8 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
                     ? "Rain World is running - close it before backing up or restoring"
                     : "Rain World is closed",
                 poll.Recent,
-                poll.RecentStatus);
+                poll.RecentStatus,
+                poll.Synced);
         }
         catch (OperationCanceledException)
         {
@@ -4486,10 +4526,17 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         bool running,
         string status,
         LiveHistoryView? recent,
-        string recentStatus)
+        string recentStatus,
+        bool synced = false)
     {
         void Apply()
         {
+            ApplyAutoSyncStatus();
+            if (synced && !IsBusy && _backupService is not null)
+            {
+                _ = ReloadAsync(preserveVerification: true);
+            }
+
             string? selectedHistoryId = SelectedLiveHistory?.Id;
             IsGameRunning = running;
             GameStatusText = status;
@@ -4525,6 +4572,40 @@ public sealed partial class MainViewModel : ObservableObject, IBusyGuard
         catch (InvalidOperationException)
         {
             // The dispatcher finished shutting down between the check and the post.
+        }
+    }
+
+    /// <summary>One per slot, slot 1 first. The live view's slot rows bind to these.</summary>
+    public IReadOnlyList<SlotAutoSyncViewModel> AutoSyncSlots { get; }
+
+    private void SetAutoSync(int slot, bool enabled)
+    {
+        string? problem = null;
+        try
+        {
+            _autoSync?.SetEnabled(slot, enabled);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            problem = "The autosync setting could not be saved: " + ex.Message;
+        }
+
+        ApplyAutoSyncStatus();
+
+        if (problem is not null && AutoSyncSlots.FirstOrDefault(item => item.Slot == slot) is { } failed)
+        {
+            failed.Apply(failed.IsEnabled, new SlotAutoSyncStatus(slot, SlotAutoSyncState.Failed, problem));
+        }
+    }
+
+    private void ApplyAutoSyncStatus()
+    {
+        foreach (SlotAutoSyncViewModel item in AutoSyncSlots)
+        {
+            SlotAutoSync? sync = _autoSync;
+            item.Apply(
+                sync?.IsEnabled(item.Slot) ?? false,
+                sync?.StatusFor(item.Slot) ?? new SlotAutoSyncStatus(item.Slot, SlotAutoSyncState.Off, ""));
         }
     }
 

@@ -41,7 +41,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         string sourceDirectory = "",
         string sourceLabel = "",
         string sourceFileOverride = "",
-        IReadOnlyList<SlotMetadata>? liveSlots = null)
+        IReadOnlyList<SlotMetadata>? liveSlots = null,
+        IReadOnlyList<SlotAutoSyncViewModel>? autoSync = null)
     {
         Mods = modsSection;
         Configs = configsSection;
@@ -92,7 +93,7 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
                 storable: true,
                 liveSlots: liveSlots);
 
-        SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots);
+        SlotPairs = entry is not null ? Array.Empty<SlotPairViewModel>() : BuildPairs(_localSlots, _onlineSlots, autoSync);
         OnlineCountText = FormatFileCount(_onlineSlots.Count, "online save");
 
         Meadow = meadow is null ? null : new MeadowProfileViewModel(meadow);
@@ -205,7 +206,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
         MeadowProfile? meadow,
         ISlugcatIconProvider icons,
         CurrentMods? mods = null,
-        ModConfigSet? configs = null)
+        ModConfigSet? configs = null,
+        IReadOnlyList<SlotAutoSyncViewModel>? autoSync = null)
     {
         return new SnapshotDetailViewModel(
             modsSection: ModListSectionViewModel.ForCurrent(mods),
@@ -225,7 +227,8 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
             meadow: meadow,
             icons: icons,
             sourceDirectory: savePath,
-            sourceLabel: "");
+            sourceLabel: "",
+            autoSync: autoSync);
     }
 
     /// <summary>Filled from the manifest written beside it, so selecting a row costs no disk read.</summary>
@@ -415,13 +418,18 @@ public sealed partial class SnapshotDetailViewModel : ObservableObject
     /// <summary>A row with nothing on either side still shows which online slots are empty.</summary>
     private static IReadOnlyList<SlotPairViewModel> BuildPairs(
         IReadOnlyList<SlotViewModel> local,
-        IReadOnlyList<SlotViewModel> online)
+        IReadOnlyList<SlotViewModel> online,
+        IReadOnlyList<SlotAutoSyncViewModel>? autoSync)
     {
         var pairs = new List<SlotPairViewModel>(SaveSlotRef.MaxSlot);
 
         for (int slot = SaveSlotRef.MinSlot; slot <= SaveSlotRef.MaxSlot; slot++)
         {
-            pairs.Add(new SlotPairViewModel(slot, FindSlot(local, slot), FindSlot(online, slot)));
+            pairs.Add(new SlotPairViewModel(
+                slot,
+                FindSlot(local, slot),
+                FindSlot(online, slot),
+                autoSync?.FirstOrDefault(item => item.Slot == slot)));
         }
 
         return pairs;

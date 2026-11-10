@@ -10,9 +10,11 @@ namespace RainWorldCompanion.ViewModels;
 /// </summary>
 public sealed class SlotPairViewModel
 {
-    public SlotPairViewModel(int slotNumber, SlotViewModel? local, SlotViewModel? online)
+    /// <param name="autoSync">Only for the live save folder, the one place autosync writes.</param>
+    public SlotPairViewModel(int slotNumber, SlotViewModel? local, SlotViewModel? online, SlotAutoSyncViewModel? autoSync = null)
     {
         SlotNumber = slotNumber;
+        AutoSync = autoSync;
 
         NumberText = slotNumber.ToString(CultureInfo.InvariantCulture);
         HeaderText = "SLOT " + NumberText;
@@ -40,6 +42,10 @@ public sealed class SlotPairViewModel
     public SlotSideViewModel Local { get; }
 
     public SlotSideViewModel Online { get; }
+
+    public SlotAutoSyncViewModel? AutoSync { get; }
+
+    public bool HasAutoSync => AutoSync is not null;
 
     public string AccessibleName =>
         "Slot " + NumberText + ". Local, " + Local.SummaryText + ". Online, " + Online.SummaryText + ".";

@@ -13,6 +13,10 @@ worded as things ended up. The pre-release sections stay for their tags.
 
 ## Unreleased
 
+- Each slot in the Rain Meadow section has an Autosync switch. While Companion
+  is open, every new save in that slot is copied to its other file, with a
+  backup first, so local and online play continue from the same place.
+
 - The empty library tells you to use Save slot to library, the button that
   replaced Store Slot.
 

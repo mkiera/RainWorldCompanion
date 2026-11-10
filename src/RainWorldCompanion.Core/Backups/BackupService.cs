@@ -18,6 +18,10 @@ public sealed class BackupService
 {
     public const int RetainedAutomaticBackups = 20;
 
+    /// <summary>Kept apart from <see cref="RetainedAutomaticBackups"/>, so a long session of autosync
+    /// does not push out the safety copies taken before restores and copies.</summary>
+    public const int RetainedAutoSyncBackups = 10;
+
     private static readonly StringComparer PathComparer = StringComparer.OrdinalIgnoreCase;
 
     private const string LockFileName = ".operation-lock";
@@ -256,8 +260,25 @@ public sealed class BackupService
         IProgress<string>? progress = null,
         CancellationToken ct = default,
         ModListSnapshot? mods = null)
+        => CreateBackup(label, note, kind, progress, ct, mods, allowWhileGameRuns: false, origin: null);
+
+    /// <param name="allowWhileGameRuns">Only for autosync, which writes the file of a slot that the
+    /// game does not have loaded.</param>
+    internal BackupSnapshot CreateBackup(
+        string? label,
+        string? note,
+        BackupKind kind,
+        IProgress<string>? progress,
+        CancellationToken ct,
+        ModListSnapshot? mods,
+        bool allowWhileGameRuns,
+        string? origin)
     {
-        EnsureGameNotRunning();
+        if (!allowWhileGameRuns)
+        {
+            EnsureGameNotRunning();
+        }
+
         ct.ThrowIfCancellationRequested();
 
         using var lease = AcquireOperationLock();
@@ -276,6 +297,7 @@ public sealed class BackupService
             Label = string.IsNullOrWhiteSpace(label) ? null : label.Trim(),
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             Kind = kind,
+            Origin = origin,
             Mods = mods ?? TryReadMods(),
         };
 
@@ -318,11 +340,17 @@ public sealed class BackupService
 
     private void PruneAutomaticBackups(IReadOnlyList<BackupSnapshot> snapshots)
     {
-        IReadOnlyList<BackupSnapshot> automatic = snapshots
+        static bool IsAutoSync(BackupSnapshot snapshot)
+            => snapshot.Manifest?.Origin == BackupManifest.AutoSyncOrigin;
+
+        List<BackupSnapshot> automatic = snapshots
             .Where(snapshot => snapshot.Manifest?.Kind == BackupKind.PreRestoreSafety)
             .ToList();
+        List<BackupSnapshot> excess = automatic.Where(snapshot => !IsAutoSync(snapshot)).Skip(RetainedAutomaticBackups)
+            .Concat(automatic.Where(IsAutoSync).Skip(RetainedAutoSyncBackups))
+            .ToList();
 
-        foreach (BackupSnapshot snapshot in automatic.Skip(RetainedAutomaticBackups))
+        foreach (BackupSnapshot snapshot in excess)
         {
             try
             {

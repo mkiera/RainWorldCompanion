@@ -128,7 +128,9 @@ internal sealed record SlotWriteJob(
     Func<bool, string> SafetyNote,
     string? TargetExpectedSha256 = null,
     IReadOnlyList<ExtraFileWrite>? Extras = null,
-    ModListSnapshot? SafetyMods = null);
+    ModListSnapshot? SafetyMods = null,
+    bool AllowWhileGameRuns = false,
+    string? SafetyOrigin = null);
 
 /// <summary>
 /// One more file to write into the save folder beside the slot, named the way a manifest names it:
@@ -370,6 +372,74 @@ public sealed class SlotCopyService
             outcome.SafetySnapshot,
             errors,
             warnings,
+            outcome.LiveFolderModified,
+            outcome.BytesCopied,
+            plan);
+    }
+
+    /// <summary>
+    /// The autosync write. Allowed while the game runs, because the game has only one of a slot's
+    /// two files loaded, and autosync writes the other one. Both files are held to the digests the
+    /// decision was made on, so a save the game writes in between stops the copy.
+    /// </summary>
+    public SlotCopyResult SyncSlot(
+        SaveSlotRef from,
+        SaveSlotRef to,
+        string sourceSha256,
+        string? targetSha256,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sourceSha256);
+
+        SlotSide source = ReadSide(from, includeCampaigns: false);
+        SlotSide target = ReadSide(to, includeCampaigns: false);
+        var plan = new SlotCopyPlan(source, target, Array.Empty<string>(), Array.Empty<string>());
+        var errors = new List<string>();
+
+        if (!from.IsRealSlot || !to.IsRealSlot || from.Slot != to.Slot || from.Realm == to.Realm)
+        {
+            errors.Add("Autosync only copies between the local and online files of one slot.");
+        }
+        else if (!source.Exists || CanonicalPath.IsLink(source.FullPath))
+        {
+            errors.Add($"{source.FileName} is not a real file in the save folder, so there is nothing to copy from.");
+        }
+        else if (!_backups.Scope.IsInScope(target.FileName) || CanonicalPath.LeadsThroughLink(SaveRoot, target.FullPath))
+        {
+            errors.Add($"{target.FileName} is not a file this app writes.");
+        }
+        else if (targetSha256 is null && target.Exists)
+        {
+            errors.Add($"{target.FileName} appeared since autosync last looked, so nothing was changed.");
+        }
+
+        if (errors.Count > 0)
+        {
+            return new SlotCopyResult(false, null, errors, Array.Empty<string>(), false, 0, plan);
+        }
+
+        var job = new SlotWriteJob(
+            target,
+            source.FullPath,
+            source.FileName,
+            SourceExpectedSha256: sourceSha256,
+            OperationNoun: "autosync",
+            ProgressVerb: "Syncing",
+            SafetyLabel: $"Before autosync of {source.FileName} onto {target.FileName}",
+            SafetyNote: targetExists => targetExists
+                ? $"Automatic copy taken before autosync copied {source.FileName} over {target.FileName}."
+                : $"Automatic copy taken before autosync copied {source.FileName} to {target.FileName}, which did not exist yet.",
+            TargetExpectedSha256: targetSha256,
+            AllowWhileGameRuns: true,
+            SafetyOrigin: BackupManifest.AutoSyncOrigin);
+
+        SlotWriteOutcome outcome = CopyOntoSlot(job, null, ct);
+
+        return new SlotCopyResult(
+            outcome.Success,
+            outcome.SafetySnapshot,
+            outcome.Errors,
+            outcome.Warnings,
             outcome.LiveFolderModified,
             outcome.BytesCopied,
             plan);
@@ -678,7 +748,9 @@ public sealed class SlotCopyService
                 BackupKind.PreRestoreSafety,
                 progress,
                 ct,
-                job.SafetyMods);
+                job.SafetyMods,
+                job.AllowWhileGameRuns,
+                job.SafetyOrigin);
         }
         catch (GameRunningException)
         {
@@ -729,7 +801,10 @@ public sealed class SlotCopyService
         {
             // The safety snapshot took several seconds, so the player may have started the game
             // during it. Nothing has been overwritten yet, so this can still refuse outright.
-            EnsureGameNotRunning();
+            if (!job.AllowWhileGameRuns)
+            {
+                EnsureGameNotRunning();
+            }
 
             // That window is long enough for Steam Cloud to bring down a target that was not there
             // when this started, which the snapshot was already enumerated without. Ask again, now,

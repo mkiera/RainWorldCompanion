@@ -42,6 +42,12 @@ public sealed class BackupManifest
     public string? Note { get; set; }
     public BackupKind Kind { get; set; }
 
+    /// <summary>A string, not a BackupKind value: older versions read Kind with
+    /// JsonStringEnumConverter, which throws on a value it has not heard of.</summary>
+    public string? Origin { get; set; }
+
+    public const string AutoSyncOrigin = "autosync";
+
     // An explicit JSON null overwrites a field initialiser, and readers walk these unguarded.
     public List<ManifestFileEntry> Files
     {
